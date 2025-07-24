@@ -1,0 +1,79 @@
+{
+  "name": "meta-ads-reporting-saas",
+  "version": "0.1.0",
+  "description": "Automated Meta Ads reporting SaaS platform",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "db:generate": "supabase gen types typescript --project-id $NEXT_PUBLIC_SUPABASE_PROJECT_ID --schema public > src/lib/database.types.ts",
+    "db:migrate": "supabase db push",
+    "db:reset": "supabase db reset",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.5",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.16",
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.46",
+    "@types/react-dom": "^18.2.18",
+    "autoprefixer": "^10.4.16",
+    "chart.js": "^4.4.1",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "clsx": "^2.0.0",
+    "date-fns": "^3.0.6",
+    "handlebars": "^4.7.8",
+    "lucide-react": "^0.303.0",
+    "next": "^14.2.30",
+    "postcss": "^8.4.32",
+    "puppeteer": "^24.15.0",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.48.2",
+    "resend": "^3.0.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.3",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.1.6",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/user-event": "^14.5.1",
+    "@types/handlebars": "^4.1.0",
+    "@types/jest": "^29.5.11",
+    "@typescript-eslint/eslint-plugin": "^6.17.0",
+    "@typescript-eslint/parser": "^6.17.0",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "14.0.4",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "supabase": "^1.142.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/meta-ads-reporting-saas"
+  },
+  "keywords": [
+    "meta-ads",
+    "facebook-ads",
+    "reporting",
+    "saas",
+    "automation",
+    "nextjs",
+    "typescript",
+    "supabase"
+  ],
+  "author": "Your Agency Name",
+  "license": "UNLICENSED"
+}
