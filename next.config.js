@@ -1,13 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    domains: [
-      'localhost',
-      // Add your Supabase storage domain
-      'your-project.supabase.co',
-      // Add any other image domains you'll use
-    ],
+  // Ensure environment variables are available in browser
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   },
+  
+  // Enable experimental features for better error handling
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+  },
+
+  // Production optimizations
+  swcMinify: true,
+  
   // Security headers
   async headers() {
     return [
@@ -24,32 +30,12 @@ const nextConfig = {
           },
           {
             key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          {
-            key: 'X-XSS-Protection',
-            value: '1; mode=block',
+            value: 'origin-when-cross-origin',
           },
         ],
       },
     ];
   },
-  // API configuration
-  async rewrites() {
-    return [
-      {
-        source: '/api/webhooks/:path*',
-        destination: '/api/webhooks/:path*',
-      },
-    ];
-  },
-  // Environment variables will be handled by Next.js automatically
-  // Performance optimizations
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
-  },
-  // Output configuration for Vercel
-  output: 'standalone',
-};
+}
 
-module.exports = nextConfig; 
+module.exports = nextConfig 

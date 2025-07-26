@@ -2,6 +2,7 @@ import React from 'react';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { AuthProvider } from '../components/AuthProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -26,9 +27,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} h-full bg-gray-50 antialiased`}>
-        <div id="root" className="min-h-full">
-          {children}
-        </div>
+        <AuthProvider>
+          <div id="root" className="min-h-full">
+            {children}
+          </div>
+        </AuthProvider>
       </body>
     </html>
   );
