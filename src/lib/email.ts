@@ -9,288 +9,215 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export interface EmailTemplate {
   subject: string;
   html: string;
-  text?: string;
 }
 
-export interface SendEmailParams {
-  to: string | string[];
-  subject: string;
-  html: string;
-  text?: string;
-  attachments?: {
-    filename: string;
-    content: Buffer | string;
-    contentType?: string;
-  }[];
-  from?: string;
-}
-
-export interface ReportEmailData {
-  clientName: string;
-  reportPeriod: string;
-  reportUrl: string;
-  adminName?: string;
-  agencyName?: string;
-  customMessage?: string;
-}
-
-// Default email templates
-export const EMAIL_TEMPLATES = {
-  MONTHLY_REPORT: {
-    subject: (data: ReportEmailData) => 
-      `Your ${data.reportPeriod} Meta Ads Performance Report`,
-    
-    html: (data: ReportEmailData) => `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Meta Ads Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #3b82f6; color: white; padding: 20px; text-align: center; }
-          .content { padding: 30px 20px; }
-          .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #666; }
-          .metrics { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-          .custom-message { background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #2196f3; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>📊 Your Meta Ads Report is Ready</h1>
-            <p>${data.reportPeriod} Performance Summary</p>
-          </div>
-          
-          <div class="content">
-            <p>Hi ${data.clientName},</p>
-            
-            <p>Your ${data.reportPeriod} Meta Ads performance report has been generated and is ready for review.</p>
-            
-            ${data.customMessage ? `
-              <div class="custom-message">
-                <strong>Message from your account manager:</strong><br>
-                ${data.customMessage}
-              </div>
-            ` : ''}
-            
-            <p>This comprehensive report includes:</p>
-            <ul>
-              <li>📈 Campaign performance metrics</li>
-              <li>💰 Spend analysis and budget utilization</li>
-              <li>🎯 Conversion tracking and ROI insights</li>
-              <li>👥 Audience demographics breakdown</li>
-              <li>💡 Optimization recommendations</li>
-            </ul>
-            
-            <div style="text-align: center;">
-              <a href="${data.reportUrl}" class="button">📄 View Your Report</a>
-            </div>
-            
-            <p><strong>What's Next?</strong></p>
-            <p>Review your report and feel free to reach out if you have any questions or would like to discuss optimization strategies for your campaigns.</p>
-            
-            <p>Best regards,<br>
-            ${data.adminName || 'Your Account Manager'}${data.agencyName ? `<br>${data.agencyName}` : ''}</p>
-          </div>
-          
-          <div class="footer">
-            <p>This is an automated report delivery. If you have questions, please reply to this email.</p>
-            <p>© ${new Date().getFullYear()} ${data.agencyName || 'Meta Ads Reporting'}. All rights reserved.</p>
-          </div>
+export const emailTemplates = {
+  clientCredentials: (clientName: string, email: string, username: string, password: string): EmailTemplate => ({
+    subject: `Your Meta Ads Reporting Dashboard Access`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
+          <h1 style="margin: 0; font-size: 24px;">Welcome to Meta Ads Reporting</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Your dashboard access has been created</p>
         </div>
-      </body>
-      </html>
-    `,
-    
-    text: (data: ReportEmailData) => `
-      Your ${data.reportPeriod} Meta Ads Report is Ready
-      
-      Hi ${data.clientName},
-      
-      Your ${data.reportPeriod} Meta Ads performance report has been generated and is ready for review.
-      
-      ${data.customMessage ? `Message from your account manager: ${data.customMessage}\n\n` : ''}
-      
-      This comprehensive report includes:
-      - Campaign performance metrics
-      - Spend analysis and budget utilization
-      - Conversion tracking and ROI insights
-      - Audience demographics breakdown
-      - Optimization recommendations
-      
-      View your report: ${data.reportUrl}
-      
-      What's Next?
-      Review your report and feel free to reach out if you have any questions or would like to discuss optimization strategies for your campaigns.
-      
-      Best regards,
-      ${data.adminName || 'Your Account Manager'}
-      ${data.agencyName || ''}
-      
-      ---
-      This is an automated report delivery. If you have questions, please reply to this email.
-      © ${new Date().getFullYear()} ${data.agencyName || 'Meta Ads Reporting'}. All rights reserved.
-    `
-  },
-
-  WELCOME_CLIENT: {
-    subject: (data: { clientName: string; agencyName?: string }) => 
-      `Welcome to ${data.agencyName || 'Meta Ads Reporting'} - Access Your Reports`,
-    
-    html: (data: { clientName: string; loginUrl: string; agencyName?: string; adminName?: string }) => `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to Meta Ads Reporting</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #3b82f6; color: white; padding: 20px; text-align: center; }
-          .content { padding: 30px 20px; }
-          .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>🎉 Welcome to Your Reporting Dashboard</h1>
-          </div>
+        
+        <div style="padding: 30px; background: #f8f9fa;">
+          <h2 style="color: #333; margin-bottom: 20px;">Hello ${clientName},</h2>
           
-          <div class="content">
-            <p>Hi ${data.clientName},</p>
-            
-            <p>Welcome to your new Meta Ads reporting dashboard! You now have 24/7 access to your campaign performance reports.</p>
-            
-            <p><strong>What you can do:</strong></p>
-            <ul>
-              <li>📊 View your monthly performance reports</li>
-              <li>📥 Download reports as PDF</li>
-              <li>📈 Track your campaign metrics over time</li>
-              <li>🔍 Access historical report data</li>
-            </ul>
-            
-            <div style="text-align: center;">
-              <a href="${data.loginUrl}" class="button">🚀 Access Your Dashboard</a>
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            Your Meta Ads reporting dashboard has been set up successfully. You can now access your performance reports and campaign analytics.
+          </p>
+          
+          <div style="background: white; border: 1px solid #e1e5e9; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #333; margin-top: 0;">Your Login Credentials</h3>
+            <div style="margin: 15px 0;">
+              <strong style="color: #333;">Email:</strong> ${email}
             </div>
-            
-            <p><strong>Need Help?</strong></p>
-            <p>If you have any questions about your reports or need assistance accessing your dashboard, don't hesitate to reach out.</p>
-            
-            <p>Best regards,<br>
-            ${data.adminName || 'Your Account Manager'}${data.agencyName ? `<br>${data.agencyName}` : ''}</p>
+            <div style="margin: 15px 0;">
+              <strong style="color: #333;">Username:</strong> ${username}
+            </div>
+            <div style="margin: 15px 0;">
+              <strong style="color: #333;">Password:</strong> ${password}
+            </div>
           </div>
           
-          <div class="footer">
-            <p>Keep this email for your records. You can bookmark the dashboard link for easy access.</p>
-            <p>© ${new Date().getFullYear()} ${data.agencyName || 'Meta Ads Reporting'}. All rights reserved.</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/auth/login" 
+               style="background: #667eea; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              Access Your Dashboard
+            </a>
           </div>
+          
+          <div style="background: #e8f4fd; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0; color: #333; font-size: 14px;">
+              <strong>Security Note:</strong> Please change your password after your first login for security purposes.
+            </p>
+          </div>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            If you have any questions or need assistance, please don't hesitate to contact our support team.
+          </p>
+          
+          <p style="color: #666; line-height: 1.6;">
+            Best regards,<br>
+            The Meta Ads Reporting Team
+          </p>
         </div>
-      </body>
-      </html>
+        
+        <div style="background: #333; color: white; padding: 20px; text-align: center; font-size: 12px;">
+          <p style="margin: 0;">© 2024 Meta Ads Reporting. All rights reserved.</p>
+        </div>
+      </div>
     `
-  }
+  }),
+
+  reportGenerated: (clientName: string, reportDate: string, reportUrl: string): EmailTemplate => ({
+    subject: `Your Meta Ads Report is Ready - ${reportDate}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px; text-align: center; color: white;">
+          <h1 style="margin: 0; font-size: 24px;">Your Report is Ready!</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">Meta Ads Performance Report</p>
+        </div>
+        
+        <div style="padding: 30px; background: #f8f9fa;">
+          <h2 style="color: #333; margin-bottom: 20px;">Hello ${clientName},</h2>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            Your Meta Ads performance report for ${reportDate} has been generated and is ready for review.
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${reportUrl}" 
+               style="background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              View Your Report
+            </a>
+          </div>
+          
+          <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 15px; margin: 20px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #856404;">What's Included:</h4>
+            <ul style="margin: 0; padding-left: 20px; color: #856404;">
+              <li>Campaign performance metrics</li>
+              <li>Spend analysis and ROI</li>
+              <li>Click-through rates and conversions</li>
+              <li>Audience insights and demographics</li>
+            </ul>
+          </div>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            You can also access all your reports and analytics through your dashboard at any time.
+          </p>
+          
+          <p style="color: #666; line-height: 1.6;">
+            Best regards,<br>
+            The Meta Ads Reporting Team
+          </p>
+        </div>
+        
+        <div style="background: #333; color: white; padding: 20px; text-align: center; font-size: 12px;">
+          <p style="margin: 0;">© 2024 Meta Ads Reporting. All rights reserved.</p>
+        </div>
+      </div>
+    `
+  }),
+
+  reportError: (clientName: string, errorMessage: string): EmailTemplate => ({
+    subject: 'Meta Ads Report Generation Failed',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 30px; text-align: center; color: white;">
+          <h1 style="margin: 0; font-size: 24px;">Report Generation Failed</h1>
+          <p style="margin: 10px 0 0 0; opacity: 0.9;">We encountered an issue generating your report</p>
+        </div>
+        
+        <div style="padding: 30px; background: #f8f9fa;">
+          <h2 style="color: #333; margin-bottom: 20px;">Hello ${clientName},</h2>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            We encountered an issue while generating your Meta Ads performance report. Our team has been notified and is working to resolve this.
+          </p>
+          
+          <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 6px; padding: 15px; margin: 20px 0;">
+            <h4 style="margin: 0 0 10px 0; color: #721c24;">Error Details:</h4>
+            <p style="margin: 0; color: #721c24; font-family: monospace; font-size: 12px;">
+              ${errorMessage}
+            </p>
+          </div>
+          
+          <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+            Please try generating the report again in a few minutes, or contact our support team if the issue persists.
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard" 
+               style="background: #dc3545; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+              Try Again
+            </a>
+          </div>
+          
+          <p style="color: #666; line-height: 1.6;">
+            Best regards,<br>
+            The Meta Ads Reporting Team
+          </p>
+        </div>
+        
+        <div style="background: #333; color: white; padding: 20px; text-align: center; font-size: 12px;">
+          <p style="margin: 0;">© 2024 Meta Ads Reporting. All rights reserved.</p>
+        </div>
+      </div>
+    `
+  })
 };
 
-// Main email sending function
-export const sendEmail = async (params: SendEmailParams): Promise<{ id: string; success: boolean }> => {
+export async function sendEmail(to: string, template: EmailTemplate) {
   try {
-    const fromEmail = params.from || process.env.DEFAULT_FROM_EMAIL || 'reports@youragency.com';
-    const fromName = process.env.DEFAULT_FROM_NAME || 'Meta Ads Reporting';
-    
-      const emailPayload: any = {
-    from: `${fromName} <${fromEmail}>`,
-    to: Array.isArray(params.to) ? params.to : [params.to],
-    subject: params.subject,
-    html: params.html,
-  };
-
-  if (params.text) {
-    emailPayload.text = params.text;
-  }
-
-  if (params.attachments) {
-    emailPayload.attachments = params.attachments;
-  }
-
-  const { data, error } = await resend.emails.send(emailPayload);
+    const { data, error } = await resend.emails.send({
+      from: 'Meta Ads Reporting <noreply@yourdomain.com>',
+      to: [to],
+      subject: template.subject,
+      html: template.html,
+    });
 
     if (error) {
-      console.error('Email sending error:', error);
-      throw new Error(`Failed to send email: ${error.message}`);
+      console.error('Error sending email:', error);
+      throw error;
     }
 
-    return {
-      id: data?.id || '',
-      success: true
-    };
+    return data;
   } catch (error) {
-    console.error('Email service error:', error);
+    console.error('Failed to send email:', error);
     throw error;
   }
-};
+}
 
-// Send monthly report email
-export const sendMonthlyReport = async (
-  reportData: ReportEmailData,
-  pdfBuffer: Buffer,
-  fileName: string
-): Promise<{ id: string; success: boolean }> => {
-  const template = EMAIL_TEMPLATES.MONTHLY_REPORT;
-  
-  return sendEmail({
-    to: reportData.clientName, // This should be the email, update the interface
-    subject: template.subject(reportData),
-    html: template.html(reportData),
-    text: template.text(reportData),
-    attachments: [
-      {
-        filename: fileName,
-        content: pdfBuffer,
-        contentType: 'application/pdf'
-      }
-    ]
-  });
-};
+export async function sendClientCredentials(
+  clientName: string, 
+  email: string, 
+  username: string, 
+  password: string
+) {
+  const template = emailTemplates.clientCredentials(clientName, email, username, password);
+  return sendEmail(email, template);
+}
 
-// Send welcome email to new client
-export const sendWelcomeEmail = async (
+export async function sendReportNotification(
   clientEmail: string,
-  clientName: string,
-  loginUrl: string,
-  agencyData?: { name?: string; adminName?: string }
-): Promise<{ id: string; success: boolean }> => {
-  const template = EMAIL_TEMPLATES.WELCOME_CLIENT;
-  const subjectData: { clientName: string; agencyName?: string } = {
-    clientName
-  };
-  if (agencyData?.name) {
-    subjectData.agencyName = agencyData.name;
-  }
-  
-  const htmlData: { clientName: string; loginUrl: string; agencyName?: string; adminName?: string } = {
-    clientName,
-    loginUrl
-  };
-  if (agencyData?.name) {
-    htmlData.agencyName = agencyData.name;
-  }
-  if (agencyData?.adminName) {
-    htmlData.adminName = agencyData.adminName;
-  }
-  
-  return sendEmail({
-    to: clientEmail,
-    subject: template.subject(subjectData),
-    html: template.html(htmlData)
-  });
-};
+  clientName: string, 
+  reportDate: string, 
+  reportUrl: string
+) {
+  const template = emailTemplates.reportGenerated(clientName, reportDate, reportUrl);
+  return sendEmail(clientEmail, template);
+}
+
+export async function sendReportError(
+  clientEmail: string,
+  clientName: string, 
+  errorMessage: string
+) {
+  const template = emailTemplates.reportError(clientName, errorMessage);
+  return sendEmail(clientEmail, template);
+}
 
 // Validate email configuration
 export const validateEmailConfig = async (): Promise<boolean> => {

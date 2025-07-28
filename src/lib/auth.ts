@@ -73,27 +73,118 @@ export async function signOut() {
 }
 
 /**
- * Get current user profile
+ * Get current user profile with caching and timeout protection
  */
+let profileCache: { [key: string]: { profile: Profile | null; timestamp: number } } = {};
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const PROFILE_FETCH_TIMEOUT = 5000; // 5 seconds (reduced from 10)
+
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.log('Profile fetch timeout - aborting request');
+    timeoutController.abort();
+  }, PROFILE_FETCH_TIMEOUT);
   
-  if (!user) {
+  try {
+    console.log('getCurrentProfile: Starting profile fetch...');
+    
+    // Get the current session first
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('Session error:', sessionError);
+      clearTimeout(timeoutId);
+      return null;
+    }
+    
+    if (!session?.user) {
+      console.log('getCurrentProfile: No session or user found');
+      clearTimeout(timeoutId);
+      return null;
+    }
+
+    const user = session.user;
+    console.log('getCurrentProfile: User found:', user.email, 'ID:', user.id);
+
+    // Check cache first
+    const cacheKey = user.id;
+    const cached = profileCache[cacheKey];
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      console.log('getCurrentProfile: Returning cached profile');
+      clearTimeout(timeoutId);
+      return cached.profile;
+    }
+
+    console.log('getCurrentProfile: Fetching profile from database for user ID:', user.id);
+    
+    // Use Promise.race to ensure timeout works
+    const profilePromise = supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_FETCH_TIMEOUT);
+    });
+
+    const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+
+    clearTimeout(timeoutId);
+
+    if (error) {
+      console.error('Error fetching profile:', error);
+      console.error('Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      
+      // Cache null result to prevent repeated failed requests
+      profileCache[cacheKey] = {
+        profile: null,
+        timestamp: Date.now()
+      };
+      
+      return null;
+    }
+
+    console.log('getCurrentProfile: Profile fetched successfully:', profile);
+
+    // Cache the result
+    profileCache[cacheKey] = {
+      profile,
+      timestamp: Date.now()
+    };
+
+    return profile;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    
+    if (error.message === 'Profile fetch timeout') {
+      console.error('Profile fetch timeout - operation took too long');
+    } else if (error.name === 'AbortError') {
+      console.error('Profile fetch aborted - operation took too long');
+    } else {
+      console.error('Unexpected error in getCurrentProfile:', error);
+    }
+    
+    // Return null instead of throwing to prevent app hanging
     return null;
   }
+}
 
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching profile:', error);
-    return null;
+/**
+ * Clear profile cache for a user
+ */
+export function clearProfileCache(userId?: string) {
+  if (userId) {
+    delete profileCache[userId];
+  } else {
+    profileCache = {};
   }
-
-  return profile;
 }
 
 /**

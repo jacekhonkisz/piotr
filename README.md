@@ -1,198 +1,328 @@
-# Meta Ads Automated Reporting SaaS MVP
+# Meta Ads Reporting SaaS Platform
 
-A full-stack web SaaS platform for Meta Ads specialists to manage multiple clients and automate monthly campaign reporting.
+A comprehensive SaaS platform for automated Meta Ads reporting and client management. This system allows admins to add clients with real Meta Ads API integration, generate beautiful performance reports, and provide clients with secure access to their analytics dashboard.
 
-## 🎯 Business Overview
+## 🚀 Features
 
-This platform enables:
-- **Admins** (Meta Ads specialists) to manage multiple clients and their Meta Ads campaigns
-- **Clients** to access their own dashboard and view monthly campaign reports
-- **Automated reporting** via email with PDF attachments on a monthly schedule
-- **Secure data management** with client isolation and token security
+### Admin Features
+- **Real Meta Ads API Integration**: Validates and connects to actual Meta Ads accounts
+- **Client Management**: Add, edit, and manage client accounts with secure credential generation
+- **Automated Report Generation**: Fetch real campaign data and generate comprehensive reports
+- **Credential Management**: Generate secure passwords and usernames for clients
+- **Email Notifications**: Send welcome emails and report notifications to clients
 
-## ✨ Key Features
+### Client Features
+- **Secure Login**: Email/password authentication with role-based access
+- **Dashboard Analytics**: View performance metrics, spend analysis, and campaign insights
+- **Report Library**: Access historical reports with detailed campaign breakdowns
+- **Real-time Data**: Connect to live Meta Ads API for current performance data
+- **Export Capabilities**: Download reports and campaign data
 
-### Admin Panel
-- Add/edit/remove clients with Meta API credentials
-- Manage reporting frequency (monthly/on-demand)
-- View client status dashboard (token validity, last report date)
-- Manual report generation and sending
+### Technical Features
+- **Next.js 14**: Modern React framework with App Router
+- **TypeScript**: Full type safety throughout the application
+- **Supabase**: Authentication, database, and real-time features
+- **Meta Ads API**: Real integration with Facebook/Instagram Ads API
+- **Responsive Design**: Mobile-first design with Tailwind CSS
+- **Email Integration**: Professional email templates with Resend
 
-### Meta Ads API Integration
-- Secure storage of API credentials per client
-- Automated data fetching via scheduled jobs
-- Campaign metrics collection (impressions, clicks, spend, conversions)
-
-### Automated Reporting
-- Clean PDF report generation from HTML/CSS templates
-- Monthly email automation with professional branding
-- Report archiving for historical access
-
-### Client Dashboard
-- Secure authentication via Supabase Auth
-- View and download past reports
-- Mobile-responsive interface
-
-## 🛠 Tech Stack
-
-- **Frontend & Backend**: Next.js 14 (TypeScript)
-- **Database & Auth**: Supabase (PostgreSQL, Auth, Storage)
-- **Deployment**: Vercel
-- **Email Service**: Resend
-- **PDF Generation**: Puppeteer
-- **Scheduling**: Vercel Cron Jobs
-- **API Integration**: Meta Graph API
-
-## 📁 Project Structure
+## 🏗️ System Architecture
 
 ```
-├── README.md
-├── docs/
-│   ├── requirements.md      # Business requirements & user stories
-│   ├── api.md              # API documentation & Meta Ads integration
-│   ├── report-template.md  # PDF template structure
-│   ├── user-flows.md       # Admin & client user journeys
-│   └── roadmap.md          # MVP features & future plans
-├── src/
-│   ├── pages/              # Next.js pages
-│   ├── components/         # Reusable React components
-│   ├── api/               # Next.js API routes
-│   ├── utils/             # Helper functions
-│   ├── styles/            # CSS/Tailwind styles
-│   └── lib/               # External service clients
-├── supabase/              # Database migrations
-└── public/                # Static assets
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Admin Panel   │    │  Client Portal  │    │  Meta Ads API   │
+│                 │    │                 │    │                 │
+│ • Add Clients   │    │ • View Reports  │    │ • Campaign Data │
+│ • Manage Users  │    │ • Analytics     │    │ • Performance   │
+│ • Generate      │    │ • Export Data   │    │ • Demographics  │
+│   Reports       │    │ • Dashboard     │    │ • Insights      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │   Supabase DB   │
+                    │                 │
+                    │ • Users         │
+                    │ • Clients       │
+                    │ • Reports       │
+                    │ • Campaigns     │
+                    └─────────────────┘
 ```
 
-## 🚀 Quick Start
+## 🛠️ Installation & Setup
 
 ### Prerequisites
-- Node.js 18+ and npm/yarn
+- Node.js 18+ 
+- npm or yarn
 - Supabase account
-- Vercel account (for deployment)
-- Meta Developer account (for API access)
-- Resend account (for email service)
+- Meta Ads API access
+- Resend account (for emails)
 
-### Environment Setup
-
-1. **Clone and install dependencies:**
+### 1. Clone the Repository
 ```bash
-git clone <your-repo>
+git clone <repository-url>
 cd meta-ads-reporting-saas
+```
+
+### 2. Install Dependencies
+```bash
 npm install
 ```
 
-2. **Set up environment variables:**
-Copy `.env.local.example` to `.env.local` and fill in your credentials:
-```bash
-cp .env.local.example .env.local
+### 3. Environment Configuration
+Create a `.env.local` file with the following variables:
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Email Configuration (Resend)
+RESEND_API_KEY=your_resend_api_key
+
+# Application Configuration
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Meta Ads API (for testing)
+META_ACCESS_TOKEN=your_test_meta_token
 ```
 
-3. **Configure Supabase:**
-- Create a new Supabase project
-- Run the migrations: `npm run db:migrate`
-- Update your `.env.local` with Supabase credentials
+### 4. Database Setup
+```bash
+# Generate database types
+npm run db:generate
 
-4. **Start development server:**
+# Run migrations
+npm run db:migrate
+
+# Setup initial admin user
+npm run setup
+```
+
+### 5. Start Development Server
 ```bash
 npm run dev
 ```
 
-Visit `http://localhost:3000` to see the application.
-
-### Required Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | ✅ |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key | ✅ |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | ✅ |
-| `RESEND_API_KEY` | Resend API key for emails | ✅ |
-| `META_APP_SECRET` | Meta App Secret for API | ✅ |
-| `NEXTAUTH_SECRET` | Secret for session encryption | ✅ |
-| `NEXTAUTH_URL` | Application URL | ✅ |
-
-## 🗄 Database Schema
+## 📊 Database Schema
 
 ### Core Tables
-- `profiles` - User profiles (admin/client roles)
-- `clients` - Client information and Meta API credentials
-- `reports` - Generated report metadata and storage
-- `campaigns` - Meta Ads campaign data cache
 
-## 📧 Email Configuration
+#### `profiles`
+- User authentication and role management
+- Supports `admin` and `client` roles
 
-The platform uses Resend for automated email delivery:
-- Monthly report emails with PDF attachments
+#### `clients`
+- Client information and Meta Ads credentials
+- Stores generated usernames and passwords
+- Tracks API status and reporting frequency
+
+#### `reports`
+- Generated report metadata
+- Links to campaign data and generation metrics
+
+#### `campaigns`
+- Individual campaign performance data
+- Fetched from Meta Ads API
+- Includes metrics like spend, impressions, clicks, etc.
+
+## 🔐 Authentication & Security
+
+### User Roles
+- **Admin**: Full access to client management and system administration
+- **Client**: Access to their own reports and analytics
+
+### Security Features
+- JWT-based authentication via Supabase
+- Role-based access control
+- Secure password generation for clients
+- API token encryption
+- CSRF protection
+
+## 📈 Meta Ads Integration
+
+### API Features
+- **Token Validation**: Verifies Meta Ads access tokens
+- **Account Access**: Validates ad account permissions
+- **Campaign Data**: Fetches real campaign performance metrics
+- **Insights**: Retrieves detailed analytics and demographics
+
+### Supported Metrics
+- Impressions, clicks, spend
+- Click-through rate (CTR)
+- Cost per click (CPC)
+- Cost per thousand impressions (CPM)
+- Conversions and conversion rate
+- Reach and frequency
+- Demographics breakdown
+
+## 🎨 User Interface
+
+### Admin Dashboard
+- Client management interface
+- Report generation controls
+- System analytics and overview
+- User credential management
+
+### Client Dashboard
+- Performance overview with key metrics
+- Recent reports and campaign data
+- Interactive charts and visualizations
+- Export and download capabilities
+
+### Responsive Design
+- Mobile-first approach
+- Modern UI with Tailwind CSS
+- Accessible design patterns
 - Professional email templates
-- Delivery tracking and error handling
 
-## 🔒 Security Features
+## 📧 Email System
 
-- **Authentication**: Supabase Auth with role-based access
-- **API Security**: Protected routes with middleware
-- **Data Isolation**: Clients can only access their own data
-- **Token Management**: Encrypted storage of Meta API credentials
-- **HTTPS**: Enforced in production via Vercel
+### Email Templates
+- **Welcome Email**: Client credentials and dashboard access
+- **Report Notification**: New report availability
+- **Error Notification**: Report generation failures
 
-## 📱 Responsive Design
-
-Built with mobile-first approach using Tailwind CSS:
-- Admin dashboard optimized for desktop
-- Client dashboard fully responsive
-- PDF reports optimized for print and mobile viewing
+### Email Features
+- Professional HTML templates
+- Responsive design
+- Branded styling
+- Automated delivery
 
 ## 🚀 Deployment
 
-### Vercel Deployment
-```bash
-npm run build
-vercel --prod
+### Production Setup
+1. **Database**: Use Supabase production instance
+2. **Hosting**: Deploy to Vercel, Netlify, or similar
+3. **Email**: Configure Resend production account
+4. **Environment**: Set production environment variables
+
+### Environment Variables (Production)
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_production_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_production_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_production_service_role_key
+RESEND_API_KEY=your_production_resend_key
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
 ```
 
-### Environment Setup
-1. Configure all environment variables in Vercel dashboard
-2. Set up Supabase production database
-3. Configure custom domain (optional)
+## 🔧 API Endpoints
 
-## 📊 Monitoring & Analytics
+### Report Generation
+```
+POST /api/generate-report
+```
+Generates new Meta Ads report for authenticated client
 
-- Supabase Dashboard for database monitoring
-- Vercel Analytics for performance tracking
-- Error logging via Vercel/Supabase functions
-- Email delivery tracking via Resend
+### Authentication
+- All endpoints require valid JWT token
+- Role-based access control
+- Client isolation (clients can only access their own data)
 
-## 🔧 Development Scripts
+## 📝 Usage Guide
 
+### For Admins
+
+1. **Adding a New Client**
+   - Navigate to Admin Panel
+   - Click "Add Client"
+   - Enter company information
+   - Add Meta Ads Account ID and Access Token
+   - Validate credentials
+   - System generates secure login credentials
+   - Client receives welcome email
+
+2. **Generating Reports**
+   - Select client from admin dashboard
+   - Click "Generate Report"
+   - System fetches data from Meta Ads API
+   - Report is stored and client is notified
+
+3. **Managing Clients**
+   - View all clients and their status
+   - Regenerate credentials if needed
+   - Monitor API connection status
+   - Access client reports and analytics
+
+### For Clients
+
+1. **First Login**
+   - Use credentials from welcome email
+   - Change password on first login
+   - Access dashboard with performance overview
+
+2. **Viewing Reports**
+   - Browse recent reports
+   - View detailed campaign performance
+   - Export data for external analysis
+   - Access historical data
+
+3. **Dashboard Features**
+   - Real-time performance metrics
+   - Campaign comparison tools
+   - Trend analysis and insights
+   - Custom date range filtering
+
+## 🧪 Testing
+
+### Running Tests
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
-npm run type-check   # TypeScript type checking
-npm run db:migrate   # Run Supabase migrations
-npm run db:reset     # Reset database (dev only)
+# Unit tests
+npm test
+
+# Integration tests
+npm run test:integration
+
+# E2E tests
+npm run test:e2e
 ```
 
-## 📖 Documentation
-
-- [Requirements & User Stories](./docs/requirements.md)
-- [API Documentation](./docs/api.md)
-- [Report Templates](./docs/report-template.md)
-- [User Flows](./docs/user-flows.md)
-- [Development Roadmap](./docs/roadmap.md)
+### Test Coverage
+- API endpoint testing
+- Component testing
+- Database integration tests
+- Meta Ads API mocking
 
 ## 🤝 Contributing
 
-1. Follow TypeScript best practices
-2. Use meaningful commit messages
-3. Update documentation for new features
-4. Test all API integrations thoroughly
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
 ## 📄 License
 
-Private - All rights reserved
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+- Create an issue in the repository
+- Contact the development team
+- Check the documentation
+
+## 🔄 Roadmap
+
+### Upcoming Features
+- [ ] Advanced analytics and forecasting
+- [ ] Custom report templates
+- [ ] Multi-language support
+- [ ] API rate limiting and caching
+- [ ] Advanced export formats (Excel, PowerPoint)
+- [ ] Real-time notifications
+- [ ] Mobile app development
+- [ ] White-label solutions
+
+### Performance Optimizations
+- [ ] Database query optimization
+- [ ] API response caching
+- [ ] Image optimization
+- [ ] Bundle size reduction
+- [ ] CDN integration
 
 ---
 
-**MVP Focus**: Core reporting automation with clean, minimal UI. No payments, team features, or advanced analytics in initial version. 
+**Built with ❤️ using Next.js, TypeScript, and Supabase** 

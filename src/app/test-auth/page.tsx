@@ -1,67 +1,136 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../components/AuthProvider';
+import { supabase } from '../../lib/supabase';
 
 export default function TestAuthPage() {
   const { user, profile, loading } = useAuth();
+  const [debugInfo, setDebugInfo] = useState<any>({});
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p>Loading authentication...</p>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const fetchDebugInfo = async () => {
+      if (user) {
+        try {
+          // Test database connection
+          const { data: profiles, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id);
+
+          const { data: clients, error: clientsError } = await supabase
+            .from('clients')
+            .select('*');
+
+          setDebugInfo({
+            user: {
+              id: user.id,
+              email: user.email,
+              created_at: user.created_at,
+            },
+            profile,
+            profilesFromDB: profiles,
+            profileError: profileError?.message,
+            clientsFromDB: clients,
+            clientsError: clientsError?.message,
+            loading,
+          });
+        } catch (error) {
+          setDebugInfo({
+            error: error instanceof Error ? error.message : 'Unknown error',
+            user: {
+              id: user.id,
+              email: user.email,
+            },
+            profile,
+            loading,
+          });
+        }
+      } else {
+        setDebugInfo({
+          user: null,
+          profile: null,
+          loading,
+        });
+      }
+    };
+
+    fetchDebugInfo();
+  }, [user, profile, loading]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Authentication Test</h1>
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Authentication Debug</h1>
         
-        <div className="bg-white rounded-lg shadow p-6 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold mb-2">User Status</h2>
-            <p><strong>Authenticated:</strong> {user ? 'Yes' : 'No'}</p>
-            {user && (
-              <>
-                <p><strong>Email:</strong> {user.email}</p>
-                <p><strong>User ID:</strong> {user.id}</p>
-              </>
-            )}
-          </div>
-
-          <div>
-            <h2 className="text-lg font-semibold mb-2">Profile Status</h2>
-            <p><strong>Profile Loaded:</strong> {profile ? 'Yes' : 'No'}</p>
-            {profile && (
-              <>
-                <p><strong>Role:</strong> {profile.role}</p>
-                <p><strong>Full Name:</strong> {profile.full_name}</p>
-              </>
-            )}
-          </div>
-
-          <div>
-            <h2 className="text-lg font-semibold mb-2">Actions</h2>
-            <div className="space-x-4">
-              <a 
-                href="/dashboard" 
-                className="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-              >
-                Go to Dashboard
-              </a>
-              <a 
-                href="/auth/login" 
-                className="inline-block bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
-              >
-                Go to Login
-              </a>
+        <div className="space-y-6">
+          <div className="card">
+            <div className="card-header">
+              <h2 className="text-xl font-semibold">Current State</h2>
+            </div>
+            <div className="card-body">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium text-gray-900">Loading State:</h3>
+                  <p className="text-gray-600">{loading ? 'Loading...' : 'Loaded'}</p>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium text-gray-900">User:</h3>
+                  <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+                    {JSON.stringify(debugInfo.user, null, 2)}
+                  </pre>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium text-gray-900">Profile:</h3>
+                  <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+                    {JSON.stringify(debugInfo.profile, null, 2)}
+                  </pre>
+                </div>
+              </div>
             </div>
           </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h2 className="text-xl font-semibold">Database Test</h2>
+            </div>
+            <div className="card-body">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium text-gray-900">Profiles from DB:</h3>
+                  <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+                    {JSON.stringify(debugInfo.profilesFromDB, null, 2)}
+                  </pre>
+                  {debugInfo.profileError && (
+                    <p className="text-red-600 mt-2">Error: {debugInfo.profileError}</p>
+                  )}
+                </div>
+                
+                <div>
+                  <h3 className="font-medium text-gray-900">Clients from DB:</h3>
+                  <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
+                    {JSON.stringify(debugInfo.clientsFromDB, null, 2)}
+                  </pre>
+                  {debugInfo.clientsError && (
+                    <p className="text-red-600 mt-2">Error: {debugInfo.clientsError}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {debugInfo.error && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="text-xl font-semibold text-red-600">Error</h2>
+              </div>
+              <div className="card-body">
+                <p className="text-red-600">{debugInfo.error}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

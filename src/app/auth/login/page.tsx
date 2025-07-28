@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BarChart3, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
 import { signIn } from '../../../lib/auth';
 import { useAuth } from '../../../components/AuthProvider';
+import { supabase } from '../../../lib/supabase';
+import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -13,14 +15,34 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile, authLoading } = useAuth();
+  const redirectedRef = useRef(false);
 
-  // Redirect if already logged in
-  React.useEffect(() => {
-    if (user && !loading) {
-      router.push('/dashboard');
+  // Handle authentication redirects - prevent multiple redirects
+  useEffect(() => {
+    console.log('Login page useEffect - authLoading:', authLoading, 'user:', user?.email, 'profile:', profile?.role, 'redirected:', redirectedRef.current);
+    
+    // Only redirect if auth is not loading, user is authenticated, and we haven't redirected yet
+    if (!authLoading && user && profile && !redirectedRef.current) {
+      console.log('User authenticated, redirecting based on role:', profile.role);
+      redirectedRef.current = true;
+      
+      if (profile.role === 'admin') {
+        console.log('Redirecting to /admin');
+        router.replace('/admin'); // Use replace to avoid back button issues
+      } else {
+        console.log('Redirecting to /dashboard');
+        router.replace('/dashboard');
+      }
+    } else if (!authLoading && !user) {
+      console.log('No user authenticated, staying on login page');
+      redirectedRef.current = false; // Reset redirect flag if no user
+    } else if (!authLoading && user && !profile) {
+      console.log('User authenticated but no profile loaded yet, waiting...');
+    } else if (authLoading) {
+      console.log('Auth still loading...');
     }
-  }, [user, loading, router]);
+  }, [user, profile, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,13 +51,50 @@ export default function LoginPage() {
 
     try {
       await signIn(email, password);
+      console.log('Sign in successful, waiting for auth state update');
       // Don't redirect manually - let the useEffect handle it when user state updates
     } catch (err: any) {
+      console.error('Sign in error:', err);
       setError(err.message || 'An error occurred during sign in');
+      redirectedRef.current = false; // Reset redirect flag on error
     } finally {
       setLoading(false);
     }
   };
+
+  // Show loading while auth is initializing or if user is authenticated but we haven't redirected
+  if (authLoading || (user && profile && !redirectedRef.current)) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="flex justify-center items-center mb-8">
+            <BarChart3 className="h-8 w-8 text-primary-600" />
+            <h1 className="ml-2 text-xl font-semibold text-gray-900">
+              Meta Ads Reporting
+            </h1>
+          </div>
+          <LoadingSpinner text={authLoading ? "Initializing..." : "Redirecting..."} />
+        </div>
+      </div>
+    );
+  }
+
+  // If user is authenticated but no profile, show different message
+  if (user && !profile && !authLoading) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="flex justify-center items-center mb-8">
+            <BarChart3 className="h-8 w-8 text-primary-600" />
+            <h1 className="ml-2 text-xl font-semibold text-gray-900">
+              Meta Ads Reporting
+            </h1>
+          </div>
+          <LoadingSpinner text="Loading profile..." />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -116,31 +175,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-600">
-                  Remember me
-                </label>
-              </div>
-
-              <div className="text-sm">
-                <Link
-                  href="/auth/forgot-password"
-                  className="text-primary-600 hover:text-primary-500 font-medium transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-            </div>
-
-            {/* Sign In Button */}
+            {/* Submit Button */}
             <div>
               <button
                 type="submit"
@@ -186,20 +221,12 @@ export default function LoginPage() {
 
         {/* Demo Credentials */}
         <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-900 mb-2">Demo Credentials:</h3>
-          <div className="text-sm text-gray-600 space-y-1">
+          <h3 className="text-sm font-medium text-gray-900 mb-2">Demo Credentials</h3>
+          <div className="text-xs text-gray-600 space-y-1">
             <p><strong>Admin:</strong> admin@example.com / password123</p>
             <p><strong>Client:</strong> client@example.com / password123</p>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            These users have been created in your Supabase database and are ready to use.
-          </p>
         </div>
-
-        {/* Footer Text */}
-        <p className="mt-4 text-center text-sm text-gray-600">
-          Professional reporting platform for Meta Ads specialists
-        </p>
       </div>
     </div>
   );

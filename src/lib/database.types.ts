@@ -120,7 +120,10 @@ export type Database = {
           api_status: Database["public"]["Enums"]["api_status"]
           company: string | null
           created_at: string
+          credentials_generated_at: string | null
           email: string
+          generated_password: string | null
+          generated_username: string | null
           id: string
           last_report_date: string | null
           meta_access_token: string
@@ -135,7 +138,10 @@ export type Database = {
           api_status?: Database["public"]["Enums"]["api_status"]
           company?: string | null
           created_at?: string
+          credentials_generated_at?: string | null
           email: string
+          generated_password?: string | null
+          generated_username?: string | null
           id?: string
           last_report_date?: string | null
           meta_access_token: string
@@ -150,7 +156,10 @@ export type Database = {
           api_status?: Database["public"]["Enums"]["api_status"]
           company?: string | null
           created_at?: string
+          credentials_generated_at?: string | null
           email?: string
+          generated_password?: string | null
+          generated_username?: string | null
           id?: string
           last_report_date?: string | null
           meta_access_token?: string
