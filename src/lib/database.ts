@@ -191,6 +191,42 @@ export async function getReportsWithCampaigns(clientId: string, limit: number = 
 }
 
 /**
+ * Get a single report by ID with its campaigns
+ */
+export async function getReportById(reportId: string) {
+  try {
+    // Get the report first
+    const { data: report, error: reportError } = await supabase
+      .from('reports')
+      .select('*')
+      .eq('id', reportId)
+      .single();
+
+    if (reportError) throw reportError;
+    if (!report) return null;
+
+    // Get campaigns for this report's date range and client
+    const { data: campaigns, error: campaignsError } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('client_id', report.client_id)
+      .eq('date_range_start', report.date_range_start)
+      .eq('date_range_end', report.date_range_end)
+      .order('spend', { ascending: false });
+
+    if (campaignsError) throw campaignsError;
+
+    return {
+      ...report,
+      campaigns: campaigns || []
+    };
+  } catch (error) {
+    console.error('Error fetching report by ID:', error);
+    throw error;
+  }
+}
+
+/**
  * Cache for database queries
  */
 const queryCache = new Map<string, { data: any; timestamp: number }>();

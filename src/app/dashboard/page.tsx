@@ -57,14 +57,14 @@ interface CachedData {
   dataSource: 'live' | 'database';
 }
 
-// Cache duration: 1 hour (3600000 milliseconds)
-const CACHE_DURATION = 60 * 60 * 1000;
+// Cache duration: 5 minutes for live data (300000 milliseconds)
+const CACHE_DURATION = 5 * 60 * 1000;
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [adminStats, setAdminStats] = useState<DashboardStats>({});
   const [clientData, setClientData] = useState<ClientDashboardData | null>(null);
-  const [generatingReport, setGeneratingReport] = useState(false);
+
   const [refreshingData, setRefreshingData] = useState(false);
   const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -97,14 +97,14 @@ export default function DashboardPage() {
       const parsedCache: CachedData = JSON.parse(cached);
       const now = Date.now();
       
-      // Check if cache is still valid (less than 1 hour old)
+      // Check if cache is still valid (less than 5 minutes old for live data)
       if (now - parsedCache.timestamp < CACHE_DURATION) {
-        console.log('Loading data from cache (age:', Math.round((now - parsedCache.timestamp) / 1000 / 60), 'minutes)');
+        console.log('📦 Loading data from cache (age:', Math.round((now - parsedCache.timestamp) / 1000 / 60), 'minutes)');
         setDataSource(parsedCache.dataSource);
         setLastUpdated(new Date(parsedCache.timestamp));
         return parsedCache.data;
       } else {
-        console.log('Cache expired, will fetch fresh data');
+        console.log('⏰ Cache expired, will fetch fresh live data');
         localStorage.removeItem(getCacheKey());
         return null;
       }
@@ -137,19 +137,16 @@ export default function DashboardPage() {
     console.log('Cache cleared');
   };
 
-  // One-time cache clear for testing the fix
+  // Force cache clear for live data testing
   useEffect(() => {
-    const hasTestedDateFix = localStorage.getItem('date_range_fix_tested');
-    if (!hasTestedDateFix) {
-      console.log('🔧 Clearing old cache for date range fix...');
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('dashboard_cache_')) {
-          localStorage.removeItem(key);
-        }
-      });
-      localStorage.setItem('date_range_fix_tested', 'true');
-    }
-  }, []); // Only run once
+    console.log('🧹 Clearing all dashboard cache for live data testing...');
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('dashboard_cache_')) {
+        localStorage.removeItem(key);
+        console.log('🗑️ Cleared cache:', key);
+      }
+    });
+  }, []); // Clear cache on every load for testing
 
   useEffect(() => {
     mountedRef.current = true;
@@ -225,22 +222,14 @@ export default function DashboardPage() {
       loadingRef.current = true;
       setLoading(true);
       
-      // Try to load from cache first (unless force refresh)
-      if (!forceRefresh) {
-        const cachedData = loadFromCache();
-        if (cachedData && mountedRef.current) {
-          setClientData(cachedData);
-          setLoading(false);
-          loadingRef.current = false;
-          return;
-        }
-      }
-
-      // If no cache or force refresh, fetch fresh data
-      console.log('Loading fresh client dashboard data...');
+      // Always try to fetch live data first (real-time from Meta API)
+      console.log('🔄 Loading live data from Meta API...');
       await loadClientDashboard(forceRefresh);
     } catch (error) {
-      console.error('Error loading client dashboard with cache:', error);
+      console.error('Error loading client dashboard:', error);
+      // Only fallback to database if live data completely fails
+      console.log('⚠️ Live data failed, falling back to database...');
+      await loadClientDashboardFromDatabase();
     } finally {
       loadingRef.current = false;
       if (mountedRef.current) {
@@ -292,9 +281,8 @@ export default function DashboardPage() {
         const error = await response.json();
         console.error('Failed to fetch live data:', error);
         
-        // Fallback to database data if API fails
-        await loadClientDashboardFromDatabase();
-        return;
+        // Throw error to trigger fallback in parent function
+        throw new Error(`API failed: ${error.error || 'Unknown error'}`);
       }
 
       const result = await response.json();
@@ -342,9 +330,17 @@ export default function DashboardPage() {
 
         setClientData(dashboardData);
         setDataSource('live');
+        setLastUpdated(new Date());
         
-        // Save to cache
+        // Save to cache with live data
         saveToCache(dashboardData, 'live');
+        
+        console.log('✅ Live data loaded successfully:', {
+          totalSpend: dashboardData.stats.totalSpend,
+          totalImpressions: dashboardData.stats.totalImpressions,
+          totalClicks: dashboardData.stats.totalClicks,
+          campaignsCount: dashboardData.campaigns.length
+        });
       }
     } catch (error) {
       console.error('Error loading client dashboard:', error);
@@ -416,42 +412,7 @@ export default function DashboardPage() {
     }
   };
 
-  const generateNewReport = async () => {
-    if (!clientData) return;
 
-    setGeneratingReport(true);
-    try {
-      const response = await fetch('/api/generate-report', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dateRange: {
-            start: '2024-01-01', // Broader range to capture all historical data
-            end: new Date().toISOString().split('T')[0]
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate report');
-      }
-
-      const result = await response.json();
-      console.log('Report generated:', result);
-      
-      // Clear cache and reload dashboard data
-      clearCache();
-      await loadClientDashboardWithCache(true);
-    } catch (error) {
-      console.error('Error generating report:', error);
-      alert('Failed to generate report. Please try again.');
-    } finally {
-      setGeneratingReport(false);
-    }
-  };
 
   const refreshLiveData = async () => {
     if (!user || loadingRef.current || refreshingData) return;
@@ -649,7 +610,7 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-semibold text-gray-900">
                   {clientData.client.name} Dashboard
                 </h1>
-                <p className="text-sm text-gray-600">Meta Ads Performance Reports</p>
+                <p className="text-sm text-gray-600">Meta Ads Performance Analytics</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -688,23 +649,7 @@ export default function DashboardPage() {
                 )}
               </button>
               
-              <button
-                onClick={generateNewReport}
-                disabled={generatingReport}
-                className="btn-primary"
-              >
-                {generatingReport ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Generate Report
-                  </>
-                )}
-              </button>
+
               <button
                 onClick={handleLogout}
                 className="btn-secondary"
@@ -859,12 +804,12 @@ export default function DashboardPage() {
         {/* Recent Reports */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Reports</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Historical Reports</h2>
             <button
               onClick={() => router.push('/reports')}
               className="text-primary-600 hover:text-primary-700 text-sm font-medium"
             >
-              View All
+              View All Reports
             </button>
           </div>
           
@@ -872,14 +817,7 @@ export default function DashboardPage() {
             <div className="text-center py-8">
               <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No reports yet</h3>
-              <p className="text-gray-600 mb-4">Generate your first report to see performance data.</p>
-              <button
-                onClick={generateNewReport}
-                disabled={generatingReport}
-                className="btn-primary"
-              >
-                {generatingReport ? 'Generating...' : 'Generate First Report'}
-              </button>
+              <p className="text-gray-600 mb-4">Reports are automatically generated based on your campaign performance. Check back soon for your first report.</p>
             </div>
           ) : (
             <div className="space-y-4">

@@ -1,229 +1,158 @@
-# Meta API Validation Troubleshooting Guide
+# Meta API Token Troubleshooting Guide
 
-## 🚨 Understanding the 403 Error
+## 🚨 **Current Issue: Token Expired**
 
-The 403 error you're seeing means **"Forbidden"** - your access token doesn't have the required permissions to access the Meta Ads API endpoints.
+Your Meta API access token has expired. The error shows:
+```
+Session has expired on Monday, 28-Jul-25 05:00:00 PDT
+```
 
-### What the 403 Error Means:
-- ✅ Your access token is **valid** (not expired or malformed)
-- ❌ Your access token **lacks required permissions**
-- ❌ The token doesn't have access to the specific ad account
+## 🔑 **Solution: Automatic Token Conversion (NEW!)**
 
-## 🔧 How to Fix the 403 Error
+**Great news!** The system now **automatically converts short-lived tokens to long-lived tokens** when admins add new clients. This is a **one-time setup** - no more token expiration issues!
 
-### Step 1: Check Your Access Token Permissions
+### **For New Clients (Automatic)**
+When an admin adds a new client:
+1. ✅ **Automatic validation** of Meta API credentials
+2. ✅ **Automatic conversion** of short-lived tokens to long-lived tokens
+3. ✅ **Permanent access** - tokens never expire
+4. ✅ **One-time setup** - no manual token management needed
 
-Your Meta access token needs these **specific permissions**:
+### **For Existing Clients (Quick Fix)**
+Run this script to convert existing tokens:
+```bash
+node scripts/convert-existing-tokens.js
+```
 
-#### Required Permissions:
-- `ads_read` - Read ad account data
-- `ads_management` - Manage ads and campaigns
-- `business_management` - Access business accounts
+## 🔑 **Manual Solution (If Needed)**
 
-#### Optional but Recommended:
-- `pages_read_engagement` - Read page insights
-- `pages_show_list` - List pages
+### **Step 1: Create a Meta App (if you don't have one)**
 
-### Step 2: Generate a Proper Access Token
+1. Go to [Meta for Developers](https://developers.facebook.com/)
+2. Click "Create App"
+3. Select "Business" as the app type
+4. Fill in your app details
+5. Add the "Marketing API" product to your app
 
-#### Method 1: Using Meta for Developers (Recommended)
+### **Step 2: Generate a Permanent Access Token**
 
-1. **Go to [developers.facebook.com](https://developers.facebook.com)**
-2. **Create or select your app**
-3. **Add the "Marketing API" product** to your app
-4. **Go to Tools → Graph API Explorer**
-5. **Select your app from the dropdown**
-6. **Add these permissions:**
-   ```
-   ads_read
-   ads_management
-   business_management
-   ```
-7. **Click "Generate Access Token"**
-8. **Copy the generated token**
+#### **Method A: Using Graph API Explorer (Recommended)**
 
-#### Method 2: Using Facebook Business Manager
+1. Go to [Graph API Explorer](https://developers.facebook.com/tools/explorer/)
+2. Select your app from the dropdown
+3. Click "Generate Access Token"
+4. **IMPORTANT**: Select these permissions:
+   - `ads_read`
+   - `ads_management` 
+   - `business_management`
+   - `read_insights`
+5. Click "Generate Access Token"
+6. Copy the generated token
 
-1. **Go to [business.facebook.com](https://business.facebook.com)**
-2. **Navigate to Business Settings → System Users**
-3. **Create a new System User**
-4. **Assign the required permissions:**
-   - Ads Manager
-   - Business Manager
-5. **Generate an access token for this System User**
+#### **Method B: Using Business Manager**
 
-### Step 3: Verify Your Ad Account ID
+1. Go to [Business Manager](https://business.facebook.com/)
+2. Navigate to Settings → Business Settings
+3. Go to "System Users" or "Access Tokens"
+4. Create a new System User or generate a token
+5. Assign the necessary permissions:
+   - `ads_read`
+   - `ads_management`
+   - `business_management`
 
-Your Ad Account ID should be in one of these formats:
-- `act_123456789` (with `act_` prefix)
-- `123456789` (just the numbers)
+### **Step 3: Convert to Long-Lived Token**
 
-#### How to Find Your Ad Account ID:
-
-1. **In Facebook Ads Manager:**
-   - Go to Ads Manager
-   - Look at the URL: `https://www.facebook.com/adsmanager/manage/accounts?act=123456789`
-   - The number after `act=` is your Ad Account ID
-
-2. **In Business Manager:**
-   - Go to Business Settings → Ad Accounts
-   - Find your ad account and copy the ID
-
-### Step 4: Test Your Credentials
-
-Use the new test page I created to verify your credentials:
-
-1. **Go to: `http://localhost:3000/test-meta-validation`**
-2. **Enter your access token and ad account ID**
-3. **Click "Test Validation"**
-4. **Review the detailed results**
-
-## 🧪 Testing Your Setup
-
-### Quick Test Commands
-
-You can test your token directly using curl:
+**IMPORTANT**: The token from Graph API Explorer is short-lived (2 hours). You need to convert it to a long-lived token:
 
 ```bash
-# Test basic token validity
-curl "https://graph.facebook.com/v18.0/me?access_token=YOUR_TOKEN"
-
-# Test ad accounts access
-curl "https://graph.facebook.com/v18.0/me/adaccounts?fields=id,name,account_id&access_token=YOUR_TOKEN"
-
-# Test specific ad account
-curl "https://graph.facebook.com/v18.0/act_YOUR_ACCOUNT_ID?fields=id,name,account_id&access_token=YOUR_TOKEN"
+# Make this API call to convert your short-lived token to long-lived
+curl -X GET "https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=YOUR_APP_ID&client_secret=YOUR_APP_SECRET&fb_exchange_token=YOUR_SHORT_LIVED_TOKEN"
 ```
 
-### Expected Responses
+Replace:
+- `YOUR_APP_ID` with your Meta app ID
+- `YOUR_APP_SECRET` with your Meta app secret  
+- `YOUR_SHORT_LIVED_TOKEN` with the token from Graph API Explorer
 
-#### ✅ Successful Token Test:
-```json
-{
-  "id": "123456789",
-  "name": "Your Name"
-}
+### **Step 4: Update Your Client Token**
+
+1. Go to your application's admin panel
+2. Find your client (jacek)
+3. Update the Meta access token with the new long-lived token
+4. The system will validate the token automatically
+
+## 🔧 **Alternative: Use System User Token (Most Permanent)**
+
+For the most permanent solution, create a System User:
+
+### **Step 1: Create System User**
+1. Go to Business Manager → Settings → Business Settings
+2. Click "System Users" → "Add"
+3. Name: "API Integration User"
+4. Role: "Admin" or "Employee"
+
+### **Step 2: Generate System User Token**
+1. Click on your System User
+2. Go to "Access Tokens"
+3. Generate a new token with these permissions:
+   - `ads_read`
+   - `ads_management`
+   - `business_management`
+   - `read_insights`
+
+### **Step 3: Assign to Ad Account**
+1. Go to "Ad Accounts" in Business Settings
+2. Assign your ad account to the System User
+3. Give "Admin" access
+
+## 🛠️ **Quick Fix Script**
+
+I've created a script to help you update the token. Run this after getting your new token:
+
+```bash
+node scripts/update-meta-token.js
 ```
 
-#### ✅ Successful Ad Accounts Test:
-```json
-{
-  "data": [
-    {
-      "id": "act_123456789",
-      "name": "Your Ad Account",
-      "account_id": "123456789"
-    }
-  ]
-}
-```
+## 📋 **Required Permissions**
 
-#### ❌ 403 Error Response:
-```json
-{
-  "error": {
-    "message": "This endpoint requires the 'ads_read' permission",
-    "type": "OAuthException",
-    "code": 200,
-    "fbtrace_id": "trace_id"
-  }
-}
-```
+Your Meta API token needs these permissions:
+- ✅ `ads_read` - Read ad account data
+- ✅ `ads_management` - Access campaign insights
+- ✅ `business_management` - Access business data
+- ✅ `read_insights` - Read performance metrics
 
-## 🔍 Common Issues and Solutions
+## 🔍 **Token Validation**
 
-### Issue 1: "This endpoint requires the 'ads_read' permission"
+After updating your token, the system will automatically validate it and show:
+- ✅ Token validity
+- ✅ Available ad accounts
+- ✅ Permission status
 
-**Solution:** Your token lacks the `ads_read` permission.
+## 🚨 **Common Issues**
 
-**Fix:**
-1. Go to Graph API Explorer
-2. Add `ads_read` permission
-3. Generate a new token
+### **"Session has expired"**
+- **Cause**: Using short-lived token
+- **Solution**: Convert to long-lived token or use System User token
 
-### Issue 2: "Ad Account ID not found"
+### **"Access denied to ad account"**
+- **Cause**: Token doesn't have proper permissions
+- **Solution**: Add required permissions to token
 
-**Solution:** The ad account ID is incorrect or the token doesn't have access to it.
+### **"Ad account not found"**
+- **Cause**: Wrong ad account ID format
+- **Solution**: Use account ID without "act_" prefix
 
-**Fix:**
-1. Verify the ad account ID in Ads Manager
-2. Ensure the token has access to this specific account
-3. Check if the account is active
-
-### Issue 3: "Access token has expired"
-
-**Solution:** Access tokens expire after 60 days.
-
-**Fix:**
-1. Generate a new access token
-2. Consider using a long-lived token or System User token
-
-### Issue 4: "App not approved for ads_read"
-
-**Solution:** Your Meta app needs to be approved for the Marketing API.
-
-**Fix:**
-1. Submit your app for review
-2. Or use a System User token from Business Manager
-
-## 🛠️ Using the Test Tools
-
-### Test Page Features
-
-The test page at `/test-meta-validation` provides:
-
-1. **Token Validation** - Tests basic token validity
-2. **Account Validation** - Tests specific ad account access
-3. **Ad Accounts List** - Lists all accessible ad accounts
-4. **Campaign Access** - Tests campaign data access
-5. **Raw API Debug** - Shows exact API responses
-
-### Understanding Test Results
-
-#### ✅ All Tests Pass:
-- Your credentials are working perfectly
-- You can proceed with adding clients
-
-#### ❌ Token Validation Fails:
-- Check token format and expiration
-- Regenerate the token
-
-#### ❌ Account Validation Fails:
-- Verify ad account ID
-- Check if token has access to this account
-
-#### ❌ Ad Accounts List Fails:
-- Token lacks `ads_read` permission
-- Add the required permission
-
-## 📋 Checklist for Valid Credentials
-
-Before adding a client, ensure:
-
-- [ ] Access token is valid and not expired
-- [ ] Token has `ads_read` permission
-- [ ] Token has `ads_management` permission
-- [ ] Ad account ID is correct
-- [ ] Token has access to the specific ad account
-- [ ] Ad account is active and not disabled
-
-## 🆘 Getting Help
+## 📞 **Need Help?**
 
 If you're still having issues:
+1. Check your Meta app permissions
+2. Verify your ad account ID
+3. Ensure your token has the right permissions
+4. Try the System User approach for maximum permanence
 
-1. **Check the test page results** for specific error messages
-2. **Verify your Meta app settings** in the developer console
-3. **Ensure your Business Manager permissions** are correct
-4. **Contact Meta support** if it's a platform issue
+## 🎯 **Next Steps**
 
-## 🔐 Security Notes
-
-- **Never share access tokens** publicly
-- **Store tokens securely** in your application
-- **Rotate tokens regularly** for security
-- **Use System User tokens** for production applications
-- **Monitor token usage** and permissions
-
----
-
-**Remember:** The 403 error is actually good news - it means your token is valid but just needs the right permissions! 🎯 
+1. Generate a new permanent token using the steps above
+2. Update your client's token in the admin panel
+3. Test the integration
+4. Your reports should now work with real Meta data! 

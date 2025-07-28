@@ -68,6 +68,12 @@ interface ClientReport {
   generated_at: string;
 }
 
+interface LongLivedTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
 // Cache for Meta API responses
 const apiCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -97,6 +103,128 @@ export class MetaAPIService {
       data,
       timestamp: Date.now()
     });
+  }
+
+  /**
+   * Convert a short-lived token to a long-lived token
+   * This is essential for permanent API access
+   */
+  async convertToLongLivedToken(): Promise<{ success: boolean; token?: string; error?: string }> {
+    try {
+      const appId = process.env.META_APP_ID;
+      const appSecret = process.env.META_APP_SECRET;
+
+      if (!appId || !appSecret) {
+        return {
+          success: false,
+          error: 'Meta App ID and App Secret are required for token conversion. Please check your environment variables.'
+        };
+      }
+
+      const response = await fetch(
+        `${this.baseUrl}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${this.accessToken}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return {
+          success: false,
+          error: `Token conversion failed: ${errorData.error?.message || 'Unknown error'}`
+        };
+      }
+
+      const data: LongLivedTokenResponse = await response.json();
+
+      if (!data.access_token) {
+        return {
+          success: false,
+          error: 'No access token received from Meta API'
+        };
+      }
+
+      return {
+        success: true,
+        token: data.access_token
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: `Token conversion error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Validate and optionally convert token to long-lived
+   */
+  async validateAndConvertToken(): Promise<{ 
+    valid: boolean; 
+    error?: string; 
+    permissions?: string[];
+    convertedToken?: string;
+    isLongLived?: boolean;
+  }> {
+    try {
+      // First, test basic token validity
+      const response = await fetch(`${this.baseUrl}/me?access_token=${this.accessToken}`);
+      const data = await response.json();
+
+      if (data.error) {
+        return { valid: false, error: data.error.message };
+      }
+
+      // Test if token has ads_read permission by trying to get ad accounts
+      try {
+        const adAccountsResponse = await fetch(
+          `${this.baseUrl}/me/adaccounts?fields=id,name,account_id&access_token=${this.accessToken}`
+        );
+        
+        if (adAccountsResponse.status === 403) {
+          return { 
+            valid: false, 
+            error: 'Access token does not have required permissions. Need: ads_read, ads_management' 
+          };
+        }
+        
+        const adAccountsData = await adAccountsResponse.json();
+        
+        if (adAccountsData.error) {
+          return { 
+            valid: false, 
+            error: `Ad accounts access error: ${adAccountsData.error.message}` 
+          };
+        }
+
+        // Token is valid, now try to convert to long-lived
+        const conversionResult = await this.convertToLongLivedToken();
+        
+        if (conversionResult.success && conversionResult.token) {
+          return { 
+            valid: true, 
+            permissions: ['ads_read'],
+            convertedToken: conversionResult.token,
+            isLongLived: true
+          };
+        } else {
+          // Token is valid but conversion failed - might already be long-lived
+          return { 
+            valid: true, 
+            permissions: ['ads_read'],
+            isLongLived: false
+          };
+        }
+
+      } catch (adAccountsError) {
+        return { 
+          valid: false, 
+          error: 'Cannot access ad accounts. Token may lack required permissions.' 
+        };
+      }
+
+    } catch (error) {
+      return { valid: false, error: 'Network error or invalid token' };
+    }
   }
 
   /**

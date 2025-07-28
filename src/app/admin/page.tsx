@@ -60,13 +60,13 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     }
 
     setValidating(true);
-    setValidationStatus({ status: 'validating', message: 'Validating Meta Ads credentials...' });
+    setValidationStatus({ status: 'validating', message: 'Validating and converting Meta Ads credentials...' });
 
     try {
       const metaService = new MetaAPIService(formData.meta_access_token);
       
-      // Step 1: Validate the access token and permissions
-      const tokenValidation = await metaService.validateToken();
+      // Step 1: Validate and convert the access token to long-lived
+      const tokenValidation = await metaService.validateAndConvertToken();
       
       if (!tokenValidation.valid) {
         setValidationStatus({ 
@@ -90,12 +90,29 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
       // Step 3: Test campaign access (optional but good to verify)
       try {
         const campaigns = await metaService.getCampaigns(formData.ad_account_id.replace('act_', ''));
+        
+        let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Found ${campaigns.length} campaigns.`;
+        
+        if (tokenValidation.convertedToken) {
+          statusMessage += ' 🔄 Token will be automatically converted to long-lived for permanent access.';
+        } else if (tokenValidation.isLongLived) {
+          statusMessage += ' ✅ Token is already long-lived (permanent).';
+        }
+        
         setValidationStatus({ 
           status: 'valid', 
-          message: `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Found ${campaigns.length} campaigns.` 
+          message: statusMessage
         });
       } catch (campaignError) {
         // Campaign fetch failed, but credentials are still valid
+        let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}.`;
+        
+        if (tokenValidation.convertedToken) {
+          statusMessage += ' 🔄 Token will be automatically converted to long-lived for permanent access.';
+        } else if (tokenValidation.isLongLived) {
+          statusMessage += ' ✅ Token is already long-lived (permanent).';
+        }
+        
         setValidationStatus({ 
           status: 'valid', 
           message: `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.` 
