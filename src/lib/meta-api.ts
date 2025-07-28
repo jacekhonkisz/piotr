@@ -4,7 +4,14 @@
  */
 
 interface MetaAPIResponse {
-  data: any[];
+  data?: any[];
+  error?: {
+    message: string;
+    type: string;
+    code: number;
+    error_subcode?: number;
+    fbtrace_id?: string;
+  };
   paging?: {
     cursors?: {
       before?: string;
@@ -265,14 +272,35 @@ export class MetaAPIService {
         limit: '100',
       });
 
-      const response = await fetch(
-        `${this.baseUrl}/act_${adAccountId}/insights?${params.toString()}`
-      );
+      // Ensure we have the act_ prefix for the API call
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
+      console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
+      const response = await fetch(url);
       const data: MetaAPIResponse = await response.json();
 
+      console.log('📥 Meta API Response Status:', response.status);
+      console.log('📥 Meta API Response Data:', {
+        hasData: !!data.data,
+        dataLength: data.data?.length || 0,
+        hasError: !!data.error,
+        error: data.error,
+        paging: data.paging
+      });
+
+      if (!response.ok) {
+        console.error('❌ Meta API Error Response:', data);
+        throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'} (Code: ${data.error?.code || response.status})`);
+      }
+
+      if (data.error) {
+        console.error('❌ Meta API returned error:', data.error);
+        throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
+      }
+
       if (data.data) {
-        return data.data.map(insight => ({
+        const insights = data.data.map(insight => ({
           campaign_id: insight.campaign_id || 'unknown',
           campaign_name: insight.campaign_name || 'Unknown Campaign',
           impressions: parseInt(insight.impressions || '0'),
@@ -287,12 +315,22 @@ export class MetaAPIService {
           date_start: insight.date_start || dateStart,
           date_stop: insight.date_stop || dateEnd,
         }));
+
+        console.log('✅ Parsed campaign insights:', insights.length, 'campaigns');
+        return insights;
       }
 
+      console.log('⚠️ No campaign insights data in response');
       return [];
     } catch (error) {
-      console.error('Error fetching campaign insights:', error);
-      return [];
+      console.error('💥 Error fetching campaign insights:', error);
+      console.error('💥 Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        adAccountId,
+        dateRange: { dateStart, dateEnd }
+      });
+      throw error; // Re-throw the error instead of returning empty array
     }
   }
 
@@ -322,8 +360,10 @@ export class MetaAPIService {
         limit: '100',
       });
 
+      // Ensure we have the act_ prefix for the API call
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const response = await fetch(
-        `${this.baseUrl}/act_${adAccountId}/campaigns?${params.toString()}`
+        `${this.baseUrl}/${accountIdWithPrefix}/campaigns?${params.toString()}`
       );
 
       const data: MetaAPIResponse = await response.json();
@@ -367,8 +407,10 @@ export class MetaAPIService {
         level: 'account',
       });
 
+      // Ensure we have the act_ prefix for the API call
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const response = await fetch(
-        `${this.baseUrl}/act_${adAccountId}/insights?${params.toString()}`
+        `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`
       );
 
       const data: MetaAPIResponse = await response.json();

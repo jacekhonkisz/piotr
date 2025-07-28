@@ -22,70 +22,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   
-  // Use refs to prevent race conditions
+  // Use refs to prevent race conditions and concurrent loads
   const mountedRef = useRef(true);
   const profileLoadingRef = useRef(false);
   const initializingRef = useRef(false);
+  const profileCacheRef = useRef<{ [key: string]: Profile | null }>({});
 
   const refreshProfile = useCallback(async (userToRefresh?: User) => {
     const currentUser = userToRefresh || user;
     if (!currentUser) {
-      console.log('refreshProfile: No user provided');
       return;
     }
 
     // Prevent concurrent profile loads
     if (profileLoadingRef.current) {
-      console.log('refreshProfile: Already loading profile, skipping');
+      console.log('Profile already loading, skipping duplicate request');
+      return;
+    }
+
+    // Check cache first (30 second cache)
+    const cacheKey = currentUser.id;
+    const cached = profileCacheRef.current[cacheKey];
+    const cacheTime = performance.now();
+    
+    if (cached && (cacheTime - (cached as any)._cacheTime) < 30000) {
+      console.log('Using cached profile');
+      if (mountedRef.current) {
+        setProfile(cached);
+      }
       return;
     }
 
     profileLoadingRef.current = true;
-    console.log('Refreshing profile for user:', currentUser.email, 'ID:', currentUser.id);
+    console.log('Loading profile for user:', currentUser.email);
     
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.warn('Profile loading timed out after 3 seconds');
+    }, 3000); // Reduced to 3 seconds
+
     try {
-      const profile = await getCurrentProfile();
-      console.log('Profile loaded successfully:', profile);
+      const profile = await Promise.race([
+        getCurrentProfile(),
+        new Promise<null>((_, reject) => {
+          controller.signal.addEventListener('abort', () => {
+            reject(new Error('Profile loading timeout'));
+          });
+        })
+      ]);
+      
+      clearTimeout(timeoutId);
+      
+      if (profile) {
+        // Cache the profile with timestamp
+        (profile as any)._cacheTime = performance.now();
+        profileCacheRef.current[cacheKey] = profile;
+      }
       
       if (mountedRef.current) {
         setProfile(profile);
-        console.log('Profile state updated successfully');
-      } else {
-        console.log('Component unmounted, not updating profile state');
+        console.log('Profile loaded successfully');
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Error loading profile:', error);
       
+      // On timeout or error, still set loading to false to prevent infinite loading
       if (mountedRef.current) {
         setProfile(null);
-        console.log('Profile state set to null due to error');
       }
     } finally {
       profileLoadingRef.current = false;
-      console.log('Profile loading finished');
     }
   }, [user]);
 
-  // Add a timeout fallback for profile loading
-  const refreshProfileWithTimeout = useCallback(async (userToRefresh?: User) => {
-    const timeoutPromise = new Promise<void>((_, reject) => {
-      setTimeout(() => reject(new Error('Profile refresh timeout')), 8000);
-    });
-
-    try {
-      await Promise.race([refreshProfile(userToRefresh), timeoutPromise]);
-    } catch (error) {
-      console.error('Profile refresh timed out, setting loading to false:', error);
-      if (mountedRef.current) {
-        setLoading(false);
-        setInitialized(true);
-      }
-    }
-  }, [refreshProfile]);
-
   const signOut = async () => {
     try {
-      // Clear local state first
+      // Clear cache and local state
+      profileCacheRef.current = {};
       setUser(null);
       setProfile(null);
       setLoading(false);
@@ -108,17 +124,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initializeAuth = async () => {
       // Prevent multiple initializations
       if (initializingRef.current) {
-        console.log('Already initializing auth, skipping');
         return;
       }
       
       initializingRef.current = true;
       
       try {
-        console.log('Initializing authentication...');
+        console.log('Initializing auth...');
         
-        // Get initial session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Get initial session with timeout
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Session timeout')), 2000);
+        });
+
+        const { data: { session }, error: sessionError } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as any;
         
         if (sessionError) {
           console.error('Session error:', sessionError);
@@ -134,20 +157,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(sessionUser);
           
           if (sessionUser) {
-            console.log('User found in session:', sessionUser.email);
-            await refreshProfileWithTimeout(sessionUser);
+            console.log('User found:', sessionUser.email);
+            // Don't await profile loading to speed up initial render
+            refreshProfile(sessionUser);
           } else {
             console.log('No user in session');
             setProfile(null);
           }
           
-          // Always set loading to false and initialized to true after processing
+          // Set loading to false immediately to show UI
           setLoading(false);
           setInitialized(true);
-          console.log('Auth initialization completed');
+          console.log('Auth initialized');
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('Auth initialization error:', error);
         if (mountedRef.current) {
           setLoading(false);
           setInitialized(true);
@@ -157,27 +181,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Set up auth state change listener
+    // Set up auth state change listener (simplified)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.email);
+      console.log('Auth state changed:', event);
       
-      if (!mountedRef.current) {
-        console.log('Component unmounted, ignoring auth state change');
-        return;
-      }
+      if (!mountedRef.current) return;
       
       const sessionUser = session?.user ?? null;
       setUser(sessionUser);
       
       if (sessionUser) {
-        console.log('User session found, loading profile...');
-        await refreshProfileWithTimeout(sessionUser);
+        // Don't await to keep UI responsive
+        refreshProfile(sessionUser);
       } else {
-        console.log('No user session, clearing profile');
         setProfile(null);
+        profileCacheRef.current = {}; // Clear cache on logout
       }
       
-      // Ensure loading is always set to false after auth state change
       if (mountedRef.current) {
         setLoading(false);
         setInitialized(true);
@@ -199,12 +219,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authSubscription.unsubscribe();
       }
     };
-  }, []); // Empty dependency array to run only once
+  }, []); // Empty dependency array
 
   const value = {
     user,
     profile,
-    loading: loading && !initialized, // Only loading if not initialized
+    loading: loading && !initialized,
     authLoading: loading && !initialized,
     signOut,
     refreshProfile: () => refreshProfile(),

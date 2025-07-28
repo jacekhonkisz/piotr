@@ -18,8 +18,21 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-    // Verify the JWT token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    // Create a new Supabase client with the user's access token
+    const userSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
+
+    // Get the user from the token
+    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
     if (authError || !user) {
       console.error('Token verification failed:', authError);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -49,7 +62,8 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const { dateRange } = await request.json();
-    const startDate = dateRange?.start || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Use broader date range to capture all historical campaign data
+    const startDate = dateRange?.start || '2024-01-01';
     const endDate = dateRange?.end || new Date().toISOString().split('T')[0];
 
     // Initialize Meta API service
@@ -66,8 +80,14 @@ export async function POST(request: NextRequest) {
 
     // Generate report
     const startTime = Date.now();
+    
+    // Ensure ad account ID has proper format (remove act_ prefix if present)
+    const adAccountId = client.ad_account_id.startsWith('act_') 
+      ? client.ad_account_id.substring(4) 
+      : client.ad_account_id;
+      
     const report = await metaService.generateClientReport(
-      client.ad_account_id.replace('act_', ''),
+      adAccountId,
       startDate,
       endDate
     );

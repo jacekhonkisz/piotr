@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   BarChart3, 
@@ -51,13 +51,30 @@ interface ClientDashboardData {
   };
 }
 
+interface CachedData {
+  data: ClientDashboardData;
+  timestamp: number;
+  dataSource: 'live' | 'database';
+}
+
+// Cache duration: 1 hour (3600000 milliseconds)
+const CACHE_DURATION = 60 * 60 * 1000;
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [adminStats, setAdminStats] = useState<DashboardStats>({});
   const [clientData, setClientData] = useState<ClientDashboardData | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [refreshingData, setRefreshingData] = useState(false);
+  const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [dashboardInitialized, setDashboardInitialized] = useState(false);
   const { user, profile, authLoading, signOut } = useAuth();
   const router = useRouter();
+
+  // Prevent multiple concurrent loads
+  const loadingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const handleLogout = async () => {
     try {
@@ -68,71 +85,277 @@ export default function DashboardPage() {
     }
   };
 
-  useEffect(() => {
-    console.log('Dashboard useEffect triggered:', { 
-      user: user?.email, 
-      profile: profile?.role, 
-      loading: authLoading, 
-      hasUser: !!user, 
-      hasProfile: !!profile 
-    });
+  // Get cache key for current user
+  const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}`;
 
-    // Don't do anything while auth is still loading
-    if (authLoading) {
-      console.log('Auth still loading, waiting...');
-      return;
-    }
-
-    // Redirect to login if no user
-    if (!user) {
-      console.log('No user and auth not loading, redirecting to login');
-      router.replace('/auth/login');
-      return;
-    }
-
-    // Wait for profile to load if user exists but profile doesn't
-    if (user && !profile) {
-      console.log('User exists but no profile, waiting for profile...');
-      // Set a timeout to prevent infinite waiting
-      const profileTimeout = setTimeout(() => {
-        console.log('Profile loading timeout, redirecting to login');
-        router.replace('/auth/login');
-      }, 10000); // 10 second timeout
-
-      return () => clearTimeout(profileTimeout);
-    }
-
-    // Load dashboard data if user and profile are available
-    if (user && profile) {
-      console.log('User and profile loaded, loading dashboard for role:', profile.role);
-      if (profile.role === 'admin') {
-        loadAdminDashboard();
-      } else {
-        loadClientDashboard();
-      }
-    }
-  }, [user, profile, authLoading, router]);
-
-  const loadAdminDashboard = async () => {
+  // Load data from cache if available and not expired
+  const loadFromCache = (): ClientDashboardData | null => {
     try {
-      setLoading(true);
-      console.log('Loading admin dashboard for user:', user!.id);
-      const stats = await getAdminDashboardStats(user!.id);
-      console.log('Admin dashboard stats loaded:', stats);
-      setAdminStats(stats);
+      const cached = localStorage.getItem(getCacheKey());
+      if (!cached) return null;
+
+      const parsedCache: CachedData = JSON.parse(cached);
+      const now = Date.now();
+      
+      // Check if cache is still valid (less than 1 hour old)
+      if (now - parsedCache.timestamp < CACHE_DURATION) {
+        console.log('Loading data from cache (age:', Math.round((now - parsedCache.timestamp) / 1000 / 60), 'minutes)');
+        setDataSource(parsedCache.dataSource);
+        setLastUpdated(new Date(parsedCache.timestamp));
+        return parsedCache.data;
+      } else {
+        console.log('Cache expired, will fetch fresh data');
+        localStorage.removeItem(getCacheKey());
+        return null;
+      }
     } catch (error) {
-      console.error('Error loading admin dashboard:', error);
-      // You could add a toast notification here
-    } finally {
-      setLoading(false);
+      console.error('Error loading from cache:', error);
+      localStorage.removeItem(getCacheKey());
+      return null;
     }
   };
 
-  const loadClientDashboard = async () => {
+  // Save data to cache
+  const saveToCache = (data: ClientDashboardData, source: 'live' | 'database') => {
     try {
+      const cacheData: CachedData = {
+        data,
+        timestamp: Date.now(),
+        dataSource: source
+      };
+      localStorage.setItem(getCacheKey(), JSON.stringify(cacheData));
+      setLastUpdated(new Date());
+      console.log('Data saved to cache with source:', source);
+    } catch (error) {
+      console.error('Error saving to cache:', error);
+    }
+  };
+
+  // Clear cache for current user
+  const clearCache = () => {
+    localStorage.removeItem(getCacheKey());
+    console.log('Cache cleared');
+  };
+
+  // One-time cache clear for testing the fix
+  useEffect(() => {
+    const hasTestedDateFix = localStorage.getItem('date_range_fix_tested');
+    if (!hasTestedDateFix) {
+      console.log('🔧 Clearing old cache for date range fix...');
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('dashboard_cache_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      localStorage.setItem('date_range_fix_tested', 'true');
+    }
+  }, []); // Only run once
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      loadingRef.current = false;
+    };
+  }, []);
+
+  // Simplified dashboard loading effect
+  useEffect(() => {
+    // Skip if already initializing, auth loading, or no user
+    if (loadingRef.current || authLoading || !user) {
+      if (!user && !authLoading) {
+        console.log('No user, redirecting to login');
+        router.replace('/auth/login');
+      }
+      return;
+    }
+
+    // If we have user but no profile yet, wait a bit more (but not infinitely)
+    if (!profile) {
+      const timeout = setTimeout(() => {
+        if (!profile && user) {
+          console.log('Profile loading took too long, proceeding anyway');
+          setDashboardInitialized(true);
+          setLoading(false);
+        }
+      }, 2000); // Much shorter timeout
+
+      return () => clearTimeout(timeout);
+    }
+
+    // Initialize dashboard once we have user and profile
+    if (user && profile && !dashboardInitialized) {
+      console.log('Initializing dashboard for role:', profile.role);
+      setDashboardInitialized(true);
+      
+      if (profile.role === 'admin') {
+        loadAdminDashboard();
+      } else {
+        loadClientDashboardWithCache();
+      }
+    }
+  }, [user, profile, authLoading, dashboardInitialized, router]);
+
+  const loadAdminDashboard = async () => {
+    if (loadingRef.current) return;
+    
+    try {
+      loadingRef.current = true;
+      setLoading(true);
+      console.log('Loading admin dashboard');
+      const stats = await getAdminDashboardStats(user!.id);
+      
+      if (mountedRef.current) {
+        setAdminStats(stats);
+      }
+    } catch (error) {
+      console.error('Error loading admin dashboard:', error);
+    } finally {
+      loadingRef.current = false;
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const loadClientDashboardWithCache = async (forceRefresh = false) => {
+    if (loadingRef.current) return;
+    
+    try {
+      loadingRef.current = true;
       setLoading(true);
       
+      // Try to load from cache first (unless force refresh)
+      if (!forceRefresh) {
+        const cachedData = loadFromCache();
+        if (cachedData && mountedRef.current) {
+          setClientData(cachedData);
+          setLoading(false);
+          loadingRef.current = false;
+          return;
+        }
+      }
+
+      // If no cache or force refresh, fetch fresh data
+      console.log('Loading fresh client dashboard data...');
+      await loadClientDashboard(forceRefresh);
+    } catch (error) {
+      console.error('Error loading client dashboard with cache:', error);
+    } finally {
+      loadingRef.current = false;
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const loadClientDashboard = async (forceRefresh = false) => {
+    try {
       console.log('Loading client dashboard for user:', user!.email);
+      
+      // Get session token for API call - try refreshing first
+      console.log('🔄 Refreshing session...');
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+      
+      const sessionToUse = refreshedSession?.session || (await supabase.auth.getSession()).data.session;
+      
+      console.log('🔑 Dashboard session check:', {
+        hasSession: !!sessionToUse,
+        hasAccessToken: !!sessionToUse?.access_token,
+        tokenPreview: sessionToUse?.access_token ? sessionToUse.access_token.substring(0, 20) + '...' : 'none',
+        refreshError: refreshError?.message
+      });
+      
+      if (!sessionToUse?.access_token) {
+        console.error('No session token available');
+        return;
+      }
+
+      // Fetch live data from Meta API
+      const response = await fetch('/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionToUse.access_token}`,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        body: JSON.stringify({
+          dateRange: {
+            start: '2024-01-01', // Broader range to capture all historical data
+            end: new Date().toISOString().split('T')[0]
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to fetch live data:', error);
+        
+        // Fallback to database data if API fails
+        await loadClientDashboardFromDatabase();
+        return;
+      }
+
+      const result = await response.json();
+      console.log('Live data fetched successfully:', result);
+      
+      // Check for Meta API errors in debug info
+      if (result.debug?.hasMetaApiError) {
+        console.warn('⚠️ Meta API Error detected:', result.debug.metaApiError);
+        alert(`Meta API Issue: ${result.debug.metaApiError}\n\nThis might explain why data shows zeros. Please check your Meta Ads account permissions and token.`);
+      }
+
+      // Also get reports from database
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('email', user!.email || '')
+        .single();
+
+      if (clientData) {
+        const { data: reports } = await supabase
+          .from('reports')
+          .select('*')
+          .eq('client_id', clientData.id)
+          .order('generated_at', { ascending: false })
+          .limit(10);
+
+        const dashboardData = {
+          client: result.data.client,
+          reports: reports || [],
+          campaigns: result.data.campaigns.map((campaign: any) => ({
+            id: campaign.campaign_id,
+            campaign_id: campaign.campaign_id,
+            campaign_name: campaign.campaign_name,
+            spend: campaign.spend,
+            impressions: campaign.impressions,
+            clicks: campaign.clicks,
+            conversions: campaign.conversions,
+            ctr: campaign.ctr,
+            cpc: campaign.cpc,
+            date_range_start: result.data.dateRange.start,
+            date_range_end: result.data.dateRange.end
+          })),
+          stats: result.data.stats
+        };
+
+        setClientData(dashboardData);
+        setDataSource('live');
+        
+        // Save to cache
+        saveToCache(dashboardData, 'live');
+      }
+    } catch (error) {
+      console.error('Error loading client dashboard:', error);
+      // Fallback to database data
+      await loadClientDashboardFromDatabase();
+    }
+  };
+
+  const loadClientDashboardFromDatabase = async () => {
+    try {
+      console.log('Loading dashboard data from database (fallback)');
       
       // Get client data first
       const { data: clientData, error: clientError } = await supabase
@@ -150,7 +373,7 @@ export default function DashboardPage() {
 
       // Use optimized database function
       const dashboardData = await getClientDashboardData(clientData.id);
-      console.log('Dashboard data loaded:', {
+      console.log('Dashboard data loaded from database:', {
         reportsCount: dashboardData.reports.length,
         campaignsCount: dashboardData.campaigns.length
       });
@@ -172,7 +395,7 @@ export default function DashboardPage() {
       const averageCtr = stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) * 100 : 0;
       const averageCpc = stats.totalClicks > 0 ? stats.totalSpend / stats.totalClicks : 0;
 
-      setClientData({
+      const finalDashboardData = {
         client: dashboardData.client,
         reports: dashboardData.reports.slice(0, 10), // Limit to 10 most recent
         campaigns: dashboardData.campaigns.slice(0, 50), // Limit to 50 most recent
@@ -181,12 +404,15 @@ export default function DashboardPage() {
           averageCtr,
           averageCpc
         }
-      });
+      };
+
+      setClientData(finalDashboardData);
+      setDataSource('database');
+      
+      // Save to cache
+      saveToCache(finalDashboardData, 'database');
     } catch (error) {
-      console.error('Error loading client dashboard:', error);
-      // You could add a toast notification here
-    } finally {
-      setLoading(false);
+      console.error('Error loading client dashboard from database:', error);
     }
   };
 
@@ -202,7 +428,7 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({
           dateRange: {
-            start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            start: '2024-01-01', // Broader range to capture all historical data
             end: new Date().toISOString().split('T')[0]
           }
         })
@@ -216,14 +442,49 @@ export default function DashboardPage() {
       const result = await response.json();
       console.log('Report generated:', result);
       
-      // Reload dashboard data
-      await loadClientDashboard();
+      // Clear cache and reload dashboard data
+      clearCache();
+      await loadClientDashboardWithCache(true);
     } catch (error) {
       console.error('Error generating report:', error);
       alert('Failed to generate report. Please try again.');
     } finally {
       setGeneratingReport(false);
     }
+  };
+
+  const refreshLiveData = async () => {
+    if (!user || loadingRef.current || refreshingData) return;
+    
+    setRefreshingData(true);
+    try {
+      // Clear cache and force refresh
+      clearCache();
+      await loadClientDashboardWithCache(true);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      if (mountedRef.current) {
+        setRefreshingData(false);
+      }
+    }
+  };
+
+  // Format last updated time
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return '';
+    const now = new Date();
+    const diffMs = now.getTime() - lastUpdated.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins === 0) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return '1 hour ago';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    
+    return lastUpdated.toLocaleDateString();
   };
 
   if (loading) {
@@ -391,7 +652,42 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-600">Meta Ads Performance Reports</p>
               </div>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center space-x-4">
+              {/* Data Source and Last Updated Indicator */}
+              <div className="flex items-center text-sm">
+                <div className={`w-2 h-2 rounded-full mr-2 ${dataSource === 'live' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                <div className="flex flex-col">
+                  <span className="text-gray-600">
+                    {dataSource === 'live' ? 'Live Data' : 'Database'}
+                  </span>
+                  {lastUpdated && (
+                    <span className="text-xs text-gray-500">
+                      Updated {formatLastUpdated()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Refresh Button */}
+              <button
+                onClick={refreshLiveData}
+                disabled={refreshingData}
+                className="btn-secondary"
+                title="Refresh live data from Meta API (clears 1-hour cache)"
+              >
+                {refreshingData ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Refreshing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh Data
+                  </>
+                )}
+              </button>
+              
               <button
                 onClick={generateNewReport}
                 disabled={generatingReport}
@@ -411,7 +707,7 @@ export default function DashboardPage() {
               </button>
               <button
                 onClick={handleLogout}
-                className="ml-2 btn-secondary"
+                className="btn-secondary"
               >
                 <LogOut className="h-4 w-4 mr-2" />
                 Log Out
@@ -422,6 +718,47 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Data Source Notice */}
+        <div className={`border rounded-lg p-4 mb-6 ${
+          dataSource === 'live' 
+            ? 'bg-green-50 border-green-200' 
+            : 'bg-blue-50 border-blue-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <div className={`w-2 h-2 rounded-full ${
+                  dataSource === 'live' ? 'bg-green-500 animate-pulse' : 'bg-blue-500'
+                }`}></div>
+              </div>
+              <div className="ml-3">
+                <p className={`text-sm ${
+                  dataSource === 'live' ? 'text-green-800' : 'text-blue-800'
+                }`}>
+                  <strong>
+                    {dataSource === 'live' ? 'Live Data:' : 'Cached Data:'}
+                  </strong>{' '}
+                  {dataSource === 'live' 
+                    ? 'Showing real-time campaign performance from Meta Ads API'
+                    : 'Showing cached data from database. Data refreshes automatically every hour.'
+                  }
+                </p>
+                {lastUpdated && (
+                  <p className={`text-xs mt-1 ${
+                    dataSource === 'live' ? 'text-green-600' : 'text-blue-600'
+                  }`}>
+                    Last updated: {formatLastUpdated()}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center text-xs text-gray-500">
+              <Clock className="h-3 w-3 mr-1" />
+              <span>Auto-refresh: 1 hour</span>
+            </div>
+          </div>
+        </div>
+        
         {/* Client Info */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="flex items-center justify-between">
@@ -455,16 +792,24 @@ export default function DashboardPage() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <DollarSign className="h-6 w-6 text-blue-600" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-blue-600" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600">Total Spend</p>
+                  <p className="text-2xl font-semibold text-gray-900">
+                    ${clientData.stats.totalSpend.toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Spend</p>
-                <p className="text-2xl font-semibold text-gray-900">
-                  ${clientData.stats.totalSpend.toLocaleString()}
-                </p>
-              </div>
+              {dataSource === 'live' && (
+                <div className="flex items-center text-xs text-green-600">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                  LIVE
+                </div>
+              )}
             </div>
           </div>
 
