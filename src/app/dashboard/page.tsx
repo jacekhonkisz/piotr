@@ -801,10 +801,10 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Reports */}
+        {/* Monthly Performance Overview */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Historical Reports</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">Monthly Performance Overview</h2>
             <button
               onClick={() => router.push('/reports')}
               className="text-primary-600 hover:text-primary-700 text-sm font-medium"
@@ -814,39 +814,101 @@ export default function DashboardPage() {
           </div>
           
           {clientData.reports.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <div className="text-center py-12">
+              <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No reports yet</h3>
               <p className="text-gray-600 mb-4">Reports are automatically generated based on your campaign performance. Check back soon for your first report.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {clientData.reports.slice(0, 5).map((report) => (
-                <div key={report.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
-                  <div className="flex items-center">
-                    <Calendar className="h-5 w-5 text-gray-400 mr-3" />
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {new Date(report.date_range_start).toLocaleDateString()} - {new Date(report.date_range_end).toLocaleDateString()}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        Generated {new Date(report.generated_at).toLocaleDateString()}
-                      </p>
+            <div className="space-y-6">
+              {/* Latest Month Summary */}
+              {(() => {
+                const latestReport = clientData.reports[0];
+                const reportDate = new Date(latestReport.date_range_start);
+                const monthName = reportDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                
+                return (
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900">{monthName}</h3>
+                        <p className="text-gray-600">Latest Performance Summary</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => router.push(`/reports`)}
+                          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+                        >
+                          View Details
+                        </button>
+                        <button className="px-4 py-2 bg-white text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors text-sm font-medium">
+                          <Download className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Quick Stats Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-white rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {clientData.reports.length}
+                        </div>
+                        <div className="text-sm text-gray-600">Reports</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {clientData.campaigns?.length || 0}
+                        </div>
+                        <div className="text-sm text-gray-600">Campaigns</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {new Date(latestReport.generated_at).toLocaleDateString()}
+                        </div>
+                        <div className="text-sm text-gray-600">Last Updated</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-4 text-center">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {clientData.reports.slice(0, 3).length}
+                        </div>
+                        <div className="text-sm text-gray-600">This Month</div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => router.push(`/reports/${report.id}`)}
-                      className="text-primary-600 hover:text-primary-700 p-1"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                    <button className="text-gray-600 hover:text-gray-700 p-1">
-                      <Download className="h-4 w-4" />
-                    </button>
+                );
+              })()}
+              
+              {/* Recent Reports List */}
+              <div className="space-y-3">
+                {clientData.reports.slice(0, 3).map((report) => (
+                  <div key={report.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center mr-4">
+                        <Calendar className="h-5 w-5 text-primary-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {new Date(report.date_range_start).toLocaleDateString()} - {new Date(report.date_range_end).toLocaleDateString()}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          Generated {new Date(report.generated_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => router.push(`/reports`)}
+                        className="text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-primary-50 transition-colors"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button className="text-gray-600 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-colors">
+                        <Download className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
         </div>

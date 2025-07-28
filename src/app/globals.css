@@ -2,216 +2,265 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global base styles */
-@layer base {
-  html {
-    font-family: Inter, system-ui, sans-serif;
-  }
-  
-  body {
-    @apply text-gray-900 bg-gray-50;
-  }
-  
-  /* Smooth scrolling */
-  html {
-    scroll-behavior: smooth;
-  }
-  
-  /* Focus styles */
-  *:focus {
-    @apply outline-none ring-2 ring-primary-500 ring-offset-2;
-  }
-  
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    @apply bg-gray-100;
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
   }
 }
 
-/* Component styles */
-@layer components {
-  /* Button styles */
-  .btn {
-    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md border border-transparent focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200;
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+/* Custom animations for enhanced reports */
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
   }
-  
-  .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
-  }
-  
-  .btn-secondary {
-    @apply btn bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-primary-500;
-  }
-  
-  .btn-danger {
-    @apply btn bg-error-600 text-white hover:bg-error-700 focus:ring-error-500;
-  }
-  
-  .btn-sm {
-    @apply px-3 py-1.5 text-xs;
-  }
-  
-  .btn-lg {
-    @apply px-6 py-3 text-base;
-  }
-  
-  /* Form styles */
-  .form-input {
-    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500;
-  }
-  
-  .form-label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
-  }
-  
-  .form-error {
-    @apply text-sm text-error-600 mt-1;
-  }
-  
-  /* Card styles */
-  .card {
-    @apply bg-white rounded-lg shadow-card border border-gray-200;
-  }
-  
-  .card-header {
-    @apply px-6 py-4 border-b border-gray-200;
-  }
-  
-  .card-body {
-    @apply px-6 py-4;
-  }
-  
-  .card-footer {
-    @apply px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg;
-  }
-  
-  /* Navigation styles */
-  .nav-link {
-    @apply flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200;
-  }
-  
-  .nav-link-active {
-    @apply nav-link bg-primary-100 text-primary-700;
-  }
-  
-  .nav-link-inactive {
-    @apply nav-link text-gray-600 hover:bg-gray-100 hover:text-gray-900;
-  }
-  
-  /* Status indicators */
-  .status-indicator {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-  
-  .status-success {
-    @apply status-indicator bg-success-100 text-success-800;
-  }
-  
-  .status-warning {
-    @apply status-indicator bg-warning-100 text-warning-800;
-  }
-  
-  .status-error {
-    @apply status-indicator bg-error-100 text-error-800;
-  }
-  
-  .status-info {
-    @apply status-indicator bg-primary-100 text-primary-800;
-  }
-  
-  /* Loading spinner */
-  .spinner {
-    @apply animate-spin rounded-full border-2 border-gray-300 border-t-primary-600;
-  }
-  
-  /* Table styles */
-  .table {
-    @apply min-w-full divide-y divide-gray-200;
-  }
-  
-  .table-header {
-    @apply bg-gray-50;
-  }
-  
-  .table-header-cell {
-    @apply px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider;
-  }
-  
-  .table-body {
-    @apply bg-white divide-y divide-gray-200;
-  }
-  
-  .table-cell {
-    @apply px-6 py-4 whitespace-nowrap text-sm text-gray-900;
-  }
-  
-  /* Dashboard layout */
-  .dashboard-container {
-    @apply flex h-screen bg-gray-100;
-  }
-  
-  .dashboard-sidebar {
-    @apply flex flex-col w-64 bg-white shadow-sm;
-  }
-  
-  .dashboard-main {
-    @apply flex-1 flex flex-col overflow-hidden;
-  }
-  
-  .dashboard-header {
-    @apply bg-white shadow-sm px-6 py-4 border-b border-gray-200;
-  }
-  
-  .dashboard-content {
-    @apply flex-1 overflow-auto p-6;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* Utility styles */
-@layer utilities {
-  /* Text utilities */
-  .text-balance {
-    text-wrap: balance;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.animate-in {
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Enhanced hover effects */
+.hover-lift {
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .mobile-stack {
+    flex-direction: column;
   }
   
-  /* Animation utilities */
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-in-out;
+  .mobile-full-width {
+    width: 100%;
   }
   
-  .animate-slide-up {
-    animation: slideUp 0.3s ease-out;
+  .mobile-text-center {
+    text-align: center;
   }
-  
-  /* Print utilities */
-  @media print {
-    .print-hidden {
-      display: none !important;
-    }
-    
-    .print-visible {
-      display: block !important;
-    }
+}
+
+/* Custom scrollbar for better UX */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Loading spinner */
+.spinner {
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #3498db;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Enhanced button styles */
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium;
+}
+
+.btn-success {
+  @apply px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium;
+}
+
+.btn-danger {
+  @apply px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium;
+}
+
+/* Card enhancements */
+.card-hover {
+  @apply transition-all duration-200 hover:shadow-lg hover:scale-[1.02];
+}
+
+/* Metric card animations */
+.metric-card {
+  @apply transition-all duration-300 ease-out;
+}
+
+.metric-card:hover {
+  @apply transform -translate-y-1 shadow-lg;
+}
+
+/* Performance indicator styles */
+.performance-indicator {
+  @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium;
+}
+
+.performance-positive {
+  @apply bg-green-100 text-green-800;
+}
+
+.performance-negative {
+  @apply bg-red-100 text-red-800;
+}
+
+.performance-neutral {
+  @apply bg-gray-100 text-gray-800;
+}
+
+/* Benchmark status indicators */
+.benchmark-achieved {
+  @apply text-green-600;
+}
+
+.benchmark-missed {
+  @apply text-red-600;
+}
+
+/* Tooltip enhancements */
+.tooltip {
+  @apply relative;
+}
+
+.tooltip:hover .tooltip-content {
+  @apply opacity-100 visible;
+}
+
+.tooltip-content {
+  @apply absolute z-10 px-3 py-2 text-sm text-white bg-gray-900 rounded-lg opacity-0 invisible transition-all duration-200;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.tooltip-content::after {
+  content: '';
+  @apply absolute top-full left-1/2 transform -translate-x-1/2;
+  border: 5px solid transparent;
+  border-top-color: #1f2937;
+}
+
+/* Responsive grid improvements */
+@media (max-width: 640px) {
+  .grid-cols-1-mobile {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
   }
-  
-  /* Mobile utilities */
-  .safe-top {
-    padding-top: env(safe-area-inset-top);
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .grid-cols-2-tablet {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+}
+
+/* Chart container enhancements */
+.chart-container {
+  @apply relative overflow-hidden rounded-lg;
+}
+
+.chart-container::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50 opacity-0 transition-opacity duration-300;
+}
+
+.chart-container:hover::before {
+  @apply opacity-100;
+}
+
+/* Export button animations */
+.export-button {
+  @apply relative overflow-hidden;
+}
+
+.export-button::before {
+  content: '';
+  @apply absolute inset-0 bg-white/20 transform -translate-x-full transition-transform duration-300;
+}
+
+.export-button:hover::before {
+  @apply translate-x-full;
 } 
