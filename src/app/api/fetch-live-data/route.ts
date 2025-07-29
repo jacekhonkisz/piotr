@@ -103,10 +103,11 @@ export async function POST(request: NextRequest) {
 
     // Parse request body for date range (optional)
     const { dateRange } = await request.json();
-    // Use a much broader date range to capture all historical campaign data
-    // Start from 2024-01-01 to ensure we get all campaign insights
-    const startDate = dateRange?.start || '2024-01-01'; 
-    const endDate = dateRange?.end || new Date().toISOString().split('T')[0];
+    // Use a more reasonable date range - last 30 days by default
+    const defaultEndDate = new Date().toISOString().split('T')[0];
+    const defaultStartDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const startDate = dateRange?.start || defaultStartDate; 
+    const endDate = dateRange?.end || defaultEndDate;
 
     console.log('📅 Date range for API call:', { startDate, endDate });
 
@@ -139,6 +140,21 @@ export async function POST(request: NextRequest) {
     
     console.log('🏢 Using ad account ID:', adAccountId, '(will be used as act_' + adAccountId + ')');
     
+    // First, get account information to find creation date
+    let accountCreationDate: Date | null = null;
+    try {
+      console.log('🔍 Getting account information...');
+      const accountInfo = await metaService.getAccountInfo(adAccountId);
+      console.log('📊 Account info:', accountInfo);
+      
+      if (accountInfo && accountInfo.created_time) {
+        accountCreationDate = new Date(accountInfo.created_time);
+        console.log('📅 Account created:', accountCreationDate.toISOString());
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not get account creation date:', error);
+    }
+    
     let campaignInsights: any[] = [];
     let metaApiError: string | null = null;
     
@@ -165,38 +181,13 @@ export async function POST(request: NextRequest) {
       campaignInsights = []; // Set to empty array to continue with fallback
     }
 
-    // If no campaign-level insights, try account-level insights as fallback
-          if (campaignInsights.length === 0) {
-        console.log('⚠️ No campaign insights found, trying account-level insights...');
-        const accountInsights = await metaService.getAccountInsights(
-          adAccountId,
-          startDate,
-          endDate
-        );
+    // If no campaign-level insights, try to get basic campaign data
+    if (campaignInsights.length === 0) {
+      console.log('⚠️ No campaign insights found, trying to get basic campaign data...');
       
-      console.log('🏢 Account insights result:', accountInsights);
-      
-      if (accountInsights && accountInsights.spend) {
-        console.log('✅ Creating synthetic campaign from account data');
-        // Create a synthetic campaign from account data
-        campaignInsights = [{
-          campaign_id: 'account_total',
-          campaign_name: 'Account Total',
-          impressions: parseInt(accountInsights.impressions || '0'),
-          clicks: parseInt(accountInsights.clicks || '0'),
-          spend: parseFloat(accountInsights.spend || '0'),
-          conversions: parseInt(accountInsights.conversions?.[0]?.value || '0'),
-          ctr: parseFloat(accountInsights.ctr || '0'),
-          cpc: parseFloat(accountInsights.cpc || '0'),
-          date_start: startDate,
-          date_stop: endDate,
-        }];
-      } else {
-        console.log('❌ No account insights data available');
-        
-                  // Let's try to get basic campaigns list to see if there are any campaigns at all
-          console.log('🔍 Checking if any campaigns exist...');
-          const allCampaigns = await metaService.getCampaigns(adAccountId);
+      try {
+        // Get basic campaigns list
+        const allCampaigns = await metaService.getCampaigns(adAccountId);
         console.log('📋 All campaigns found:', {
           count: allCampaigns.length,
           campaigns: allCampaigns.map(c => ({
@@ -206,6 +197,60 @@ export async function POST(request: NextRequest) {
             objective: c.objective
           }))
         });
+
+        // Create basic campaign data from campaigns list
+        if (allCampaigns.length > 0) {
+          console.log('✅ Creating basic campaign data from campaigns list');
+          campaignInsights = allCampaigns.map(campaign => ({
+            campaign_id: campaign.id,
+            campaign_name: campaign.name,
+            impressions: 0, // No insights data available
+            clicks: 0,
+            spend: 0,
+            conversions: 0,
+            ctr: 0,
+            cpc: 0,
+            date_start: startDate,
+            date_stop: endDate,
+            status: campaign.status,
+            objective: campaign.objective
+          }));
+        }
+      } catch (campaignError) {
+        console.error('❌ Failed to get basic campaign data:', campaignError);
+      }
+    }
+
+    // If still no data, try account-level insights as final fallback
+    if (campaignInsights.length === 0) {
+      console.log('⚠️ No campaign data found, trying account-level insights...');
+      try {
+        const accountInsights = await metaService.getAccountInsights(
+          adAccountId,
+          startDate,
+          endDate
+        );
+      
+        console.log('🏢 Account insights result:', accountInsights);
+        
+        if (accountInsights && accountInsights.spend) {
+          console.log('✅ Creating synthetic campaign from account data');
+          // Create a synthetic campaign from account data
+          campaignInsights = [{
+            campaign_id: 'account_total',
+            campaign_name: 'Account Total',
+            impressions: parseInt(accountInsights.impressions || '0'),
+            clicks: parseInt(accountInsights.clicks || '0'),
+            spend: parseFloat(accountInsights.spend || '0'),
+            conversions: parseInt(accountInsights.conversions?.[0]?.value || '0'),
+            ctr: parseFloat(accountInsights.ctr || '0'),
+            cpc: parseFloat(accountInsights.cpc || '0'),
+            date_start: startDate,
+            date_stop: endDate,
+          }];
+        }
+      } catch (accountError) {
+        console.error('❌ Failed to get account insights:', accountError);
       }
     }
 
@@ -250,7 +295,8 @@ export async function POST(request: NextRequest) {
         campaignInsightsCount: campaignInsights.length,
         dateRange: { startDate, endDate },
         metaApiError: metaApiError,
-        hasMetaApiError: !!metaApiError
+        hasMetaApiError: !!metaApiError,
+        accountCreationDate: accountCreationDate?.toISOString() || null
       }
     });
 

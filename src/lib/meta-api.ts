@@ -466,42 +466,98 @@ export class MetaAPIService {
    * Get campaigns for an ad account
    */
   async getCampaigns(adAccountId: string): Promise<any[]> {
-    const cacheKey = this.getCacheKey('campaigns', adAccountId);
+    const endpoint = `act_${adAccountId}/campaigns`;
+    const params = new URLSearchParams({
+      access_token: this.accessToken,
+      fields: 'id,name,status,objective,created_time,updated_time,start_time,stop_time',
+      limit: '100'
+    });
+
+    const cacheKey = this.getCacheKey(endpoint, params.toString());
     const cached = this.getCachedResponse(cacheKey);
     if (cached) {
       return cached;
     }
 
     try {
-      const fields = [
-        'id',
-        'name',
-        'status',
-        'objective',
-        'created_time',
-        'updated_time',
-      ].join(',');
-
-      const params = new URLSearchParams({
-        access_token: this.accessToken,
-        fields: fields,
-        limit: '100',
+      const url = `${this.baseUrl}/${endpoint}?${params}`;
+      console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+      
+      console.log('📥 Meta API Response Status:', response.status);
+      console.log('📥 Meta API Response Data:', {
+        hasData: !!data.data,
+        dataLength: data.data?.length || 0,
+        hasError: !!data.error,
+        error: data.error,
+        paging: data.paging
       });
 
-      // Ensure we have the act_ prefix for the API call
-      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
-      const response = await fetch(
-        `${this.baseUrl}/${accountIdWithPrefix}/campaigns?${params.toString()}`
-      );
+      if (data.error) {
+        throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
+      }
 
-      const data: MetaAPIResponse = await response.json();
-      const campaigns = data.data || [];
-      
-      this.setCachedResponse(cacheKey, campaigns);
+      if (!data.data) {
+        return [];
+      }
+
+      const campaigns = data.data.map(campaign => ({
+        id: campaign.id,
+        name: campaign.name,
+        status: campaign.status,
+        objective: campaign.objective,
+        created_time: campaign.created_time,
+        updated_time: campaign.updated_time,
+        start_time: campaign.start_time,
+        stop_time: campaign.stop_time
+      }));
+
+      // Cache the response
+      apiCache.set(cacheKey, { data: campaigns, timestamp: Date.now() });
+
       return campaigns;
     } catch (error) {
-      console.error('Error fetching campaigns:', error);
-      return [];
+      console.error('❌ Error fetching campaigns:', error);
+      throw error;
+    }
+  }
+
+  async getAccountInfo(adAccountId: string): Promise<any> {
+    const endpoint = `act_${adAccountId}`;
+    const params = new URLSearchParams({
+      access_token: this.accessToken,
+      fields: 'id,name,account_id,currency,timezone_name,created_time,updated_time,account_status,disable_reason'
+    });
+
+    const cacheKey = this.getCacheKey(endpoint, params.toString());
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const url = `${this.baseUrl}/${endpoint}?${params}`;
+      console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      console.log('📥 Meta API Response Status:', response.status);
+      console.log('📥 Meta API Response Data:', data);
+
+      if (data.error) {
+        throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
+      }
+
+      // Cache the response
+      apiCache.set(cacheKey, { data, timestamp: Date.now() });
+
+      return data;
+    } catch (error) {
+      console.error('❌ Error fetching account info:', error);
+      throw error;
     }
   }
 

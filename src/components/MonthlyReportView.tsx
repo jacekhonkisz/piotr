@@ -107,7 +107,16 @@ interface MonthlyStats {
 }
 
 export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetails }: MonthlyReportViewProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Find the most recent month with data
+  const getInitialMonth = () => {
+    if (reports.length === 0) return new Date();
+    
+    const reportDates = reports.map(report => new Date(report.date_range_start));
+    const mostRecentDate = new Date(Math.max(...reportDates.map(date => date.getTime())));
+    return new Date(mostRecentDate.getFullYear(), mostRecentDate.getMonth(), 1);
+  };
+  
+  const [currentMonth, setCurrentMonth] = useState(() => getInitialMonth());
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
@@ -116,6 +125,15 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
   useEffect(() => {
     if (reports.length > 0) {
+      // Update current month to the most recent month with data
+      const reportDates = reports.map(report => new Date(report.date_range_start));
+      const mostRecentDate = new Date(Math.max(...reportDates.map(date => date.getTime())));
+      const mostRecentMonth = new Date(mostRecentDate.getFullYear(), mostRecentDate.getMonth(), 1);
+      
+      if (mostRecentMonth.getTime() !== currentMonth.getTime()) {
+        setCurrentMonth(mostRecentMonth);
+      }
+      
       calculateMonthlyStats();
     }
   }, [reports, currentMonth]);
@@ -258,7 +276,17 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
     } else {
       newMonth.setMonth(newMonth.getMonth() - 1);
     }
-    setCurrentMonth(newMonth);
+    
+    // Check if the new month has data
+    const hasDataForMonth = reports.some(report => {
+      const reportDate = new Date(report.date_range_start);
+      return reportDate.getFullYear() === newMonth.getFullYear() && 
+             reportDate.getMonth() === newMonth.getMonth();
+    });
+    
+    if (hasDataForMonth) {
+      setCurrentMonth(newMonth);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -366,7 +394,13 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigateMonth('prev')}
-            className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            disabled={!reports.some(report => {
+              const reportDate = new Date(report.date_range_start);
+              const prevMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+              return reportDate.getFullYear() === prevMonth.getFullYear() && 
+                     reportDate.getMonth() === prevMonth.getMonth();
+            })}
+            className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
@@ -402,7 +436,13 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
             </button>
             <button
               onClick={() => navigateMonth('next')}
-              className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              disabled={!reports.some(report => {
+                const reportDate = new Date(report.date_range_start);
+                const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+                return reportDate.getFullYear() === nextMonth.getFullYear() && 
+                       reportDate.getMonth() === nextMonth.getMonth();
+              })}
+              className="p-3 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-6 w-6" />
             </button>
