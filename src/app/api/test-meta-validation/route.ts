@@ -3,75 +3,80 @@ import { MetaAPIService } from '../../../lib/meta-api';
 
 export async function POST(request: NextRequest) {
   try {
-    const { accessToken, adAccountId } = await request.json();
+    const { token, adAccountId } = await request.json();
 
-    if (!accessToken || !adAccountId) {
+    if (!token) {
       return NextResponse.json({ 
-        error: 'Missing required parameters: accessToken and adAccountId' 
-      }, { status: 400 });
+        valid: false, 
+        error: 'Token is required' 
+      });
     }
 
-    const metaService = new MetaAPIService(accessToken);
-    const results: any = {};
+    const metaService = new MetaAPIService(token);
 
-    // Test 1: Basic token validation
-    console.log('Testing basic token validation...');
-    results.tokenValidation = await metaService.validateToken();
-    console.log('Token validation result:', results.tokenValidation);
-
-    // Test 2: Ad account validation
-    console.log('Testing ad account validation...');
-    results.accountValidation = await metaService.validateAdAccount(adAccountId);
-    console.log('Account validation result:', results.accountValidation);
-
-    // Test 3: Get ad accounts list
-    console.log('Testing ad accounts list...');
+    // Test basic token validation
     try {
-      results.adAccounts = await metaService.getAdAccounts();
-      console.log('Ad accounts result:', results.adAccounts);
-    } catch (error) {
-      results.adAccountsError = error instanceof Error ? error.message : String(error);
-      console.log('Ad accounts error:', error);
-    }
-
-    // Test 4: Get campaigns
-    console.log('Testing campaigns access...');
-    try {
-      const cleanAccountId = adAccountId.replace('act_', '');
-      results.campaigns = await metaService.getCampaigns(cleanAccountId);
-      console.log('Campaigns result:', results.campaigns);
-    } catch (error) {
-      results.campaignsError = error instanceof Error ? error.message : String(error);
-      console.log('Campaigns error:', error);
-    }
-
-    // Test 5: Raw API call to see exact error
-    console.log('Testing raw API call...');
-    try {
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/me/adaccounts?fields=id,name,account_id&access_token=${accessToken}`
-      );
+      const userInfo = await metaService.validateToken();
       
-      results.rawApiCall = {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        body: await response.text()
-      };
-      
-      console.log('Raw API call result:', results.rawApiCall);
-    } catch (error) {
-      results.rawApiCallError = error instanceof Error ? error.message : String(error);
-      console.log('Raw API call error:', error);
+      if (!userInfo.valid) {
+        return NextResponse.json({ 
+          valid: false, 
+          error: 'Invalid token' 
+        });
+      }
+
+      // If no ad account specified, just return token validation result
+      if (!adAccountId) {
+        return NextResponse.json({ 
+          valid: true, 
+          message: 'Token is valid'
+        });
+      }
+
+      // Test ad account access
+      try {
+        const adAccountInfo = await metaService.validateAdAccount(adAccountId);
+        
+        if (!adAccountInfo.valid) {
+          return NextResponse.json({ 
+            valid: false, 
+            error: `Cannot access ad account ${adAccountId}` 
+          });
+        }
+
+        // Test campaigns access
+        try {
+          const campaigns = await metaService.getCampaigns(adAccountId);
+          
+          return NextResponse.json({ 
+            valid: true, 
+            adAccount: adAccountInfo,
+            campaigns: campaigns,
+            message: `Successfully connected to ad account ${adAccountId}`
+          });
+        } catch (campaignError) {
+          return NextResponse.json({ 
+            valid: false, 
+            error: `Cannot access campaigns: ${(campaignError as any).message}` 
+          });
+        }
+      } catch (adAccountError) {
+        return NextResponse.json({ 
+          valid: false, 
+          error: `Ad account error: ${(adAccountError as any).message}` 
+        });
+      }
+    } catch (tokenError) {
+      return NextResponse.json({ 
+        valid: false, 
+        error: `Token validation error: ${(tokenError as any).message}` 
+      });
     }
-
-    return NextResponse.json(results);
-
   } catch (error) {
-    console.error('API test error:', error);
+    console.error('Meta validation error:', error);
     return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : String(error)
+      valid: false, 
+      error: 'Internal server error' 
     }, { status: 500 });
   }
 } 
