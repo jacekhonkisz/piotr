@@ -729,6 +729,204 @@ export class MetaAPIService {
       throw error;
     }
   }
+
+  /**
+   * Get placement performance data for Top Placement Performance table
+   */
+  async getPlacementPerformance(
+    adAccountId: string,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<any[]> {
+    try {
+      const fields = [
+        'spend',
+        'impressions',
+        'clicks',
+        'ctr',
+        'cpc',
+        'cpp'
+      ].join(',');
+
+      const params = new URLSearchParams({
+        access_token: this.accessToken,
+        fields: fields,
+        time_range: JSON.stringify({
+          since: dateStart,
+          until: dateEnd,
+        }),
+        breakdowns: 'publisher_platform',
+        level: 'campaign',
+        limit: '100',
+      });
+
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
+      
+      console.log('🔗 Meta API Placement Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+
+      if (!response.ok || data.error) {
+        console.error('❌ Meta API Placement Performance Error:', data.error);
+        throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'}`);
+      }
+
+      if (data.data) {
+        const placements = data.data.map(insight => ({
+          placement: insight.publisher_platform || 'Unknown',
+          spend: parseFloat(insight.spend || '0'),
+          impressions: parseInt(insight.impressions || '0'),
+          clicks: parseInt(insight.clicks || '0'),
+          ctr: parseFloat(insight.ctr || '0'),
+          cpc: parseFloat(insight.cpc || '0'),
+          cpp: insight.cpp ? parseFloat(insight.cpp) : null,
+        }));
+
+        console.log('✅ Parsed placement performance:', placements.length, 'placements');
+        return placements;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('💥 Error fetching placement performance:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get demographic performance data for Demographic Performance table
+   */
+  async getDemographicPerformance(
+    adAccountId: string,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<any[]> {
+    try {
+      const fields = [
+        'spend',
+        'impressions',
+        'clicks',
+        'ctr',
+        'cpc',
+        'cpp'
+      ].join(',');
+
+      const params = new URLSearchParams({
+        access_token: this.accessToken,
+        fields: fields,
+        time_range: JSON.stringify({
+          since: dateStart,
+          until: dateEnd,
+        }),
+        breakdowns: 'age,gender',
+        level: 'campaign',
+        limit: '100',
+      });
+
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
+      
+      console.log('🔗 Meta API Demographic Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+
+      if (!response.ok || data.error) {
+        console.error('❌ Meta API Demographic Performance Error:', data.error);
+        throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'}`);
+      }
+
+      if (data.data) {
+        const demographics = data.data.map(insight => ({
+          age: insight.age || 'Unknown',
+          gender: insight.gender || 'Unknown',
+          spend: parseFloat(insight.spend || '0'),
+          impressions: parseInt(insight.impressions || '0'),
+          clicks: parseInt(insight.clicks || '0'),
+          ctr: parseFloat(insight.ctr || '0'),
+          cpc: parseFloat(insight.cpc || '0'),
+          cpp: insight.cpp ? parseFloat(insight.cpp) : null,
+        }));
+
+        console.log('✅ Parsed demographic performance:', demographics.length, 'demographics');
+        return demographics;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('💥 Error fetching demographic performance:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get ad relevance and results data for Ad Relevance & Results table
+   */
+  async getAdRelevanceResults(
+    adAccountId: string,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<any[]> {
+    try {
+      const fields = [
+        'ad_name',
+        'spend',
+        'impressions',
+        'clicks',
+        'cpp',
+        'quality_ranking',
+        'engagement_rate_ranking',
+        'conversion_rate_ranking'
+      ].join(',');
+
+      const params = new URLSearchParams({
+        access_token: this.accessToken,
+        fields: fields,
+        time_range: JSON.stringify({
+          since: dateStart,
+          until: dateEnd,
+        }),
+        level: 'ad',
+        limit: '100',
+      });
+
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
+      
+      console.log('🔗 Meta API Ad Relevance Results URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+
+      if (!response.ok || data.error) {
+        console.error('❌ Meta API Ad Relevance Results Error:', data.error);
+        throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'}`);
+      }
+
+      if (data.data) {
+        const ads = data.data.map(insight => ({
+          ad_name: insight.ad_name || 'Unknown Ad',
+          spend: parseFloat(insight.spend || '0'),
+          impressions: parseInt(insight.impressions || '0'),
+          clicks: parseInt(insight.clicks || '0'),
+          cpp: insight.cpp ? parseFloat(insight.cpp) : null,
+          quality_ranking: insight.quality_ranking || 'UNKNOWN',
+          engagement_rate_ranking: insight.engagement_rate_ranking || 'UNKNOWN',
+          conversion_rate_ranking: insight.conversion_rate_ranking || 'UNKNOWN',
+        }));
+
+        console.log('✅ Parsed ad relevance results:', ads.length, 'ads');
+        return ads;
+      }
+
+      return [];
+    } catch (error) {
+      console.error('💥 Error fetching ad relevance results:', error);
+      throw error;
+    }
+  }
 }
 
 export default MetaAPIService; 

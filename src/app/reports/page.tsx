@@ -43,22 +43,15 @@ import {
   TrendingDown as TrendingDownIcon,
   Search,
   BarChart,
-  PieChart,
   RefreshCw,
   Clock,
-  Star,
-  TrendingUp as TrendingUpIcon2,
-  BarChart3 as BarChart3Icon,
-  TrendingUp as TrendingUpIcon3,
-  PieChart as PieChartIcon
+  Star
 } from 'lucide-react';
 import AnimatedGaugeChart from '../../components/AnimatedGaugeChart';
 import CircularProgressChart from '../../components/CircularProgressChart';
-import AnimatedLineChart from '../../components/AnimatedLineChart';
-import DistributionChart from '../../components/DistributionChart';
 import AnimatedCounter from '../../components/AnimatedCounter';
-import ChartTabs from '../../components/ChartTabs';
 import DiagonalChart from '../../components/DiagonalChart';
+import MetaAdsTables from '../../components/MetaAdsTables';
 import { motion } from 'framer-motion';
 
 interface Campaign {
@@ -77,7 +70,7 @@ interface Campaign {
   date_range_start: string;
   date_range_end: string;
   status?: 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'DRAFT';
-  ad_type?: 'IMAGE' | 'VIDEO' | 'CAROUSEL' | 'COLLECTION';
+  ad_type?: 'IMAGE' | 'VIDEO' | 'CAROUSEL' | 'COLLECTION' | 'REELS' | 'STORY' | 'UNKNOWN';
   objective?: string;
   budget?: number;
   start_time?: string;
@@ -133,7 +126,6 @@ function ReportsPageContent() {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
-  const [activeChartTab, setActiveChartTab] = useState('trends');
   const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
 
   // Get current user session
@@ -398,62 +390,7 @@ function ReportsPageContent() {
 
 
 
-  // Prepare distribution data for spend breakdown
-  const getSpendDistribution = () => {
-    if (!selectedMonth || !reports[selectedMonth]) return [];
-    
-    const selectedReport = reports[selectedMonth];
-    const totalSpend = selectedReport.campaigns.reduce((sum, c) => sum + c.spend, 0);
-    
-    return selectedReport.campaigns
-      .filter(c => c.spend > 0)
-      .map(campaign => ({
-        name: campaign.campaign_name,
-        value: campaign.spend,
-        percentage: totalSpend > 0 ? (campaign.spend / totalSpend) * 100 : 0
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5); // Top 5 campaigns
-  };
 
-  // Prepare ad type distribution
-  const getAdTypeDistribution = () => {
-    if (!selectedMonth || !reports[selectedMonth]) return [];
-    
-    const selectedReport = reports[selectedMonth];
-    const adTypeMap = new Map<string, number>();
-    
-    selectedReport.campaigns.forEach(campaign => {
-      const adType = campaign.ad_type || 'UNKNOWN';
-      adTypeMap.set(adType, (adTypeMap.get(adType) || 0) + campaign.spend);
-    });
-    
-    const totalSpend = Array.from(adTypeMap.values()).reduce((sum, value) => sum + value, 0);
-    
-    return Array.from(adTypeMap.entries())
-      .map(([adType, spend]) => ({
-        name: adType === 'IMAGE' ? 'Obraz' : 
-              adType === 'VIDEO' ? 'Wideo' : 
-              adType === 'CAROUSEL' ? 'Karuzela' : 
-              adType === 'COLLECTION' ? 'Kolekcja' : adType,
-        value: spend,
-        percentage: totalSpend > 0 ? (spend / totalSpend) * 100 : 0
-      }))
-      .sort((a, b) => b.value - a.value);
-  };
-
-  // Calculate real trend data based on actual performance
-  const getTrendData = () => {
-    if (!selectedMonth || !reports[selectedMonth]) return [];
-    
-    const selectedReport = reports[selectedMonth];
-    // Create sample trend data based on campaign performance
-    return selectedReport.campaigns.slice(0, 7).map((campaign, index) => ({
-      date: new Date(Date.now() - (6 - index) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      value: campaign.spend,
-      target: campaign.spend * 1.1 // 10% above actual as target
-    }));
-  };
 
   // Calculate real trend percentages by comparing with previous month data
   const calculateTrends = () => {
@@ -696,6 +633,14 @@ function ReportsPageContent() {
                 <span className="text-blue-800 font-semibold">Dane w czasie rzeczywistym z Meta API</span>
                 <p className="text-blue-600 text-sm">Ostatnia synchronizacja: {new Date().toLocaleString('pl-PL')}</p>
                 <p className="text-blue-600 text-xs mt-1">💡 Dane miesięczne z dziennym podziałem dla dokładnych wyników</p>
+                {totals && totals.spend === 0 && (
+                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-yellow-800 text-xs">
+                      ⚠️ Brak aktywnych kampanii lub danych w wybranym okresie. 
+                      Sprawdź uprawnienia Meta API lub rozpocznij nową kampanię.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -773,93 +718,9 @@ function ReportsPageContent() {
                 />
               </div>
 
-              {/* Key Achievement Banner */}
-              <motion.div 
-                className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-8 text-white shadow-xl mb-10"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4, duration: 0.6 }}
-              >
-                <div className="flex items-center mb-4">
-                  <Trophy className="h-8 w-8 mr-3" />
-                  <h3 className="text-xl font-bold">Kluczowe Osiągnięcie</h3>
-                </div>
-                <p className="text-lg font-semibold mb-3">
-                  CTR {totals.ctr.toFixed(2)}% 
-                  <span className="ml-2 text-green-200">+{((totals.ctr - 2.5) / 2.5 * 100).toFixed(1)}% vs cel branżowy</span>
-                </p>
-                <p className="text-green-100 text-base leading-relaxed">
-                  Najlepszy wynik w ostatnich 6 miesiącach! Optymalizacja kampanii przynosi wymierne efekty.
-                </p>
-              </motion.div>
 
-              {/* Charts Section with Tabs */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50"
-              >
-                {/* Chart Navigation Tabs */}
-                <div className="flex items-center justify-between mb-6">
-                  <ChartTabs
-                    tabs={[
-                      { id: 'trends', label: 'Historia', icon: <TrendingUpIcon3 className="h-4 w-4" /> },
-                      { id: 'distribution', label: 'Według kampanii', icon: <BarChart3Icon className="h-4 w-4" /> },
-                      { id: 'adtypes', label: 'Według źródła', icon: <PieChartIcon className="h-4 w-4" /> }
-                    ]}
-                    activeTab={activeChartTab}
-                    onTabChange={setActiveChartTab}
-                  />
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={handleRefresh}
-                      className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                      title="Odśwież"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
 
-                {/* Chart Content */}
-                <div className="min-h-[400px]">
-                  {activeChartTab === 'trends' && (
-                    <AnimatedLineChart
-                      data={getTrendData()}
-                      title="Trend Wydatków"
-                      subtitle="Dzienne wydatki w czasie rzeczywistym"
-                      color="#3b82f6"
-                      targetColor="#f59e0b"
-                      height={300}
-                      showTarget={true}
-                      formatValue={(value) => `${value.toFixed(2)} zł`}
-                    />
-                  )}
 
-                  {activeChartTab === 'distribution' && (
-                    <DistributionChart
-                      data={getSpendDistribution()}
-                      title="Rozkład Wydatków"
-                      subtitle="Według kampanii"
-                      totalValue={totals.spend}
-                      formatValue={(value) => `${value.toFixed(2)} zł`}
-                      showControls={false}
-                    />
-                  )}
-
-                  {activeChartTab === 'adtypes' && (
-                    <DistributionChart
-                      data={getAdTypeDistribution()}
-                      title="Wartości według źródła"
-                      subtitle="Wydatki na różne formaty reklam"
-                      totalValue={totals.spend}
-                      formatValue={(value) => `${value.toFixed(2)} zł`}
-                      showControls={false}
-                    />
-                  )}
-                </div>
-              </motion.div>
             </>
           ) : (
             /* Enhanced Zero Data State for Executive Summary */
@@ -1090,169 +951,22 @@ function ReportsPageContent() {
           )}
         </div>
 
-        {/* Enhanced Campaigns Table */}
+        {/* Meta Ads Reporting Tables */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-8 mb-8 border border-gray-200/50">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold text-gray-900">
-              Kampanie - {formatDate(selectedReport.date_range_start)}
+              Meta Ads Reporting Tables - {formatDate(selectedReport.date_range_start)}
             </h3>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                <span>Aktywne: {selectedReport.campaigns.filter(c => c.status === 'ACTIVE').length}</span>
-              </div>
-              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                <span>Wstrzymane: {selectedReport.campaigns.filter(c => c.status === 'PAUSED').length}</span>
-              </div>
-              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                <span>Zakończone: {selectedReport.campaigns.filter(c => c.status === 'COMPLETED').length}</span>
-              </div>
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+              <span>Dane z Meta Ads API</span>
             </div>
           </div>
           
-          {selectedReport.campaigns.length > 0 ? (
-            <div className="overflow-hidden rounded-xl border border-gray-200">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Kampania
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Wydatki
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Wyświetlenia
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Kliknięcia
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        CTR
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        CPC
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Typ Reklamy
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {selectedReport.campaigns.map((campaign, index) => (
-                      <tr key={campaign.id} className="hover:bg-gray-50 transition-colors duration-200">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-blue-200 rounded-lg flex items-center justify-center mr-3">
-                              <span className="text-xs font-semibold text-blue-700">#{index + 1}</span>
-                            </div>
-                            <div>
-                              <div className="text-sm font-semibold text-gray-900">{campaign.campaign_name}</div>
-                              <div className="text-xs text-gray-500">ID: {campaign.campaign_id}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            campaign.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
-                            campaign.status === 'PAUSED' ? 'bg-yellow-100 text-yellow-800' :
-                            campaign.status === 'COMPLETED' ? 'bg-gray-100 text-gray-800' :
-                            'bg-blue-100 text-blue-800'
-                          }`}>
-                            {campaign.status === 'ACTIVE' ? 'Aktywna' :
-                             campaign.status === 'PAUSED' ? 'Wstrzymana' :
-                             campaign.status === 'COMPLETED' ? 'Zakończona' : 'Szkic'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-gray-900">{campaign.spend.toFixed(2)} zł</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{campaign.impressions.toLocaleString()}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{campaign.clicks.toLocaleString()}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-semibold text-gray-900">{campaign.ctr.toFixed(2)}%</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{campaign.cpc.toFixed(2)} zł</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-2">
-                            {campaign.ad_type === 'VIDEO' ? (
-                              <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center">
-                                <Video className="h-3 w-3 text-red-600" />
-                              </div>
-                            ) : campaign.ad_type === 'CAROUSEL' ? (
-                              <div className="w-6 h-6 bg-purple-100 rounded flex items-center justify-center">
-                                <BarChart className="h-3 w-3 text-purple-600" />
-                              </div>
-                            ) : (
-                              <div className="w-6 h-6 bg-blue-100 rounded flex items-center justify-center">
-                                <Image className="h-3 w-3 text-blue-600" />
-                              </div>
-                            )}
-                            <span className="text-xs text-gray-600">
-                              {campaign.ad_type === 'VIDEO' ? 'Video' :
-                               campaign.ad_type === 'CAROUSEL' ? 'Carousel' : 'Image'}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            /* Enhanced Empty State for Campaigns */
-            <div className="text-center py-16">
-              <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <Play className="h-12 w-12 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                Brak kampanii w tym miesiącu
-              </h3>
-              <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                Nie znaleziono aktywnych kampanii w wybranym okresie. 
-                Rozpocznij swoją pierwszą kampanię, aby zobaczyć wyniki tutaj!
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200">
-                  <div className="w-8 h-8 bg-blue-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                    <Target className="h-4 w-4 text-white" />
-                  </div>
-                  <p className="text-sm font-medium text-blue-900">Ustaw cele</p>
-                </div>
-                <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200">
-                  <div className="w-8 h-8 bg-green-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                    <TrendingUp className="h-4 w-4 text-white" />
-                  </div>
-                  <p className="text-sm font-medium text-green-900">Optymalizuj</p>
-                </div>
-                <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
-                  <div className="w-8 h-8 bg-purple-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                    <BarChart3 className="h-4 w-4 text-white" />
-                  </div>
-                  <p className="text-sm font-medium text-purple-900">Analizuj</p>
-                </div>
-              </div>
-              <button
-                onClick={handleRefresh}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
-              >
-                Odśwież dane
-              </button>
-            </div>
-          )}
+          <MetaAdsTables 
+            dateStart={selectedReport.date_range_start}
+            dateEnd={selectedReport.date_range_end}
+          />
         </div>
 
         {/* Footer */}
