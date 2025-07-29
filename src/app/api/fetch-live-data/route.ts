@@ -103,11 +103,37 @@ export async function POST(request: NextRequest) {
 
     // Parse request body for date range (optional)
     const { dateRange } = await request.json();
-    // Use a more reasonable date range - last 30 days by default
-    const defaultEndDate = new Date().toISOString().split('T')[0];
-    const defaultStartDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const startDate = dateRange?.start || defaultStartDate; 
-    const endDate = dateRange?.end || defaultEndDate;
+    
+    // Use a more flexible date range strategy
+    let startDate, endDate;
+    let isMonthlyRequest = false;
+    
+    if (dateRange?.start && dateRange?.end) {
+      // If specific date range is provided, use it
+      startDate = dateRange.start;
+      endDate = dateRange.end;
+      
+      // Check if this is a monthly request (25-35 days)
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+      
+      if (daysDiff >= 25 && daysDiff <= 35) {
+        isMonthlyRequest = true;
+        console.log(`📅 Detected monthly request: ${startDate} to ${endDate} (${daysDiff} days)`);
+      } else if (daysDiff < 90) {
+        // For shorter periods, extend the range to get more data
+        const extendedStart = new Date(start);
+        extendedStart.setMonth(extendedStart.getMonth() - 3); // Go back 3 months
+        startDate = extendedStart.toISOString().split('T')[0];
+        console.log(`📅 Extended date range from ${dateRange.start} to ${startDate} to get more data`);
+      }
+    } else {
+      // Default to last 90 days to ensure we get data
+      endDate = new Date().toISOString().split('T')[0];
+      const defaultStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      startDate = defaultStart.toISOString().split('T')[0];
+    }
 
     console.log('📅 Date range for API call:', { startDate, endDate });
 
@@ -159,11 +185,23 @@ export async function POST(request: NextRequest) {
     let metaApiError: string | null = null;
     
     try {
-      campaignInsights = await metaService.getCampaignInsights(
-        adAccountId,
-        startDate,
-        endDate
-      );
+      // Use monthly insights method only for true monthly requests
+      if (isMonthlyRequest) {
+        console.log('📅 Using monthly insights method with daily breakdown...');
+        const startDateObj = new Date(startDate);
+        campaignInsights = await metaService.getMonthlyCampaignInsights(
+          adAccountId,
+          startDateObj.getFullYear(),
+          startDateObj.getMonth() + 1
+        );
+      } else {
+        console.log('📅 Using standard campaign insights method...');
+        campaignInsights = await metaService.getCampaignInsights(
+          adAccountId,
+          startDate,
+          endDate
+        );
+      }
 
       console.log('📊 Campaign insights result:', {
         count: campaignInsights.length,

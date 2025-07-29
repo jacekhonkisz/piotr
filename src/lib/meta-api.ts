@@ -372,7 +372,8 @@ export class MetaAPIService {
   async getCampaignInsights(
     adAccountId: string,
     dateStart: string,
-    dateEnd: string
+    dateEnd: string,
+    timeIncrement: number = 0
   ): Promise<CampaignInsights[]> {
     try {
       const fields = [
@@ -387,6 +388,8 @@ export class MetaAPIService {
         'cpp',
         'frequency',
         'reach',
+        'date_start',
+        'date_stop',
       ].join(',');
 
       const params = new URLSearchParams({
@@ -399,6 +402,11 @@ export class MetaAPIService {
         level: 'campaign',
         limit: '100',
       });
+
+      // Add time_increment if specified (1 for daily, 7 for weekly, 30 for monthly)
+      if (timeIncrement > 0) {
+        params.append('time_increment', timeIncrement.toString());
+      }
 
       // Ensure we have the act_ prefix for the API call
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
@@ -459,6 +467,66 @@ export class MetaAPIService {
         dateRange: { dateStart, dateEnd }
       });
       throw error; // Re-throw the error instead of returning empty array
+    }
+  }
+
+  /**
+   * Get monthly campaign insights with daily breakdown
+   */
+  async getMonthlyCampaignInsights(
+    adAccountId: string,
+    year: number,
+    month: number
+  ): Promise<CampaignInsights[]> {
+    try {
+      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      
+      console.log(`📅 Fetching monthly insights for ${year}-${month.toString().padStart(2, '0')} (${startDate} to ${endDate})`);
+      
+      // Use time_increment=1 to get daily breakdown
+      const insights = await this.getCampaignInsights(adAccountId, startDate, endDate, 1);
+      
+      // Group by campaign and aggregate daily data
+      const campaignMap = new Map<string, CampaignInsights>();
+      
+      insights.forEach(insight => {
+        const campaignId = insight.campaign_id;
+        
+        if (!campaignMap.has(campaignId)) {
+          campaignMap.set(campaignId, {
+            campaign_id: campaignId,
+            campaign_name: insight.campaign_name,
+            impressions: 0,
+            clicks: 0,
+            spend: 0,
+            conversions: 0,
+            ctr: 0,
+            cpc: 0,
+            date_start: startDate,
+            date_stop: endDate,
+          });
+        }
+        
+        const campaign = campaignMap.get(campaignId)!;
+        campaign.impressions += insight.impressions;
+        campaign.clicks += insight.clicks;
+        campaign.spend += insight.spend;
+        campaign.conversions += insight.conversions;
+      });
+      
+      // Calculate aggregated metrics
+      const aggregatedInsights = Array.from(campaignMap.values()).map(campaign => ({
+        ...campaign,
+        ctr: campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0,
+        cpc: campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0,
+      }));
+      
+      console.log(`✅ Aggregated ${aggregatedInsights.length} campaigns for ${year}-${month.toString().padStart(2, '0')}`);
+      return aggregatedInsights;
+    } catch (error) {
+      console.error('💥 Error fetching monthly campaign insights:', error);
+      throw error;
     }
   }
 

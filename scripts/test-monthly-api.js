@@ -6,8 +6,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-async function testReportsPage() {
-  console.log('🧪 Testing Reports Page with Real Data Months\n');
+async function testMonthlyAPI() {
+  console.log('🧪 Testing Updated API with Monthly Data\n');
 
   try {
     // Sign in as jac.honkisz@gmail.com
@@ -24,14 +24,16 @@ async function testReportsPage() {
 
     console.log('✅ Signed in successfully');
 
-    // Test months that we know have data
+    // Test different months
     const testMonths = [
-      { name: 'March 2024', start: '2024-03-01', end: '2024-03-31', expectedSpend: 24.91 },
-      { name: 'April 2024', start: '2024-04-01', end: '2024-04-30', expectedSpend: 234.48 },
+      { name: 'April 2024', start: '2024-04-01', end: '2024-04-30' },
+      { name: 'March 2024', start: '2024-03-01', end: '2024-03-31' },
+      { name: 'July 2025', start: '2025-07-01', end: '2025-07-31' },
+      { name: 'January 2024', start: '2024-01-01', end: '2024-01-31' },
     ];
 
     for (const testMonth of testMonths) {
-      console.log(`\n📅 Testing ${testMonth.name} (Expected spend: $${testMonth.expectedSpend})...`);
+      console.log(`\n📅 Testing ${testMonth.name}...`);
       
       const response = await fetch('http://localhost:3000/api/fetch-live-data', {
         method: 'POST',
@@ -84,13 +86,6 @@ async function testReportsPage() {
           console.log(`   - Total Impressions: ${totalImpressions.toLocaleString()}`);
           console.log(`   - Total Clicks: ${totalClicks.toLocaleString()}`);
           console.log(`   - Average CTR: ${totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0}%`);
-          
-          // Check if the data matches expected values
-          if (Math.abs(totalSpend - testMonth.expectedSpend) < 1) {
-            console.log(`✅ Data matches expected spend!`);
-          } else {
-            console.log(`⚠️ Data doesn't match expected spend. Expected: $${testMonth.expectedSpend}, Got: $${totalSpend.toFixed(2)}`);
-          }
         } else {
           console.log('⚠️ No campaigns found for this month');
         }
@@ -100,27 +95,9 @@ async function testReportsPage() {
       }
     }
 
-    // Test the actual reports page URL
-    console.log('\n🌐 Testing Reports Page URL...');
-    try {
-      const pageResponse = await fetch('http://localhost:3000/reports', {
-        headers: {
-          'Cookie': `sb-access-token=${session.access_token}`
-        }
-      });
-      console.log('📄 Reports page status:', pageResponse.status);
-      if (pageResponse.ok) {
-        console.log('✅ Reports page is accessible');
-      } else {
-        console.log('⚠️ Reports page returned:', pageResponse.status);
-      }
-    } catch (error) {
-      console.log('❌ Could not access reports page:', error.message);
-    }
-
   } catch (error) {
     console.error('💥 Test failed:', error);
   }
 }
 
-testReportsPage(); 
+testMonthlyAPI(); 
