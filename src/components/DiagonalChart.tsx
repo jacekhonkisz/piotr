@@ -71,19 +71,19 @@ export default function DiagonalChart({
       ref={ref}
       initial={{ scale: 0.95, opacity: 0, y: 20 }}
       animate={controls}
-      className="relative bg-white rounded-2xl p-6 shadow-lg border border-gray-100 overflow-hidden group hover:shadow-xl transition-all duration-500 hover:scale-[1.02] flex flex-col"
-      style={{ minHeight: '420px' }} // Increased height for bigger charts
+      className="relative bg-white/95 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-white/20 overflow-hidden group hover:shadow-3xl transition-all duration-500 hover:scale-[1.02] flex flex-col"
+      style={{ minHeight: '450px' }} // Increased height for bigger charts
     >
       {/* Icon in corner - moved to top */}
       {icon && (
         <motion.div
-          className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center opacity-80 shadow-sm"
-          style={{ backgroundColor: `${color}15` }} // Lighter background
+          className="absolute top-6 right-6 w-12 h-12 rounded-2xl flex items-center justify-center opacity-90 shadow-lg"
+          style={{ backgroundColor: `${color}20` }} // Lighter background
           initial={{ scale: 0, rotate: -180 }}
           animate={isVisible ? { scale: 1, rotate: 0 } : {}}
           transition={{ delay: delay * 0.1 + 0.3, duration: 0.6, ease: "backOut" }}
         >
-          <div style={{ color: color }}>
+          <div style={{ color: color }} className="drop-shadow-sm">
             {icon}
           </div>
         </motion.div>

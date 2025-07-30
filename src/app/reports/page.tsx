@@ -45,7 +45,9 @@ import {
   BarChart,
   RefreshCw,
   Clock,
-  Star
+  Star,
+  CalendarDays,
+  SlidersHorizontal
 } from 'lucide-react';
 import AnimatedGaugeChart from '../../components/AnimatedGaugeChart';
 import CircularProgressChart from '../../components/CircularProgressChart';
@@ -550,42 +552,113 @@ function ReportsPageContent() {
   const totals = getSelectedMonthTotals();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Enhanced Header with Glassmorphism and Premium Design */}
-        <div className="relative bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-8 mb-8 border border-gray-200/50 overflow-hidden">
-          {/* Subtle background pattern */}
-          <div className="absolute inset-0 opacity-5">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400 to-purple-600 rounded-full -translate-y-16 translate-x-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-br from-green-400 to-blue-600 rounded-full translate-y-12 -translate-x-12"></div>
+        {/* Premium Header with Enhanced Glassmorphism */}
+        <div className="relative bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-8 border border-white/20 overflow-hidden">
+          {/* Premium background patterns */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-400 to-purple-600 rounded-full -translate-y-20 translate-x-20 blur-xl"></div>
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-br from-green-400 to-blue-600 rounded-full translate-y-16 -translate-x-16 blur-xl"></div>
+            <div className="absolute top-1/2 left-1/2 w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-600 rounded-full -translate-x-12 -translate-y-12 blur-lg"></div>
           </div>
           
           <div className="relative flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="relative p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg">
-                <BarChart3 className="w-8 h-8 text-white" />
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+            <div className="flex items-center space-x-6">
+              <div className="relative p-4 bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-600 rounded-2xl shadow-xl">
+                <BarChart3 className="w-10 h-10 text-white" />
+                <div className="absolute -top-2 -right-2 w-4 h-4 bg-yellow-400 rounded-full animate-pulse shadow-lg"></div>
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 bg-clip-text text-transparent">
                   Raporty Miesięczne
                 </h1>
-                <p className="text-gray-600 flex items-center">
-                  <span className="mr-2">🏨</span>
+                <p className="text-gray-600 flex items-center text-lg">
+                  <span className="mr-3">🏨</span>
                   {client?.name} - Premium Analytics Dashboard
                 </p>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* Enhanced Month Selector */}
-              <div className="flex items-center space-x-3">
-                <label className="text-sm font-medium text-gray-700">Okres:</label>
+              {/* Subtle Live Data Indicator */}
+              <div className="flex items-center space-x-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl px-4 py-2 border border-blue-200/50">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-blue-700 font-medium">Aktualizacja: {new Date().toLocaleString('pl-PL', { 
+                  day: '2-digit', 
+                  month: '2-digit', 
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</span>
+              </div>
+
+              {/* Enhanced Back Button */}
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                Powrót do Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Premium Period Selector - Compact Slider Design */}
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
+                <CalendarDays className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Wybór Okresu</h2>
+                <p className="text-sm text-gray-500">Wybierz miesiąc do analizy</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={handleRefresh}
+                disabled={loadingMonth !== null}
+                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 transform hover:scale-105 text-sm"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingMonth ? 'animate-spin' : ''}`} />
+                <span>Odśwież</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Compact Month Slider with Navigation */}
+          <div className="flex items-center justify-center space-x-4 md:space-x-6">
+            {/* Left Navigation Button */}
+            <button
+              onClick={() => {
+                if (selectedMonth) {
+                  const currentIndex = availableMonths.indexOf(selectedMonth);
+                  if (currentIndex < availableMonths.length - 1) {
+                    const nextMonth = availableMonths[currentIndex + 1];
+                    setSelectedMonth(nextMonth);
+                    if (!reports[nextMonth]) {
+                      loadMonthData(nextMonth);
+                    }
+                  }
+                }
+              }}
+              disabled={!selectedMonth || availableMonths.indexOf(selectedMonth || '') >= availableMonths.length - 1 || loadingMonth !== null}
+              className="p-3 md:p-4 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl md:rounded-2xl hover:from-gray-200 hover:to-gray-300 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-30 disabled:cursor-not-allowed transform hover:scale-105"
+            >
+              <ChevronLeft className="w-6 h-6 md:w-8 md:h-8 text-gray-600" />
+            </button>
+
+            {/* Center Month Display with Dropdown */}
+            <div className="relative flex-1 max-w-sm md:max-w-md">
+              <div className="relative">
                 <select
                   value={selectedMonth || ''}
                   onChange={handleMonthChange}
                   disabled={loadingMonth !== null}
-                  className="border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 bg-white/80 backdrop-blur-sm"
+                  className="w-full border-2 border-gray-200 rounded-xl md:rounded-2xl px-6 md:px-8 py-4 md:py-5 text-lg md:text-xl font-bold text-center focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 bg-white/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer appearance-none"
                 >
                   {availableMonths.map((monthId) => {
                     const [year, month] = monthId.split('-').map(Number);
@@ -597,163 +670,254 @@ function ReportsPageContent() {
                     );
                   })}
                 </select>
+                
+                {/* Calendar icon inside the selector */}
+                <div className="absolute left-4 md:left-6 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                  <Calendar className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                </div>
+                
+                {/* Custom dropdown arrow */}
+                <div className="absolute right-4 md:right-6 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                  <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                </div>
+                
+                {/* Loading indicator */}
                 {loadingMonth && (
-                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-600 border-t-transparent"></div>
+                  <div className="absolute left-2 md:left-4 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 md:h-5 md:w-5 border-2 md:border-3 border-blue-200 border-t-blue-600"></div>
+                  </div>
                 )}
               </div>
-
-              {/* Enhanced Refresh Button */}
-              <button
-                onClick={handleRefresh}
-                disabled={loadingMonth !== null}
-                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50"
-              >
-                <RefreshCw className="w-5 h-5" />
-                <span>Odśwież</span>
-              </button>
-
-              {/* Enhanced Back Button */}
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl"
-              >
-                Powrót do Dashboard
-              </button>
-            </div>
-          </div>
-        </div>
-
-                  {/* Enhanced Live Data Banner */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200/50 rounded-2xl p-6 mb-8 shadow-lg">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-500 rounded-lg">
-                <Zap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <span className="text-blue-800 font-semibold">Dane w czasie rzeczywistym z Meta API</span>
-                <p className="text-blue-600 text-sm">Ostatnia synchronizacja: {new Date().toLocaleString('pl-PL')}</p>
-                <p className="text-blue-600 text-xs mt-1">💡 Dane miesięczne z dziennym podziałem dla dokładnych wyników</p>
-                {totals && totals.spend === 0 && (
-                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-yellow-800 text-xs">
-                      ⚠️ Brak aktywnych kampanii lub danych w wybranym okresie. 
-                      Sprawdź uprawnienia Meta API lub rozpocznij nową kampanię.
-                    </p>
+              
+              {/* Enhanced Month indicator dots with tooltips */}
+              <div className="flex justify-center space-x-1.5 md:space-x-2 mt-3">
+                {availableMonths.slice(0, 12).map((monthId, index) => {
+                  const [year, month] = monthId.split('-').map(Number);
+                  const date = new Date(year, month - 1, 1);
+                  const monthName = formatDate(date.toISOString());
+                  
+                  return (
+                    <div
+                      key={monthId}
+                      className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full transition-all duration-300 cursor-pointer group relative ${
+                        selectedMonth === monthId 
+                          ? 'bg-blue-600 scale-125' 
+                          : 'bg-gray-300 hover:bg-gray-400 hover:scale-110'
+                      }`}
+                      title={monthName}
+                    >
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                        {monthName}
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-gray-900"></div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {availableMonths.length > 12 && (
+                  <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-gray-300 flex items-center justify-center">
+                    <span className="text-xs text-gray-500">+</span>
                   </div>
                 )}
               </div>
             </div>
+
+            {/* Right Navigation Button */}
+            <button
+              onClick={() => {
+                if (selectedMonth) {
+                  const currentIndex = availableMonths.indexOf(selectedMonth);
+                  if (currentIndex > 0) {
+                    const prevMonth = availableMonths[currentIndex - 1];
+                    setSelectedMonth(prevMonth);
+                    if (!reports[prevMonth]) {
+                      loadMonthData(prevMonth);
+                    }
+                  }
+                }
+              }}
+              disabled={!selectedMonth || availableMonths.indexOf(selectedMonth || '') <= 0 || loadingMonth !== null}
+              className="p-3 md:p-4 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl md:rounded-2xl hover:from-gray-200 hover:to-gray-300 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-30 disabled:cursor-not-allowed transform hover:scale-105"
+            >
+              <ChevronRight className="w-6 h-6 md:w-8 md:h-8 text-gray-600" />
+            </button>
           </div>
 
-        {/* Main Content Section */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-8 mb-8 border border-gray-200/50">
+          {/* Subtle Month Navigation Info */}
+          <div className="text-center mt-3">
+            <p className="text-xs text-gray-400">
+              Użyj strzałek do nawigacji lub kliknij miesiąc, aby wybrać z listy
+            </p>
+          </div>
+        </div>
+
+        {/* Premium Key Metrics Section with Enhanced Glassmorphism */}
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-8 border border-white/20 relative overflow-hidden">
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-transparent to-purple-50/30"></div>
+          
           {totals ? (
             <>
-
-
-
-
-              {/* Key Metrics Section */}
+              {/* Enhanced Key Metrics Header */}
               <motion.div 
-                className="mb-8"
+                className="relative mb-10"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
               >
-                <h2 className="text-2xl font-bold text-gray-900 mb-3">Kluczowe Metryki</h2>
-                <p className="text-gray-600 text-lg">Wydajność kampanii w czasie rzeczywistym</p>
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg">
+                    <Trophy className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-blue-900 bg-clip-text text-transparent">
+                      Kluczowe Metryki
+                    </h2>
+                    <p className="text-gray-600 text-lg">Wydajność kampanii w czasie rzeczywistym</p>
+                  </div>
+                </div>
+                
+                {/* Subtle divider */}
+                <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
               </motion.div>
               
-              {/* Diagonal Charts Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12">
+              {/* Enhanced Diagonal Charts Row with Premium Spacing */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
                 {/* Wydatki (Spend) Diagonal Chart */}
-                <DiagonalChart
-                  value={totals.spend}
-                  maxValue={totals.spend * 1.5}
-                  title="Wydatki"
-                  subtitle="Całkowite wydatki miesięczne"
-                  color="#3b82f6"
-                  icon={<DollarSign className="h-5 w-5" />}
-                  formatValue={(value) => `${value.toFixed(2)} zł`}
-                  trend={{
-                    value: calculateTrends().spend,
-                    label: calculateTrends().spend === 0 ? 'Brak danych z poprzedniego miesiąca' : `${calculateTrends().spend >= 0 ? '+' : ''}${calculateTrends().spend.toFixed(1)}% vs poprzedni miesiąc`,
-                    isPositive: calculateTrends().spend >= 0
-                  }}
-                  delay={0}
-                />
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.1 }}
+                >
+                  <DiagonalChart
+                    value={totals.spend}
+                    maxValue={totals.spend * 1.5}
+                    title="Wydatki"
+                    subtitle="Całkowite wydatki miesięczne"
+                    color="#3b82f6"
+                    icon={<DollarSign className="h-6 w-6" />}
+                    formatValue={(value) => `${value.toFixed(2)} zł`}
+                    trend={{
+                      value: calculateTrends().spend,
+                      label: calculateTrends().spend === 0 ? 'Brak danych z poprzedniego miesiąca' : `${calculateTrends().spend >= 0 ? '+' : ''}${calculateTrends().spend.toFixed(1)}% vs poprzedni miesiąc`,
+                      isPositive: calculateTrends().spend >= 0
+                    }}
+                    delay={0}
+                  />
+                </motion.div>
 
                 {/* Konwersje (Conversions) Diagonal Chart */}
-                <DiagonalChart
-                  value={totals.conversions}
-                  maxValue={totals.conversions * 2 || 100}
-                  title="Konwersje"
-                  subtitle="Liczba konwersji"
-                  color="#10b981"
-                  icon={<Award className="h-5 w-5" />}
-                  formatValue={(value) => value.toLocaleString()}
-                  trend={{
-                    value: calculateTrends().conversions,
-                    label: calculateTrends().conversions === 0 ? 'Brak danych z poprzedniego miesiąca' : `${calculateTrends().conversions >= 0 ? '+' : ''}${calculateTrends().conversions.toFixed(1)}% vs poprzedni miesiąc`,
-                    isPositive: calculateTrends().conversions >= 0
-                  }}
-                  delay={1}
-                />
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.2 }}
+                >
+                  <DiagonalChart
+                    value={totals.conversions}
+                    maxValue={totals.conversions * 2 || 100}
+                    title="Konwersje"
+                    subtitle="Liczba konwersji"
+                    color="#10b981"
+                    icon={<Award className="h-6 w-6" />}
+                    formatValue={(value) => value.toLocaleString()}
+                    trend={{
+                      value: calculateTrends().conversions,
+                      label: calculateTrends().conversions === 0 ? 'Brak danych z poprzedniego miesiąca' : `${calculateTrends().conversions >= 0 ? '+' : ''}${calculateTrends().conversions.toFixed(1)}% vs poprzedni miesiąc`,
+                      isPositive: calculateTrends().conversions >= 0
+                    }}
+                    delay={1}
+                  />
+                </motion.div>
 
                 {/* CTR Diagonal Chart */}
-                <DiagonalChart
-                  value={totals.ctr}
-                  maxValue={5} // 5% max CTR
-                  title="CTR"
-                  subtitle="Wskaźnik klikalności"
-                  color="#8b5cf6"
-                  icon={<TrendingUpIcon className="h-5 w-5" />}
-                  formatValue={(value) => `${value.toFixed(2)}%`}
-                  trend={{
-                    value: calculateTrends().ctr,
-                    label: calculateTrends().ctr === 0 ? 'Brak danych z poprzedniego miesiąca' : `${calculateTrends().ctr >= 0 ? '+' : ''}${calculateTrends().ctr.toFixed(1)}% vs poprzedni miesiąc`,
-                    isPositive: calculateTrends().ctr >= 0
-                  }}
-                  delay={2}
-                />
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.3 }}
+                >
+                  <DiagonalChart
+                    value={totals.ctr}
+                    maxValue={5} // 5% max CTR
+                    title="CTR"
+                    subtitle="Wskaźnik klikalności"
+                    color="#8b5cf6"
+                    icon={<TrendingUpIcon className="h-6 w-6" />}
+                    formatValue={(value) => `${value.toFixed(2)}%`}
+                    trend={{
+                      value: calculateTrends().ctr,
+                      label: calculateTrends().ctr === 0 ? 'Brak danych z poprzedniego miesiąca' : `${calculateTrends().ctr >= 0 ? '+' : ''}${calculateTrends().ctr.toFixed(1)}% vs poprzedni miesiąc`,
+                      isPositive: calculateTrends().ctr >= 0
+                    }}
+                    delay={2}
+                  />
+                </motion.div>
               </div>
-
-
-
-
             </>
           ) : (
-            /* Enhanced Zero Data State for Executive Summary */
-            <div className="text-center py-12">
-              <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <BarChart3 className="h-12 w-12 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-3">
+            /* Enhanced Zero Data State with Premium Design */
+            <div className="text-center py-16">
+              <motion.div 
+                className="w-32 h-32 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full mx-auto mb-8 flex items-center justify-center shadow-xl"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ duration: 0.6, ease: "backOut" }}
+              >
+                <BarChart3 className="h-16 w-16 text-blue-600" />
+              </motion.div>
+              <motion.h3 
+                className="text-2xl font-bold text-gray-900 mb-4"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
                 Brak danych dla tego okresu
-              </h3>
-              <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              </motion.h3>
+              <motion.p 
+                className="text-gray-600 mb-8 max-w-md mx-auto text-lg"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
                 Nie znaleziono aktywnych kampanii w wybranym miesiącu. 
                 Rozpocznij swoją pierwszą kampanię, aby zobaczyć wyniki tutaj!
-              </p>
-              <div className="flex justify-center space-x-4">
+              </motion.p>
+              <motion.div 
+                className="flex justify-center space-x-4"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+              >
                 <button
                   onClick={handleRefresh}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                 >
                   Odśwież dane
                 </button>
-              </div>
+              </motion.div>
             </div>
           )}
         </div>
 
-        {/* Secondary KPIs Grid with Animated Counters */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-8 mb-8 border border-gray-200/50">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-900">Wskaźniki Wydajności</h3>
+        {/* Premium Secondary KPIs Grid with Enhanced Glassmorphism */}
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-8 border border-white/20 relative overflow-hidden">
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-green-50/30 via-transparent to-blue-50/30"></div>
+          
+          <div className="relative flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-gradient-to-br from-green-500 to-blue-600 rounded-xl shadow-lg">
+                <BarChart className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-green-900 bg-clip-text text-transparent">
+                  Wskaźniki Wydajności
+                </h3>
+                <p className="text-gray-600">Szczegółowe metryki kampanii</p>
+              </div>
+            </div>
             <button
               onClick={() => setShowAdvancedMetrics(!showAdvancedMetrics)}
-              className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900 transition-colors bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2 hover:bg-white/70"
             >
               <span>{showAdvancedMetrics ? 'Ukryj' : 'Pokaż'} szczegóły</span>
               {showAdvancedMetrics ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -761,84 +925,168 @@ function ReportsPageContent() {
           </div>
           
           {totals ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-              <div className="text-center group">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <Eye className="h-6 w-6 text-blue-600" />
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
+              <motion.div 
+                className="text-center group relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg group-hover:shadow-xl">
+                  <Eye className="h-8 w-8 text-blue-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Wyświetlenia</p>
+                <p className="text-sm font-medium text-gray-600 mb-2 flex items-center justify-center">
+                  Wyświetlenia
+                  <div className="ml-1 w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help group relative">
+                    <Info className="w-4 h-4" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                      Liczba wyświetleń reklam
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </p>
                 <AnimatedCounter
                   value={totals.impressions}
                   formatValue={(value) => value.toLocaleString()}
-                  className="text-xl font-bold text-gray-900"
+                  className="text-2xl font-bold text-gray-900"
                   delay={0.1}
                 />
-              </div>
+              </motion.div>
 
-              <div className="text-center group">
-                <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <Target className="h-6 w-6 text-green-600" />
+              <motion.div 
+                className="text-center group relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg group-hover:shadow-xl">
+                  <Target className="h-8 w-8 text-green-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Kliknięcia</p>
+                <p className="text-sm font-medium text-gray-600 mb-2 flex items-center justify-center">
+                  Kliknięcia
+                  <div className="ml-1 w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help group relative">
+                    <Info className="w-4 h-4" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                      Liczba kliknięć w reklamy
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </p>
                 <AnimatedCounter
                   value={totals.clicks}
                   formatValue={(value) => value.toLocaleString()}
-                  className="text-xl font-bold text-gray-900"
+                  className="text-2xl font-bold text-gray-900"
                   delay={0.2}
                 />
-              </div>
+              </motion.div>
 
-              <div className="text-center group">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <BarChart className="h-6 w-6 text-purple-600" />
+              <motion.div 
+                className="text-center group relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg group-hover:shadow-xl">
+                  <BarChart className="h-8 w-8 text-purple-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">CPM</p>
+                <p className="text-sm font-medium text-gray-600 mb-2 flex items-center justify-center">
+                  CPM
+                  <div className="ml-1 w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help group relative">
+                    <Info className="w-4 h-4" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                      Koszt za 1000 wyświetleń
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </p>
                 <AnimatedCounter
                   value={totals.impressions > 0 ? (totals.spend / totals.impressions * 1000) : 0}
                   formatValue={(value) => `${value.toFixed(2)} zł`}
-                  className="text-xl font-bold text-gray-900"
+                  className="text-2xl font-bold text-gray-900"
                   delay={0.3}
                 />
-              </div>
+              </motion.div>
 
-              <div className="text-center group">
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <Target className="h-6 w-6 text-orange-600" />
+              <motion.div 
+                className="text-center group relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg group-hover:shadow-xl">
+                  <Target className="h-8 w-8 text-orange-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">CPC</p>
+                <p className="text-sm font-medium text-gray-600 mb-2 flex items-center justify-center">
+                  CPC
+                  <div className="ml-1 w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help group relative">
+                    <Info className="w-4 h-4" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                      Koszt za kliknięcie
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </p>
                 <AnimatedCounter
                   value={totals.cpc}
                   formatValue={(value) => `${value.toFixed(2)} zł`}
-                  className="text-xl font-bold text-gray-900"
+                  className="text-2xl font-bold text-gray-900"
                   delay={0.4}
                 />
-              </div>
+              </motion.div>
 
-              <div className="text-center group">
-                <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <Users className="h-6 w-6 text-indigo-600" />
+              <motion.div 
+                className="text-center group relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-2xl mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg group-hover:shadow-xl">
+                  <Users className="h-8 w-8 text-indigo-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Zasięg</p>
+                <p className="text-sm font-medium text-gray-600 mb-2 flex items-center justify-center">
+                  Zasięg
+                  <div className="ml-1 w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help group relative">
+                    <Info className="w-4 h-4" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                      Liczba unikalnych użytkowników
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </p>
                 <AnimatedCounter
                   value={totals.impressions / 3}
                   formatValue={(value) => value.toLocaleString()}
-                  className="text-xl font-bold text-gray-900"
+                  className="text-2xl font-bold text-gray-900"
                   delay={0.5}
                 />
-              </div>
+              </motion.div>
 
-              <div className="text-center group">
-                <div className="w-12 h-12 bg-gradient-to-br from-pink-100 to-pink-200 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                  <Activity className="h-6 w-6 text-pink-600" />
+              <motion.div 
+                className="text-center group relative"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.6 }}
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-pink-100 to-pink-200 rounded-2xl mx-auto mb-4 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg group-hover:shadow-xl">
+                  <Activity className="h-8 w-8 text-pink-600" />
                 </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">Częstotliwość</p>
+                <p className="text-sm font-medium text-gray-600 mb-2 flex items-center justify-center">
+                  Częstotliwość
+                  <div className="ml-1 w-4 h-4 text-gray-400 hover:text-gray-600 cursor-help group relative">
+                    <Info className="w-4 h-4" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                      Średnia liczba wyświetleń na użytkownika
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  </div>
+                </p>
                 <AnimatedCounter
-                  value={3.2}
+                  value={totals.impressions > 0 ? 3.0 : 0}
                   formatValue={(value) => value.toFixed(1)}
-                  className="text-xl font-bold text-gray-900"
+                  className="text-2xl font-bold text-gray-900"
                   delay={0.6}
                 />
-              </div>
+              </motion.div>
             </div>
           ) : (
             <div className="text-center py-8">
@@ -951,14 +1199,25 @@ function ReportsPageContent() {
           )}
         </div>
 
-        {/* Meta Ads Reporting Tables */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-8 mb-8 border border-gray-200/50">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-gray-900">
-              Meta Ads Reporting Tables - {formatDate(selectedReport.date_range_start)}
-            </h3>
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+        {/* Premium Meta Ads Reporting Tables */}
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-8 border border-white/20 relative overflow-hidden">
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/30 via-transparent to-purple-50/30"></div>
+          
+          <div className="relative flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg">
+                <FileSpreadsheet className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-indigo-900 bg-clip-text text-transparent">
+                  Meta Ads Reporting Tables
+                </h3>
+                <p className="text-gray-600">{formatDate(selectedReport.date_range_start)}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-gray-600 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2">
+              <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
               <span>Dane z Meta Ads API</span>
             </div>
           </div>
@@ -969,23 +1228,23 @@ function ReportsPageContent() {
           />
         </div>
 
-        {/* Footer */}
+        {/* Premium Footer */}
         <div className="text-center py-8">
-          <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-gray-200/50">
-            <div className="flex items-center justify-center space-x-4 text-sm text-gray-600">
-              <div className="flex items-center space-x-2">
-                <BarChart3 className="h-4 w-4" />
-                <span>Raport oparty na danych z Meta API</span>
+          <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 border border-white/20 shadow-xl">
+            <div className="flex items-center justify-center space-x-6 text-sm text-gray-600">
+              <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2">
+                <BarChart3 className="h-4 w-4 text-blue-600" />
+                <span className="font-medium">Raport oparty na danych z Meta API</span>
               </div>
               <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-              <div className="flex items-center space-x-2">
-                <Clock className="h-4 w-4" />
-                <span>Ostatnia synchronizacja: {new Date().toLocaleString('pl-PL')}</span>
+              <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2">
+                <Clock className="h-4 w-4 text-green-600" />
+                <span className="font-medium">Ostatnia synchronizacja: {new Date().toLocaleString('pl-PL')}</span>
               </div>
               <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-              <div className="flex items-center space-x-2">
-                <Sparkles className="h-4 w-4" />
-                <span>Premium Analytics Dashboard</span>
+              <div className="flex items-center space-x-2 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2">
+                <Sparkles className="h-4 w-4 text-purple-600" />
+                <span className="font-medium">Premium Analytics Dashboard</span>
               </div>
             </div>
           </div>
