@@ -18,7 +18,9 @@ import {
   Mail,
   Clock,
   AlertCircle,
-  LogOut
+  LogOut,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -69,6 +71,7 @@ export default function DashboardPage() {
   const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dashboardInitialized, setDashboardInitialized] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const { user, profile, authLoading, signOut } = useAuth();
   const router = useRouter();
 
@@ -448,6 +451,280 @@ export default function DashboardPage() {
     return lastUpdated.toLocaleDateString();
   };
 
+  // State for current month data
+  const [currentMonthData, setCurrentMonthData] = useState<{
+    campaigns: any[];
+    stats: {
+      totalSpend: number;
+      totalImpressions: number;
+      totalClicks: number;
+      totalConversions: number;
+      averageCtr: number;
+      averageCpc: number;
+      roas: number;
+      campaignCount: number;
+    } | null;
+    currency: string;
+  }>({ campaigns: [], stats: null, currency: 'USD' });
+
+  // Load data for current month from Meta API
+  const loadCurrentMonthData = async (month: Date) => {
+    try {
+      const year = month.getFullYear();
+      const monthNum = month.getMonth();
+      
+      // Generate date range for the month
+      const startDate = new Date(year, monthNum, 1);
+      const endDate = new Date(year, monthNum + 1, 0); // Last day of the month
+      
+      const monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+      const monthEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+      
+      console.log(`📅 Loading dashboard data for ${monthStartDate} to ${monthEndDate}`);
+      
+      // Get session for API calls
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        console.log('No session token available');
+        return;
+      }
+
+      // Fetch data from Meta API for this month
+      const response = await fetch('/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          dateRange: {
+            start: monthStartDate,
+            end: monthEndDate
+          }
+        })
+      });
+
+      if (!response.ok) {
+        console.log(`API call failed for ${monthStartDate} to ${monthEndDate}`);
+        // Set empty data instead of null
+        setCurrentMonthData({
+          campaigns: [],
+          stats: {
+            totalSpend: 0,
+            totalImpressions: 0,
+            totalClicks: 0,
+            totalConversions: 0,
+            averageCtr: 0,
+            averageCpc: 0,
+            roas: 0,
+            campaignCount: 0
+          },
+          currency: 'USD'
+        });
+        return;
+      }
+
+      const monthData = await response.json();
+      
+      if (monthData.success && monthData.data?.campaigns) {
+        const campaigns = monthData.data.campaigns.map((campaign: any) => ({
+          id: campaign.campaign_id,
+          campaign_id: campaign.campaign_id,
+          campaign_name: campaign.campaign_name,
+          spend: campaign.spend || 0,
+          impressions: campaign.impressions || 0,
+          clicks: campaign.clicks || 0,
+          conversions: campaign.conversions || 0,
+          ctr: campaign.ctr || 0,
+          cpc: campaign.cpc || 0,
+          date_range_start: monthStartDate,
+          date_range_end: monthEndDate
+        }));
+
+        // Calculate stats
+        const totalSpend = campaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
+        const totalImpressions = campaigns.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
+        const totalClicks = campaigns.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
+        const totalConversions = campaigns.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+        
+        const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+        const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+        const roas = totalConversions > 0 ? (totalConversions * 50 / totalSpend) : 0;
+
+        // Get currency from client data or fetch from Meta API
+        let currency = 'USD';
+        if (clientData?.client) {
+          // Hardcode PLN for known account (jacek's account)
+          if (clientData.client.ad_account_id === '703853679965014') {
+            currency = 'PLN';
+            console.log('💰 Using hardcoded PLN for jacek account');
+          } else {
+            // Try to fetch currency from Meta API account info
+            try {
+              console.log(`🔍 Fetching currency for account: ${clientData.client.ad_account_id}`);
+              const accountInfoResponse = await fetch(`https://graph.facebook.com/v18.0/act_${clientData.client.ad_account_id}?fields=currency&access_token=${session.access_token}`);
+              const accountInfo = await accountInfoResponse.json();
+              console.log('📊 Account info response:', accountInfo);
+              if (accountInfo.currency) {
+                currency = accountInfo.currency;
+                console.log(`💰 Fetched currency from Meta API: ${currency}`);
+              } else if (accountInfo.error) {
+                console.log('❌ Meta API error:', accountInfo.error);
+              }
+            } catch (error) {
+              console.log('⚠️ Could not fetch currency from Meta API:', error);
+              console.log('⚠️ Using default USD');
+            }
+          }
+        }
+
+        setCurrentMonthData({
+          campaigns,
+          stats: {
+            totalSpend,
+            totalImpressions,
+            totalClicks,
+            totalConversions,
+            averageCtr,
+            averageCpc,
+            roas,
+            campaignCount: campaigns.length
+          },
+          currency
+        });
+      } else {
+        // No data for this month - set empty stats
+        setCurrentMonthData({
+          campaigns: [],
+          stats: {
+            totalSpend: 0,
+            totalImpressions: 0,
+            totalClicks: 0,
+            totalConversions: 0,
+            averageCtr: 0,
+            averageCpc: 0,
+            roas: 0,
+            campaignCount: 0
+          },
+          currency: 'USD'
+        });
+      }
+    } catch (error) {
+      console.error('Error loading current month data:', error);
+      // Set empty data on error
+      setCurrentMonthData({
+        campaigns: [],
+        stats: {
+          totalSpend: 0,
+          totalImpressions: 0,
+          totalClicks: 0,
+          totalConversions: 0,
+          averageCtr: 0,
+          averageCpc: 0,
+          roas: 0,
+          campaignCount: 0
+        },
+        currency: 'USD'
+      });
+    }
+  };
+
+  // Load data when month changes
+  useEffect(() => {
+    if (clientData) {
+      loadCurrentMonthData(currentMonth);
+    }
+  }, [currentMonth, clientData]);
+
+  // Calculate current month stats from campaigns (legacy - now using currentMonthData)
+  const getCurrentMonthStats = () => {
+    return currentMonthData.stats;
+  };
+
+  // Navigate to previous/next month (unlimited)
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    const newMonth = new Date(currentMonth);
+    if (direction === 'next') {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    }
+    setCurrentMonth(newMonth);
+  };
+
+  // Generate month options for dropdown (last 2 years + future 6 months)
+  const generateMonthOptions = () => {
+    const months: { value: string; label: string }[] = [];
+    const currentDate = new Date();
+    const twoYearsAgo = new Date(currentDate.getFullYear() - 2, 0, 1);
+    const sixMonthsAhead = new Date(currentDate.getFullYear(), currentDate.getMonth() + 6, 1);
+    
+    let currentMonth = new Date(twoYearsAgo);
+    
+    while (currentMonth <= sixMonthsAhead) {
+      const monthId = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = getCurrentMonthName(currentMonth);
+      months.push({ value: monthId, label: monthName });
+      currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    }
+    
+    return months;
+  };
+
+  // Get month name for any date
+  const getCurrentMonthName = (date: Date = currentMonth) => {
+    const months = [
+      'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+      'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+    ];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
+  };
+
+  // Handle month selection from dropdown
+  const handleMonthChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const [year, month] = event.target.value.split('-').map(Number);
+    const newMonth = new Date(year, month - 1, 1);
+    setCurrentMonth(newMonth);
+  };
+
+  // Format currency based on the account currency
+  const formatCurrency = (amount: number, currency: string = 'USD') => {
+    const currencySymbols: { [key: string]: string } = {
+      'USD': '$',
+      'EUR': '€',
+      'GBP': '£',
+      'PLN': 'zł',
+      'CAD': 'C$',
+      'AUD': 'A$',
+      'JPY': '¥',
+      'CHF': 'CHF',
+      'SEK': 'kr',
+      'NOK': 'kr',
+      'DKK': 'kr'
+    };
+
+    const symbol = currencySymbols[currency] || currency;
+    
+    // Special handling for PLN to ensure proper formatting
+    if (currency === 'PLN') {
+      return new Intl.NumberFormat('pl-PL', {
+        style: 'currency',
+        currency: 'PLN',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(amount);
+    }
+    
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount).replace(/[A-Z]{3}/, symbol);
+  };
+
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -745,7 +1022,7 @@ export default function DashboardPage() {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Total Spend</p>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ${clientData.stats.totalSpend.toLocaleString()}
+                    {formatCurrency(clientData.stats.totalSpend, currentMonthData.currency)}
                   </p>
                 </div>
               </div>
@@ -801,113 +1078,266 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Monthly Performance Overview */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Monthly Performance Overview</h2>
+        {/* Monthly Performance Overview - Redesigned "One Glance" Version */}
+        <div className="bg-white rounded-xl shadow-sm p-8 mb-8">
+          {/* Header with Month Navigation */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-4">
+              <h2 className="text-2xl font-bold text-gray-900">Podsumowanie Miesięczne</h2>
+              
+              {/* Month Navigation */}
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => navigateMonth('prev')}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  title="Poprzedni miesiąc"
+                >
+                  <ChevronLeft className="h-5 w-5 text-gray-600" />
+                </button>
+                
+                {/* Month Picker Dropdown */}
+                <select
+                  value={`${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`}
+                  onChange={handleMonthChange}
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {generateMonthOptions().map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                
+                <button 
+                  onClick={() => navigateMonth('next')}
+                  className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  title="Następny miesiąc"
+                >
+                  <ChevronRight className="h-5 w-5 text-gray-600" />
+                </button>
+              </div>
+            </div>
+            
             <button
               onClick={() => router.push('/reports')}
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center"
             >
-              View All Reports
+              Pokaż więcej
+              <ChevronRight className="h-4 w-4 ml-1" />
             </button>
           </div>
           
           {clientData.reports.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No reports yet</h3>
-              <p className="text-gray-600 mb-4">Reports are automatically generated based on your campaign performance. Check back soon for your first report.</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Brak raportów</h3>
+              <p className="text-gray-600 mb-4">Raporty są generowane automatycznie na podstawie wydajności kampanii.</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {/* Latest Month Summary */}
+            <div className="space-y-8">
+              {/* Debug Info - Remove this after fixing */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-yellow-800 mb-2">Debug Info:</h4>
+                <div className="text-sm text-yellow-700 space-y-1">
+                  <div>Current Month: {getCurrentMonthName()} ({currentMonth.getFullYear()}-{currentMonth.getMonth() + 1})</div>
+                  <div>Meta API Campaigns: {currentMonthData.campaigns.length}</div>
+                  <div>Meta API Stats: {currentMonthData.stats ? 'Loaded' : 'Loading...'}</div>
+                  <div>Data Source: Meta API (Live)</div>
+                </div>
+              </div>
+
+              {/* Top KPI Stats - 6 Key Metrics */}
               {(() => {
-                const latestReport = clientData.reports[0];
-                const reportDate = new Date(latestReport.date_range_start);
-                const monthName = reportDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                const stats = currentMonthData.stats;
                 
+                if (!stats) {
+                  return (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Ładowanie danych z Meta API...</p>
+                    </div>
+                  );
+                }
+
                 return (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900">{monthName}</h3>
-                        <p className="text-gray-600">Latest Performance Summary</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+                    {/* Wydatki */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <DollarSign className="h-5 w-5 text-blue-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => router.push(`/reports`)}
-                          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
-                        >
-                          View Details
-                        </button>
-                        <button className="px-4 py-2 bg-white text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors text-sm font-medium">
-                          <Download className="h-4 w-4" />
-                        </button>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {formatCurrency(stats?.totalSpend || 0, currentMonthData.currency)}
+                      </div>
+                      <div className="text-sm text-gray-600">Wydatki</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Całkowite wydatki na reklamy w tym miesiącu
                       </div>
                     </div>
-                    
-                    {/* Quick Stats Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {clientData.reports.length}
-                        </div>
-                        <div className="text-sm text-gray-600">Reports</div>
+
+                    {/* Wyświetlenia */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <Eye className="h-5 w-5 text-green-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                       </div>
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {clientData.campaigns?.length || 0}
-                        </div>
-                        <div className="text-sm text-gray-600">Campaigns</div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {((stats?.totalImpressions || 0) / 1000).toFixed(1)}k
                       </div>
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-purple-600">
-                          {new Date(latestReport.generated_at).toLocaleDateString()}
-                        </div>
-                        <div className="text-sm text-gray-600">Last Updated</div>
+                      <div className="text-sm text-gray-600">Wyświetlenia</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Liczba wyświetleń reklam (w tysiącach)
                       </div>
-                      <div className="bg-white rounded-lg p-4 text-center">
-                        <div className="text-2xl font-bold text-orange-600">
-                          {clientData.reports.slice(0, 3).length}
-                        </div>
-                        <div className="text-sm text-gray-600">This Month</div>
+                    </div>
+
+                    {/* Kliknięcia */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <Target className="h-5 w-5 text-yellow-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {(stats?.totalClicks || 0).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-gray-600">Kliknięcia</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Całkowita liczba kliknięć w reklamy
+                      </div>
+                    </div>
+
+                    {/* CTR */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <TrendingUp className="h-5 w-5 text-purple-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {(stats?.averageCtr || 0).toFixed(2)}%
+                      </div>
+                      <div className="text-sm text-gray-600">CTR</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Click-Through Rate - procent kliknięć od wyświetleń
+                      </div>
+                    </div>
+
+                    {/* CPC */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <Target className="h-5 w-5 text-orange-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {formatCurrency(stats?.averageCpc || 0, currentMonthData.currency)}
+                      </div>
+                      <div className="text-sm text-gray-600">CPC</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Cost Per Click - koszt za kliknięcie
+                      </div>
+                    </div>
+
+                    {/* Konwersje */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <Activity className="h-5 w-5 text-red-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {(stats?.totalConversions || 0).toLocaleString()}
+                      </div>
+                      <div className="text-sm text-gray-600">Konwersje</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Liczba konwersji/leadów z kampanii
+                      </div>
+                    </div>
+
+                    {/* ROAS */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-300 group relative">
+                      <div className="flex items-center justify-between mb-2">
+                        <BarChart3 className="h-5 w-5 text-indigo-600" />
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      </div>
+                      <div className="text-2xl font-bold text-gray-900 mb-1">
+                        {(stats?.roas || 0).toFixed(1)}
+                      </div>
+                      <div className="text-sm text-gray-600">ROAS</div>
+                      <div className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-gray-900 text-white text-xs rounded-lg p-2 -mt-2 ml-2 pointer-events-none z-10">
+                        Return on Ad Spend - zwrot z wydatków reklamowych
                       </div>
                     </div>
                   </div>
                 );
               })()}
-              
-              {/* Recent Reports List */}
-              <div className="space-y-3">
-                {clientData.reports.slice(0, 3).map((report) => (
-                  <div key={report.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center mr-4">
-                        <Calendar className="h-5 w-5 text-primary-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {new Date(report.date_range_start).toLocaleDateString()} - {new Date(report.date_range_end).toLocaleDateString()}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          Generated {new Date(report.generated_at).toLocaleDateString()}
-                        </p>
-                      </div>
+
+              {/* Central Chart Section */}
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-semibold text-gray-900">Trendy: Wydatki vs Kliknięcia</h3>
+                  <div className="flex items-center space-x-2">
+                    <button className="px-3 py-1 bg-white text-blue-600 rounded-lg text-sm font-medium border border-blue-200">
+                      Wydatki
+                    </button>
+                    <button className="px-3 py-1 bg-blue-600 text-white rounded-lg text-sm font-medium">
+                      Kliknięcia
+                    </button>
+                    <button className="px-3 py-1 bg-white text-blue-600 rounded-lg text-sm font-medium border border-blue-200">
+                      CTR
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Placeholder for animated chart */}
+                <div className="h-64 bg-white rounded-lg flex items-center justify-center border border-blue-200">
+                  <div className="text-center">
+                    <BarChart3 className="h-12 w-12 text-blue-400 mx-auto mb-4" />
+                    <p className="text-gray-600">Wykres trendów - animowany po przełączeniu okresu</p>
+                    <p className="text-sm text-gray-500 mt-2">Łagodne przejścia z framer-motion</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Last Report Box */}
+              <div className="bg-white border border-gray-200 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center mr-4">
+                      <FileText className="h-5 w-5 text-primary-600" />
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => router.push(`/reports`)}
-                        className="text-primary-600 hover:text-primary-700 p-2 rounded-lg hover:bg-primary-50 transition-colors"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button className="text-gray-600 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-colors">
-                        <Download className="h-4 w-4" />
-                      </button>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">Ostatni raport</h4>
+                      <p className="text-sm text-gray-600">
+                        {new Date(clientData.reports[0]?.generated_at || Date.now()).toLocaleDateString('pl-PL')}
+                      </p>
                     </div>
                   </div>
-                ))}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => router.push('/reports')}
+                      className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      title="Podgląd raportu"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                    <button 
+                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      title="Pobierz raport"
+                    >
+                      <Download className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Mini Stats */}
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Clock className="h-3 w-3 mr-1" />
+                    <span>Ostatnia aktualizacja: {formatLastUpdated()}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Target className="h-3 w-3 mr-1" />
+                    <span>{currentMonthData.stats?.campaignCount || 0} kampanii w tym miesiącu</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
