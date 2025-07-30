@@ -487,7 +487,7 @@ export default function IndividualReportPage() {
               <div className="text-center py-8">
                 <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No campaigns found</h3>
-                <p className="text-gray-600">This report doesn't contain any campaign data.</p>
+                <p className="text-gray-600">This report doesn&apos;t contain any campaign data.</p>
               </div>
             )}
           </div>

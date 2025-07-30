@@ -18,7 +18,8 @@ import {
   Key,
   UserPlus,
   Send,
-  LogOut
+  LogOut,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -26,6 +27,11 @@ import { MetaAPIService } from '../../lib/meta-api';
 import type { Database } from '../../lib/database.types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import CredentialsModal from '../../components/CredentialsModal';
+import EditClientModal from '../../components/EditClientModal';
+import SearchFilters from '../../components/SearchFilters';
+import BulkActions from '../../components/BulkActions';
+import PDFViewer from '../../components/PDFViewer';
+import NotesEditor from '../../components/NotesEditor';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 
@@ -93,10 +99,18 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         
         let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Found ${campaigns.length} campaigns.`;
         
+        // Enhanced token status information
         if (tokenValidation.convertedToken) {
           statusMessage += ' 🔄 Token will be automatically converted to long-lived for permanent access.';
         } else if (tokenValidation.isLongLived) {
           statusMessage += ' ✅ Token is already long-lived (permanent).';
+        } else if (tokenValidation.expiresAt) {
+          const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (daysUntilExpiry <= 7) {
+            statusMessage += ` ⚠️ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+          } else {
+            statusMessage += ` ⏰ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+          }
         }
         
         setValidationStatus({ 
@@ -105,17 +119,25 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         });
       } catch (campaignError) {
         // Campaign fetch failed, but credentials are still valid
-        let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}.`;
+        let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.`;
         
+        // Enhanced token status information
         if (tokenValidation.convertedToken) {
           statusMessage += ' 🔄 Token will be automatically converted to long-lived for permanent access.';
         } else if (tokenValidation.isLongLived) {
           statusMessage += ' ✅ Token is already long-lived (permanent).';
+        } else if (tokenValidation.expiresAt) {
+          const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (daysUntilExpiry <= 7) {
+            statusMessage += ` ⚠️ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+          } else {
+            statusMessage += ` ⏰ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+          }
         }
         
         setValidationStatus({ 
           status: 'valid', 
-          message: `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.` 
+          message: statusMessage
         });
       }
 
@@ -322,8 +344,53 @@ export default function AdminPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [generatingCredentials, setGeneratingCredentials] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+  
+  // Bulk operations state
+  const [selectedClients, setSelectedClients] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  // PDF viewer state
+  const [pdfViewer, setPdfViewer] = useState<{
+    isOpen: boolean;
+    reportId: string;
+    reportName: string;
+    clientName: string;
+  }>({
+    isOpen: false,
+    reportId: '',
+    reportName: '',
+    clientName: ''
+  });
+  
+  // Notes editor state
+  const [notesEditor, setNotesEditor] = useState<{
+    isOpen: boolean;
+    clientId: string;
+    clientName: string;
+    initialContent: string;
+  }>({
+    isOpen: false,
+    clientId: '',
+    clientName: '',
+    initialContent: ''
+  });
+  
+  // Search and filter state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [frequencyFilter, setFrequencyFilter] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 0
+  });
   const [credentialsModal, setCredentialsModal] = useState<{
     isOpen: boolean;
     credentials: { username: string; password: string } | null;
@@ -374,7 +441,14 @@ export default function AdminPage() {
     }
   }, [user, profile, authLoading, router]);
 
-  const fetchClients = async () => {
+  // Refetch clients when search/filter/sort changes
+  useEffect(() => {
+    if (user && profile) {
+      fetchClients(1); // Reset to first page when filters change
+    }
+  }, [searchTerm, statusFilter, frequencyFilter, sortBy, sortOrder]);
+
+  const fetchClients = async (page = 1) => {
     if (!user) {
       setLoading(false);
       return;
@@ -382,22 +456,40 @@ export default function AdminPage() {
 
     try {
       console.log('Fetching clients for user:', user.id);
-      const { data: clientsData, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('admin_id', user.id)
-        .order('name', { ascending: true });
-
-      if (error) {
-        console.error('Supabase error fetching clients:', error);
-        throw error;
-      }
       
-      console.log('Clients fetched successfully:', clientsData?.length || 0, 'clients');
-      setClients(clientsData || []);
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      // Build query parameters
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: pagination.limit.toString(),
+        sortBy,
+        sortOrder
+      });
+
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter) params.append('status', statusFilter);
+      if (frequencyFilter) params.append('frequency', frequencyFilter);
+
+      const response = await fetch(`/api/clients?${params.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch clients');
+      }
+
+      const result = await response.json();
+      setClients(result.clients || []);
+      setPagination(result.pagination);
     } catch (error) {
       console.error('Error fetching clients:', error);
-      // Set empty array on error to prevent infinite loading
       setClients([]);
     } finally {
       setLoading(false);
@@ -457,6 +549,41 @@ export default function AdminPage() {
       await fetchClients();
     } catch (error) {
       console.error('Error adding client:', error);
+      throw error;
+    }
+  };
+
+  const updateClient = async (clientId: string, updates: Partial<Client>) => {
+    if (!user) return;
+
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      // Use the server-side API endpoint
+      const response = await fetch(`/api/clients/${clientId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update client');
+      }
+
+      const result = await response.json();
+      console.log('Client updated successfully:', result);
+
+      await fetchClients();
+    } catch (error) {
+      console.error('Error updating client:', error);
       throw error;
     }
   };
@@ -544,6 +671,313 @@ export default function AdminPage() {
     }
   };
 
+  const sendReport = async (clientId: string) => {
+    try {
+      const client = clients.find(c => c.id === clientId);
+      if (!client) return;
+
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          clientId: clientId,
+          includePdf: false
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send report');
+      }
+
+      const result = await response.json();
+      alert('Report sent successfully!');
+    } catch (error) {
+      console.error('Error sending report:', error);
+      alert('Failed to send report. Please try again.');
+    }
+  };
+
+  // Notes and PDF viewer functions
+  const handleOpenNotes = (client: Client) => {
+    setNotesEditor({
+      isOpen: true,
+      clientId: client.id,
+      clientName: client.name || '',
+      initialContent: client.notes || ''
+    });
+  };
+
+  const handleSaveNote = async (content: string, noteType: string, tags: string[]) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch(`/api/clients/${notesEditor.clientId}/notes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          content,
+          noteType,
+          tags
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save note');
+      }
+
+      // Update client notes in local state
+      setClients(prevClients => 
+        prevClients.map(client => 
+          client.id === notesEditor.clientId 
+            ? { ...client, notes: content }
+            : client
+        )
+      );
+
+      alert('Note saved successfully!');
+    } catch (error) {
+      console.error('Error saving note:', error);
+      alert('Failed to save note. Please try again.');
+    }
+  };
+
+  const handleOpenPDFViewer = (client: Client) => {
+    // For now, we'll use a placeholder report ID
+    // In a real implementation, you'd get the latest report ID for this client
+    setPdfViewer({
+      isOpen: true,
+      reportId: 'latest', // This would be the actual report ID
+      reportName: `${client.name} Report`,
+      clientName: client.name || ''
+    });
+  };
+
+  // Bulk operations functions
+  const handleSelectAll = () => {
+    if (selectedClients.length === clients.length) {
+      setSelectedClients([]);
+    } else {
+      setSelectedClients(clients.map(client => client.id));
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedClients([]);
+  };
+
+  const handleBulkDelete = async () => {
+    setIsProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch('/api/clients/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'delete',
+          clientIds: selectedClients
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete clients');
+      }
+
+      const result = await response.json();
+      console.log('Bulk delete result:', result);
+      
+      setSelectedClients([]);
+      await fetchClients();
+      alert(`Successfully deleted ${result.results.success.length} clients`);
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      alert('Failed to delete some clients. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBulkSendReports = async () => {
+    setIsProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch('/api/clients/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'send_reports',
+          clientIds: selectedClients
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send reports');
+      }
+
+      const result = await response.json();
+      console.log('Bulk send reports result:', result);
+      
+      setSelectedClients([]);
+      await fetchClients();
+      alert(`Successfully sent ${result.results.success.length} reports`);
+    } catch (error) {
+      console.error('Error in bulk send reports:', error);
+      alert('Failed to send some reports. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBulkRegenerateCredentials = async () => {
+    setIsProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch('/api/clients/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'regenerate_credentials',
+          clientIds: selectedClients
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to regenerate credentials');
+      }
+
+      const result = await response.json();
+      console.log('Bulk regenerate credentials result:', result);
+      
+      setSelectedClients([]);
+      await fetchClients();
+      alert(`Successfully regenerated credentials for ${result.results.success.length} clients`);
+    } catch (error) {
+      console.error('Error in bulk regenerate credentials:', error);
+      alert('Failed to regenerate some credentials. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBulkGenerateReports = async () => {
+    setIsProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch('/api/clients/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'generate_reports',
+          clientIds: selectedClients
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate reports');
+      }
+
+      const result = await response.json();
+      console.log('Bulk generate reports result:', result);
+      
+      setSelectedClients([]);
+      await fetchClients();
+      alert(`Successfully generated ${result.results.success.length} reports`);
+    } catch (error) {
+      console.error('Error in bulk generate reports:', error);
+      alert('Failed to generate some reports. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBulkChangeFrequency = async (frequency: string) => {
+    setIsProcessing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch('/api/clients/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'change_frequency',
+          clientIds: selectedClients,
+          frequency
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to change frequency');
+      }
+
+      const result = await response.json();
+      console.log('Bulk change frequency result:', result);
+      
+      setSelectedClients([]);
+      await fetchClients();
+      alert(`Successfully changed frequency for ${result.results.success.length} clients`);
+    } catch (error) {
+      console.error('Error in bulk change frequency:', error);
+      alert('Failed to change frequency for some clients. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const deleteClient = async (clientId: string) => {
     if (!confirm('Are you sure you want to delete this client? This will also delete their user account from Supabase.')) return;
 
@@ -602,6 +1036,8 @@ export default function AdminPage() {
       case 'invalid':
       case 'expired':
         return <AlertCircle className="h-4 w-4 text-red-600" />;
+      case 'expiring_soon':
+        return <AlertCircle className="h-4 w-4 text-orange-500" />;
       default:
         return <Clock className="h-4 w-4 text-gray-400" />;
     }
@@ -617,6 +1053,38 @@ export default function AdminPage() {
         return 'Invalid';
       case 'expired':
         return 'Expired';
+      case 'expiring_soon':
+        return 'Expiring Soon';
+      default:
+        return 'Unknown';
+    }
+  };
+
+  const getTokenHealthIcon = (healthStatus: string) => {
+    switch (healthStatus) {
+      case 'valid':
+        return <CheckCircle className="h-3 w-3 text-green-600" />;
+      case 'expiring_soon':
+        return <AlertCircle className="h-3 w-3 text-orange-500" />;
+      case 'expired':
+        return <AlertCircle className="h-3 w-3 text-red-600" />;
+      case 'invalid':
+        return <X className="h-3 w-3 text-red-600" />;
+      default:
+        return <Clock className="h-3 w-3 text-gray-400" />;
+    }
+  };
+
+  const getTokenHealthText = (healthStatus: string) => {
+    switch (healthStatus) {
+      case 'valid':
+        return 'Healthy';
+      case 'expiring_soon':
+        return 'Expiring Soon';
+      case 'expired':
+        return 'Expired';
+      case 'invalid':
+        return 'Invalid';
       default:
         return 'Unknown';
     }
@@ -644,6 +1112,27 @@ export default function AdminPage() {
             </div>
             <div className="flex items-center">
               <button
+                onClick={() => router.push('/admin/token-health')}
+                className="btn-secondary mr-2"
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Token Health
+              </button>
+              <button
+                onClick={() => router.push('/admin/reports')}
+                className="btn-primary mr-2"
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                View All Reports
+              </button>
+              <button
+                onClick={() => router.push('/admin/email-logs')}
+                className="btn-secondary mr-2"
+              >
+                <Mail className="h-4 w-4 mr-2" />
+                Email Logs
+              </button>
+              <button
                 onClick={() => setShowAddModal(true)}
                 className="btn-primary"
               >
@@ -663,30 +1152,79 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Search and Filters */}
+        <SearchFilters
+          onSearchChange={setSearchTerm}
+          onStatusFilterChange={setStatusFilter}
+          onFrequencyFilterChange={setFrequencyFilter}
+          onSortChange={(sortBy, sortOrder) => {
+            setSortBy(sortBy);
+            setSortOrder(sortOrder);
+          }}
+          currentSearch={searchTerm}
+          currentStatusFilter={statusFilter}
+          currentFrequencyFilter={frequencyFilter}
+          currentSortBy={sortBy}
+          currentSortOrder={sortOrder}
+        />
+
         {clients.length === 0 ? (
           <div className="text-center py-12">
             <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No clients yet</h3>
-            <p className="text-gray-600 mb-6">Click 'Add Client' to get started.</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="btn-primary"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Client
-            </button>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {searchTerm || statusFilter || frequencyFilter ? 'No clients found' : 'No clients yet'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {searchTerm || statusFilter || frequencyFilter 
+                ? 'Try adjusting your search or filter criteria.' 
+                : 'Click \'Add Client\' to get started.'}
+            </p>
+            {!searchTerm && !statusFilter && !frequencyFilter && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="btn-primary"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Client
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+            {/* Bulk Actions */}
+            <BulkActions
+              selectedClients={selectedClients}
+              totalClients={clients.length}
+              onSelectAll={handleSelectAll}
+              onClearSelection={handleClearSelection}
+              onBulkDelete={handleBulkDelete}
+              onBulkSendReports={handleBulkSendReports}
+              onBulkRegenerateCredentials={handleBulkRegenerateCredentials}
+              onBulkGenerateReports={handleBulkGenerateReports}
+              onBulkChangeFrequency={handleBulkChangeFrequency}
+              isProcessing={isProcessing}
+            />
+            
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <input
+                        type="checkbox"
+                        checked={selectedClients.length === clients.length && clients.length > 0}
+                        onChange={handleSelectAll}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Client
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      API Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Token Health
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Credentials
@@ -702,6 +1240,20 @@ export default function AdminPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {clients.map((client) => (
                     <tr key={client.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedClients.includes(client.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedClients([...selectedClients, client.id]);
+                            } else {
+                              setSelectedClients(selectedClients.filter(id => id !== client.id));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="h-10 w-10 bg-primary-100 rounded-full flex items-center justify-center">
@@ -733,6 +1285,19 @@ export default function AdminPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          {getTokenHealthIcon(client.token_health_status || 'unknown')}
+                          <span className="ml-2 text-sm text-gray-900">
+                            {getTokenHealthText(client.token_health_status || 'unknown')}
+                          </span>
+                          {client.token_expires_at && (
+                            <div className="text-xs text-gray-500 ml-2">
+                              {new Date(client.token_expires_at).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           <div className="flex items-center">
                             <Key className="h-3 w-3 mr-1" />
@@ -757,11 +1322,39 @@ export default function AdminPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end space-x-2">
                           <button
+                            title="Edit Client"
+                            onClick={() => {
+                              setEditingClient(client);
+                              setShowEditModal(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-900 p-1"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
                             title="View Reports"
-                            onClick={() => router.push(`/admin/clients/${client.id}/reports`)}
+                            onClick={() => router.push(`/reports?clientId=${client.id}`)}
                             className="text-primary-600 hover:text-primary-900 p-1"
                           >
                             <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            title="View PDF Report"
+                            onClick={() => handleOpenPDFViewer(client)}
+                            className="text-indigo-600 hover:text-indigo-900 p-1"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </button>
+                          <button
+                            title="Edit Notes"
+                            onClick={() => handleOpenNotes(client)}
+                            className="text-yellow-600 hover:text-yellow-900 p-1"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
                           </button>
                           <button
                             title="Generate Report"
@@ -788,7 +1381,8 @@ export default function AdminPage() {
                             )}
                           </button>
                           <button
-                            title="Send Credentials"
+                            title="Send Report"
+                            onClick={() => sendReport(client.id)}
                             className="text-purple-600 hover:text-purple-900 p-1"
                           >
                             <Send className="h-4 w-4" />
@@ -807,6 +1401,36 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            
+            {/* Pagination */}
+            {pagination.totalPages > 1 && (
+              <div className="bg-white px-6 py-3 border-t border-gray-200 flex items-center justify-between">
+                <div className="text-sm text-gray-700">
+                  Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                  {pagination.total} clients
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => fetchClients(pagination.page - 1)}
+                    disabled={pagination.page <= 1}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-700">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <button
+                    onClick={() => fetchClients(pagination.page + 1)}
+                    disabled={pagination.page >= pagination.totalPages}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -815,6 +1439,16 @@ export default function AdminPage() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onAdd={addClient}
+      />
+
+      <EditClientModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingClient(null);
+        }}
+        onUpdate={updateClient}
+        client={editingClient}
       />
 
       {credentialsModal.credentials && (
@@ -826,6 +1460,25 @@ export default function AdminPage() {
           clientEmail={credentialsModal.clientEmail}
         />
       )}
+
+      {/* PDF Viewer Modal */}
+      <PDFViewer
+        isOpen={pdfViewer.isOpen}
+        onClose={() => setPdfViewer({ ...pdfViewer, isOpen: false })}
+        reportId={pdfViewer.reportId}
+        reportName={pdfViewer.reportName}
+        clientName={pdfViewer.clientName}
+      />
+
+      {/* Notes Editor Modal */}
+      <NotesEditor
+        isOpen={notesEditor.isOpen}
+        onClose={() => setNotesEditor({ ...notesEditor, isOpen: false })}
+        clientId={notesEditor.clientId}
+        clientName={notesEditor.clientName}
+        initialContent={notesEditor.initialContent}
+        onSave={handleSaveNote}
+      />
     </div>
   );
 } 

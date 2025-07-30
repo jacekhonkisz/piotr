@@ -255,7 +255,7 @@ Once you have access, we'll:
               <code className="text-sm break-all">{systemUserToken}</code>
             </div>
             <p className="text-sm text-gray-500 mt-1">
-              This token never expires and provides permanent access to the client's Meta ads data.
+              This token never expires and provides permanent access to the client&apos;s Meta ads data.
             </p>
           </div>
 

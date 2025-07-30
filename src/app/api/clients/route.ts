@@ -8,6 +8,112 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export async function GET(request: NextRequest) {
+  try {
+    // Extract the authorization header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Verify the JWT token and get user
+    const { data: { user }, error: userAuthError } = await supabase.auth.getUser(token);
+    if (userAuthError || !user) {
+      console.error('Token verification failed:', userAuthError);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is admin
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    // Get query parameters
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get('search') || '';
+    const statusFilter = searchParams.get('status') || '';
+    const frequencyFilter = searchParams.get('frequency') || '';
+    const sortBy = searchParams.get('sortBy') || 'name';
+    const sortOrder = searchParams.get('sortOrder') || 'asc';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = (page - 1) * limit;
+
+    // Build query
+    let query = supabase
+      .from('clients')
+      .select('*', { count: 'exact' })
+      .eq('admin_id', user.id);
+
+    // Apply search filter
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,company.ilike.%${search}%`);
+    }
+
+    // Apply status filter
+    if (statusFilter) {
+      if (statusFilter === 'valid') {
+        query = query.eq('api_status', 'valid');
+      } else if (statusFilter === 'invalid') {
+        query = query.in('api_status', ['invalid', 'expired']);
+      } else if (statusFilter === 'pending') {
+        query = query.eq('api_status', 'pending');
+      } else if (statusFilter === 'expiring_soon') {
+        query = query.eq('token_health_status', 'expiring_soon');
+      }
+    }
+
+    // Apply frequency filter
+    if (frequencyFilter) {
+      query = query.eq('reporting_frequency', frequencyFilter);
+    }
+
+    // Apply sorting
+    const validSortFields = ['name', 'email', 'api_status', 'last_report_date', 'created_at'];
+    const validSortOrders = ['asc', 'desc'];
+    
+    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'name';
+    const finalSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : 'asc';
+    
+    query = query.order(finalSortBy, { ascending: finalSortOrder === 'asc' });
+
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: clients, error, count } = await query;
+
+    if (error) {
+      console.error('Error fetching clients:', error);
+      return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      clients: clients || [],
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in clients GET API:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Extract the authorization header
@@ -173,7 +279,7 @@ export async function POST(request: NextRequest) {
       console.log('Profile updated successfully');
     }
 
-    // Add client to clients table with the long-lived token
+    // Add client to clients table with the long-lived token and enhanced token info
     const { data: newClient, error: clientError } = await supabase
       .from('clients')
       .insert({
@@ -188,7 +294,13 @@ export async function POST(request: NextRequest) {
         notes: requestData.notes || null,
         generated_password: generatedPassword,
         generated_username: generatedUsername,
-        credentials_generated_at: new Date().toISOString()
+        credentials_generated_at: new Date().toISOString(),
+        // Enhanced token management fields
+        token_expires_at: tokenValidation.expiresAt?.toISOString() || null,
+        token_refresh_count: tokenValidation.convertedToken ? 1 : 0,
+        last_token_validation: new Date().toISOString(),
+        token_health_status: tokenValidation.isLongLived ? 'valid' : 
+          (tokenValidation.expiresAt && tokenValidation.expiresAt > new Date()) ? 'valid' : 'expired'
       })
       .select()
       .single();

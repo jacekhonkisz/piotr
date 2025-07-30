@@ -53,9 +53,10 @@ interface AdRelevanceResult {
 interface MetaAdsTablesProps {
   dateStart: string;
   dateEnd: string;
+  clientId?: string;
 }
 
-const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd }) => {
+const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId }) => {
   const [placementData, setPlacementData] = useState<PlacementPerformance[]>([]);
   const [demographicData, setDemographicData] = useState<DemographicPerformance[]>([]);
   const [adRelevanceData, setAdRelevanceData] = useState<AdRelevanceResult[]>([]);
@@ -84,7 +85,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd }) => 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ dateStart, dateEnd })
+        body: JSON.stringify({ dateStart, dateEnd, clientId })
       });
 
       if (!response.ok) {

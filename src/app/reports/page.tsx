@@ -129,6 +129,7 @@ function ReportsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
+  const [profile, setProfile] = useState<{ role: string } | null>(null);
 
   // Get current user session
   const getCurrentUser = async () => {
@@ -165,9 +166,16 @@ function ReportsPageContent() {
 
   // Load data for a specific month
   const loadMonthData = async (monthId: string) => {
+    // Guard: Ensure client is loaded before making API calls
+    if (!client) {
+      console.warn('⚠️ Client not loaded yet, skipping API call');
+      return;
+    }
+
     try {
       setLoadingMonth(monthId);
       console.log(`📡 Loading data for month: ${monthId}`);
+      console.log(`👤 Current client:`, client);
       
       // Get session for API calls
       const { data: { session } } = await supabase.auth.getSession();
@@ -186,24 +194,162 @@ function ReportsPageContent() {
       
       console.log(`📅 Generated date range for ${monthId}: ${monthStartDate} to ${monthEndDate}`);
       
-      console.log(`📅 Fetching data for month: ${monthStartDate} to ${monthEndDate}...`);
+      // First, try to load existing report from database
+      console.log(`📊 Checking for existing report in database...`);
       
-      // Request monthly data directly - the API will use monthly insights method
-      console.log(`📅 Requesting monthly data: ${monthStartDate} to ${monthEndDate}...`);
+      if (!client?.id || client.id === 'demo-client-id') {
+        // Skip database check for demo client
+        console.log(`🎭 Demo client, skipping database check`);
+      } else {
+        const { data: existingReports, error: reportsError } = await supabase
+          .from('reports')
+          .select('*')
+          .eq('client_id', client.id)
+          .eq('date_range_start', monthStartDate)
+          .eq('date_range_end', monthEndDate)
+          .order('generated_at', { ascending: false })
+          .limit(1);
+
+        if (!reportsError && existingReports && existingReports.length > 0) {
+          console.log(`✅ Found existing report in database`);
+          const existingReport = existingReports[0];
+          
+          // Get campaigns for this report
+          const { data: existingCampaigns, error: campaignsError } = await supabase
+            .from('campaigns')
+            .select('*')
+            .eq('client_id', client.id)
+            .eq('date_range_start', monthStartDate)
+            .eq('date_range_end', monthEndDate);
+
+        const campaigns: Campaign[] = existingCampaigns?.map((campaign: any) => ({
+          id: `${campaign.campaign_id}-${monthId}`,
+          campaign_id: campaign.campaign_id,
+          campaign_name: campaign.campaign_name,
+          spend: campaign.spend || 0,
+          impressions: campaign.impressions || 0,
+          clicks: campaign.clicks || 0,
+          conversions: campaign.conversions || 0,
+          ctr: campaign.ctr || 0,
+          cpc: campaign.cpc || 0,
+          cpp: campaign.cpp,
+          frequency: campaign.frequency,
+          reach: campaign.reach,
+          date_range_start: monthStartDate,
+          date_range_end: monthEndDate,
+          status: campaign.status,
+          objective: campaign.objective
+        })) || [];
+
+        const report: MonthlyReport = {
+          id: monthId,
+          date_range_start: monthStartDate,
+          date_range_end: monthEndDate,
+          generated_at: existingReport.generated_at,
+          campaigns: campaigns
+        };
+
+        setReports(prev => ({ ...prev, [monthId]: report }));
+        return;
+      }
+    }
+
+    // If no existing report, fetch from API
+    console.log(`📅 No existing report found, fetching from Meta API...`);
+    
+    // Skip API call for demo clients
+    if (client?.id === 'demo-client-id') {
+      console.log(`🎭 Demo client, skipping API call and showing demo data`);
       
-      // Make API call for the specific month
-      const response = await fetch('/api/fetch-live-data', {
+      // Show demo data for demo client
+      const demoCampaigns: Campaign[] = [
+        {
+          id: `demo-campaign-1-${monthId}`,
+          campaign_id: 'demo-campaign-1',
+          campaign_name: 'Summer Sale Campaign',
+          spend: 2450.75,
+          impressions: 125000,
+          clicks: 3125,
+          conversions: 156,
+          ctr: 2.5,
+          cpc: 0.78,
+          cpp: 19.61,
+          frequency: 3.2,
+          reach: 39062,
+          date_range_start: monthStartDate,
+          date_range_end: monthEndDate,
+          status: 'ACTIVE',
+          ad_type: 'IMAGE',
+          objective: 'CONVERSIONS'
+        },
+        {
+          id: `demo-campaign-2-${monthId}`,
+          campaign_id: 'demo-campaign-2',
+          campaign_name: 'Brand Awareness',
+          spend: 1800.50,
+          impressions: 89000,
+          clicks: 1780,
+          conversions: 89,
+          ctr: 2.0,
+          cpc: 1.01,
+          cpp: 20.23,
+          frequency: 2.8,
+          reach: 31786,
+          date_range_start: monthStartDate,
+          date_range_end: monthEndDate,
+          status: 'ACTIVE',
+          ad_type: 'VIDEO',
+          objective: 'BRAND_AWARENESS'
+        },
+        {
+          id: `demo-campaign-3-${monthId}`,
+          campaign_id: 'demo-campaign-3',
+          campaign_name: 'Lead Generation',
+          spend: 3200.25,
+          impressions: 156000,
+          clicks: 4680,
+          conversions: 234,
+          ctr: 3.0,
+          cpc: 0.68,
+          cpp: 20.51,
+          frequency: 4.1,
+          reach: 38049,
+          date_range_start: monthStartDate,
+          date_range_end: monthEndDate,
+          status: 'ACTIVE',
+          ad_type: 'CAROUSEL',
+          objective: 'LEAD_GENERATION'
+        }
+      ];
+
+      const demoReport: MonthlyReport = {
+        id: monthId,
+        date_range_start: monthStartDate,
+        date_range_end: monthEndDate,
+        generated_at: new Date().toISOString(),
+        campaigns: demoCampaigns
+      };
+
+      setReports(prev => ({ ...prev, [monthId]: demoReport }));
+      return;
+    }
+    
+    // Make API call for the specific month
+    const requestBody = {
+      dateRange: {
+        start: monthStartDate,
+        end: monthEndDate
+      },
+      clientId: client.id // Always send the client ID for real clients
+    };
+    console.log('📡 Making API call with request body:', requestBody);
+    const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({
-          dateRange: {
-            start: monthStartDate,
-            end: monthEndDate
-          }
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -253,8 +399,36 @@ function ReportsPageContent() {
 
         console.log(`✅ ${liveCampaigns.length} campaigns found for ${monthId}`);
 
-        // Note: We're now using true monthly data from Meta API with daily breakdown aggregation
-        // This provides accurate monthly insights with proper daily data aggregation
+        // Store the report in database (only for real clients, not demo)
+        if (client?.id !== 'demo-client-id') {
+          try {
+            console.log(`💾 Storing report in database...`);
+            const reportResponse = await fetch('/api/reports', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({
+                clientId: client?.id,
+                dateRangeStart: monthStartDate,
+                dateRangeEnd: monthEndDate,
+                reportData: {
+                  campaigns: liveCampaigns
+                }
+              })
+            });
+
+            if (reportResponse.ok) {
+              console.log(`✅ Report stored in database`);
+            } else {
+              console.warn(`⚠️ Failed to store report in database`);
+            }
+          } catch (storeError) {
+            console.warn(`⚠️ Error storing report:`, storeError);
+          }
+        }
+
         const report: MonthlyReport = {
           id: monthId,
           date_range_start: monthStartDate,
@@ -266,6 +440,7 @@ function ReportsPageContent() {
         setReports(prev => ({ ...prev, [monthId]: report }));
       } else {
         console.log(`📊 No campaigns found for ${monthId}`);
+        
         // Add empty month if no data
         const emptyReport: MonthlyReport = {
           id: monthId,
@@ -274,6 +449,7 @@ function ReportsPageContent() {
           generated_at: new Date().toISOString(),
           campaigns: []
         };
+
         setReports(prev => ({ ...prev, [monthId]: emptyReport }));
       }
 
@@ -284,6 +460,14 @@ function ReportsPageContent() {
       setLoadingMonth(null);
     }
   };
+
+  // Effect to load month data when client and selected month are ready
+  useEffect(() => {
+    if (client && selectedMonth && !reports[selectedMonth]) {
+      console.log('🔄 Client and month ready, loading data...');
+      loadMonthData(selectedMonth);
+    }
+  }, [client, selectedMonth]);
 
   // Initialize page with current month
   const initializePage = async () => {
@@ -303,19 +487,71 @@ function ReportsPageContent() {
 
       console.log('✅ User found:', user.email);
 
-      // Get client data
-      const { data: clientData, error: clientError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('email', user.email || '')
+      // Get user profile to check role
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
         .single();
 
-      if (clientError || !clientData) {
-        throw new Error('Client not found in database');
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        throw new Error('Failed to fetch user profile');
       }
 
-      console.log('✅ Client found:', clientData.name);
-      setClient(clientData);
+      console.log('✅ User profile:', profileData);
+      setProfile(profileData);
+
+      // Check for clientId in URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const clientIdFromUrl = urlParams.get('clientId');
+      console.log('🔍 URL clientId:', clientIdFromUrl);
+
+      if (profileData?.role === 'admin' && clientIdFromUrl) {
+        // Admin viewing specific client's reports
+        console.log('👨‍💼 Admin viewing specific client:', clientIdFromUrl);
+        
+        const { data: clientData, error: clientError } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('id', clientIdFromUrl)
+          .single();
+
+        if (clientError || !clientData) {
+          throw new Error('Client not found in database');
+        }
+
+        console.log('✅ Client found for admin view:', clientData.name);
+        setClient(clientData);
+      } else if (profileData?.role === 'admin') {
+        // Admin without specific client - show demo data
+        console.log('👨‍💼 Admin user detected, showing demo data');
+        
+        const demoClient: Client = {
+          id: 'demo-client-id',
+          name: 'Demo Client',
+          email: user.email || 'admin@example.com',
+          ad_account_id: 'demo-ad-account-123'
+        };
+        
+        setClient(demoClient);
+      } else if (profileData?.role === 'client') {
+        // Regular client - get their own data
+        const { data: clientData, error: clientError } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('email', user.email || '')
+          .single();
+
+        if (clientError || !clientData) {
+          throw new Error('Client not found in database');
+        }
+
+        console.log('✅ Client found:', clientData.name);
+        setClient(clientData);
+      } else {
+        throw new Error('Invalid user role');
+      }
 
       // Generate available months
       const months = generateMonthOptions();
@@ -327,8 +563,7 @@ function ReportsPageContent() {
       setSelectedMonth(currentMonthId);
       console.log(`📅 Current month: ${currentMonthId}`);
 
-      // Load current month data
-      await loadMonthData(currentMonthId);
+      // Note: loadMonthData will be called by useEffect when client and selectedMonth are ready
 
     } catch (error: any) {
       console.error('❌ Error initializing page:', error);
@@ -348,10 +583,7 @@ function ReportsPageContent() {
     const selectedMonthId = event.target.value;
     setSelectedMonth(selectedMonthId);
     
-    // Load month data if not already loaded
-    if (!reports[selectedMonthId]) {
-      await loadMonthData(selectedMonthId);
-    }
+    // Note: loadMonthData will be called by useEffect when selectedMonth changes
   };
 
   // Handle refresh
@@ -576,6 +808,21 @@ function ReportsPageContent() {
                 <p className="text-gray-600 flex items-center text-lg">
                   <span className="mr-3">🏨</span>
                   {client?.name} - Premium Analytics Dashboard
+                  {selectedMonth && reports[selectedMonth]?.campaigns.some(c => c.campaign_id.startsWith('demo-')) && (
+                    <span className="ml-3 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                      🎭 Demo Mode
+                    </span>
+                  )}
+                  {client?.id === 'demo-client-id' && (
+                    <span className="ml-3 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                      👨‍💼 Admin View
+                    </span>
+                  )}
+                  {client?.id && client.id !== 'demo-client-id' && new URLSearchParams(window.location.search).get('clientId') && (
+                    <span className="ml-3 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 border border-purple-200">
+                      👨‍💼 Admin Viewing Client
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
@@ -594,12 +841,14 @@ function ReportsPageContent() {
               </div>
 
               {/* Enhanced Back Button */}
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-              >
-                Powrót do Dashboard
-              </button>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
+                  className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  {profile?.role === 'admin' ? 'Back to Admin' : 'Powrót do Dashboard'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1219,12 +1468,18 @@ function ReportsPageContent() {
             <div className="flex items-center space-x-2 text-sm text-gray-600 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2">
               <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
               <span>Dane z Meta Ads API</span>
+              {selectedMonth && reports[selectedMonth]?.campaigns.some(c => c.campaign_id.startsWith('demo-')) && (
+                <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                  🎭 Demo
+                </span>
+              )}
             </div>
           </div>
           
           <MetaAdsTables 
             dateStart={selectedReport.date_range_start}
             dateEnd={selectedReport.date_range_end}
+            clientId={client?.id === 'demo-client-id' ? undefined : client?.id}
           />
         </div>
 

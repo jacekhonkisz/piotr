@@ -74,6 +74,17 @@ interface LongLivedTokenResponse {
   expires_in: number;
 }
 
+interface TokenInfo {
+  app_id: string;
+  type: string;
+  application: string;
+  data_access_expires_at: number;
+  expires_at: number;
+  is_valid: boolean;
+  scopes: string[];
+  user_id: string;
+}
+
 // Cache for Meta API responses
 const apiCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -156,6 +167,45 @@ export class MetaAPIService {
   }
 
   /**
+   * Get detailed token information including expiration
+   */
+  async getTokenInfo(): Promise<{ 
+    success: boolean; 
+    info?: TokenInfo; 
+    error?: string;
+    expiresAt?: Date | null;
+    isLongLived: boolean;
+  }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/debug_token?input_token=${this.accessToken}&access_token=${this.accessToken}`);
+      const data = await response.json();
+
+      if (data.error) {
+        return { success: false, error: data.error.message, isLongLived: false };
+      }
+
+      const tokenInfo: TokenInfo = data.data;
+      
+      // Determine if token is long-lived
+      const isLongLived = tokenInfo.expires_at === 0;
+      const expiresAt = isLongLived ? null : new Date(tokenInfo.expires_at * 1000);
+
+      return {
+        success: true,
+        info: tokenInfo,
+        expiresAt,
+        isLongLived
+      };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: `Token info error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isLongLived: false
+      };
+    }
+  }
+
+  /**
    * Validate and optionally convert token to long-lived
    */
   async validateAndConvertToken(): Promise<{ 
@@ -164,14 +214,46 @@ export class MetaAPIService {
     permissions?: string[];
     convertedToken?: string;
     isLongLived?: boolean;
+    expiresAt?: Date | null;
+    tokenInfo?: TokenInfo;
   }> {
     try {
-      // First, test basic token validity
-      const response = await fetch(`${this.baseUrl}/me?access_token=${this.accessToken}`);
-      const data = await response.json();
+      // First, get detailed token information
+      const tokenInfoResult = await this.getTokenInfo();
+      
+      if (!tokenInfoResult.success) {
+        return { 
+          valid: false, 
+          error: tokenInfoResult.error || 'Failed to get token information',
+          isLongLived: false
+        };
+      }
 
-      if (data.error) {
-        return { valid: false, error: data.error.message };
+      const { info: tokenInfo, expiresAt, isLongLived } = tokenInfoResult;
+
+      // Check if token is valid
+      if (!tokenInfo?.is_valid) {
+        return { 
+          valid: false, 
+          error: 'Token is invalid or has been revoked',
+          isLongLived: false
+        };
+      }
+
+      // Check if token has required permissions
+      const requiredScopes = ['ads_read', 'ads_management'];
+      const hasRequiredScopes = requiredScopes.every(scope => 
+        tokenInfo.scopes?.includes(scope)
+      );
+
+      if (!hasRequiredScopes) {
+        return { 
+          valid: false, 
+          error: `Token missing required permissions. Need: ${requiredScopes.join(', ')}. Found: ${tokenInfo.scopes?.join(', ') || 'none'}`,
+          isLongLived,
+          expiresAt,
+          tokenInfo
+        };
       }
 
       // Test if token has ads_read permission by trying to get ad accounts
@@ -183,7 +265,10 @@ export class MetaAPIService {
         if (adAccountsResponse.status === 403) {
           return { 
             valid: false, 
-            error: 'Access token does not have required permissions. Need: ads_read, ads_management' 
+            error: 'Access token does not have required permissions. Need: ads_read, ads_management',
+            isLongLived,
+            expiresAt,
+            tokenInfo
           };
         }
         
@@ -192,38 +277,63 @@ export class MetaAPIService {
         if (adAccountsData.error) {
           return { 
             valid: false, 
-            error: `Ad accounts access error: ${adAccountsData.error.message}` 
+            error: `Ad accounts access error: ${adAccountsData.error.message}`,
+            isLongLived,
+            expiresAt,
+            tokenInfo
           };
         }
 
-        // Token is valid, now try to convert to long-lived
+        // If token is already long-lived, return success
+        if (isLongLived) {
+          return { 
+            valid: true, 
+            permissions: tokenInfo.scopes,
+            isLongLived: true,
+            expiresAt: null,
+            tokenInfo
+          };
+        }
+
+        // Token is short-lived, try to convert to long-lived
         const conversionResult = await this.convertToLongLivedToken();
         
         if (conversionResult.success && conversionResult.token) {
           return { 
             valid: true, 
-            permissions: ['ads_read'],
+            permissions: tokenInfo.scopes,
             convertedToken: conversionResult.token,
-            isLongLived: true
+            isLongLived: true,
+            expiresAt: null,
+            tokenInfo
           };
         } else {
-          // Token is valid but conversion failed - might already be long-lived
+          // Conversion failed, but token is still valid
           return { 
             valid: true, 
-            permissions: ['ads_read'],
-            isLongLived: false
+            permissions: tokenInfo.scopes,
+            isLongLived: false,
+            expiresAt,
+            tokenInfo
           };
         }
 
       } catch (adAccountsError) {
         return { 
           valid: false, 
-          error: 'Cannot access ad accounts. Token may lack required permissions.' 
+          error: 'Cannot access ad accounts. Token may lack required permissions.',
+          isLongLived,
+          expiresAt,
+          tokenInfo
         };
       }
 
     } catch (error) {
-      return { valid: false, error: 'Network error or invalid token' };
+      return { 
+        valid: false, 
+        error: `Network error or invalid token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isLongLived: false
+      };
     }
   }
 

@@ -77,19 +77,51 @@ export async function POST(request: NextRequest) {
       .eq('id', authenticatedUser.id)
       .single();
 
-    if (profile?.role !== 'client') {
+    // Parse request body for date range and optional clientId
+    const requestBody = await request.json();
+    const { dateRange, clientId } = requestBody;
+    
+    console.log('🔍 API received request:', {
+      profileRole: profile?.role,
+      clientId,
+      dateRange,
+      requestBody
+    });
+    
+    let client;
+    
+    if (profile?.role === 'admin') {
+      // Admin can access any client's data
+      if (clientId) {
+        // Admin specified a specific client
+        const { data: adminClient, error: adminClientError } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('id', clientId)
+          .single();
+          
+        if (adminClientError || !adminClient) {
+          return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+        }
+        client = adminClient;
+      } else {
+        // Admin didn't specify client, return error
+        return NextResponse.json({ error: 'Client ID required for admin access' }, { status: 400 });
+      }
+    } else if (profile?.role === 'client') {
+      // Client can only access their own data
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('email', authenticatedUser.email)
+        .single();
+
+      if (clientError || !clientData) {
+        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+      }
+      client = clientData;
+    } else {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    // Get client data
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('email', authenticatedUser.email)
-      .single();
-
-    if (clientError || !client) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
     console.log('📊 Client data loaded:', {
@@ -101,9 +133,6 @@ export async function POST(request: NextRequest) {
       tokenPreview: client.meta_access_token ? client.meta_access_token.substring(0, 20) + '...' : 'none'
     });
 
-    // Parse request body for date range (optional)
-    const { dateRange } = await request.json();
-    
     // Use a more flexible date range strategy
     let startDate, endDate;
     let isMonthlyRequest = false;

@@ -126,10 +126,14 @@ export type Database = {
           generated_username: string | null
           id: string
           last_report_date: string | null
+          last_token_validation: string | null
           meta_access_token: string
           name: string
           notes: string | null
           reporting_frequency: Database["public"]["Enums"]["reporting_frequency"]
+          token_expires_at: string | null
+          token_health_status: string | null
+          token_refresh_count: number | null
           updated_at: string
         }
         Insert: {
@@ -144,10 +148,14 @@ export type Database = {
           generated_username?: string | null
           id?: string
           last_report_date?: string | null
+          last_token_validation?: string | null
           meta_access_token: string
           name: string
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
+          token_expires_at?: string | null
+          token_health_status?: string | null
+          token_refresh_count?: number | null
           updated_at?: string
         }
         Update: {
@@ -162,10 +170,14 @@ export type Database = {
           generated_username?: string | null
           id?: string
           last_report_date?: string | null
+          last_token_validation?: string | null
           meta_access_token?: string
           name?: string
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
+          token_expires_at?: string | null
+          token_health_status?: string | null
+          token_refresh_count?: number | null
           updated_at?: string
         }
         Relationships: [

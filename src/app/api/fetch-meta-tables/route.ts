@@ -39,25 +39,62 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { dateStart, dateEnd } = await request.json();
-    console.log('📅 Date range received:', { dateStart, dateEnd });
+    const { dateStart, dateEnd, clientId } = await request.json();
+    console.log('📅 Request data received:', { dateStart, dateEnd, clientId });
 
     if (!dateStart || !dateEnd) {
       console.log('❌ Missing date range');
       return NextResponse.json({ error: 'Missing date range' }, { status: 400 });
     }
 
-    // Get client data
-    console.log('🔍 Looking for client with email:', jwtUser.email);
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('*')
-      .eq('email', jwtUser.email)
+    // Get user profile to check role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', jwtUser.id)
       .single();
 
-    if (clientError || !client) {
-      console.log('❌ Client not found:', clientError);
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    console.log('👤 User profile:', profile);
+
+    let client;
+
+    if (profile?.role === 'admin') {
+      // Admin can access any client's data
+      if (clientId) {
+        // Admin specified a specific client
+        console.log('👨‍💼 Admin accessing client:', clientId);
+        const { data: adminClient, error: adminClientError } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('id', clientId)
+          .single();
+          
+        if (adminClientError || !adminClient) {
+          console.log('❌ Client not found for admin:', adminClientError);
+          return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+        }
+        client = adminClient;
+      } else {
+        console.log('❌ Admin must specify clientId');
+        return NextResponse.json({ error: 'Client ID required for admin access' }, { status: 400 });
+      }
+    } else if (profile?.role === 'client') {
+      // Client can only access their own data
+      console.log('🔍 Looking for client with email:', jwtUser.email);
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('email', jwtUser.email)
+        .single();
+
+      if (clientError || !clientData) {
+        console.log('❌ Client not found:', clientError);
+        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+      }
+      client = clientData;
+    } else {
+      console.log('❌ Invalid user role');
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
     console.log('✅ Client found:', { id: client.id, email: client.email, hasToken: !!client.meta_access_token });

@@ -1,91 +1,80 @@
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
 
-// Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Missing required environment variables. Please check your .env.local file.');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 async function transferClients() {
-  console.log('🔄 Transferring clients to jac.honkisz@gmail.com...\n');
-
+  console.log('🔄 Starting client transfer...');
+  
   try {
-    // Get user IDs
-    const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
-    if (usersError) {
-      throw usersError;
-    }
+    // Get the specific user IDs we need
+    const sourceAdminId = '410483f9-cd02-432f-8e0b-7e8a8cd33a54'; // jac.honkisz@gmail.com
+    const targetAdminId = '585b6abc-05ef-47aa-b289-e47a52ccdc6b'; // admin@example.com
 
-    const adminUser = users.users.find(u => u.email === 'admin@example.com');
-    const jacUser = users.users.find(u => u.email === 'jac.honkisz@gmail.com');
+    console.log(`🔄 Transferring clients from ${sourceAdminId} to ${targetAdminId}...`);
 
-    if (!adminUser || !jacUser) {
-      console.log('❌ Could not find required users');
-      return;
-    }
-
-    console.log(`From: ${adminUser.email} (${adminUser.id})`);
-    console.log(`To: ${jacUser.email} (${jacUser.id})`);
-
-    // Get clients owned by admin@example.com
+    // Get all clients owned by the source admin
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
       .select('*')
-      .eq('admin_id', adminUser.id);
+      .eq('admin_id', sourceAdminId);
 
     if (clientsError) {
-      throw clientsError;
+      console.error('❌ Error fetching clients:', clientsError);
+      return;
     }
 
-    console.log(`\n📋 Found ${clients.length} clients to transfer:`);
+    if (clients.length === 0) {
+      console.log('ℹ️ No clients found to transfer');
+      return;
+    }
+
+    console.log(`📋 Found ${clients.length} clients to transfer:`);
     clients.forEach(client => {
-      console.log(`  - ${client.name} (${client.email})`);
+      console.log(`   - ${client.name} (${client.email})`);
     });
 
     // Transfer each client
+    let transferredCount = 0;
     for (const client of clients) {
       console.log(`\n🔄 Transferring ${client.name}...`);
       
       const { error: updateError } = await supabase
         .from('clients')
-        .update({ admin_id: jacUser.id })
+        .update({ admin_id: targetAdminId })
         .eq('id', client.id);
 
       if (updateError) {
-        console.log(`  ❌ Failed: ${updateError.message}`);
+        console.error(`❌ Error transferring ${client.name}:`, updateError);
       } else {
-        console.log(`  ✅ Transferred successfully`);
+        console.log(`✅ Successfully transferred ${client.name}`);
+        transferredCount++;
       }
     }
 
-    // Verify transfer
-    console.log('\n✅ Verification:');
-    const { data: jacClients, error: verifyError } = await supabase
+    console.log(`\n🎉 Transfer complete! ${transferredCount}/${clients.length} clients transferred successfully.`);
+
+    // Verify the transfer
+    console.log('\n🔍 Verifying transfer...');
+    const { data: targetClients, error: verifyError } = await supabase
       .from('clients')
-      .select('*')
-      .eq('admin_id', jacUser.id);
+      .select('name, email')
+      .eq('admin_id', targetAdminId);
 
     if (verifyError) {
-      console.log(`❌ Verification failed: ${verifyError.message}`);
+      console.error('❌ Error verifying transfer:', verifyError);
     } else {
-      console.log(`📋 jac.honkisz@gmail.com now owns ${jacClients.length} clients:`);
-      jacClients.forEach(client => {
-        console.log(`  - ${client.name} (${client.email})`);
+      console.log(`✅ Target admin now has ${targetClients.length} clients:`);
+      targetClients.forEach(client => {
+        console.log(`   - ${client.name} (${client.email})`);
       });
     }
 
-    console.log('\n🎉 Transfer completed!');
-    console.log('You can now log in as jac.honkisz@gmail.com and manage these clients.');
-
   } catch (error) {
-    console.error('❌ Error transferring clients:', error.message);
-    process.exit(1);
+    console.error('❌ Unexpected error:', error);
   }
 }
 
