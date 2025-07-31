@@ -214,7 +214,7 @@ export class MetaAPIService {
     permissions?: string[];
     convertedToken?: string;
     isLongLived?: boolean;
-    expiresAt?: Date | null;
+    expiresAt?: Date | null | undefined;
     tokenInfo?: TokenInfo;
   }> {
     try {
@@ -251,7 +251,7 @@ export class MetaAPIService {
           valid: false, 
           error: `Token missing required permissions. Need: ${requiredScopes.join(', ')}. Found: ${tokenInfo.scopes?.join(', ') || 'none'}`,
           isLongLived,
-          expiresAt,
+          expiresAt: expiresAt || null,
           tokenInfo
         };
       }
@@ -284,13 +284,13 @@ export class MetaAPIService {
           };
         }
 
-        // If token is already long-lived, return success
+        // If token is already long-lived, return success with correct expiration
         if (isLongLived) {
           return { 
             valid: true, 
             permissions: tokenInfo.scopes,
             isLongLived: true,
-            expiresAt: null,
+            expiresAt: expiresAt || null, // Keep the actual expiration date
             tokenInfo
           };
         }
@@ -560,7 +560,7 @@ export class MetaAPIService {
           ...(insight.reach && { reach: parseInt(insight.reach) }),
           date_start: insight.date_start || dateStart,
           date_stop: insight.date_stop || dateEnd,
-        }));
+        } as CampaignInsights));
 
         console.log('✅ Parsed campaign insights:', insights.length, 'campaigns');
         return insights;
@@ -589,8 +589,8 @@ export class MetaAPIService {
     month: number
   ): Promise<CampaignInsights[]> {
     try {
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const startDate: string = new Date(year, month - 1, 1).toISOString().split('T')[0] || '';
+      const endDate: string = new Date(year, month, 0).toISOString().split('T')[0] || '';
       
       console.log(`📅 Fetching monthly insights for ${year}-${month.toString().padStart(2, '0')} (${startDate} to ${endDate})`);
       
@@ -606,7 +606,7 @@ export class MetaAPIService {
         if (!campaignMap.has(campaignId)) {
           campaignMap.set(campaignId, {
             campaign_id: campaignId,
-            campaign_name: insight.campaign_name,
+            campaign_name: insight.campaign_name || 'Unknown Campaign',
             impressions: 0,
             clicks: 0,
             spend: 0,

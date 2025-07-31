@@ -34,6 +34,7 @@
     "handlebars": "^4.7.8",
     "lucide-react": "^0.303.0",
     "next": "^14.2.30",
+    "node-fetch": "^3.3.2",
     "postcss": "^8.4.32",
     "puppeteer": "^24.15.0",
     "react": "^18.2.0",

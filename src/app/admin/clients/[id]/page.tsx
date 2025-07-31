@@ -15,7 +15,8 @@ import {
   RefreshCw,
   Edit,
   Trash2,
-  Eye
+  Eye,
+  Send
 } from 'lucide-react';
 import { useAuth } from '../../../../components/AuthProvider';
 import { supabase } from '../../../../lib/supabase';
@@ -32,6 +33,7 @@ export default function ClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [sendingPDF, setSendingPDF] = useState<string | null>(null);
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
@@ -209,6 +211,58 @@ export default function ClientDetailPage() {
     } catch (error: any) {
       console.error('Error deleting client:', error);
       alert('Failed to delete client. Please try again.');
+    }
+  };
+
+  const sendPDFReport = async (reportId: string) => {
+    if (!user || !client) {
+      return;
+    }
+
+    try {
+      setSendingPDF(reportId);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No access token available');
+      }
+
+      // Get the report to extract month information
+      const report = reports.find(r => r.id === reportId);
+      if (!report) {
+        throw new Error('Report not found');
+      }
+
+      // Generate month ID from report dates
+      const startDate = new Date(report.date_range_start);
+      const monthId = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+
+      const response = await fetch('/api/generate-report-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          monthId: monthId,
+          includeEmail: true
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send PDF report');
+      }
+
+      const result = await response.json();
+      alert(`PDF report sent successfully to ${client.email}`);
+
+    } catch (error) {
+      console.error('Error sending PDF report:', error);
+      alert(`Failed to send PDF report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSendingPDF(null);
     }
   };
 
@@ -496,12 +550,27 @@ export default function ClientDetailPage() {
                             Generated: {new Date(report.generated_at).toLocaleDateString()}
                           </p>
                         </div>
-                        <button
-                          onClick={() => router.push(`/reports/${report.id}`)}
-                          className="text-primary-600 hover:text-primary-900"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => router.push(`/reports/${report.id}`)}
+                            className="text-primary-600 hover:text-primary-900"
+                            title="View Report"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => sendPDFReport(report.id)}
+                            disabled={sendingPDF === report.id}
+                            className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                            title="Send PDF Report"
+                          >
+                            {sendingPDF === report.id ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Send className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}

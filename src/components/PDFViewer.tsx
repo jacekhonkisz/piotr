@@ -53,6 +53,7 @@ export default function PDFViewer({
         throw new Error('No valid session found');
       }
 
+      // Use the updated download-pdf endpoint that now generates PDFs
       const response = await fetch(`/api/download-pdf?reportId=${reportId}`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
@@ -60,7 +61,8 @@ export default function PDFViewer({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to load PDF');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to load PDF (${response.status})`);
       }
 
       const blob = await response.blob();

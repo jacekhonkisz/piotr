@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import puppeteer from 'puppeteer';
-import { MetaAPIService } from '../../../lib/meta-api';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,7 +35,7 @@ interface Client {
   name: string;
   email: string;
   ad_account_id: string;
-  meta_access_token?: string;
+  meta_token?: string;
 }
 
 interface ReportData {
@@ -75,6 +74,13 @@ function generateReportHTML(reportData: ReportData): string {
   const formatCurrency = (value: number) => `${value.toFixed(2)} zł`;
   const formatNumber = (value: number) => value.toLocaleString();
   const formatPercentage = (value: number) => `${value.toFixed(2)}%`;
+
+  // Debug: Log the client data being used in HTML generation
+  console.log('🔍 HTML Generation - Client data:', {
+    id: reportData.client.id,
+    name: reportData.client.name,
+    email: reportData.client.email
+  });
 
   return `
     <!DOCTYPE html>
@@ -586,15 +592,8 @@ function generateReportHTML(reportData: ReportData): string {
   `;
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const reportId = searchParams.get('reportId');
-
-    if (!reportId) {
-      return NextResponse.json({ error: 'Report ID is required' }, { status: 400 });
-    }
-
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -610,94 +609,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile to determine if admin or client
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
+    // Parse request body
+    const { clientId, monthId, includeEmail } = await request.json();
 
-    if (profileError) {
-      return NextResponse.json({ error: 'Failed to get user profile' }, { status: 500 });
-    }
-
-    let clientId: string;
-    let monthId: string;
-
-    if (reportId === 'latest') {
-      // For latest report, we need to determine the client and current month
-      if (profile?.role === 'admin') {
-        // Admin - get the latest client report
-        const { data: latestReport, error: reportError } = await supabase
-          .from('reports')
-          .select('client_id, date_range_start')
-          .order('generated_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (reportError || !latestReport) {
-          // No reports in database, use a past month that likely has data
-          const pastDate = new Date(2024, 5, 1); // June 2024
-          monthId = `${pastDate.getFullYear()}-${String(pastDate.getMonth() + 1).padStart(2, '0')}`;
-          
-          // Get first available client for admin
-          const { data: firstClient, error: clientError } = await supabase
-            .from('clients')
-            .select('*')
-            .limit(1)
-            .single();
-
-          if (clientError || !firstClient) {
-            return NextResponse.json({ error: 'No clients found' }, { status: 404 });
-          }
-
-          clientId = firstClient.id;
-        } else {
-          clientId = latestReport.client_id;
-          const startDate = new Date(latestReport.date_range_start);
-          monthId = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-        }
-      } else {
-        // Client - get their own latest report
-        const { data: client, error: clientError } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('email', user.email || '')
-          .single();
-
-        if (clientError || !client) {
-          return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-        }
-
-        clientId = client.id;
-        
-        // Get latest report for this client
-        const { data: latestReport, error: reportError } = await supabase
-          .from('reports')
-          .select('date_range_start')
-          .eq('client_id', clientId)
-          .order('generated_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (reportError || !latestReport) {
-          // No reports, use a past month that likely has data
-          const pastDate = new Date(2024, 5, 1); // June 2024
-          monthId = `${pastDate.getFullYear()}-${String(pastDate.getMonth() + 1).padStart(2, '0')}`;
-        } else {
-          const startDate = new Date(latestReport.date_range_start);
-          monthId = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-        }
-      }
-    } else {
-      // Parse reportId as "clientId-monthId"
-      const parts = reportId.split('-');
-      if (parts.length < 2) {
-        return NextResponse.json({ error: 'Invalid report ID format' }, { status: 400 });
-      }
-      
-      clientId = parts[0] || '';
-      monthId = `${parts[1]}-${parts[2]}`;
+    if (!clientId || !monthId) {
+      return NextResponse.json({ error: 'Client ID and Month ID are required' }, { status: 400 });
     }
 
     // Get client information
@@ -711,20 +627,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
+    // Debug: Log the client data being used
+    console.log('🔍 PDF Generation - Client data:', {
+      id: client.id,
+      name: client.name,
+      email: client.email
+    });
+
     // Parse month ID to get start and end dates
-    const [yearStr, monthStr] = monthId.split('-').map(Number);
-    const year = yearStr || new Date().getFullYear();
-    const month = monthStr || new Date().getMonth() + 1;
+    const [year, month] = monthId.split('-').map(Number);
     const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0); // Last day of the month
+    const endDate = new Date(year, month, 0);
     
-    // Format dates in local timezone to avoid UTC conversion issues (same as reports page)
     const monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
     const monthEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
 
-    // Get campaigns for this period - use the SAME logic as /reports page
-    console.log('📊 Checking for existing campaigns in database (same as /reports page)...');
-    
+    // Get report data from database
+    const { data: report, error: reportError } = await supabase
+      .from('reports')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('date_range_start', monthStartDate)
+      .eq('date_range_end', monthEndDate)
+      .order('generated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (reportError) {
+      return NextResponse.json({ error: 'Report not found for this period' }, { status: 404 });
+    }
+
+    // Get campaigns for this report
     const { data: campaigns, error: campaignsError } = await supabase
       .from('campaigns')
       .select('*')
@@ -733,161 +666,16 @@ export async function GET(request: NextRequest) {
       .eq('date_range_end', monthEndDate);
 
     if (campaignsError) {
-      console.error('Error fetching campaigns from database:', campaignsError);
-    }
-
-    let campaignData = campaigns || [];
-    
-          // If no campaigns found in database, try to fetch from Meta API directly (same as /reports page)
-      if (campaignData.length === 0) {
-        console.log('📅 No campaigns in database, fetching from Meta API directly (same as /reports page)...');
-        
-        try {
-          // Use Meta API service directly (same logic as /reports page)
-          const metaService = new MetaAPIService(client.meta_access_token);
-          
-          // Validate token first
-          console.log('🔐 Validating Meta API token...');
-          const tokenValidation = await metaService.validateToken();
-          console.log('🔐 Token validation result:', tokenValidation);
-          
-          if (!tokenValidation.valid) {
-            console.log('❌ Invalid Meta API token, will use demo data');
-          } else {
-            // Ensure ad account ID has 'act_' prefix for Meta API
-            const adAccountId = client.ad_account_id.startsWith('act_') 
-              ? client.ad_account_id.substring(4) // Remove 'act_' if present
-              : client.ad_account_id; // Use as-is if no prefix
-            
-            console.log('🏢 Using ad account ID:', adAccountId, '(will be used as act_' + adAccountId + ')');
-            
-            // Fetch campaign insights from Meta API
-            console.log('📈 Fetching campaign insights from Meta API...');
-            
-            let metaCampaigns: any[] = [];
-            try {
-              // Use monthly insights method for monthly requests
-              const startDateObj = new Date(monthStartDate);
-              metaCampaigns = await metaService.getMonthlyCampaignInsights(
-                adAccountId,
-                startDateObj.getFullYear(),
-                startDateObj.getMonth() + 1
-              );
-            } catch (error) {
-              console.error('❌ Failed to fetch monthly insights, trying standard method:', error);
-              try {
-                metaCampaigns = await metaService.getCampaignInsights(
-                  adAccountId,
-                  monthStartDate,
-                  monthEndDate
-                );
-              } catch (standardError) {
-                console.error('❌ Failed to fetch standard insights:', standardError);
-              }
-            }
-
-            if (metaCampaigns && metaCampaigns.length > 0) {
-              console.log(`✅ Fetched ${metaCampaigns.length} campaigns from Meta API directly`);
-              campaignData = metaCampaigns.map((campaign: any) => ({
-                id: `${campaign.campaign_id}-${monthId}`,
-                campaign_id: campaign.campaign_id,
-                campaign_name: campaign.campaign_name,
-                spend: campaign.spend || 0,
-                impressions: campaign.impressions || 0,
-                clicks: campaign.clicks || 0,
-                conversions: campaign.conversions || 0,
-                ctr: campaign.ctr || 0,
-                cpc: campaign.cpc || 0,
-                cpp: campaign.cpp,
-                frequency: campaign.frequency,
-                reach: campaign.reach,
-                date_range_start: monthStartDate,
-                date_range_end: monthEndDate,
-                status: campaign.status,
-                ad_type: campaign.ad_type
-              }));
-            } else {
-              console.log('No campaigns found in Meta API response');
-            }
-          }
-        } catch (apiError: any) {
-          console.error('Error fetching from Meta API directly:', apiError.message);
-        }
-      } else {
-        console.log(`✅ Using ${campaignData.length} campaigns from database (same as /reports page)`);
-      }
-
-    // If still no campaigns, generate demo data as fallback (same as /reports page)
-    if (campaignData.length === 0) {
-      console.log('No campaigns found, generating demo data (same as /reports page fallback)');
-      campaignData = [
-        {
-          id: `demo-campaign-1-${monthId}`,
-          campaign_id: 'demo-campaign-1',
-          campaign_name: 'Summer Sale Campaign',
-          spend: 2450.75,
-          impressions: 125000,
-          clicks: 3125,
-          conversions: 156,
-          ctr: 2.5,
-          cpc: 0.78,
-          cpp: 19.61,
-          frequency: 3.2,
-          reach: 39062,
-          date_range_start: monthStartDate,
-          date_range_end: monthEndDate,
-          status: 'ACTIVE',
-          ad_type: 'IMAGE',
-          objective: 'CONVERSIONS'
-        },
-        {
-          id: `demo-campaign-2-${monthId}`,
-          campaign_id: 'demo-campaign-2',
-          campaign_name: 'Brand Awareness',
-          spend: 1800.50,
-          impressions: 89000,
-          clicks: 1780,
-          conversions: 89,
-          ctr: 2.0,
-          cpc: 1.01,
-          cpp: 20.23,
-          frequency: 2.8,
-          reach: 31786,
-          date_range_start: monthStartDate,
-          date_range_end: monthEndDate,
-          status: 'ACTIVE',
-          ad_type: 'VIDEO',
-          objective: 'BRAND_AWARENESS'
-        },
-        {
-          id: `demo-campaign-3-${monthId}`,
-          campaign_id: 'demo-campaign-3',
-          campaign_name: 'Lead Generation',
-          spend: 3200.25,
-          impressions: 156000,
-          clicks: 4680,
-          conversions: 234,
-          ctr: 3.0,
-          cpc: 0.68,
-          cpp: 20.51,
-          frequency: 4.1,
-          reach: 38049,
-          date_range_start: monthStartDate,
-          date_range_end: monthEndDate,
-          status: 'ACTIVE',
-          ad_type: 'CAROUSEL',
-          objective: 'LEAD_GENERATION'
-        }
-      ];
+      return NextResponse.json({ error: 'Failed to fetch campaign data' }, { status: 500 });
     }
 
     // Calculate totals
-    const totals = campaignData.reduce((acc, campaign) => ({
+    const totals = campaigns?.reduce((acc, campaign) => ({
       spend: acc.spend + (campaign.spend || 0),
       impressions: acc.impressions + (campaign.impressions || 0),
       clicks: acc.clicks + (campaign.clicks || 0),
       conversions: acc.conversions + (campaign.conversions || 0)
-    }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+    }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 }) || { spend: 0, impressions: 0, clicks: 0, conversions: 0 };
 
     const calculatedTotals = {
       ...totals,
@@ -896,12 +684,19 @@ export async function GET(request: NextRequest) {
       cpm: totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0
     };
 
-    // Calculate trends (simplified)
+    // Calculate trends (simplified - in real implementation you'd compare with previous month)
     const trends = {
-      spend: 5.2,
-      conversions: 3.1,
-      ctr: 1.5
+      spend: 0,
+      conversions: 0,
+      ctr: 0
     };
+
+    // Debug: Log the report data being passed to HTML generation
+    console.log('🔍 PDF Generation - Report data client:', {
+      id: client.id,
+      name: client.name,
+      email: client.email
+    });
 
     // Prepare report data
     const reportData: ReportData = {
@@ -910,7 +705,7 @@ export async function GET(request: NextRequest) {
         start: monthStartDate,
         end: monthEndDate
       },
-      campaigns: campaignData.map(campaign => ({
+      campaigns: campaigns?.map(campaign => ({
         id: `${campaign.campaign_id}-${monthId}`,
         campaign_id: campaign.campaign_id,
         campaign_name: campaign.campaign_name,
@@ -925,8 +720,9 @@ export async function GET(request: NextRequest) {
         reach: campaign.reach,
         date_range_start: monthStartDate,
         date_range_end: monthEndDate,
-        status: campaign.status
-      })),
+        status: campaign.status,
+        objective: campaign.objective
+      })) || [],
       totals: calculatedTotals,
       trends
     };
@@ -934,117 +730,92 @@ export async function GET(request: NextRequest) {
     // Generate HTML
     const html = generateReportHTML(reportData);
 
-    // Generate PDF using Puppeteer
-    console.log('📄 Generating PDF with Puppeteer...');
-    let browser;
-    try {
-      browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu'
-        ]
-      });
+    // Launch Puppeteer and generate PDF
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
 
-      const page = await browser.newPage();
-      
-      // Set viewport for consistent rendering
-      await page.setViewport({ width: 1200, height: 800 });
-      
-      // Set content and wait for it to load
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      
-      // Wait a bit more for any dynamic content
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Generate PDF with better settings
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '20mm',
-          right: '20mm',
-          bottom: '20mm',
-          left: '20mm'
-        },
-        preferCSSPageSize: true
-      });
-
-      console.log(`✅ PDF generated successfully (${pdfBuffer.length} bytes)`);
-      
-      return new NextResponse(pdfBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="report-${client.name}-${monthId}.pdf"`,
-          'Content-Length': pdfBuffer.length.toString()
-        }
-      });
-
-    } catch (puppeteerError) {
-      console.error('❌ Puppeteer PDF generation failed:', puppeteerError);
-      
-      // Return a more helpful error response
-      return NextResponse.json({ 
-        error: 'PDF generation failed',
-        details: puppeteerError instanceof Error ? puppeteerError.message : 'Unknown error',
-        debug: {
-          htmlLength: html.length,
-          campaignCount: campaignData.length,
-          clientName: client.name,
-          monthId: monthId
-        }
-      }, { status: 500 });
-      
-    } finally {
-      if (browser) {
-        try {
-          await browser.close();
-        } catch (closeError) {
-          console.error('Error closing browser:', closeError);
-        }
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20mm',
+        right: '20mm',
+        bottom: '20mm',
+        left: '20mm'
       }
+    });
+
+    await browser.close();
+
+    // Convert Uint8Array to Buffer for email service
+    const pdfBufferForEmail = Buffer.from(pdfBuffer);
+
+    // If email is requested, send it
+    if (includeEmail) {
+      const EmailService = (await import('../../../lib/email')).default;
+      const emailService = EmailService.getInstance();
+      
+      const emailResult = await emailService.sendReportEmail(
+        client.email,
+        client.name,
+        {
+          dateRange: `${monthStartDate} to ${monthEndDate}`,
+          totalSpend: calculatedTotals.spend,
+          totalImpressions: calculatedTotals.impressions,
+          totalClicks: calculatedTotals.clicks,
+          ctr: calculatedTotals.ctr / 100,
+          cpc: calculatedTotals.cpc,
+          cpm: calculatedTotals.cpm
+        },
+        pdfBufferForEmail
+      );
+
+      if (!emailResult.success) {
+        return NextResponse.json({ 
+          error: 'Failed to send email',
+          details: emailResult.error 
+        }, { status: 500 });
+      }
+
+      // Log email sending
+      await supabase
+        .from('email_logs')
+        .insert({
+          client_id: clientId,
+          admin_id: user.id,
+          email_type: 'report_pdf',
+          recipient_email: client.email,
+          subject: `Raport Meta Ads - ${monthStartDate} do ${monthEndDate}`,
+          message_id: emailResult.messageId,
+          sent_at: new Date().toISOString(),
+          status: 'sent'
+        });
+
+      return NextResponse.json({
+        success: true,
+        message: 'PDF report generated and sent via email',
+        messageId: emailResult.messageId
+      });
     }
 
-  } catch (error) {
-    console.error('Error downloading PDF:', error);
-    return NextResponse.json(
-      { error: 'Failed to download PDF' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const { month, year, clientId } = await request.json();
-
-    // TODO: Implement actual PDF generation using puppeteer
-    // For now, return a placeholder response
-    console.log(`Generating PDF for ${month} ${year} for client ${clientId}`);
-
-    // In a real implementation, you would:
-    // 1. Fetch the report data for the specified month
-    // 2. Generate HTML content with charts and data
-    // 3. Use puppeteer to convert HTML to PDF
-    // 4. Return the PDF file
-
-    return NextResponse.json({ 
-      success: true, 
-      message: 'PDF generation started',
-      downloadUrl: `/api/download-pdf/${month}-${year}-${clientId}.pdf`
+    // Return PDF as response
+    return new NextResponse(pdfBuffer, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="report-${client.name}-${monthId}.pdf"`
+      }
     });
 
   } catch (error) {
-    console.error('Error generating PDF:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate PDF' },
-      { status: 500 }
-    );
+    console.error('Error generating PDF report:', error);
+    return NextResponse.json({ 
+      error: 'Failed to generate PDF report',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 } 

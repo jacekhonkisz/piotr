@@ -19,7 +19,6 @@ interface BulkActionsProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onBulkDelete: () => void;
-  onBulkSendReports: () => void;
   onBulkRegenerateCredentials: () => void;
   onBulkGenerateReports: () => void;
   onBulkChangeFrequency: (frequency: string) => void;
@@ -32,7 +31,6 @@ export default function BulkActions({
   onSelectAll,
   onClearSelection,
   onBulkDelete,
-  onBulkSendReports,
   onBulkRegenerateCredentials,
   onBulkGenerateReports,
   onBulkChangeFrequency,
@@ -108,14 +106,7 @@ export default function BulkActions({
                 Generate Reports
               </button>
               
-              <button
-                onClick={onBulkSendReports}
-                disabled={isProcessing}
-                className="flex items-center px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
-              >
-                <Mail className="h-3 w-3 mr-1" />
-                Send Reports
-              </button>
+
               
               <button
                 onClick={onBulkRegenerateCredentials}
