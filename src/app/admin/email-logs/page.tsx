@@ -27,15 +27,15 @@ interface EmailLog {
   message_id: string;
   sent_at: string;
   status: 'sent' | 'delivered' | 'bounced' | 'failed';
-  error_message?: string;
+  error_message?: string | null;
   created_at: string;
-  delivered_at?: string;
-  provider_id?: string;
+  delivered_at?: string | null;
+  provider_id?: string | null;
   report_id?: string;
   client?: {
     name: string;
     email: string;
-  };
+  } | undefined;
 }
 
 export default function EmailLogsPage() {
@@ -69,34 +69,57 @@ export default function EmailLogsPage() {
     if (!user) return;
 
     try {
-      // For now, we'll use a mock implementation since the email_logs table might not exist yet
-      // In a real implementation, this would query the actual email_logs table
-      const mockEmailLogs: EmailLog[] = [
-        {
-          id: '1',
-          client_id: 'client-1',
-          admin_id: user.id,
-          email_type: 'report',
-          recipient_email: 'client@example.com',
-          subject: 'Your Meta Ads Report - Last 30 days',
-          message_id: 'msg_123',
-          sent_at: new Date().toISOString(),
-          status: 'sent',
-          created_at: new Date().toISOString(),
-          client: {
-            name: 'Example Client',
-            email: 'client@example.com'
-          }
-        }
-      ];
+      // Query the actual email_logs table with report and client information
+      const { data: emailLogs, error } = await supabase
+        .from('email_logs')
+        .select(`
+          *,
+          reports (
+            client_id,
+            clients (
+              id,
+              name,
+              email
+            )
+          )
+        `)
+        .order('sent_at', { ascending: false });
 
-      // Filter mock data
-      let filteredLogs = mockEmailLogs;
+      if (error) {
+        console.error('Error fetching email logs:', error);
+        throw error;
+      }
+
+      // Transform the data to match our interface
+      const transformedLogs: EmailLog[] = (emailLogs || []).map(log => ({
+        id: log.id,
+        client_id: log.reports?.client_id || '',
+        admin_id: user.id, // Since we're filtering by admin context
+        email_type: 'report', // Default type since it's not in the schema
+        recipient_email: log.recipient_email,
+        subject: log.subject,
+        message_id: log.provider_id || '',
+        sent_at: log.sent_at,
+        status: log.status,
+        error_message: log.error_message,
+        created_at: log.created_at,
+        delivered_at: log.delivered_at,
+        provider_id: log.provider_id,
+        report_id: log.report_id,
+        client: log.reports?.clients ? {
+          name: log.reports.clients.name,
+          email: log.reports.clients.email
+        } : undefined
+      }));
+
+      // Apply filters to real data
+      let filteredLogs = transformedLogs;
       
       if (searchTerm) {
         filteredLogs = filteredLogs.filter(log => 
           log.recipient_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.subject.toLowerCase().includes(searchTerm.toLowerCase())
+          log.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          log.client?.name.toLowerCase().includes(searchTerm.toLowerCase())
         );
       }
 
