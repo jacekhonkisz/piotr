@@ -5,11 +5,9 @@ import { useRouter } from 'next/navigation';
 import { 
   BarChart3, 
   TrendingUp, 
-  Users, 
   DollarSign, 
   Eye, 
   Download,
-  Calendar,
   Target,
   Activity,
   RefreshCw,
@@ -24,20 +22,13 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
-import { getAdminDashboardStats, getClientDashboardData } from '../../lib/database';
+import { getClientDashboardData } from '../../lib/database';
 import type { Database } from '../../lib/database.types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 type Report = Database['public']['Tables']['reports']['Row'];
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
-
-interface DashboardStats {
-  totalClients?: number;
-  totalReports?: number;
-  activeClients?: number;
-  totalSpend?: number;
-}
 
 interface ClientDashboardData {
   client: Client;
@@ -64,7 +55,6 @@ const CACHE_DURATION = 5 * 60 * 1000;
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [adminStats, setAdminStats] = useState<DashboardStats>({});
   const [clientData, setClientData] = useState<ClientDashboardData | null>(null);
 
   const [refreshingData, setRefreshingData] = useState(false);
@@ -189,34 +179,16 @@ export default function DashboardPage() {
       setDashboardInitialized(true);
       
       if (profile.role === 'admin') {
-        loadAdminDashboard();
+        // Redirect admins to admin page instead of showing dashboard
+        router.replace('/admin');
+        return;
       } else {
         loadClientDashboardWithCache();
       }
     }
   }, [user, profile, authLoading, dashboardInitialized, router]);
 
-  const loadAdminDashboard = async () => {
-    if (loadingRef.current) return;
-    
-    try {
-      loadingRef.current = true;
-      setLoading(true);
-      console.log('Loading admin dashboard');
-      const stats = await getAdminDashboardStats(user!.id);
-      
-      if (mountedRef.current) {
-        setAdminStats(stats);
-      }
-    } catch (error) {
-      console.error('Error loading admin dashboard:', error);
-    } finally {
-      loadingRef.current = false;
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-    }
-  };
+
 
   const loadClientDashboardWithCache = async (forceRefresh = false) => {
     if (loadingRef.current) return;
@@ -542,10 +514,10 @@ export default function DashboardPage() {
         }));
 
         // Calculate stats
-        const totalSpend = campaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
-        const totalImpressions = campaigns.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
-        const totalClicks = campaigns.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
-        const totalConversions = campaigns.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+        const totalSpend = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
+        const totalImpressions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
+        const totalClicks = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
+        const totalConversions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0);
         
         const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
         const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
@@ -631,7 +603,7 @@ export default function DashboardPage() {
 
   // Load data when month changes
   useEffect(() => {
-    if (clientData) {
+    if (clientData && currentMonth) {
       loadCurrentMonthData(currentMonth);
     }
   }, [currentMonth, clientData]);
@@ -662,17 +634,17 @@ export default function DashboardPage() {
     let currentMonth = new Date(twoYearsAgo);
     
     while (currentMonth <= sixMonthsAhead) {
-      const monthId = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
-      const monthName = getCurrentMonthName(currentMonth);
+      const monthId = `${currentMonth?.getFullYear() || new Date().getFullYear()}-${String((currentMonth?.getMonth() || new Date().getMonth()) + 1).padStart(2, '0')}`;
+      const monthName = getCurrentMonthName(currentMonth || new Date());
       months.push({ value: monthId, label: monthName });
-      currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+              currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
     }
     
     return months;
   };
 
   // Get month name for any date
-  const getCurrentMonthName = (date: Date = currentMonth) => {
+  const getCurrentMonthName = (date: Date = currentMonth || new Date()) => {
     const months = [
       'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
       'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
@@ -733,134 +705,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (profile?.role === 'admin') {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center">
-                <BarChart3 className="h-8 w-8 text-primary-600" />
-                <h1 className="ml-2 text-xl font-semibold text-gray-900">
-                  Admin Dashboard
-                </h1>
-              </div>
-              <div className="flex items-center">
-                <button
-                  onClick={() => router.push('/admin')}
-                  className="btn-primary"
-                >
-                  Manage Clients
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="ml-2 btn-secondary"
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Log Out
-                </button>
-              </div>
-            </div>
-          </div>
-        </header>
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Users className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Clients</p>
-                  <p className="text-2xl font-semibold text-gray-900">{adminStats.totalClients}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <FileText className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Reports</p>
-                  <p className="text-2xl font-semibold text-gray-900">{adminStats.totalReports}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-yellow-100 rounded-lg">
-                  <Activity className="h-6 w-6 text-yellow-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Clients</p>
-                  <p className="text-2xl font-semibold text-gray-900">{adminStats.activeClients}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <DollarSign className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Spend</p>
-                  <p className="text-2xl font-semibold text-gray-900">
-                    ${adminStats.totalSpend?.toLocaleString() || '0'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={() => router.push('/admin')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                <Users className="h-5 w-5 text-blue-600 mr-3" />
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">Manage Clients</p>
-                  <p className="text-sm text-gray-600">Add, edit, or remove clients</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => router.push('/admin/reports')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                <FileText className="h-5 w-5 text-green-600 mr-3" />
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">View Reports</p>
-                  <p className="text-sm text-gray-600">Browse all client reports</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => router.push('/admin/settings')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                <BarChart3 className="h-5 w-5 text-purple-600 mr-3" />
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">System Settings</p>
-                  <p className="text-sm text-gray-600">Configure system preferences</p>
-                </div>
-              </button>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
 
   // Client Dashboard
   if (!clientData) {
@@ -1097,7 +942,7 @@ export default function DashboardPage() {
                 
                 {/* Month Picker Dropdown */}
                 <select
-                  value={`${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`}
+                  value={`${currentMonth?.getFullYear() || new Date().getFullYear()}-${String((currentMonth?.getMonth() || new Date().getMonth()) + 1).padStart(2, '0')}`}
                   onChange={handleMonthChange}
                   className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
@@ -1139,7 +984,7 @@ export default function DashboardPage() {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                 <h4 className="font-semibold text-yellow-800 mb-2">Debug Info:</h4>
                 <div className="text-sm text-yellow-700 space-y-1">
-                  <div>Current Month: {getCurrentMonthName()} ({currentMonth.getFullYear()}-{currentMonth.getMonth() + 1})</div>
+                  <div>Current Month: {getCurrentMonthName(currentMonth || new Date())} ({currentMonth?.getFullYear() || new Date().getFullYear()}-{currentMonth ? currentMonth.getMonth() + 1 : new Date().getMonth() + 1})</div>
                   <div>Meta API Campaigns: {currentMonthData.campaigns.length}</div>
                   <div>Meta API Stats: {currentMonthData.stats ? 'Loaded' : 'Loading...'}</div>
                   <div>Data Source: Meta API (Live)</div>

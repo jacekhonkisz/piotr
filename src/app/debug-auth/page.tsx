@@ -67,10 +67,10 @@ export default function DebugAuthPage() {
               Go to Login
             </a>
             <a
-              href="/dashboard"
+                              href={profile?.role === 'admin' ? '/admin' : '/dashboard'}
               className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 inline-block"
             >
-              Go to Dashboard
+                              {profile?.role === 'admin' ? 'Go to Admin' : 'Go to Dashboard'}
             </a>
           </div>
         </div>

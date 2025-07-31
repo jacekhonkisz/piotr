@@ -186,8 +186,8 @@ function ReportsPageContent() {
 
       // Parse month ID to get start and end dates
       const [year, month] = monthId.split('-').map(Number);
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0); // Last day of the month
+      const startDate = new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
+      const endDate = new Date(year || new Date().getFullYear(), month || 1, 0); // Last day of the month
       
       // Format dates in local timezone to avoid UTC conversion issues
       const monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
@@ -246,7 +246,7 @@ function ReportsPageContent() {
           id: monthId,
           date_range_start: monthStartDate,
           date_range_end: monthEndDate,
-          generated_at: existingReport.generated_at,
+          generated_at: existingReport?.generated_at || new Date().toISOString(),
           campaigns: campaigns
         };
 
@@ -691,10 +691,10 @@ function ReportsPageContent() {
     // If we have a previous month, calculate real trends
     if (currentMonthIndex > 0) {
       const previousMonth = availableMonths[currentMonthIndex - 1];
-      const previousReport = reports[previousMonth];
+      const previousReport = previousMonth ? reports[previousMonth] : undefined;
       
       if (previousReport && previousReport.campaigns) {
-        const previousTotals = previousReport.campaigns.reduce((acc, campaign) => ({
+        const previousTotals = previousReport.campaigns.reduce((acc: { spend: number; impressions: number; clicks: number; conversions: number }, campaign: Campaign) => ({
           spend: acc.spend + campaign.spend,
           impressions: acc.impressions + campaign.impressions,
           clicks: acc.clicks + campaign.clicks,
@@ -768,10 +768,10 @@ function ReportsPageContent() {
               
               <div className="flex items-center space-x-4">
                 <button
-                  onClick={() => router.push('/dashboard')}
+                  onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
                   className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl"
                 >
-                  Powrót do Dashboard
+                  {profile?.role === 'admin' ? 'Back to Admin' : 'Powrót do Dashboard'}
                 </button>
               </div>
             </div>
@@ -952,9 +952,11 @@ function ReportsPageContent() {
                   const currentIndex = availableMonths.indexOf(selectedMonth);
                   if (currentIndex < availableMonths.length - 1) {
                     const nextMonth = availableMonths[currentIndex + 1];
-                    setSelectedMonth(nextMonth);
-                    if (!reports[nextMonth]) {
-                      loadMonthData(nextMonth);
+                    if (nextMonth) {
+                      setSelectedMonth(nextMonth);
+                      if (!reports[nextMonth]) {
+                        loadMonthData(nextMonth);
+                      }
                     }
                   }
                 }
@@ -1043,9 +1045,11 @@ function ReportsPageContent() {
                   const currentIndex = availableMonths.indexOf(selectedMonth);
                   if (currentIndex > 0) {
                     const prevMonth = availableMonths[currentIndex - 1];
-                    setSelectedMonth(prevMonth);
-                    if (!reports[prevMonth]) {
-                      loadMonthData(prevMonth);
+                    if (prevMonth) {
+                      setSelectedMonth(prevMonth);
+                      if (!reports[prevMonth]) {
+                        loadMonthData(prevMonth);
+                      }
                     }
                   }
                 }

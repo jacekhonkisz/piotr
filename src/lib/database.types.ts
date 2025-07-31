@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.12 (cd3cf9e)"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          operationName?: string
-          query?: string
-          variables?: Json
-          extensions?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       campaigns: {
@@ -109,6 +84,68 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_notes: {
+        Row: {
+          admin_id: string
+          client_id: string
+          content: string
+          created_at: string
+          id: string
+          note_type: string | null
+          tags: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          admin_id: string
+          client_id: string
+          content: string
+          created_at?: string
+          id?: string
+          note_type?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          admin_id?: string
+          client_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          note_type?: string | null
+          tags?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_notes_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_notes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
             referencedColumns: ["id"]
           },
         ]
@@ -237,6 +274,56 @@ export type Database = {
           },
         ]
       }
+      email_logs_bulk: {
+        Row: {
+          admin_id: string
+          completed_at: string | null
+          created_at: string
+          error_details: Json | null
+          failed_sends: number
+          id: string
+          operation_type: string
+          started_at: string
+          status: string
+          successful_sends: number
+          total_recipients: number
+        }
+        Insert: {
+          admin_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_details?: Json | null
+          failed_sends?: number
+          id?: string
+          operation_type: string
+          started_at?: string
+          status?: string
+          successful_sends?: number
+          total_recipients?: number
+        }
+        Update: {
+          admin_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_details?: Json | null
+          failed_sends?: number
+          id?: string
+          operation_type?: string
+          started_at?: string
+          status?: string
+          successful_sends?: number
+          total_recipients?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_logs_bulk_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -315,6 +402,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
         ]
       }
       system_settings: {
@@ -346,7 +440,42 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      token_health_overview: {
+        Row: {
+          api_status: Database["public"]["Enums"]["api_status"] | null
+          email: string | null
+          expiration_status: string | null
+          id: string | null
+          last_token_validation: string | null
+          name: string | null
+          token_expires_at: string | null
+          token_health_status: string | null
+          token_refresh_count: number | null
+        }
+        Insert: {
+          api_status?: Database["public"]["Enums"]["api_status"] | null
+          email?: string | null
+          expiration_status?: never
+          id?: string | null
+          last_token_validation?: string | null
+          name?: string | null
+          token_expires_at?: string | null
+          token_health_status?: string | null
+          token_refresh_count?: number | null
+        }
+        Update: {
+          api_status?: Database["public"]["Enums"]["api_status"] | null
+          email?: string | null
+          expiration_status?: never
+          id?: string | null
+          last_token_validation?: string | null
+          name?: string | null
+          token_expires_at?: string | null
+          token_health_status?: string | null
+          token_refresh_count?: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
@@ -482,9 +611,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       api_status: ["valid", "invalid", "expired", "pending"],

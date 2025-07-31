@@ -29,7 +29,7 @@ export default function LoginPage() {
       
       if (profile.role === 'admin') {
         console.log('Redirecting to /admin');
-        router.replace('/admin'); // Use replace to avoid back button issues
+        router.replace('/admin');
       } else {
         console.log('Redirecting to /dashboard');
         router.replace('/dashboard');

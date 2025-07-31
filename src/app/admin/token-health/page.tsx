@@ -54,7 +54,7 @@ export default function TokenHealthPage() {
     }
 
     if (profile?.role !== 'admin') {
-      router.push('/dashboard');
+              router.push('/admin');
       return;
     }
 

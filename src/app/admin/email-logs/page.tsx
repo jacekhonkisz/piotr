@@ -56,7 +56,7 @@ export default function EmailLogsPage() {
     }
 
     if (profile?.role !== 'admin') {
-      router.push('/dashboard');
+              router.push('/admin');
       return;
     }
 

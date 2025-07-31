@@ -19,10 +19,10 @@ export default function QuickAddPage() {
           <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
           <p className="text-gray-600">You need admin privileges to access this page.</p>
           <button
-            onClick={() => router.push('/dashboard')}
+                          onClick={() => router.push('/admin')}
             className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
           >
-            Go to Dashboard
+                            Go to Admin
           </button>
         </div>
       </div>

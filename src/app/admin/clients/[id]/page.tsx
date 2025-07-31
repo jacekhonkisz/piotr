@@ -53,7 +53,7 @@ export default function ClientDetailPage() {
 
     // Redirect if not admin
     if (profile?.role !== 'admin') {
-      router.push('/dashboard');
+              router.push('/admin');
       return;
     }
 
@@ -167,7 +167,7 @@ export default function ClientDetailPage() {
           generated_at: new Date().toISOString(),
           generation_time_ms: 0,
           email_sent: false
-        });
+        } as Database['public']['Tables']['reports']['Insert']);
 
       if (reportError) throw reportError;
 

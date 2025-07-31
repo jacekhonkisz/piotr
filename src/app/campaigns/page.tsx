@@ -54,7 +54,7 @@ export default function CampaignsPage() {
     }
 
     if (profile?.role !== 'client') {
-      router.push('/dashboard');
+              router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
       return;
     }
 
@@ -224,7 +224,7 @@ export default function CampaignsPage() {
                 Export Data
               </button>
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
                 className="btn-primary"
               >
                 Back to Dashboard

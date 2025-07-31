@@ -18,7 +18,8 @@ import {
   Key,
   UserPlus,
   LogOut,
-  Shield
+  Shield,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -1188,6 +1189,13 @@ export default function AdminPage() {
               >
                 <Mail className="h-4 w-4 mr-2" />
                 Email Logs
+              </button>
+              <button
+                onClick={() => router.push('/admin/settings')}
+                className="btn-secondary mr-2"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
               </button>
               <button
                 onClick={() => setShowAddModal(true)}

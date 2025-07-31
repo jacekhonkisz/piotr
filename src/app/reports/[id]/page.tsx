@@ -50,7 +50,7 @@ export default function IndividualReportPage() {
     }
 
     if (profile?.role !== 'client') {
-      router.push('/dashboard');
+              router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
       return;
     }
 
@@ -104,16 +104,16 @@ export default function IndividualReportPage() {
           // Create a synthetic report from live data
           // Extract month and year from report ID (format: live-data-YYYY-MM)
           const idParts = reportId.split('-');
-          const year = parseInt(idParts[2]);
-          const month = parseInt(idParts[3]);
-          const monthStart = new Date(year, month - 1, 1);
-          const monthEnd = new Date(year, month, 0);
+          const year = parseInt(idParts[2] || '2024');
+          const month = parseInt(idParts[3] || '1');
+          const monthStart = new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
+          const monthEnd = new Date(year || new Date().getFullYear(), month || 1, 0);
           
           const syntheticReport: ReportWithCampaigns = {
             id: reportId,
             client_id: clientData.id,
-            date_range_start: monthStart.toISOString().split('T')[0],
-            date_range_end: monthEnd.toISOString().split('T')[0],
+            date_range_start: monthStart.toISOString().split('T')[0] || '',
+            date_range_end: monthEnd.toISOString().split('T')[0] || '',
             generated_at: new Date().toISOString(),
             generation_time_ms: 0,
             email_sent: false,
@@ -126,8 +126,8 @@ export default function IndividualReportPage() {
               client_id: clientData.id,
               campaign_id: campaign.campaign_id,
               campaign_name: campaign.campaign_name,
-              date_range_start: monthStart.toISOString().split('T')[0],
-              date_range_end: monthEnd.toISOString().split('T')[0],
+              date_range_start: monthStart.toISOString().split('T')[0] || '',
+              date_range_end: monthEnd.toISOString().split('T')[0] || '',
               impressions: Math.floor(campaign.impressions / 6), // Distribute across months
               clicks: Math.floor(campaign.clicks / 6), // Distribute across months
               spend: campaign.spend > 0 ? campaign.spend / 6 : 0, // Only distribute if there's actual spend
@@ -312,10 +312,10 @@ export default function IndividualReportPage() {
                 Download Report
               </button>
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
                 className="btn-secondary"
               >
-                Dashboard
+                                  {profile?.role === 'admin' ? 'Admin' : 'Dashboard'}
               </button>
             </div>
           </div>
