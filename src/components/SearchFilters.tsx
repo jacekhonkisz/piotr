@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Search, Filter, ChevronDown, ChevronUp, X, SlidersHorizontal } from 'lucide-react';
 
 interface SearchFiltersProps {
   onSearchChange: (search: string) => void;
@@ -58,59 +58,63 @@ export default function SearchFilters({
   };
 
   return (
-    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
-      {/* Search Bar */}
-      <div className="flex items-center space-x-4 mb-4">
+    <div className="space-y-6">
+      {/* Enhanced Search Bar */}
+      <div className="flex items-center space-x-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+            <Search className="h-5 w-5 text-gray-400" />
+          </div>
           <input
             type="text"
             placeholder="Search clients by name, email, or company..."
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full pl-14 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 shadow-sm hover:shadow-md transition-all duration-200 text-lg"
           />
         </div>
         
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-md border transition-colors ${
+          className={`group relative px-6 py-4 rounded-2xl border transition-all duration-200 flex items-center space-x-3 ${
             showFilters 
-              ? 'bg-primary-50 border-primary-200 text-primary-700' 
-              : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-gray-100'
+              ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-md' 
+              : 'bg-white/90 border-gray-200 text-gray-700 hover:border-gray-300 hover:shadow-md'
           }`}
         >
-          <Filter className="h-4 w-4" />
-          <span>Filters</span>
+          <SlidersHorizontal className={`h-5 w-5 transition-colors ${
+            showFilters ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700'
+          }`} />
+          <span className="font-medium text-lg">Filters</span>
           {hasActiveFilters && (
-            <div className="w-2 h-2 bg-primary-600 rounded-full"></div>
+            <div className="w-3 h-3 bg-blue-600 rounded-full animate-pulse"></div>
           )}
         </button>
 
         {hasActiveFilters && (
           <button
             onClick={clearAllFilters}
-            className="flex items-center space-x-1 px-3 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+            className="group relative px-5 py-4 text-lg text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-2xl transition-all duration-200 flex items-center space-x-3 border border-gray-200 hover:border-gray-300"
           >
-            <X className="h-4 w-4" />
-            <span>Clear All</span>
+            <X className="h-5 w-5" />
+            <span className="font-medium">Clear All</span>
           </button>
         )}
       </div>
 
-      {/* Filters Panel */}
+      {/* Enhanced Filters Panel */}
       {showFilters && (
-        <div className="border-t border-gray-200 pt-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200/50 rounded-2xl p-8 space-y-8 animate-fade-in">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Status Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
                 API Status
               </label>
               <select
                 value={currentStatusFilter}
                 onChange={(e) => onStatusFilterChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200 text-lg"
               >
                 <option value="">All Statuses</option>
                 <option value="valid">Valid</option>
@@ -121,14 +125,14 @@ export default function SearchFilters({
             </div>
 
             {/* Frequency Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
                 Reporting Frequency
               </label>
               <select
                 value={currentFrequencyFilter}
                 onChange={(e) => onFrequencyFilterChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200 text-lg"
               >
                 <option value="">All Frequencies</option>
                 <option value="monthly">Monthly</option>
@@ -138,15 +142,15 @@ export default function SearchFilters({
             </div>
 
             {/* Sort Options */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
                 Sort By
               </label>
-              <div className="flex space-x-2">
+              <div className="flex space-x-3">
                 <select
                   value={currentSortBy}
                   onChange={(e) => onSortChange(e.target.value, currentSortOrder)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="flex-1 px-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200 text-lg"
                 >
                   <option value="name">Name</option>
                   <option value="email">Email</option>
@@ -156,42 +160,45 @@ export default function SearchFilters({
                 </select>
                 <button
                   onClick={() => onSortChange(currentSortBy, currentSortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="px-4 py-4 border border-gray-200 rounded-2xl hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm hover:shadow-md transition-all duration-200"
                 >
                   {currentSortOrder === 'asc' ? 
-                    <ChevronUp className="h-4 w-4" /> : 
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronUp className="h-5 w-5 text-blue-600" /> : 
+                    <ChevronDown className="h-5 w-5 text-blue-600" />
                   }
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Active Filters Display */}
+          {/* Enhanced Active Filters Display */}
           {(currentStatusFilter || currentFrequencyFilter) && (
-            <div className="flex flex-wrap gap-2 pt-2">
-              {currentStatusFilter && (
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  Status: {currentStatusFilter}
-                  <button
-                    onClick={() => onStatusFilterChange('')}
-                    className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )}
-              {currentFrequencyFilter && (
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Frequency: {currentFrequencyFilter}
-                  <button
-                    onClick={() => onFrequencyFilterChange('')}
-                    className="ml-1 hover:bg-green-200 rounded-full p-0.5"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )}
+            <div className="border-t border-gray-200/50 pt-6">
+              <h4 className="text-sm font-semibold text-gray-700 mb-4">Active Filters:</h4>
+              <div className="flex flex-wrap gap-4">
+                {currentStatusFilter && (
+                  <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200 shadow-sm">
+                    Status: {currentStatusFilter}
+                    <button
+                      onClick={() => onStatusFilterChange('')}
+                      className="ml-3 hover:bg-blue-200 rounded-full p-1 transition-colors duration-200"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
+                )}
+                {currentFrequencyFilter && (
+                  <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800 border border-green-200 shadow-sm">
+                    Frequency: {currentFrequencyFilter}
+                    <button
+                      onClick={() => onFrequencyFilterChange('')}
+                      className="ml-3 hover:bg-green-200 rounded-full p-1 transition-colors duration-200"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>

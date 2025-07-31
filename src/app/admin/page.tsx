@@ -19,7 +19,16 @@ import {
   UserPlus,
   LogOut,
   Shield,
-  Settings
+  Settings,
+  Search,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  MoreHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -1150,329 +1159,380 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner text="Loading clients..." />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-12">
+          <LoadingSpinner text="Loading clients..." />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      {/* Enhanced Header with Premium Styling */}
+      <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-gray-200/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
-              <BarChart3 className="h-8 w-8 text-primary-600" />
-              <h1 className="ml-2 text-xl font-semibold text-gray-900">
-                Client Management
-              </h1>
+              <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-3 rounded-2xl shadow-lg">
+                <BarChart3 className="h-8 w-8 text-white" />
+              </div>
+              <div className="ml-4">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  Client Management
+                </h1>
+                <p className="text-sm text-gray-600">Manage your client accounts and reports</p>
+              </div>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center space-x-3">
               <button
                 onClick={() => router.push('/admin/token-health')}
-                className="btn-secondary mr-2"
+                className="group nav-premium-button hover:border-blue-300"
               >
-                <Shield className="h-4 w-4 mr-2" />
-                Token Health
+                <div className="flex items-center">
+                  <Shield className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Token Health</span>
+                </div>
               </button>
               <button
                 onClick={() => router.push('/admin/reports')}
-                className="btn-primary mr-2"
+                className="nav-premium-button-primary"
               >
-                <FileText className="h-4 w-4 mr-2" />
-                View All Reports
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">View All Reports</span>
+                </div>
               </button>
               <button
                 onClick={() => router.push('/admin/email-logs')}
-                className="btn-secondary mr-2"
+                className="group nav-premium-button"
               >
-                <Mail className="h-4 w-4 mr-2" />
-                Email Logs
+                <div className="flex items-center">
+                  <Mail className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700">Email Logs</span>
+                </div>
               </button>
               <button
                 onClick={() => router.push('/admin/settings')}
-                className="btn-secondary mr-2"
+                className="group nav-premium-button"
               >
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
+                <div className="flex items-center">
+                  <Settings className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700">Settings</span>
+                </div>
               </button>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="btn-primary"
+                className="btn-premium-success"
               >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Client
+                <div className="flex items-center">
+                  <Plus className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">Add Client</span>
+                </div>
               </button>
               <button
                 onClick={handleLogout}
-                className="ml-2 btn-secondary"
+                className="group nav-premium-button hover:border-red-300"
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Log Out
+                <div className="flex items-center">
+                  <LogOut className="h-4 w-4 mr-2 text-gray-600 group-hover:text-red-600 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-red-700">Log Out</span>
+                </div>
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Search and Filters */}
-        <SearchFilters
-          onSearchChange={setSearchTerm}
-          onStatusFilterChange={setStatusFilter}
-          onFrequencyFilterChange={setFrequencyFilter}
-          onSortChange={(sortBy, sortOrder) => {
-            setSortBy(sortBy);
-            setSortOrder(sortOrder);
-          }}
-          currentSearch={searchTerm}
-          currentStatusFilter={statusFilter}
-          currentFrequencyFilter={frequencyFilter}
-          currentSortBy={sortBy}
-          currentSortOrder={sortOrder}
-        />
+      {/* Sticky Sub-navigation */}
+      <div className="bg-white/60 backdrop-blur-sm border-b border-gray-200/50 sticky top-16 z-30">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="flex items-center py-3 space-x-6">
+            <div className="flex items-center text-sm text-gray-600">
+              <Home className="h-4 w-4 mr-2" />
+              <span>Dashboard</span>
+              <ChevronRight className="h-4 w-4 mx-2 text-gray-400" />
+              <Users className="h-4 w-4 mr-2" />
+              <span className="font-medium text-gray-900">Client Management</span>
+            </div>
+            <div className="text-sm text-gray-500">
+              {clients.length} client{clients.length !== 1 ? 's' : ''} • {selectedClients.length} selected
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-6xl mx-auto px-6 lg:px-8 py-8">
+        {/* Enhanced Search and Filters Section */}
+        <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8 mb-8">
+          <SearchFilters
+            onSearchChange={setSearchTerm}
+            onStatusFilterChange={setStatusFilter}
+            onFrequencyFilterChange={setFrequencyFilter}
+            onSortChange={(sortBy, sortOrder) => {
+              setSortBy(sortBy);
+              setSortOrder(sortOrder);
+            }}
+            currentSearch={searchTerm}
+            currentStatusFilter={statusFilter}
+            currentFrequencyFilter={frequencyFilter}
+            currentSortBy={sortBy}
+            currentSortOrder={sortOrder}
+          />
+        </div>
 
         {clients.length === 0 ? (
-          <div className="text-center py-12">
-            <Building className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-16 text-center">
+            <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-8 rounded-full w-32 h-32 mx-auto mb-8 flex items-center justify-center">
+              <Building className="h-16 w-16 text-gray-400" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">
               {searchTerm || statusFilter || frequencyFilter ? 'No clients found' : 'No clients yet'}
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-10 max-w-md mx-auto text-lg">
               {searchTerm || statusFilter || frequencyFilter 
-                ? 'Try adjusting your search or filter criteria.' 
-                : 'Click \'Add Client\' to get started.'}
+                ? 'Try adjusting your search or filter criteria to find what you\'re looking for.' 
+                : 'Get started by adding your first client to the system.'}
             </p>
             {!searchTerm && !statusFilter && !frequencyFilter && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="btn-primary"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Client
+                              <button
+                  onClick={() => setShowAddModal(true)}
+                  className="btn-premium px-8 py-4 text-lg"
+                >
+                <div className="flex items-center">
+                  <Plus className="h-6 w-6 mr-3" />
+                  <span className="font-semibold">Add Your First Client</span>
+                </div>
               </button>
             )}
           </div>
         ) : (
-          <div className="bg-white shadow-sm rounded-lg overflow-hidden">
-            {/* Bulk Actions */}
-            <BulkActions
-              selectedClients={selectedClients}
-              totalClients={clients.length}
-              onSelectAll={handleSelectAll}
-              onClearSelection={handleClearSelection}
-              onBulkDelete={handleBulkDelete}
-
-              onBulkRegenerateCredentials={handleBulkRegenerateCredentials}
-              onBulkGenerateReports={handleBulkGenerateReports}
-              onBulkChangeFrequency={handleBulkChangeFrequency}
-              isProcessing={isProcessing}
-            />
+          <div className="space-y-6">
+            {/* Enhanced Bulk Actions */}
+            {selectedClients.length > 0 && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-blue-200/50 p-6">
+                <BulkActions
+                  selectedClients={selectedClients}
+                  totalClients={clients.length}
+                  onSelectAll={handleSelectAll}
+                  onClearSelection={handleClearSelection}
+                  onBulkDelete={handleBulkDelete}
+                  onBulkRegenerateCredentials={handleBulkRegenerateCredentials}
+                  onBulkGenerateReports={handleBulkGenerateReports}
+                  onBulkChangeFrequency={handleBulkChangeFrequency}
+                  isProcessing={isProcessing}
+                />
+              </div>
+            )}
             
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <input
-                        type="checkbox"
-                        checked={selectedClients.length === clients.length && clients.length > 0}
-                        onChange={handleSelectAll}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Client
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      API Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Token Health
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Credentials
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Report
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {clients.map((client) => (
-                    <tr key={client.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={selectedClients.includes(client.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedClients([...selectedClients, client.id]);
-                            } else {
-                              setSelectedClients(selectedClients.filter(id => id !== client.id));
-                            }
-                          }}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-10 w-10 bg-primary-100 rounded-full flex items-center justify-center">
-                            <span className="text-sm font-medium text-primary-600">
-                              {client.name?.charAt(0) || 'C'}
-                            </span>
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{client.name}</div>
-                            <div className="text-sm text-gray-500 flex items-center">
-                              <Mail className="h-3 w-3 mr-1" />
-                              {client.email}
-                            </div>
-                            {client.company && (
-                              <div className="text-xs text-gray-400 flex items-center">
-                                <Building className="h-3 w-3 mr-1" />
-                                {client.company}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          {getStatusIcon(client.api_status || 'pending')}
-                          <span className="ml-2 text-sm text-gray-900">
-                            {getStatusText(client.api_status || 'pending')}
+            {/* Premium Client Cards */}
+            <div className="space-y-4">
+              {clients.map((client, index) => (
+                <div 
+                  key={client.id}
+                  className="group bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6 hover:shadow-2xl hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 ease-out animate-fade-in"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="flex items-center justify-between">
+                    {/* Client Info */}
+                    <div className="flex items-center space-x-4">
+                      <div className="relative">
+                        <div className="h-14 w-14 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300">
+                          <span className="text-lg font-bold text-white">
+                            {client.name?.charAt(0) || 'C'}
                           </span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          {getTokenHealthIcon(client.token_health_status || 'unknown')}
-                          <span className="ml-2 text-sm text-gray-900">
-                            {getTokenHealthText(client.token_health_status || 'unknown')}
-                          </span>
-                          {client.token_expires_at && (
-                            <div className="text-xs text-gray-500 ml-2">
-                              {new Date(client.token_expires_at).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          <div className="flex items-center">
-                            <Key className="h-3 w-3 mr-1" />
-                            {client.generated_username || 'Not generated'}
-                          </div>
-                          {client.credentials_generated_at && (
-                            <div className="text-xs text-gray-500">
-                              Generated: {new Date(client.credentials_generated_at).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {client.last_report_date ? (
-                            new Date(client.last_report_date).toLocaleDateString()
+                        <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-white rounded-full border-2 border-white shadow-sm flex items-center justify-center">
+                          {client.api_status === 'valid' ? (
+                            <div className="h-3 w-3 bg-green-500 rounded-full"></div>
+                          ) : client.api_status === 'pending' ? (
+                            <div className="h-3 w-3 bg-yellow-500 rounded-full"></div>
                           ) : (
-                            <span className="text-gray-400">No reports yet</span>
+                            <div className="h-3 w-3 bg-red-500 rounded-full"></div>
                           )}
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            title="Edit Client"
-                            onClick={() => {
-                              setEditingClient(client);
-                              setShowEditModal(true);
-                            }}
-                            className="text-blue-600 hover:text-blue-900 p-1"
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            title="View Reports"
-                            onClick={() => router.push(`/reports?clientId=${client.id}`)}
-                            className="text-primary-600 hover:text-primary-900 p-1"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-
-
-                          <button
-                            title="Generate Report"
-                            onClick={() => generateReport(client.id)}
-                            disabled={generatingReport === client.id}
-                            className="text-blue-600 hover:text-blue-900 p-1 disabled:opacity-50"
-                          >
-                            {generatingReport === client.id ? (
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileText className="h-4 w-4" />
-                            )}
-                          </button>
-                          <button
-                            title="Regenerate Credentials"
-                            onClick={() => regenerateCredentials(client.id)}
-                            disabled={generatingCredentials === client.id}
-                            className="text-green-600 hover:text-green-900 p-1 disabled:opacity-50"
-                          >
-                            {generatingCredentials === client.id ? (
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <UserPlus className="h-4 w-4" />
-                            )}
-                          </button>
-
-                          <button
-                            title="Delete Client"
-                            onClick={() => deleteClient(client.id)}
-                            className="text-red-600 hover:text-red-900 p-1"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">
+                          {client.name}
+                        </h3>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                          <div className="flex items-center">
+                            <Mail className="h-3 w-3 mr-1" />
+                            {client.email}
+                          </div>
+                          {client.company && (
+                            <div className="flex items-center">
+                              <Building className="h-3 w-3 mr-1" />
+                              {client.company}
+                            </div>
+                          )}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+
+                    {/* Status Badges */}
+                    <div className="flex items-center space-x-3">
+                      <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border ${
+                        client.api_status === 'valid' 
+                          ? 'bg-green-100 text-green-800 border-green-200' 
+                          : client.api_status === 'pending'
+                          ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                          : 'bg-red-100 text-red-800 border-red-200'
+                      }`}>
+                        {getStatusIcon(client.api_status || 'pending')}
+                        <span className="ml-1">
+                          {getStatusText(client.api_status || 'pending')}
+                        </span>
+                      </div>
+                      
+                      <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border ${
+                        client.token_health_status === 'valid' 
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
+                          : client.token_health_status === 'expiring_soon'
+                          ? 'bg-orange-100 text-orange-800 border-orange-200'
+                          : client.token_health_status === 'expired' || client.token_health_status === 'invalid'
+                          ? 'bg-red-100 text-red-800 border-red-200'
+                          : 'bg-gray-100 text-gray-800 border-gray-200'
+                      }`}>
+                        {getTokenHealthIcon(client.token_health_status || 'unknown')}
+                        <span className="ml-1">
+                          {getTokenHealthText(client.token_health_status || 'unknown')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Credentials & Last Report */}
+                    <div className="flex items-center space-x-6 text-sm">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center text-gray-600 mb-1">
+                          <Key className="h-3 w-3 mr-1" />
+                          <span className={client.generated_username ? 'text-gray-900' : 'text-gray-400'}>
+                            {client.generated_username || 'Not generated'}
+                          </span>
+                        </div>
+                        {client.credentials_generated_at && (
+                          <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                            {new Date(client.credentials_generated_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="text-center">
+                        <div className="text-gray-600 mb-1">Last Report</div>
+                        {client.last_report_date ? (
+                          <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
+                            {new Date(client.last_report_date).toLocaleDateString()}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 bg-gray-100 px-3 py-1 rounded-full text-xs">No reports yet</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Enhanced Action Buttons */}
+                    <div className="flex items-center space-x-2">
+                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        <button
+                          title="Edit Client"
+                          onClick={() => {
+                            setEditingClient(client);
+                            setShowEditModal(true);
+                          }}
+                          className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-105"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        <button
+                          title="View Reports"
+                          onClick={() => router.push(`/reports?clientId=${client.id}`)}
+                          className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 hover:scale-105"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        <button
+                          title="Generate Report"
+                          onClick={() => generateReport(client.id)}
+                          disabled={generatingReport === client.id}
+                          className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {generatingReport === client.id ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <FileText className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                      
+                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        <button
+                          title="Regenerate Credentials"
+                          onClick={() => regenerateCredentials(client.id)}
+                          disabled={generatingCredentials === client.id}
+                          className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {generatingCredentials === client.id ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <UserPlus className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        <button
+                          title="Delete Client"
+                          onClick={() => deleteClient(client.id)}
+                          className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-105"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
             
-            {/* Pagination */}
+            {/* Enhanced Pagination */}
             {pagination.totalPages > 1 && (
-              <div className="bg-white px-6 py-3 border-t border-gray-200 flex items-center justify-between">
-                <div className="text-sm text-gray-700">
-                  Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                  {pagination.total} clients
-                </div>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => fetchClients(pagination.page - 1)}
-                    disabled={pagination.page <= 1}
-                    className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <span className="text-sm text-gray-700">
-                    Page {pagination.page} of {pagination.totalPages}
-                  </span>
-                  <button
-                    onClick={() => fetchClients(pagination.page + 1)}
-                    disabled={pagination.page >= pagination.totalPages}
-                    className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
+              <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-700">
+                    Showing <span className="font-semibold">{((pagination.page - 1) * pagination.limit) + 1}</span> to{' '}
+                    <span className="font-semibold">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> of{' '}
+                    <span className="font-semibold">{pagination.total}</span> clients
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => fetchClients(pagination.page - 1)}
+                      disabled={pagination.page <= 1}
+                      className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      <span>Previous</span>
+                    </button>
+                    <div className="bg-gray-100 px-4 py-2 rounded-xl text-sm text-gray-700 font-medium">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </div>
+                    <button
+                      onClick={() => fetchClients(pagination.page + 1)}
+                      disabled={pagination.page >= pagination.totalPages}
+                      className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2"
+                    >
+                      <span>Next</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1505,10 +1565,6 @@ export default function AdminPage() {
           clientEmail={credentialsModal.clientEmail}
         />
       )}
-
-
-
-
     </div>
   );
 } 

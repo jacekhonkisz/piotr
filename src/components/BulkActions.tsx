@@ -10,7 +10,9 @@ import {
   CheckSquare, 
   Square,
   AlertTriangle,
-  X
+  X,
+  Calendar,
+  Clock
 } from 'lucide-react';
 
 interface BulkActionsProps {
@@ -61,23 +63,27 @@ export default function BulkActions({
 
   if (selectedClients.length === 0) {
     return (
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
+      <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <button
               onClick={handleSelectAll}
-              className="flex items-center text-sm text-gray-600 hover:text-gray-900"
+              className="group flex items-center text-sm text-gray-600 hover:text-gray-900 transition-colors duration-200"
             >
-              {isAllSelected ? (
-                <CheckSquare className="h-4 w-4 mr-2" />
-              ) : (
-                <Square className="h-4 w-4 mr-2" />
-              )}
-              {isAllSelected ? 'Deselect All' : 'Select All'}
+              <div className="mr-3 p-1 rounded-md group-hover:bg-gray-100 transition-colors duration-200">
+                {isAllSelected ? (
+                  <CheckSquare className="h-4 w-4 text-blue-600" />
+                ) : (
+                  <Square className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
+                )}
+              </div>
+              <span className="font-medium">
+                {isAllSelected ? 'Deselect All' : 'Select All'}
+              </span>
             </button>
           </div>
-          <div className="text-sm text-gray-500">
-            {totalClients} clients
+          <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+            {totalClients} client{totalClients !== 1 ? 's' : ''}
           </div>
         </div>
       </div>
@@ -86,93 +92,118 @@ export default function BulkActions({
 
   return (
     <>
-      <div className="bg-blue-50 border-b border-blue-200 px-6 py-3">
+      <div className="px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
             <div className="flex items-center">
-              <CheckSquare className="h-4 w-4 text-blue-600 mr-2" />
-              <span className="text-sm font-medium text-blue-900">
-                {selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''} selected
-              </span>
+              <div className="bg-blue-100 p-2 rounded-lg mr-3">
+                <CheckSquare className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-blue-900">
+                  {selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''} selected
+                </span>
+                <div className="text-xs text-blue-600">
+                  {isPartiallySelected ? 'Partially selected' : 'All clients selected'}
+                </div>
+              </div>
             </div>
             
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-3">
               <button
                 onClick={onBulkGenerateReports}
                 disabled={isProcessing}
-                className="flex items-center px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                className="group relative px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
               >
-                <FileText className="h-3 w-3 mr-1" />
-                Generate Reports
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">Generate Reports</span>
+                </div>
               </button>
-              
-
               
               <button
                 onClick={onBulkRegenerateCredentials}
                 disabled={isProcessing}
-                className="flex items-center px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                className="group relative px-4 py-2 bg-gradient-to-r from-purple-600 to-violet-600 text-white rounded-xl hover:from-purple-700 hover:to-violet-700 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
               >
-                <UserPlus className="h-3 w-3 mr-1" />
-                Regenerate Credentials
+                <div className="flex items-center">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">Regenerate Credentials</span>
+                </div>
               </button>
               
               <button
                 onClick={() => setShowFrequencyModal(true)}
                 disabled={isProcessing}
-                className="flex items-center px-3 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50"
+                className="group relative px-4 py-2 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
               >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Change Frequency
+                <div className="flex items-center">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">Change Frequency</span>
+                </div>
               </button>
               
               <button
                 onClick={handleBulkDelete}
                 disabled={isProcessing}
-                className="flex items-center px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                className="group relative px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl hover:from-red-700 hover:to-rose-700 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
               >
-                <Trash2 className="h-3 w-3 mr-1" />
-                Delete
+                <div className="flex items-center">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-medium">Delete</span>
+                </div>
               </button>
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center">
             <button
               onClick={onClearSelection}
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className="group relative px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-xl hover:border-gray-300 hover:shadow-md transition-all duration-200"
             >
-              Clear Selection
+              <div className="flex items-center">
+                <X className="h-4 w-4 mr-2 text-gray-500 group-hover:text-gray-700 transition-colors" />
+                <span className="text-sm font-medium">Clear Selection</span>
+              </div>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Frequency Change Modal */}
+      {/* Enhanced Frequency Change Modal */}
       {showFrequencyModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Change Reporting Frequency</h3>
-              <button onClick={() => setShowFrequencyModal(false)} className="text-gray-400 hover:text-gray-600">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4 animate-scale-in">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Change Reporting Frequency</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Update frequency for {selectedClients.length} selected client{selectedClients.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowFrequencyModal(false)} 
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all duration-200"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
             
-            <p className="text-sm text-gray-600 mb-4">
-              Change reporting frequency for {selectedClients.length} selected client{selectedClients.length !== 1 ? 's' : ''}.
-            </p>
-            
-            <div className="space-y-3">
+            <div className="space-y-4">
               <button
                 onClick={() => {
                   onBulkChangeFrequency('monthly');
                   setShowFrequencyModal(false);
                 }}
-                className="w-full text-left px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                className="w-full text-left p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
               >
-                <div className="font-medium">Monthly</div>
-                <div className="text-sm text-gray-500">Reports sent once per month</div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900 group-hover:text-blue-700">Monthly</div>
+                    <div className="text-sm text-gray-500 mt-1">Reports sent once per month</div>
+                  </div>
+                  <Calendar className="h-5 w-5 text-gray-400 group-hover:text-blue-600" />
+                </div>
               </button>
               
               <button
@@ -180,10 +211,15 @@ export default function BulkActions({
                   onBulkChangeFrequency('weekly');
                   setShowFrequencyModal(false);
                 }}
-                className="w-full text-left px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                className="w-full text-left p-4 border border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 transition-all duration-200 group"
               >
-                <div className="font-medium">Weekly</div>
-                <div className="text-sm text-gray-500">Reports sent once per week</div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900 group-hover:text-green-700">Weekly</div>
+                    <div className="text-sm text-gray-500 mt-1">Reports sent once per week</div>
+                  </div>
+                  <Clock className="h-5 w-5 text-gray-400 group-hover:text-green-600" />
+                </div>
               </button>
               
               <button
@@ -191,40 +227,52 @@ export default function BulkActions({
                   onBulkChangeFrequency('on_demand');
                   setShowFrequencyModal(false);
                 }}
-                className="w-full text-left px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                className="w-full text-left p-4 border border-gray-200 rounded-xl hover:border-orange-300 hover:bg-orange-50 transition-all duration-200 group"
               >
-                <div className="font-medium">On Demand</div>
-                <div className="text-sm text-gray-500">Reports generated manually only</div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-900 group-hover:text-orange-700">On Demand</div>
+                    <div className="text-sm text-gray-500 mt-1">Reports generated manually only</div>
+                  </div>
+                  <FileText className="h-5 w-5 text-gray-400 group-hover:text-orange-600" />
+                </div>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Enhanced Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <div className="flex items-center mb-4">
-              <AlertTriangle className="h-6 w-6 text-red-600 mr-3" />
-              <h3 className="text-lg font-semibold text-red-900">Confirm Bulk Delete</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4 animate-scale-in">
+            <div className="flex items-center mb-6">
+              <div className="bg-red-100 p-3 rounded-xl mr-4">
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-red-900">Confirm Bulk Delete</h3>
+                <p className="text-sm text-red-600 mt-1">This action cannot be undone</p>
+              </div>
             </div>
             
-            <p className="text-sm text-gray-600 mb-6">
-              Are you sure you want to delete {selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''}? 
-              This action cannot be undone and will also delete their user accounts from Supabase.
-            </p>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-red-800">
+                Are you sure you want to delete <strong>{selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''}</strong>? 
+                This will also delete their user accounts from Supabase.
+              </p>
+            </div>
             
-            <div className="flex space-x-3">
+            <div className="flex space-x-4">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                className="flex-1 px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmBulkDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl hover:from-red-700 hover:to-rose-700 shadow-lg hover:shadow-xl transition-all duration-200 font-medium"
               >
                 Delete {selectedClients.length} Client{selectedClients.length !== 1 ? 's' : ''}
               </button>
