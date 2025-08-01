@@ -59,6 +59,11 @@ interface ReportData {
     conversions: number;
     ctr: number;
   };
+  metaTables?: {
+    placementPerformance: any[];
+    demographicPerformance: any[];
+    adRelevanceResults: any[];
+  };
 }
 
 function generateReportHTML(reportData: ReportData): string {
@@ -567,6 +572,170 @@ function generateReportHTML(reportData: ReportData): string {
               </tbody>
             </table>
           </div>
+
+          ${reportData.metaTables ? `
+          <!-- Meta Ads Reporting Tables Section -->
+          <div class="section">
+            <div class="section-header">
+              <div class="section-icon">📊</div>
+              <div>
+                <div class="section-title">Meta Ads Reporting Tables</div>
+                <div class="section-subtitle">Szczegółowe analizy wydajności reklam</div>
+              </div>
+            </div>
+
+            ${reportData.metaTables.placementPerformance && reportData.metaTables.placementPerformance.length > 0 ? `
+            <!-- Placement Performance Table -->
+            <div style="margin-bottom: 40px;">
+              <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%); border-radius: 8px;">
+                📍 Top Placement Performance
+              </h3>
+              <table class="campaigns-table">
+                <thead>
+                  <tr>
+                    <th>Placement</th>
+                    <th>Wydatki</th>
+                    <th>Wyświetlenia</th>
+                    <th>Kliknięcia</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>CPA (CPP)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reportData.metaTables.placementPerformance
+                    .sort((a, b) => b.spend - a.spend)
+                    .map((placement, index) => `
+                    <tr>
+                      <td style="font-weight: 600; color: #1f2937;">${placement.placement}</td>
+                      <td style="color: #059669; font-weight: 600;">${formatCurrency(placement.spend)}</td>
+                      <td>${formatNumber(placement.impressions)}</td>
+                      <td>${formatNumber(placement.clicks)}</td>
+                      <td style="color: #dc2626; font-weight: 600;">${formatPercentage(placement.ctr)}</td>
+                      <td style="color: #d97706; font-weight: 600;">${formatCurrency(placement.cpc)}</td>
+                      <td style="color: #7c3aed; font-weight: 600;">${placement.cpp ? formatCurrency(placement.cpp) : '–'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+            ` : ''}
+
+            ${reportData.metaTables.demographicPerformance && reportData.metaTables.demographicPerformance.length > 0 ? `
+            <!-- Demographic Performance Table -->
+            <div style="margin-bottom: 40px;">
+              <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #f3e8ff 0%, #fce7f3 100%); border-radius: 8px;">
+                👥 Demographic Performance
+              </h3>
+              <table class="campaigns-table">
+                <thead>
+                  <tr>
+                    <th>Grupa Wiekowa</th>
+                    <th>Płeć</th>
+                    <th>Wydatki</th>
+                    <th>Wyświetlenia</th>
+                    <th>Kliknięcia</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>CPA (CPP)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reportData.metaTables.demographicPerformance
+                    .sort((a, b) => (a.cpp || 0) - (b.cpp || 0))
+                    .map((demo, index) => `
+                    <tr>
+                      <td style="font-weight: 600; color: #1f2937;">${demo.age}</td>
+                      <td style="font-weight: 600; color: #1f2937;">${demo.gender}</td>
+                      <td style="color: #059669; font-weight: 600;">${formatCurrency(demo.spend)}</td>
+                      <td>${formatNumber(demo.impressions)}</td>
+                      <td>${formatNumber(demo.clicks)}</td>
+                      <td style="color: #dc2626; font-weight: 600;">${formatPercentage(demo.ctr)}</td>
+                      <td style="color: #d97706; font-weight: 600;">${formatCurrency(demo.cpc)}</td>
+                      <td style="color: #7c3aed; font-weight: 600;">${demo.cpp ? formatCurrency(demo.cpp) : '–'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+            ` : ''}
+
+            ${reportData.metaTables.adRelevanceResults && reportData.metaTables.adRelevanceResults.length > 0 ? `
+            <!-- Ad Relevance Results Table -->
+            <div style="margin-bottom: 40px;">
+              <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 16px; padding: 16px; background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%); border-radius: 8px;">
+                🏆 Ad Relevance & Results
+              </h3>
+              <table class="campaigns-table">
+                <thead>
+                  <tr>
+                    <th>Nazwa Reklamy</th>
+                    <th>Wydatki</th>
+                    <th>Wyświetlenia</th>
+                    <th>Kliknięcia</th>
+                    <th>CPA (CPP)</th>
+                    <th>Quality Ranking</th>
+                    <th>Engagement Ranking</th>
+                    <th>Conversion Ranking</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${reportData.metaTables.adRelevanceResults
+                    .sort((a, b) => b.spend - a.spend)
+                    .map((ad, index) => {
+                      const getRankingStyle = (ranking: string) => {
+                        switch (ranking) {
+                          case 'ABOVE_AVERAGE':
+                            return 'background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;';
+                          case 'AVERAGE':
+                            return 'background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white;';
+                          case 'BELOW_AVERAGE':
+                            return 'background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white;';
+                          default:
+                            return 'background: #f3f4f6; color: #6b7280;';
+                        }
+                      };
+                      
+                      const getRankingLabel = (ranking: string) => {
+                        switch (ranking) {
+                          case 'ABOVE_AVERAGE': return 'Above Average';
+                          case 'AVERAGE': return 'Average';
+                          case 'BELOW_AVERAGE': return 'Below Average';
+                          default: return 'Unknown';
+                        }
+                      };
+                      
+                      return `
+                      <tr>
+                        <td style="font-weight: 600; color: #1f2937;">${ad.ad_name}</td>
+                        <td style="color: #059669; font-weight: 600;">${formatCurrency(ad.spend)}</td>
+                        <td>${formatNumber(ad.impressions)}</td>
+                        <td>${formatNumber(ad.clicks)}</td>
+                        <td style="color: #7c3aed; font-weight: 600;">${ad.cpp ? formatCurrency(ad.cpp) : '–'}</td>
+                        <td>
+                          <span style="padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; ${getRankingStyle(ad.quality_ranking)}">
+                            ${getRankingLabel(ad.quality_ranking)}
+                          </span>
+                        </td>
+                        <td>
+                          <span style="padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; ${getRankingStyle(ad.engagement_rate_ranking)}">
+                            ${getRankingLabel(ad.engagement_rate_ranking)}
+                          </span>
+                        </td>
+                        <td>
+                          <span style="padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; ${getRankingStyle(ad.conversion_rate_ranking)}">
+                            ${getRankingLabel(ad.conversion_rate_ranking)}
+                          </span>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+            ` : ''}
+          </div>
+          ` : ''}
         </div>
         
         <div class="footer">
@@ -610,10 +779,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const { clientId, monthId, includeEmail } = await request.json();
+    const { 
+      clientId, 
+      monthId, 
+      dateRange,
+      includeEmail, 
+      emailRecipient, 
+      emailSubject, 
+      emailMessage 
+    } = await request.json();
 
-    if (!clientId || !monthId) {
-      return NextResponse.json({ error: 'Client ID and Month ID are required' }, { status: 400 });
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
     }
 
     // Get client information
@@ -634,13 +811,24 @@ export async function POST(request: NextRequest) {
       email: client.email
     });
 
-    // Parse month ID to get start and end dates
-    const [year, month] = monthId.split('-').map(Number);
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
+    // Use provided date range or parse month ID
+    let monthStartDate: string;
+    let monthEndDate: string;
     
-    const monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
-    const monthEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+    if (dateRange) {
+      monthStartDate = dateRange.start;
+      monthEndDate = dateRange.end;
+    } else if (monthId) {
+      // Parse month ID to get start and end dates
+      const [year, month] = monthId.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      
+      monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
+      monthEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+    } else {
+      return NextResponse.json({ error: 'Either monthId or dateRange is required' }, { status: 400 });
+    }
 
     // Get report data from database
     const { data: report, error: reportError } = await supabase
@@ -727,6 +915,39 @@ export async function POST(request: NextRequest) {
       trends
     };
 
+    // Fetch Meta Ads tables data
+    try {
+      console.log('🔍 Fetching Meta Ads tables data for PDF...');
+      
+      // Create a request to fetch Meta tables data
+      const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-meta-tables`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          dateStart: monthStartDate,
+          dateEnd: monthEndDate,
+          clientId: clientId
+        })
+      });
+
+      if (metaTablesResponse.ok) {
+        const metaTablesData = await metaTablesResponse.json();
+        if (metaTablesData.success) {
+          reportData.metaTables = metaTablesData.data;
+          console.log('✅ Meta Ads tables data fetched successfully for PDF');
+        } else {
+          console.log('⚠️ Meta Ads tables data fetch failed:', metaTablesData.error);
+        }
+      } else {
+        console.log('⚠️ Meta Ads tables data fetch failed with status:', metaTablesResponse.status);
+      }
+    } catch (error) {
+      console.log('⚠️ Error fetching Meta Ads tables data for PDF:', error);
+    }
+
     // Generate HTML
     const html = generateReportHTML(reportData);
 
@@ -760,8 +981,13 @@ export async function POST(request: NextRequest) {
       const EmailService = (await import('../../../lib/email')).default;
       const emailService = EmailService.getInstance();
       
+      // Use custom email parameters if provided, otherwise use defaults
+      const recipientEmail = emailRecipient || client.email;
+      const subject = emailSubject || `Raport Meta Ads - ${monthStartDate} do ${monthEndDate}`;
+      const message = emailMessage || `Dzień dobry,\n\nW załączniku znajdziesz raport Meta Ads za okres ${monthStartDate} do ${monthEndDate}.\n\nPozdrawiamy,\nZespół Premium Analytics`;
+      
       const emailResult = await emailService.sendReportEmail(
-        client.email,
+        recipientEmail,
         client.name,
         {
           dateRange: `${monthStartDate} to ${monthEndDate}`,
@@ -782,6 +1008,58 @@ export async function POST(request: NextRequest) {
         }, { status: 500 });
       }
 
+      // Upload PDF to Supabase Storage for sent reports
+      const fileName = `reports/${clientId}/${monthId}-${Date.now()}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from('reports')
+        .upload(fileName, pdfBufferForEmail, {
+          contentType: 'application/pdf',
+          cacheControl: '3600'
+        });
+
+      if (uploadError) {
+        console.error('Error uploading PDF to storage:', uploadError);
+        return NextResponse.json({ 
+          error: 'Failed to save PDF to storage',
+          details: uploadError.message 
+        }, { status: 500 });
+      }
+
+      // Get the public URL for the uploaded PDF
+      const { data: { publicUrl } } = supabase.storage
+        .from('reports')
+        .getPublicUrl(fileName);
+
+      // Create sent report record
+      const reportPeriod = `${new Date(monthStartDate).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}`;
+      const { error: sentReportError } = await supabase
+        .from('sent_reports')
+        .insert({
+          report_id: report.id,
+          client_id: clientId,
+          pdf_url: publicUrl,
+          recipient_email: recipientEmail,
+          report_period: reportPeriod,
+          status: 'sent',
+          file_size_bytes: pdfBufferForEmail.length,
+          meta: {
+            dateRange: `${monthStartDate} to ${monthEndDate}`,
+            totalSpend: calculatedTotals.spend,
+            totalImpressions: calculatedTotals.impressions,
+            totalClicks: calculatedTotals.clicks,
+            ctr: calculatedTotals.ctr,
+            cpc: calculatedTotals.cpc,
+            cpm: calculatedTotals.cpm,
+            emailSubject: subject,
+            emailMessage: message
+          }
+        });
+
+      if (sentReportError) {
+        console.error('Error creating sent report record:', sentReportError);
+        // Don't fail the request if sent report creation fails
+      }
+
       // Log email sending
       await supabase
         .from('email_logs')
@@ -789,8 +1067,8 @@ export async function POST(request: NextRequest) {
           client_id: clientId,
           admin_id: user.id,
           email_type: 'report_pdf',
-          recipient_email: client.email,
-          subject: `Raport Meta Ads - ${monthStartDate} do ${monthEndDate}`,
+          recipient_email: recipientEmail,
+          subject: subject,
           message_id: emailResult.messageId,
           sent_at: new Date().toISOString(),
           status: 'sent'
@@ -799,7 +1077,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'PDF report generated and sent via email',
-        messageId: emailResult.messageId
+        messageId: emailResult.messageId,
+        sentReport: {
+          pdfUrl: publicUrl,
+          reportPeriod,
+          recipientEmail
+        }
       });
     }
 
