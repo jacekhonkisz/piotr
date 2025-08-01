@@ -20,11 +20,6 @@ import {
   LogOut,
   Shield,
   Settings,
-  Search,
-  Filter,
-  ChevronDown,
-  ChevronUp,
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
   Home,
@@ -39,6 +34,7 @@ import CredentialsModal from '../../components/CredentialsModal';
 import EditClientModal from '../../components/EditClientModal';
 import SearchFilters from '../../components/SearchFilters';
 import BulkActions from '../../components/BulkActions';
+import GenerateReportModal from '../../components/GenerateReportModal';
 
 
 
@@ -564,7 +560,9 @@ export default function AdminPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [generatingCredentials, setGeneratingCredentials] = useState<string | null>(null);
-  const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+  const [generatingReport] = useState<string | null>(null);
+  const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
+  const [selectedClientForReport, setSelectedClientForReport] = useState<Client | null>(null);
   
   // Bulk operations state
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
@@ -822,49 +820,11 @@ export default function AdminPage() {
   };
 
   const generateReport = async (clientId: string) => {
-    setGeneratingReport(clientId);
-    try {
-      const client = clients.find(c => c.id === clientId);
-      if (!client) return;
-
-      const metaService = new MetaAPIService(client.meta_access_token);
-      
-      // Generate report for last 30 days
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
-      await metaService.generateClientReport(
-        client.ad_account_id.replace('act_', ''),
-        startDate || '',
-        endDate || ''
-      );
-
-      // Store report in database
-      const { error: reportError } = await supabase
-        .from('reports')
-        .insert({
-          client_id: clientId,
-          date_range_start: startDate || '',
-          date_range_end: endDate || '',
-          generated_at: new Date().toISOString(),
-          generation_time_ms: 0, // We could track this
-          email_sent: false
-        });
-
-      if (reportError) throw reportError;
-
-      // Update client's last report date
-      await supabase
-        .from('clients')
-        .update({ last_report_date: new Date().toISOString() })
-        .eq('id', clientId);
-
-      await fetchClients();
-    } catch (error) {
-      console.error('Error generating report:', error);
-    } finally {
-      setGeneratingReport(null);
-    }
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+    
+    setSelectedClientForReport(client);
+    setShowGenerateReportModal(true);
   };
 
 
@@ -1563,6 +1523,19 @@ export default function AdminPage() {
           credentials={credentialsModal.credentials}
           clientName={credentialsModal.clientName}
           clientEmail={credentialsModal.clientEmail}
+        />
+      )}
+
+      {selectedClientForReport && (
+        <GenerateReportModal
+          isOpen={showGenerateReportModal}
+          onClose={() => {
+            setShowGenerateReportModal(false);
+            setSelectedClientForReport(null);
+          }}
+          clientId={selectedClientForReport.id}
+          clientName={selectedClientForReport.name}
+          clientEmail={selectedClientForReport.email}
         />
       )}
     </div>

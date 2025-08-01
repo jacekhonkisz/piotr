@@ -237,7 +237,7 @@ export default function ClientDetailPage() {
       const startDate = new Date(report.date_range_start);
       const monthId = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
 
-      const response = await fetch('/api/generate-report-pdf', {
+      const response = await fetch('/api/send-interactive-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -245,8 +245,13 @@ export default function ClientDetailPage() {
         },
         body: JSON.stringify({
           clientId: client.id,
-          monthId: monthId,
-          includeEmail: true
+          dateRange: {
+            start: report.date_range_start,
+            end: report.date_range_end
+          },
+          emailRecipient: client.email,
+          emailSubject: `Raport Meta Ads - ${new Date(report.date_range_start).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}`,
+          emailMessage: `Dzień dobry,\n\nW załączniku znajdziesz interaktywny raport Meta Ads za okres ${new Date(report.date_range_start).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}.\n\nPozdrawiamy,\nZespół Premium Analytics`
         })
       });
 

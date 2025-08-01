@@ -1,7 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 export interface EmailTemplate {
   subject: string;
   html: string;
@@ -38,21 +36,35 @@ export class EmailService {
 
   async sendEmail(emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const { data, error } = await this.resend.emails.send({
+      const emailOptions: any = {
         from: emailData.from,
         to: emailData.to,
         subject: emailData.subject,
         html: emailData.html,
-        text: emailData.text,
-        attachments: emailData.attachments,
-      });
+      };
+
+      if (emailData.text) {
+        emailOptions.text = emailData.text;
+      }
+
+      if (emailData.attachments) {
+        emailOptions.attachments = emailData.attachments;
+      }
+
+      const { data, error } = await this.resend.emails.send(emailOptions);
 
       if (error) {
         console.error('Email sending failed:', error);
         return { success: false, error: error.message };
       }
 
-      return { success: true, messageId: data?.id };
+      const result: { success: boolean; messageId?: string; error?: string } = { 
+        success: true 
+      };
+      if (data?.id) {
+        result.messageId = data.id;
+      }
+      return result;
     } catch (error) {
       console.error('Email service error:', error);
       return { 
@@ -80,20 +92,57 @@ export class EmailService {
     
     const emailTemplate = this.generateReportEmailTemplate(clientName, reportData);
     
-    const attachments = pdfBuffer ? [{
-      filename: `report-${new Date().toISOString().split('T')[0]}.pdf`,
-      content: pdfBuffer,
-      contentType: 'application/pdf'
-    }] : undefined;
-
-    return this.sendEmail({
+    const emailData: EmailData = {
       to: clientEmail,
       from: fromEmail,
       subject: emailTemplate.subject,
       html: emailTemplate.html,
       text: emailTemplate.text,
-      attachments
-    });
+    };
+
+    if (pdfBuffer) {
+      emailData.attachments = [{
+        filename: `report-${new Date().toISOString().split('T')[0]}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }];
+    }
+
+    return this.sendEmail(emailData);
+  }
+
+  async sendInteractiveReportEmail(
+    clientEmail: string,
+    clientName: string,
+    reportData: {
+      dateRange: string;
+      totalSpend: number;
+      totalImpressions: number;
+      totalClicks: number;
+      ctr: number;
+      cpc: number;
+      cpm: number;
+    },
+    pdfBuffer: Buffer
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const fromEmail = process.env.EMAIL_FROM_ADDRESS || 'noreply@yourdomain.com';
+    
+    const emailTemplate = this.generateInteractiveReportEmailTemplate(clientName, reportData);
+    
+    const emailData: EmailData = {
+      to: clientEmail,
+      from: fromEmail,
+      subject: emailTemplate.subject,
+      html: emailTemplate.html,
+      text: emailTemplate.text,
+      attachments: [{
+        filename: `interactive-meta-ads-report-${new Date().toISOString().split('T')[0]}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }]
+    };
+
+    return this.sendEmail(emailData);
   }
 
   async sendCredentialsEmail(
@@ -112,6 +161,134 @@ export class EmailService {
       html: emailTemplate.html,
       text: emailTemplate.text
     });
+  }
+
+  private generateInteractiveReportEmailTemplate(clientName: string, reportData: any): EmailTemplate {
+    const subject = `Your Interactive Meta Ads Report - ${reportData.dateRange}`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Interactive Meta Ads Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }
+          .highlight { background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
+          .stat { background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .stat-value { font-size: 24px; font-weight: bold; color: #667eea; }
+          .stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+          .interactive-note { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📊 Interactive Meta Ads Report</h1>
+            <p>${reportData.dateRange}</p>
+          </div>
+          
+          <div class="content">
+            <h2>Hello ${clientName},</h2>
+            
+            <p>Your interactive Meta Ads report is ready! This report includes detailed analytics with interactive tab switching for better data exploration.</p>
+            
+            <div class="interactive-note">
+              <strong>🎯 Interactive Features:</strong>
+              <ul>
+                <li>Tab switching between Placement, Demographic, and Ad Relevance data</li>
+                <li>Clickable navigation within the PDF</li>
+                <li>Professional styling with modern design</li>
+                <li>Comprehensive Meta Ads analytics</li>
+              </ul>
+            </div>
+            
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-value">${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</div>
+                <div class="stat-label">Total Spend</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value">${reportData.totalImpressions.toLocaleString()}</div>
+                <div class="stat-label">Impressions</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value">${reportData.totalClicks.toLocaleString()}</div>
+                <div class="stat-label">Clicks</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value">${(reportData.ctr * 100).toFixed(2)}%</div>
+                <div class="stat-label">CTR</div>
+              </div>
+            </div>
+            
+            <div class="highlight">
+              <h3>📋 Report Highlights:</h3>
+              <ul>
+                <li><strong>Top Placement Performance:</strong> See which ad placements are performing best</li>
+                <li><strong>Demographic Insights:</strong> Understand your audience better</li>
+                <li><strong>Ad Relevance Metrics:</strong> Track quality and engagement scores</li>
+                <li><strong>Interactive Navigation:</strong> Switch between different data views easily</li>
+              </ul>
+            </div>
+            
+            <p><strong>Note:</strong> For the best interactive experience, open the attached PDF in Adobe Reader or a compatible PDF viewer with JavaScript enabled.</p>
+            
+            <p>If you have any questions about your report, please don't hesitate to contact us.</p>
+            
+            <p>Best regards,<br>Your Meta Ads Team</p>
+          </div>
+          
+          <div class="footer">
+            <p>This is an automated report generated by your Meta Ads management system.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    const text = `
+Interactive Meta Ads Report - ${reportData.dateRange}
+
+Hello ${clientName},
+
+Your interactive Meta Ads report is ready! This report includes detailed analytics with interactive tab switching for better data exploration.
+
+Interactive Features:
+- Tab switching between Placement, Demographic, and Ad Relevance data
+- Clickable navigation within the PDF
+- Professional styling with modern design
+- Comprehensive Meta Ads analytics
+
+Report Summary:
+- Total Spend: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+- Impressions: ${reportData.totalImpressions.toLocaleString()}
+- Clicks: ${reportData.totalClicks.toLocaleString()}
+- CTR: ${(reportData.ctr * 100).toFixed(2)}%
+
+Report Highlights:
+- Top Placement Performance: See which ad placements are performing best
+- Demographic Insights: Understand your audience better
+- Ad Relevance Metrics: Track quality and engagement scores
+- Interactive Navigation: Switch between different data views easily
+
+Note: For the best interactive experience, open the attached PDF in Adobe Reader or a compatible PDF viewer with JavaScript enabled.
+
+If you have any questions about your report, please don't hesitate to contact us.
+
+Best regards,
+Your Meta Ads Team
+
+This is an automated report generated by your Meta Ads management system.
+    `;
+    
+    return { subject, html, text };
   }
 
   private generateReportEmailTemplate(clientName: string, reportData: any): EmailTemplate {

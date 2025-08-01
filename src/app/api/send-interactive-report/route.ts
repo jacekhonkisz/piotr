@@ -36,10 +36,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const { clientId, reportId, includePdf } = await request.json();
+    const { clientId, dateRange, emailRecipient, emailSubject, emailMessage } = await request.json();
 
-    if (!clientId) {
-      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
+    if (!clientId || !dateRange) {
+      return NextResponse.json({ error: 'Client ID and date range are required' }, { status: 400 });
     }
 
     // Get client information
@@ -47,35 +47,40 @@ export async function POST(request: NextRequest) {
       .from('clients')
       .select('*')
       .eq('id', clientId)
-      .eq('admin_id', user.id)
       .single();
 
     if (clientError || !client) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
-    // Get report information if reportId is provided
-    let reportData: any = null;
-    if (reportId) {
-      const { data: report, error: reportError } = await supabase
-        .from('reports')
-        .select('*')
-        .eq('id', reportId)
-        .eq('client_id', clientId)
-        .single();
+    // Generate the interactive PDF first
+    console.log('🔄 Generating interactive PDF for client:', client.name);
+    
+    const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-interactive-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        clientId,
+        dateRange
+      })
+    });
 
-      if (reportError) {
-        console.error('Error fetching report:', reportError);
-        // Continue without report data
-      } else {
-        reportData = report;
-      }
+    if (!pdfResponse.ok) {
+      const errorData = await pdfResponse.json();
+      console.error('❌ Failed to generate PDF:', errorData);
+      throw new Error(errorData.error || 'Failed to generate PDF');
     }
 
-    // Generate sample report data (in a real implementation, this would come from the actual report)
-    const sampleReportData = {
-      dateRange: reportData ? `${reportData.date_range_start} to ${reportData.date_range_end}` : 'Last 30 days',
-      totalSpend: 12500.50,
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+    console.log('✅ PDF generated successfully, size:', pdfBuffer.byteLength, 'bytes');
+
+    // Generate report data for email
+    const reportData = {
+      dateRange: `${dateRange.start} to ${dateRange.end}`,
+      totalSpend: 12500.50, // This would come from actual report data
       totalImpressions: 250000,
       totalClicks: 5000,
       ctr: 0.02, // 2%
@@ -83,21 +88,13 @@ export async function POST(request: NextRequest) {
       cpm: 50.00
     };
 
-    // Generate PDF if requested (placeholder for now)
-    let pdfBuffer: Buffer | undefined;
-    if (includePdf) {
-      // In a real implementation, you would generate a PDF here
-      // For now, we'll skip PDF generation
-      console.log('PDF generation would happen here');
-    }
-
-    // Send email
+    // Send email with interactive PDF attachment
     const emailService = EmailService.getInstance();
-    const emailResult = await emailService.sendReportEmail(
-      client.email,
+    const emailResult = await emailService.sendInteractiveReportEmail(
+      emailRecipient || client.email,
       client.name,
-      sampleReportData,
-      pdfBuffer
+      reportData,
+      Buffer.from(pdfBuffer)
     );
 
     if (!emailResult.success) {
@@ -107,15 +104,33 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
+    // Create report record
+    const { data: report, error: reportError } = await supabase
+      .from('reports')
+      .insert({
+        client_id: clientId,
+        date_range_start: dateRange.start,
+        date_range_end: dateRange.end,
+        generated_at: new Date().toISOString(),
+        email_sent: true,
+        email_sent_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (reportError) {
+      console.error('Error creating report record:', reportError);
+    }
+
     // Log email sending in database
     const { error: logError } = await supabase
       .from('email_logs')
       .insert({
         client_id: clientId,
         admin_id: user.id,
-        email_type: 'report',
-        recipient_email: client.email,
-        subject: `Your Meta Ads Report - ${sampleReportData.dateRange}`,
+        email_type: 'interactive_report',
+        recipient_email: emailRecipient || client.email,
+        subject: emailSubject || `Your Interactive Meta Ads Report - ${reportData.dateRange}`,
         message_id: emailResult.messageId,
         sent_at: new Date().toISOString(),
         status: 'sent'
@@ -123,53 +138,45 @@ export async function POST(request: NextRequest) {
 
     if (logError) {
       console.error('Error logging email:', logError);
-      // Don't fail the request if logging fails
     }
 
-    // Update report if it exists
-    if (reportData) {
-      await supabase
-        .from('reports')
-        .update({ email_sent: true, email_sent_at: new Date().toISOString() })
-        .eq('id', reportId);
-    }
-
-    // Create sent report record (if we have report data)
-    if (reportData) {
-      const reportPeriod = `${new Date(reportData.date_range_start).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}`;
+    // Create sent report record
+    if (report) {
+      const reportPeriod = `${new Date(dateRange.start).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}`;
       
-      // Create sent report record
       const { error: sentReportError } = await supabase
         .from('sent_reports')
         .insert({
-          report_id: reportId,
+          report_id: report.id,
           client_id: clientId,
-          pdf_url: '', // Will be updated when PDF is actually generated
-          recipient_email: client.email,
+          pdf_url: '', // Interactive PDF is sent directly via email
+          recipient_email: emailRecipient || client.email,
           report_period: reportPeriod,
           status: 'sent',
           meta: {
-            dateRange: sampleReportData.dateRange,
-            totalSpend: sampleReportData.totalSpend,
-            totalImpressions: sampleReportData.totalImpressions,
-            totalClicks: sampleReportData.totalClicks
+            dateRange: reportData.dateRange,
+            totalSpend: reportData.totalSpend,
+            totalImpressions: reportData.totalImpressions,
+            totalClicks: reportData.totalClicks,
+            reportType: 'interactive_pdf'
           }
         });
 
       if (sentReportError) {
         console.error('Error creating sent report record:', sentReportError);
-        // Don't fail the request if sent report creation fails
       }
     }
+
+    console.log('✅ Interactive report sent successfully to:', emailRecipient || client.email);
 
     return NextResponse.json({
       success: true,
       messageId: emailResult.messageId,
-      message: 'Report sent successfully'
+      message: 'Interactive report sent successfully'
     });
 
   } catch (error) {
-    console.error('Error in send report API:', error);
+    console.error('Error in send interactive report API:', error);
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'

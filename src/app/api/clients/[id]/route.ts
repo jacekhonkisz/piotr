@@ -2,6 +2,66 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../../lib/meta-api';
 
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    // Extract the authorization header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+    // Verify the JWT token and get user
+    const { data: { user }, error: userAuthError } = await supabase.auth.getUser(token);
+    if (userAuthError || !user) {
+      console.error('Token verification failed:', userAuthError);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Check if user is admin
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      return NextResponse.json({ error: 'Failed to verify user permissions' }, { status: 500 });
+    }
+
+    if (profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
+    // Get the client data
+    const { data: client, error: fetchError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', params.id)
+      .eq('admin_id', user.id)
+      .single();
+
+    if (fetchError || !client) {
+      console.error('Error fetching client:', fetchError);
+      return NextResponse.json({ error: 'Client not found or access denied' }, { status: 404 });
+    }
+
+    return NextResponse.json(client);
+
+  } catch (error) {
+    console.error('Error fetching client:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!

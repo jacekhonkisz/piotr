@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     // Create Supabase client
     const supabase = createClient(
@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
     // Process each client
     for (const client of clients) {
       try {
-        // Generate report for the client
-        const reportResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-report`, {
+        // Generate interactive PDF report for the client
+        const interactivePdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-interactive-pdf`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -66,19 +66,24 @@ export async function POST(request: NextRequest) {
           })
         });
 
-        if (reportResponse.ok) {
-          const reportData = await reportResponse.json();
+        if (interactivePdfResponse.ok) {
+          const pdfBuffer = await interactivePdfResponse.arrayBuffer();
           
-          // Send the report via email
-          const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/send-report`, {
+          // Send the interactive PDF report via email
+          const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/send-interactive-report`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
             },
             body: JSON.stringify({
-              reportId: reportData.reportId,
-              clientEmail: client.email
+              clientId: client.id,
+              clientEmail: client.email,
+              pdfBuffer: Buffer.from(pdfBuffer).toString('base64'),
+              dateRange: {
+                start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                end: new Date().toISOString().split('T')[0]
+              }
             })
           });
 
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
           }
         } else {
           failedSends++;
-          errors.push(`Failed to generate report for ${client.name}: ${reportResponse.statusText}`);
+          errors.push(`Failed to generate interactive PDF for ${client.name}: ${interactivePdfResponse.statusText}`);
         }
       } catch (error: any) {
         failedSends++;

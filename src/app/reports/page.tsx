@@ -10,7 +10,6 @@ import {
   Download, 
   DollarSign, 
   TrendingUp, 
-  TrendingDown, 
   Eye, 
   Target, 
   Users, 
@@ -18,42 +17,29 @@ import {
   Calendar,
   BarChart3,
   Award,
-  Zap,
-  ArrowUp,
-  ArrowDown,
-  Minus,
-  FileText,
+
   FileSpreadsheet,
   Info,
   ChevronDown,
   ChevronUp,
   Play,
-  Image,
-  Video,
-  Smartphone,
-  Monitor,
-  Lightbulb,
   CheckCircle,
   XCircle,
-  AlertCircle,
   Loader2,
   Sparkles,
   Trophy,
   TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  Search,
   BarChart,
   RefreshCw,
   Clock,
-  Star,
   CalendarDays,
-  SlidersHorizontal
+  Mail,
+  Archive
 } from 'lucide-react';
-import AnimatedGaugeChart from '../../components/AnimatedGaugeChart';
-import CircularProgressChart from '../../components/CircularProgressChart';
 import AnimatedCounter from '../../components/AnimatedCounter';
 import DiagonalChart from '../../components/DiagonalChart';
 import MetaAdsTables from '../../components/MetaAdsTables';
+import InteractivePDFButton from '../../components/InteractivePDFButton';
 import { motion } from 'framer-motion';
 
 interface Campaign {
@@ -125,12 +111,22 @@ function ReportsPageContent() {
   const [loading, setLoading] = useState(true);
   const [loadingMonth, setLoadingMonth] = useState<string | null>(null);
   const [client, setClient] = useState<Client | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [availableMonths, setAvailableMonths] = useState<string[]>([]);
   const [showAdvancedMetrics, setShowAdvancedMetrics] = useState(false);
   const [profile, setProfile] = useState<{ role: string } | null>(null);
-  const [generatingPDF, setGeneratingPDF] = useState(false);
+
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [showSentReports, setShowSentReports] = useState(false);
+  const [sentReports, setSentReports] = useState<any[]>([]);
+  const [loadingSentReports, setLoadingSentReports] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
 
   // Get current user session
   const getCurrentUser = async () => {
@@ -216,7 +212,7 @@ function ReportsPageContent() {
           const existingReport = existingReports[0];
           
           // Get campaigns for this report
-          const { data: existingCampaigns, error: campaignsError } = await supabase
+          const { data: existingCampaigns } = await supabase
             .from('campaigns')
             .select('*')
             .eq('client_id', client.id)
@@ -595,20 +591,24 @@ function ReportsPageContent() {
   };
 
   // Handle PDF generation
-  const handleGeneratePDF = async () => {
+
+
+  const handleSendEmail = async () => {
     if (!selectedMonth || !reports[selectedMonth] || !client) {
       return;
     }
 
     try {
-      setGeneratingPDF(true);
+      setSendingEmail(true);
+      setEmailError(null);
+      setEmailSuccess(null);
       
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error('No access token available');
       }
 
-      const response = await fetch('/api/generate-report-pdf', {
+      const response = await fetch('/api/send-interactive-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -616,34 +616,108 @@ function ReportsPageContent() {
         },
         body: JSON.stringify({
           clientId: client.id,
-          monthId: selectedMonth,
-          includeEmail: false
+          dateRange: {
+            start: reports[selectedMonth].date_range_start,
+            end: reports[selectedMonth].date_range_end
+          },
+          emailRecipient: emailRecipient || client.email,
+          emailSubject: emailSubject || `Raport Meta Ads - ${formatDate(reports[selectedMonth].date_range_start)}`,
+          emailMessage: emailMessage || `Dzień dobry,\n\nW załączniku znajdziesz interaktywny raport Meta Ads za okres ${formatDate(reports[selectedMonth].date_range_start)}.\n\nPozdrawiamy,\nZespół Premium Analytics`
         })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate PDF');
+        throw new Error(errorData.error || 'Failed to send email');
       }
 
-      // Get the PDF blob
-      const pdfBlob = await response.blob();
+      setEmailSuccess('Raport został wysłany pomyślnie!');
+      setShowEmailModal(false);
       
-      // Create download link
-      const url = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `report-${client.name}-${selectedMonth}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      // Refresh sent reports list
+      await fetchSentReports();
 
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error sending email:', error);
+      setEmailError(`Błąd wysyłania emaila: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setGeneratingPDF(false);
+      setSendingEmail(false);
+    }
+  };
+
+  const fetchSentReports = async () => {
+    if (!client) return;
+    
+    try {
+      setLoadingSentReports(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const response = await fetch(`/api/sent-reports?clientId=${client.id}`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSentReports(data.sentReports || []);
+      }
+    } catch (error) {
+      console.error('Error fetching sent reports:', error);
+    } finally {
+      setLoadingSentReports(false);
+    }
+  };
+
+  const handleOpenEmailModal = () => {
+    if (!client) return;
+    
+    setEmailRecipient(client.email);
+    setEmailSubject(`Raport Meta Ads - ${selectedMonth && reports[selectedMonth] ? formatDate(reports[selectedMonth].date_range_start) : ''}`);
+    setEmailMessage(`Dzień dobry,\n\nW załączniku znajdziesz raport Meta Ads za okres ${selectedMonth && reports[selectedMonth] ? formatDate(reports[selectedMonth].date_range_start) : ''}.\n\nPozdrawiamy,\nZespół Premium Analytics`);
+    setShowEmailModal(true);
+    setEmailError(null);
+    setEmailSuccess(null);
+  };
+
+  const handlePreviewSentReport = async (sentReport: any) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const response = await fetch(`/api/sent-reports/${sentReport.id}/preview`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        window.open(data.previewUrl, '_blank');
+      }
+    } catch (error) {
+      console.error('Error previewing report:', error);
+    }
+  };
+
+  const handleDownloadSentReport = async (sentReport: any) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const response = await fetch(`/api/sent-reports/${sentReport.id}/download`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        window.open(data.downloadUrl, '_blank');
+      }
+    } catch (error) {
+      console.error('Error downloading report:', error);
     }
   };
 
@@ -931,15 +1005,37 @@ function ReportsPageContent() {
               </button>
               
               {selectedMonth && reports[selectedMonth] && reports[selectedMonth].campaigns.length > 0 && (
-                <button
-                  onClick={handleGeneratePDF}
-                  disabled={loadingMonth !== null || generatingPDF}
-                  className="flex items-center space-x-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 py-2 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 transform hover:scale-105 text-sm"
-                >
-                  <FileText className={`w-4 h-4 ${generatingPDF ? 'animate-spin' : ''}`} />
-                  <span>{generatingPDF ? 'Generowanie...' : 'Generuj PDF'}</span>
-                </button>
+                <>
+                  <InteractivePDFButton
+                    clientId={client?.id || ''}
+                    dateStart={selectedReport?.date_range_start || ''}
+                    dateEnd={selectedReport?.date_range_end || ''}
+                    className="inline-block"
+                  />
+                  
+                  <button
+                    onClick={handleOpenEmailModal}
+                    disabled={loadingMonth !== null || sendingEmail}
+                    className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 transform hover:scale-105 text-sm"
+                  >
+                    <Mail className={`w-4 h-4 ${sendingEmail ? 'animate-spin' : ''}`} />
+                    <span>{sendingEmail ? 'Wysyłanie...' : 'Wyślij Email'}</span>
+                  </button>
+                </>
               )}
+              
+              <button
+                onClick={() => {
+                  setShowSentReports(!showSentReports);
+                  if (!showSentReports) {
+                    fetchSentReports();
+                  }
+                }}
+                className="flex items-center space-x-2 bg-gradient-to-r from-gray-600 to-gray-700 text-white px-4 py-2 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 text-sm"
+              >
+                <Archive className="w-4 h-4" />
+                <span>{showSentReports ? 'Ukryj Wysłane' : 'Wysłane Raporty'}</span>
+              </button>
             </div>
           </div>
 
@@ -978,12 +1074,15 @@ function ReportsPageContent() {
                 >
                   {availableMonths.map((monthId) => {
                     const [year, month] = monthId.split('-').map(Number);
-                    const date = new Date(year, month - 1, 1);
-                    return (
-                      <option key={monthId} value={monthId}>
-                        {formatDate(date.toISOString())}
-                      </option>
-                    );
+                    if (year && month) {
+                      const date = new Date(year, month - 1, 1);
+                      return (
+                        <option key={monthId} value={monthId}>
+                          {formatDate(date.toISOString())}
+                        </option>
+                      );
+                    }
+                    return null;
                   })}
                 </select>
                 
@@ -1007,8 +1106,9 @@ function ReportsPageContent() {
               
               {/* Enhanced Month indicator dots with tooltips */}
               <div className="flex justify-center space-x-1.5 md:space-x-2 mt-3">
-                {availableMonths.slice(0, 12).map((monthId, index) => {
+                {availableMonths.slice(0, 12).map((monthId) => {
                   const [year, month] = monthId.split('-').map(Number);
+                  if (!year || !month) return null;
                   const date = new Date(year, month - 1, 1);
                   const monthName = formatDate(date.toISOString());
                   
@@ -1517,6 +1617,202 @@ function ReportsPageContent() {
           )}
         </div>
 
+        {/* Email Success/Error Messages */}
+        {emailSuccess && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <div className="flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <span className="text-green-800 font-medium">{emailSuccess}</span>
+            </div>
+          </div>
+        )}
+
+        {emailError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <div className="flex items-center space-x-2">
+              <XCircle className="w-5 h-5 text-red-600" />
+              <span className="text-red-800 font-medium">{emailError}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Sent Reports Section */}
+        {showSentReports && (
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-8 border border-white/20">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl shadow-lg">
+                  <Archive className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                    Wysłane Raporty
+                  </h3>
+                  <p className="text-gray-600">Historia wysłanych raportów PDF</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 text-sm text-gray-600 bg-white/50 backdrop-blur-sm rounded-xl px-4 py-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span>Ostatnie 12 miesięcy</span>
+              </div>
+            </div>
+
+            {loadingSentReports ? (
+              <div className="text-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-400" />
+                <p className="text-gray-500">Ładowanie wysłanych raportów...</p>
+              </div>
+            ) : sentReports.length > 0 ? (
+              <div className="space-y-4">
+                {sentReports.map((sentReport) => (
+                  <div key={sentReport.id} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <h4 className="text-lg font-semibold text-gray-900">
+                            {sentReport.report_period}
+                          </h4>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            sentReport.status === 'sent' ? 'bg-green-100 text-green-800' :
+                            sentReport.status === 'delivered' ? 'bg-blue-100 text-blue-800' :
+                            sentReport.status === 'failed' ? 'bg-red-100 text-red-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {sentReport.status === 'sent' ? 'Wysłany' :
+                             sentReport.status === 'delivered' ? 'Dostarczony' :
+                             sentReport.status === 'failed' ? 'Błąd' : 'Oczekujący'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                          <div>
+                            <span className="font-medium">Odbiorca:</span> {sentReport.recipient_email}
+                          </div>
+                          <div>
+                            <span className="font-medium">Data wysłania:</span> {new Date(sentReport.sent_at).toLocaleDateString('pl-PL')}
+                          </div>
+                          <div>
+                            <span className="font-medium">Rozmiar:</span> {sentReport.file_size_bytes ? `${Math.round(sentReport.file_size_bytes / 1024)} KB` : 'N/A'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handlePreviewSentReport(sentReport)}
+                          className="flex items-center space-x-1 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>Podgląd</span>
+                        </button>
+                        <button
+                          onClick={() => handleDownloadSentReport(sentReport)}
+                          className="flex items-center space-x-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Pobierz</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <Archive className="h-8 w-8 text-gray-400" />
+                </div>
+                <p className="text-gray-500">Brak wysłanych raportów</p>
+                <p className="text-gray-400 text-sm mt-1">Wysłane raporty pojawią się tutaj</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Email Modal */}
+        {showEmailModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-gray-900">Wyślij Raport Email</h3>
+                  <button
+                    onClick={() => setShowEmailModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Odbiorca
+                    </label>
+                    <input
+                      type="email"
+                      value={emailRecipient}
+                      onChange={(e) => setEmailRecipient(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="email@example.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Temat
+                    </label>
+                    <input
+                      type="text"
+                      value={emailSubject}
+                      onChange={(e) => setEmailSubject(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Temat emaila"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Wiadomość
+                    </label>
+                    <textarea
+                      value={emailMessage}
+                      onChange={(e) => setEmailMessage(e.target.value)}
+                      rows={6}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                      placeholder="Treść wiadomości..."
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-3 pt-4">
+                    <button
+                      onClick={handleSendEmail}
+                      disabled={sendingEmail}
+                      className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-300 disabled:opacity-50"
+                    >
+                      {sendingEmail ? (
+                        <div className="flex items-center justify-center space-x-2">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Wysyłanie...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center space-x-2">
+                          <Mail className="w-4 h-4" />
+                          <span>Wyślij Raport</span>
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowEmailModal(false)}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Premium Meta Ads Reporting Tables */}
         <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-8 border border-white/20 relative overflow-hidden">
           {/* Subtle gradient overlay */}
@@ -1548,7 +1844,7 @@ function ReportsPageContent() {
           <MetaAdsTables 
             dateStart={selectedReport.date_range_start}
             dateEnd={selectedReport.date_range_end}
-            clientId={client?.id === 'demo-client-id' ? undefined : client?.id}
+            clientId={client?.id === 'demo-client-id' ? '' : (client?.id || '')}
           />
         </div>
 
