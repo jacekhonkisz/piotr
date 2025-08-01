@@ -164,10 +164,11 @@ export type Database = {
           id: string
           last_report_date: string | null
           last_token_validation: string | null
-          meta_access_token: string
+          meta_access_token: string | null
           name: string
           notes: string | null
           reporting_frequency: Database["public"]["Enums"]["reporting_frequency"]
+          system_user_token: string | null
           token_expires_at: string | null
           token_health_status: string | null
           token_refresh_count: number | null
@@ -186,10 +187,11 @@ export type Database = {
           id?: string
           last_report_date?: string | null
           last_token_validation?: string | null
-          meta_access_token: string
+          meta_access_token?: string | null
           name: string
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
+          system_user_token?: string | null
           token_expires_at?: string | null
           token_health_status?: string | null
           token_refresh_count?: number | null
@@ -212,6 +214,7 @@ export type Database = {
           name?: string
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
+          system_user_token?: string | null
           token_expires_at?: string | null
           token_health_status?: string | null
           token_refresh_count?: number | null

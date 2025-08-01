@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, FileText, Send, Eye, ChevronDown } from 'lucide-react';
+import { X, Calendar, FileText, Send, Eye, ChevronDown, Download } from 'lucide-react';
 
 interface GenerateReportModalProps {
   isOpen: boolean;
@@ -49,6 +49,7 @@ export default function GenerateReportModal({
   const [generating, setGenerating] = useState(false);
   const [reportGenerated, setReportGenerated] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -282,6 +283,7 @@ export default function GenerateReportModal({
     setGenerating(false);
     setReportGenerated(false);
     setPdfUrl(null);
+    setShowPreview(true);
     setError(null);
     setSending(false);
     setEmailSent(false);
@@ -315,7 +317,7 @@ export default function GenerateReportModal({
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+      <div className={`bg-white rounded-xl shadow-xl ${showPreview ? 'max-w-7xl' : 'max-w-4xl'} w-full mx-4 max-h-[90vh] overflow-hidden`}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
@@ -535,8 +537,6 @@ export default function GenerateReportModal({
                 </div>
               )}
 
-
-
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                   <p className="text-red-700 text-sm">{error}</p>
@@ -549,6 +549,62 @@ export default function GenerateReportModal({
                 </div>
               )}
 
+              {/* PDF Preview Section */}
+              {pdfUrl && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-md font-medium text-gray-900">Report Preview</h4>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => setShowPreview(!showPreview)}
+                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                      >
+                        <Eye className="h-4 w-4" />
+                        <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
+                      </button>
+                      <button
+                        onClick={() => window.open(pdfUrl, '_blank')}
+                        className="px-3 py-1 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2"
+                      >
+                        <Eye className="h-4 w-4" />
+                        <span>Open in New Tab</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = pdfUrl;
+                          link.download = `meta-ads-report-${getRangeLabel()}.pdf`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="px-3 py-1 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span>Download</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PDF Preview iframe - Always visible when PDF is available */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50">
+                    <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-4 w-4 text-gray-600" />
+                        <span className="text-sm font-medium text-gray-700">Interactive PDF Report</span>
+                      </div>
+                    </div>
+                    <div className="relative" style={{ height: '600px' }}>
+                      <iframe
+                        src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
+                        className="w-full h-full border-0"
+                        title="PDF Report Preview"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex justify-end space-x-3">
                 <button
@@ -557,31 +613,6 @@ export default function GenerateReportModal({
                 >
                   Back
                 </button>
-                {pdfUrl && (
-                  <>
-                    <button
-                      onClick={() => window.open(pdfUrl, '_blank')}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                    >
-                      <Eye className="h-4 w-4" />
-                      <span>View Report</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        const link = document.createElement('a');
-                        link.href = pdfUrl;
-                        link.download = `meta-ads-report-${getRangeLabel()}.pdf`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors flex items-center space-x-2"
-                    >
-                      <FileText className="h-4 w-4" />
-                      <span>Download</span>
-                    </button>
-                  </>
-                )}
                 <button
                   onClick={sendReport}
                   disabled={sending || emailSent}

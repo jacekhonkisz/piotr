@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, AlertCircle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield } from 'lucide-react';
 import { MetaAPIService } from '../lib/meta-api';
 import type { Database } from '../lib/database.types';
 
@@ -21,6 +21,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     company: '',
     ad_account_id: '',
     meta_access_token: '',
+    system_user_token: '',
     reporting_frequency: 'monthly' as Database['public']['Enums']['reporting_frequency'],
     notes: ''
   });
@@ -31,7 +32,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     message: string;
   }>({ status: 'idle', message: '' });
   const [submitError, setSubmitError] = useState<string>('');
-  const [showTokenField, setShowTokenField] = useState(false);
+  const [showTokenFields, setShowTokenFields] = useState(false);
+  const [adAccountIdError, setAdAccountIdError] = useState<string>('');
 
   // Initialize form data when client changes
   useEffect(() => {
@@ -41,35 +43,95 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
         email: client.email || '',
         company: client.company || '',
         ad_account_id: client.ad_account_id || '',
-        meta_access_token: '', // Don't pre-fill token for security
+        meta_access_token: '', // Don't pre-fill tokens for security
+        system_user_token: '', // Don't pre-fill tokens for security
         reporting_frequency: client.reporting_frequency || 'monthly',
         notes: client.notes || ''
       });
       setValidationStatus({ status: 'idle', message: '' });
       setSubmitError('');
-      setShowTokenField(false);
+      setShowTokenFields(false);
+      setAdAccountIdError('');
     }
   }, [client]);
 
+  // Validate Ad Account ID format in real-time
+  const validateAdAccountIdFormat = (accountId: string) => {
+    if (!accountId) {
+      setAdAccountIdError('');
+      return true;
+    }
+    
+    // Check if it starts with "act_" and contains only numbers after that
+    const actPattern = /^act_\d+$/;
+    if (!actPattern.test(accountId)) {
+      setAdAccountIdError('Ad Account ID should start with "act_" followed by numbers (e.g., act_123456789)');
+      return false;
+    }
+    
+    // Check if it's at least 12 characters (act_ + 9 digits minimum)
+    if (accountId.length < 12) {
+      setAdAccountIdError('Ad Account ID seems too short. Please check the format.');
+      return false;
+    }
+    
+    setAdAccountIdError('');
+    return true;
+  };
+
+  const handleAdAccountIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setFormData({...formData, ad_account_id: newValue});
+    validateAdAccountIdFormat(newValue);
+  };
+
   const validateMetaCredentials = async () => {
-    if (!formData.ad_account_id || !formData.meta_access_token) {
-      setValidationStatus({ status: 'invalid', message: 'Please fill in both Ad Account ID and Access Token' });
+    // Check if Ad Account ID is provided (required)
+    if (!formData.ad_account_id) {
+      setValidationStatus({ status: 'invalid', message: 'Meta Ad Account ID is required' });
       return;
     }
+    
+    // Validate Ad Account ID format
+    if (!validateAdAccountIdFormat(formData.ad_account_id)) {
+      setValidationStatus({ status: 'invalid', message: 'Please fix the Ad Account ID format before validating' });
+      return;
+    }
+    
+    // Check if at least one token is provided
+    if (!formData.meta_access_token && !formData.system_user_token) {
+      setValidationStatus({ status: 'invalid', message: 'Please provide either a Meta Access Token (60 days) or System User Token (permanent)' });
+      return;
+    }
+    
+    // Use System User token if provided (permanent), otherwise use regular access token (60 days)
+    const tokenToUse = formData.system_user_token || formData.meta_access_token;
+    const tokenType = formData.system_user_token ? 'System User Token (Permanent)' : 'Meta Access Token (60 days)';
 
     setValidating(true);
-    setValidationStatus({ status: 'validating', message: 'Validating and converting Meta Ads credentials...' });
+    setValidationStatus({ status: 'validating', message: `Validating ${tokenType}...` });
 
     try {
-      const metaService = new MetaAPIService(formData.meta_access_token);
+      const metaService = new MetaAPIService(tokenToUse);
       
       // Step 1: Validate and convert the access token to long-lived
       const tokenValidation = await metaService.validateAndConvertToken();
       
       if (!tokenValidation.valid) {
+        let errorMessage = `Token validation failed: ${tokenValidation.error}`;
+        
+        // Provide helpful guidance based on error type
+        if (tokenValidation.error?.includes('expired')) {
+          errorMessage += '\n💡 Tip: Use a System User token for permanent access that never expires.';
+        } else if (tokenValidation.error?.includes('permissions')) {
+          errorMessage += '\n💡 Tip: Make sure your token has ads_read and ads_management permissions.';
+        } else if (tokenValidation.error?.includes('invalid')) {
+          errorMessage += '\n💡 Tip: Check that your token starts with "EAA" and is copied correctly.';
+        }
+        
         setValidationStatus({ 
           status: 'invalid', 
-          message: `Token validation failed: ${tokenValidation.error}` 
+          message: errorMessage
         });
         return;
       }
@@ -78,9 +140,18 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       const accountValidation = await metaService.validateAdAccount(formData.ad_account_id);
       
       if (!accountValidation.valid) {
+        let errorMessage = `Ad Account validation failed: ${accountValidation.error}`;
+        
+        // Provide helpful guidance
+        if (accountValidation.error?.includes('not found')) {
+          errorMessage += '\n💡 Tip: Check your Ad Account ID format (should be like "act_123456789").';
+        } else if (accountValidation.error?.includes('access denied')) {
+          errorMessage += '\n💡 Tip: Make sure your token has access to this ad account.';
+        }
+        
         setValidationStatus({ 
           status: 'invalid', 
-          message: `Ad Account validation failed: ${accountValidation.error}` 
+          message: errorMessage
         });
         return;
       }
@@ -89,19 +160,19 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       try {
         const campaigns = await metaService.getCampaigns(formData.ad_account_id.replace('act_', ''));
         
-        let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Found ${campaigns.length} campaigns.`;
+        let statusMessage = `✅ Connection successful! Account: ${accountValidation.account?.name || formData.ad_account_id}. Found ${campaigns.length} campaigns.`;
         
-        // Enhanced token status information
+        // Enhanced token status information with user-friendly guidance
         if (tokenValidation.convertedToken) {
-          statusMessage += ' 🔄 Token will be automatically converted to long-lived for permanent access.';
+          statusMessage += '\n🔄 Your token will be automatically converted to permanent access (no expiration).';
         } else if (tokenValidation.isLongLived) {
-          statusMessage += ' ✅ Token is already long-lived (permanent).';
+          statusMessage += '\n✅ Perfect! Your token is already permanent (System User token).';
         } else if (tokenValidation.expiresAt) {
           const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
           if (daysUntilExpiry <= 7) {
-            statusMessage += ` ⚠️ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+            statusMessage += `\n⚠️ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
           } else {
-            statusMessage += ` ⏰ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+            statusMessage += `\n⏰ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
           }
         }
         
@@ -111,19 +182,19 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
         });
       } catch (campaignError) {
         // Campaign fetch failed, but credentials are still valid
-        let statusMessage = `✅ Credentials valid! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.`;
+        let statusMessage = `✅ Connection successful! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.`;
         
-        // Enhanced token status information
+        // Enhanced token status information with user-friendly guidance
         if (tokenValidation.convertedToken) {
-          statusMessage += ' 🔄 Token will be automatically converted to long-lived for permanent access.';
+          statusMessage += '\n🔄 Your token will be automatically converted to permanent access (no expiration).';
         } else if (tokenValidation.isLongLived) {
-          statusMessage += ' ✅ Token is already long-lived (permanent).';
+          statusMessage += '\n✅ Perfect! Your token is already permanent (System User token).';
         } else if (tokenValidation.expiresAt) {
           const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
           if (daysUntilExpiry <= 7) {
-            statusMessage += ` ⚠️ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+            statusMessage += `\n⚠️ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
           } else {
-            statusMessage += ` ⏰ Token expires in ${daysUntilExpiry} days - will be converted to long-lived.`;
+            statusMessage += `\n⏰ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
           }
         }
         
@@ -151,8 +222,14 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     // Clear previous errors
     setSubmitError('');
     
-    // If token field is shown and filled, validate it
-    if (showTokenField && formData.meta_access_token && validationStatus.status !== 'valid') {
+    // Validate Ad Account ID format
+    if (!validateAdAccountIdFormat(formData.ad_account_id)) {
+      setSubmitError('Please fix the Ad Account ID format before saving');
+      return;
+    }
+    
+    // If token fields are shown and filled, validate them
+    if (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.status !== 'valid') {
       setValidationStatus({ status: 'invalid', message: 'Please validate your Meta Ads credentials first' });
       return;
     }
@@ -169,9 +246,17 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       if (formData.reporting_frequency !== client.reporting_frequency) updates.reporting_frequency = formData.reporting_frequency;
       if (formData.notes !== client.notes) updates.notes = formData.notes;
       
-      // Only include token if it was changed
-      if (showTokenField && formData.meta_access_token) {
-        updates.meta_access_token = formData.meta_access_token;
+      // Only include tokens if they were changed
+      if (showTokenFields) {
+        if (formData.system_user_token) {
+          updates.system_user_token = formData.system_user_token;
+          // Clear meta_access_token if system user token is provided
+          updates.meta_access_token = null;
+        } else if (formData.meta_access_token) {
+          updates.meta_access_token = formData.meta_access_token;
+          // Clear system_user_token if meta access token is provided
+          updates.system_user_token = null;
+        }
       }
 
       await onUpdate(client.id, updates);
@@ -230,65 +315,216 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Meta Ad Account ID *
             </label>
-            <input
-              type="text"
-              required
-              value={formData.ad_account_id}
-              onChange={(e) => setFormData({...formData, ad_account_id: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="act_123456789"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                required
+                value={formData.ad_account_id}
+                onChange={handleAdAccountIdChange}
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                  adAccountIdError 
+                    ? 'border-red-300 focus:ring-red-500' 
+                    : formData.ad_account_id && !adAccountIdError
+                    ? 'border-green-300 focus:ring-green-500'
+                    : 'border-gray-300 focus:ring-primary-500'
+                }`}
+                placeholder="act_123456789"
+              />
+              {formData.ad_account_id && !adAccountIdError && (
+                <div className="absolute right-2 top-2">
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                </div>
+              )}
+            </div>
+            {adAccountIdError && (
+              <p className="text-xs text-red-600 mt-1">{adAccountIdError}</p>
+            )}
           </div>
           
           {/* Token Management Section */}
           <div className="bg-gray-50 p-3 rounded-md">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Meta Access Token</span>
+              <span className="text-sm font-medium text-gray-700">Meta API Tokens</span>
               <button
                 type="button"
-                onClick={() => setShowTokenField(!showTokenField)}
+                onClick={() => setShowTokenFields(!showTokenFields)}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                {showTokenField ? 'Hide' : 'Update Token'}
+                {showTokenFields ? 'Hide' : 'Update Tokens'}
               </button>
             </div>
             
-            {showTokenField ? (
-              <div className="space-y-3">
-                <input
-                  type="password"
-                  value={formData.meta_access_token}
-                  onChange={(e) => setFormData({...formData, meta_access_token: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="Enter new Meta access token"
-                />
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">Current token health: {client.token_health_status || 'unknown'}</span>
-                  <button
-                    type="button"
-                    onClick={validateMetaCredentials}
-                    disabled={validating || !formData.ad_account_id || !formData.meta_access_token}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {validating ? 'Validating...' : 'Validate'}
-                  </button>
+            {showTokenFields ? (
+              <div className="space-y-4">
+                {/* Token Choice Section */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                    <Key className="h-4 w-4 mr-2" />
+                    Choose Your Token Type (Select One)
+                  </h4>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* Option 1: System User Token */}
+                    <div className={`border-2 rounded-lg p-4 transition-colors ${
+                      formData.system_user_token ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                    }`}>
+                      <div className="flex items-center mb-2">
+                        <Shield className="h-4 w-4 mr-2 text-blue-600" />
+                        <label className="text-sm font-medium text-gray-700">
+                          System User Token (Recommended)
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="password"
+                          value={formData.system_user_token}
+                          onChange={(e) => setFormData({...formData, system_user_token: e.target.value, meta_access_token: ''})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Paste System User token for permanent access"
+                        />
+                        {formData.system_user_token && formData.system_user_token.startsWith('EAA') && (
+                          <div className="absolute right-2 top-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        ✅ Permanent access, never expires
+                      </p>
+                    </div>
+
+                    {/* Option 2: Meta Access Token */}
+                    <div className={`border-2 rounded-lg p-4 transition-colors ${
+                      formData.meta_access_token && !formData.system_user_token ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'
+                    }`}>
+                      <div className="flex items-center mb-2">
+                        <Clock className="h-4 w-4 mr-2 text-orange-600" />
+                        <label className="text-sm font-medium text-gray-700">
+                          Meta Access Token (60 days)
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="password"
+                          value={formData.meta_access_token}
+                          onChange={(e) => setFormData({...formData, meta_access_token: e.target.value, system_user_token: ''})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          placeholder="EAA... (starts with EAA)"
+                        />
+                        {formData.meta_access_token && formData.meta_access_token.startsWith('EAA') && (
+                          <div className="absolute right-2 top-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        ⏰ Expires in 60 days, requires renewal
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                
-                {validationStatus.status !== 'idle' && (
-                  <div className={`text-sm p-2 rounded ${
-                    validationStatus.status === 'valid' ? 'bg-green-100 text-green-800' :
-                    validationStatus.status === 'invalid' ? 'bg-red-100 text-red-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {validationStatus.message}
+
+                {/* Token Choice Status */}
+                {(formData.meta_access_token || formData.system_user_token) && (
+                  <div className="p-3 bg-gray-50 rounded-md">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Token Status:</h4>
+                    <div className="space-y-2">
+                      {formData.system_user_token && (
+                        <div className={`flex items-center text-sm p-2 rounded ${
+                          formData.system_user_token.startsWith('EAA') 
+                            ? 'text-green-700 bg-green-50 border border-green-200' 
+                            : 'text-yellow-700 bg-yellow-50 border border-yellow-200'
+                        }`}>
+                          {formData.system_user_token.startsWith('EAA') ? (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                          )}
+                          <span>
+                            {formData.system_user_token.startsWith('EAA') 
+                              ? '✅ System User Token Selected (Permanent Access)' 
+                              : '⚠️ System User token should start with "EAA" for Meta API'
+                            }
+                          </span>
+                        </div>
+                      )}
+                      
+                      {formData.meta_access_token && !formData.system_user_token && (
+                        <div className={`flex items-center text-sm p-2 rounded ${
+                          formData.meta_access_token.startsWith('EAA') 
+                            ? 'text-green-700 bg-green-50' 
+                            : 'text-yellow-700 bg-yellow-50'
+                        }`}>
+                          {formData.meta_access_token.startsWith('EAA') ? (
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                          )}
+                          <span>
+                            {formData.meta_access_token.startsWith('EAA') 
+                              ? '✅ Meta Access Token Selected (60-day access)' 
+                              : '⚠️ Meta Access token should start with "EAA" for Meta API'
+                            }
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
+
+                {/* Validation Section */}
+                <div className="bg-gray-50 p-4 rounded-md">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700 flex items-center">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Test Connection & Validate Token
+                    </span>
+                    <button
+                      type="button"
+                      onClick={validateMetaCredentials}
+                      disabled={validating || !formData.ad_account_id || (!formData.meta_access_token && !formData.system_user_token)}
+                      className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    >
+                      {validating ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Testing...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Test Connection
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  
+                  {validationStatus.status !== 'idle' && (
+                    <div className={`text-sm p-3 rounded-md border ${
+                      validationStatus.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
+                      validationStatus.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
+                      'bg-yellow-50 text-yellow-800 border-yellow-200'
+                    }`}>
+                      <div className="flex items-start">
+                        {validationStatus.status === 'valid' ? (
+                          <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
+                        ) : validationStatus.status === 'invalid' ? (
+                          <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
+                        ) : (
+                          <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
+                        )}
+                        <div>
+                          {validationStatus.message}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-sm text-gray-600">
                 <div className="flex items-center justify-between">
-                  <span>Token: ••••••••••••••••</span>
+                  <span>Current token: ••••••••••••••••</span>
                   <span className={`px-2 py-1 rounded text-xs ${
                     client.token_health_status === 'valid' ? 'bg-green-100 text-green-800' :
                     client.token_health_status === 'expiring_soon' ? 'bg-orange-100 text-orange-800' :
@@ -360,7 +596,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             </button>
             <button
               type="submit"
-              disabled={loading || (showTokenField && formData.meta_access_token && validationStatus.status !== 'valid') || false}
+              disabled={loading || (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.status !== 'valid') || false}
               className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
             >
               {loading ? 'Updating...' : 'Update Client'}
