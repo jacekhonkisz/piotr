@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/background/collect-monthly",
+      "schedule": "0 23 * * 0"
+    },
+    {
+      "path": "/api/background/collect-weekly", 
+      "schedule": "1 0 * * *"
+    },
+    {
+      "path": "/api/background/cleanup-old-data",
+      "schedule": "0 2 * * 6"
+    }
+  ]
+} 
