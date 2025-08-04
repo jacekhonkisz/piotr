@@ -51,7 +51,7 @@ interface CachedData {
 }
 
 // Cache duration: 5 minutes for live data (300000 milliseconds)
-const CACHE_DURATION = 5 * 60 * 1000;
+
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -81,32 +81,7 @@ export default function DashboardPage() {
   // Get cache key for current user
   const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}`;
 
-  // Load data from cache if available and not expired
-  const loadFromCache = (): ClientDashboardData | null => {
-    try {
-      const cached = localStorage.getItem(getCacheKey());
-      if (!cached) return null;
 
-      const parsedCache: CachedData = JSON.parse(cached);
-      const now = Date.now();
-      
-      // Check if cache is still valid (less than 5 minutes old for live data)
-      if (now - parsedCache.timestamp < CACHE_DURATION) {
-        console.log('📦 Loading data from cache (age:', Math.round((now - parsedCache.timestamp) / 1000 / 60), 'minutes)');
-        setDataSource(parsedCache.dataSource);
-        setLastUpdated(new Date(parsedCache.timestamp));
-        return parsedCache.data;
-      } else {
-        console.log('⏰ Cache expired, will fetch fresh live data');
-        localStorage.removeItem(getCacheKey());
-        return null;
-      }
-    } catch (error) {
-      console.error('Error loading from cache:', error);
-      localStorage.removeItem(getCacheKey());
-      return null;
-    }
-  };
 
   // Save data to cache
   const saveToCache = (data: ClientDashboardData, source: 'live' | 'database') => {
@@ -190,7 +165,7 @@ export default function DashboardPage() {
 
 
 
-  const loadClientDashboardWithCache = async (forceRefresh = false) => {
+  const loadClientDashboardWithCache = async () => {
     if (loadingRef.current) return;
     
     try {
@@ -199,7 +174,7 @@ export default function DashboardPage() {
       
       // Always try to fetch live data first (real-time from Meta API)
       console.log('🔄 Loading live data from Meta API...');
-      await loadClientDashboard(forceRefresh);
+      await loadClientDashboard();
     } catch (error) {
       console.error('Error loading client dashboard:', error);
       // Only fallback to database if live data completely fails
@@ -213,7 +188,7 @@ export default function DashboardPage() {
     }
   };
 
-  const loadClientDashboard = async (forceRefresh = false) => {
+  const loadClientDashboard = async () => {
     try {
       console.log('Loading client dashboard for user:', user!.email);
       
@@ -235,20 +210,35 @@ export default function DashboardPage() {
         return;
       }
 
-      // Fetch live data from Meta API
+      // Get client data first to get the client ID
+      const { data: currentClient } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('email', user!.email || '')
+        .single();
+
+      if (!currentClient) {
+        console.error('No client data found for user:', user!.email);
+        return;
+      }
+
+      // Fetch live data from Meta API with cache busting
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionToUse.access_token}`,
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         },
         body: JSON.stringify({
+          clientId: currentClient.id,
           dateRange: {
             start: '2024-01-01', // Broader range to capture all historical data
             end: new Date().toISOString().split('T')[0]
-          }
+          },
+          _t: Date.now() // Cache busting timestamp
         })
       });
 
@@ -262,6 +252,8 @@ export default function DashboardPage() {
 
       const result = await response.json();
       console.log('Live data fetched successfully:', result);
+      console.log('🔍 Currency from main API call:', result.data?.client?.currency);
+      console.log('🔍 Full client data from main API:', result.data?.client);
       
       // Check for Meta API errors in debug info
       if (result.debug?.hasMetaApiError) {
@@ -269,54 +261,46 @@ export default function DashboardPage() {
         alert(`Meta API Issue: ${result.debug.metaApiError}\n\nThis might explain why data shows zeros. Please check your Meta Ads account permissions and token.`);
       }
 
-      // Also get reports from database
-      const { data: clientData } = await supabase
-        .from('clients')
+      // Get reports from database using the current client
+      const { data: reports } = await supabase
+        .from('reports')
         .select('*')
-        .eq('email', user!.email || '')
-        .single();
+        .eq('client_id', currentClient.id)
+        .order('generated_at', { ascending: false })
+        .limit(10);
 
-      if (clientData) {
-        const { data: reports } = await supabase
-          .from('reports')
-          .select('*')
-          .eq('client_id', clientData.id)
-          .order('generated_at', { ascending: false })
-          .limit(10);
+      const dashboardData = {
+        client: result.data.client,
+        reports: reports || [],
+        campaigns: result.data.campaigns.map((campaign: any) => ({
+          id: campaign.campaign_id,
+          campaign_id: campaign.campaign_id,
+          campaign_name: campaign.campaign_name,
+          spend: campaign.spend,
+          impressions: campaign.impressions,
+          clicks: campaign.clicks,
+          conversions: campaign.conversions,
+          ctr: campaign.ctr,
+          cpc: campaign.cpc,
+          date_range_start: result.data.dateRange.start,
+          date_range_end: result.data.dateRange.end
+        })),
+        stats: result.data.stats
+      };
 
-        const dashboardData = {
-          client: result.data.client,
-          reports: reports || [],
-          campaigns: result.data.campaigns.map((campaign: any) => ({
-            id: campaign.campaign_id,
-            campaign_id: campaign.campaign_id,
-            campaign_name: campaign.campaign_name,
-            spend: campaign.spend,
-            impressions: campaign.impressions,
-            clicks: campaign.clicks,
-            conversions: campaign.conversions,
-            ctr: campaign.ctr,
-            cpc: campaign.cpc,
-            date_range_start: result.data.dateRange.start,
-            date_range_end: result.data.dateRange.end
-          })),
-          stats: result.data.stats
-        };
-
-        setClientData(dashboardData);
-        setDataSource('live');
-        setLastUpdated(new Date());
-        
-        // Save to cache with live data
-        saveToCache(dashboardData, 'live');
-        
-        console.log('✅ Live data loaded successfully:', {
-          totalSpend: dashboardData.stats.totalSpend,
-          totalImpressions: dashboardData.stats.totalImpressions,
-          totalClicks: dashboardData.stats.totalClicks,
-          campaignsCount: dashboardData.campaigns.length
-        });
-      }
+      setClientData(dashboardData);
+      setDataSource('live');
+      setLastUpdated(new Date());
+      
+      // Save to cache with live data
+      saveToCache(dashboardData, 'live');
+      
+      console.log('✅ Live data loaded successfully:', {
+        totalSpend: dashboardData.stats.totalSpend,
+        totalImpressions: dashboardData.stats.totalImpressions,
+        totalClicks: dashboardData.stats.totalClicks,
+        campaignsCount: dashboardData.campaigns.length
+      });
     } catch (error) {
       console.error('Error loading client dashboard:', error);
       // Fallback to database data
@@ -396,7 +380,7 @@ export default function DashboardPage() {
     try {
       // Clear cache and force refresh
       clearCache();
-      await loadClientDashboardWithCache(true);
+      await loadClientDashboardWithCache();
     } catch (error) {
       console.error('Error refreshing data:', error);
     } finally {
@@ -461,18 +445,35 @@ export default function DashboardPage() {
         return;
       }
 
-      // Fetch data from Meta API for this month
+      // Get client data to get the client ID
+      const { data: currentClient } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('email', user!.email || '')
+        .single();
+
+      if (!currentClient) {
+        console.error('No client data found for user:', user!.email);
+        return;
+      }
+
+      // Fetch data from Meta API for this month with cache busting
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.access_token}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
         },
         body: JSON.stringify({
+          clientId: currentClient.id,
           dateRange: {
             start: monthStartDate,
             end: monthEndDate
-          }
+          },
+          _t: Date.now() // Cache busting timestamp
         })
       });
 
@@ -523,32 +524,11 @@ export default function DashboardPage() {
         const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
         const roas = totalConversions > 0 ? (totalConversions * 50 / totalSpend) : 0;
 
-        // Get currency from client data or fetch from Meta API
-        let currency = 'USD';
-        if (clientData?.client) {
-          // Hardcode PLN for known account (jacek's account)
-          if (clientData.client.ad_account_id === '703853679965014') {
-            currency = 'PLN';
-            console.log('💰 Using hardcoded PLN for jacek account');
-          } else {
-            // Try to fetch currency from Meta API account info
-            try {
-              console.log(`🔍 Fetching currency for account: ${clientData.client.ad_account_id}`);
-              const accountInfoResponse = await fetch(`https://graph.facebook.com/v18.0/act_${clientData.client.ad_account_id}?fields=currency&access_token=${session.access_token}`);
-              const accountInfo = await accountInfoResponse.json();
-              console.log('📊 Account info response:', accountInfo);
-              if (accountInfo.currency) {
-                currency = accountInfo.currency;
-                console.log(`💰 Fetched currency from Meta API: ${currency}`);
-              } else if (accountInfo.error) {
-                console.log('❌ Meta API error:', accountInfo.error);
-              }
-            } catch (error) {
-              console.log('⚠️ Could not fetch currency from Meta API:', error);
-              console.log('⚠️ Using default USD');
-            }
-          }
-        }
+        // Get currency from the API response
+        const currency = monthData.data?.client?.currency || 'USD';
+        console.log(`💰 Using currency from API response: ${currency}`);
+        console.log('🔍 Full monthData response:', monthData);
+        console.log('🔍 Client data from API:', monthData.data?.client);
 
         setCurrentMonthData({
           campaigns,
@@ -608,10 +588,7 @@ export default function DashboardPage() {
     }
   }, [currentMonth, clientData]);
 
-  // Calculate current month stats from campaigns (legacy - now using currentMonthData)
-  const getCurrentMonthStats = () => {
-    return currentMonthData.stats;
-  };
+
 
   // Navigate to previous/next month (unlimited)
   const navigateMonth = (direction: 'prev' | 'next') => {
@@ -655,8 +632,10 @@ export default function DashboardPage() {
   // Handle month selection from dropdown
   const handleMonthChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const [year, month] = event.target.value.split('-').map(Number);
-    const newMonth = new Date(year, month - 1, 1);
-    setCurrentMonth(newMonth);
+    if (year && month) {
+      const newMonth = new Date(year, month - 1, 1);
+      setCurrentMonth(newMonth);
+    }
   };
 
   // Format currency based on the account currency

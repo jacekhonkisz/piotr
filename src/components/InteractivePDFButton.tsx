@@ -9,13 +9,19 @@ interface InteractivePDFButtonProps {
   dateStart: string;
   dateEnd: string;
   className?: string;
+  campaigns?: any[];
+  totals?: any;
+  client?: any;
 }
 
 const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
   clientId,
   dateStart,
   dateEnd,
-  className = ''
+  className = '',
+  campaigns,
+  totals,
+  client
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,19 +37,32 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         throw new Error('No authentication token available');
       }
 
-      const response = await fetch('/api/generate-interactive-pdf', {
+      // If we have the data already, use it directly for faster generation
+      const requestBody = campaigns && totals && client ? {
+        clientId,
+        dateRange: {
+          start: dateStart,
+          end: dateEnd
+        },
+        // Pass the data directly to avoid API calls
+        campaigns,
+        totals,
+        client
+      } : {
+        clientId,
+        dateRange: {
+          start: dateStart,
+          end: dateEnd
+        }
+      };
+
+      const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({
-          clientId,
-          dateRange: {
-            start: dateStart,
-            end: dateEnd
-          }
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -58,7 +77,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `interactive-meta-ads-report-${dateStart}-${dateEnd}.pdf`;
+      link.download = `raport-meta-ads-${dateStart}-${dateEnd}.pdf`;
       
       // Trigger download
       document.body.appendChild(link);
@@ -97,7 +116,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         ) : (
           <>
             <FileText className="h-5 w-5" />
-            <span>Generuj PDF</span>
+            <span>Pobierz PDF</span>
           </>
         )}
       </button>
@@ -110,7 +129,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       )}
       
       <div className="mt-2 text-xs text-gray-600 bg-blue-50 p-2 rounded-lg border border-blue-200">
-        <p className="font-medium">✨ Interactive PDF with tab switching</p>
+        <p className="font-medium">📄 Standard PDF Report</p>
       </div>
     </div>
   );

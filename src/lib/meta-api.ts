@@ -706,7 +706,7 @@ export class MetaAPIService {
     const endpoint = `act_${adAccountId}`;
     const params = new URLSearchParams({
       access_token: this.accessToken,
-      fields: 'id,name,account_id,currency,timezone_name,created_time,updated_time,account_status,disable_reason'
+      fields: 'id,name,account_id,currency,timezone_name,account_status,disable_reason'
     });
 
     const cacheKey = this.getCacheKey(endpoint, params.toString());

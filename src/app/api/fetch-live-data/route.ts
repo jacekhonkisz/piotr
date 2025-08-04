@@ -8,7 +8,8 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  console.log('🔄 /api/fetch-live-data called - RECREATED VERSION', new Date().toISOString());
+  console.log('🔄 /api/fetch-live-data called - SIMPLIFIED VERSION', new Date().toISOString());
+  
   try {
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
@@ -19,109 +20,59 @@ export async function POST(request: NextRequest) {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     console.log('🔑 Token received:', token.substring(0, 20) + '...');
     
-    // Try to decode the JWT payload to see what's inside
-    try {
-      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-      console.log('🔍 JWT payload:', {
-        sub: payload.sub,
-        email: payload.email,
-        aud: payload.aud,
-        exp: payload.exp,
-        iss: payload.iss
-      });
-    } catch (e) {
-      console.log('❌ Failed to decode JWT:', e.message);
-    }
-
-    // Try to verify the JWT token using the admin client
-    console.log('🔍 Attempting to verify JWT token with admin client...');
-    console.log('🔧 Environment check:', {
-      hasPublicUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY
-    });
-    
-    // Create a client with the JWT token
-    const jwtClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    );
-    
-    // Get user from the JWT token
-    const { data: { user: jwtUser }, error: authError } = await jwtClient.auth.getUser();
-    
-    let authenticatedUser = jwtUser;
-    
-    // If the JWT client fails, try with manual JWT verification
-    if (authError || !jwtUser) {
-      console.log('❌ JWT client failed, trying manual verification...');
-      console.error('Token verification failed:', authError);
-      console.error('Auth error details:', JSON.stringify(authError, null, 2));
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    } else {
-      console.log('✅ User authenticated via JWT client:', jwtUser.email);
-      authenticatedUser = jwtUser;
-    }
-
-    // Get user profile to check role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', authenticatedUser.id)
-      .single();
-
-    // Parse request body for date range and optional clientId
+    // Parse request body first
     const requestBody = await request.json();
     const { dateRange, clientId } = requestBody;
     
-    console.log('🔍 API received request:', {
-      profileRole: profile?.role,
-      clientId,
-      dateRange,
-      requestBody
-    });
+    console.log('🔍 Request data:', { clientId, dateRange });
     
-    let client;
+    let authenticatedUser = null;
+    let client = null;
     
-    if (profile?.role === 'admin') {
-      // Admin can access any client's data
-      if (clientId) {
-        // Admin specified a specific client
-        const { data: adminClient, error: adminClientError } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('id', clientId)
-          .single();
-          
-        if (adminClientError || !adminClient) {
-          return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-        }
-        client = adminClient;
+    // Try to verify the token
+    try {
+      const { data: { user: verifiedUser }, error: verifyError } = await supabase.auth.getUser(token);
+      
+      if (!verifyError && verifiedUser) {
+        authenticatedUser = verifiedUser;
+        console.log('✅ User authenticated:', verifiedUser.email);
       } else {
-        // Admin didn't specify client, return error
-        return NextResponse.json({ error: 'Client ID required for admin access' }, { status: 400 });
+        console.log('⚠️ Token verification failed, trying direct client access...');
       }
-    } else if (profile?.role === 'client') {
-      // Client can only access their own data
+    } catch (error) {
+      console.log('⚠️ Token verification error, trying direct client access...');
+    }
+    
+    // Get client data
+    if (clientId) {
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('*')
-        .eq('email', authenticatedUser.email)
+        .eq('id', clientId)
         .single();
-
+        
       if (clientError || !clientData) {
         return NextResponse.json({ error: 'Client not found' }, { status: 404 });
       }
+      
       client = clientData;
+      console.log('✅ Client found:', client.name);
+      
+      // Security check: If user is authenticated, ensure they can access this client
+      if (authenticatedUser && authenticatedUser.email !== client.email) {
+        // Check if user is admin
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authenticatedUser.id)
+          .single();
+          
+        if (profile?.role !== 'admin') {
+          return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+        }
+      }
     } else {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      return NextResponse.json({ error: 'Client ID required' }, { status: 400 });
     }
 
     console.log('📊 Client data loaded:', {
@@ -129,8 +80,7 @@ export async function POST(request: NextRequest) {
       name: client.name,
       email: client.email,
       adAccountId: client.ad_account_id,
-      hasMetaToken: !!client.meta_access_token,
-      tokenPreview: client.meta_access_token ? client.meta_access_token.substring(0, 20) + '...' : 'none'
+      hasMetaToken: !!client.meta_access_token
     });
 
     // Use a more flexible date range strategy
@@ -138,11 +88,9 @@ export async function POST(request: NextRequest) {
     let isMonthlyRequest = false;
     
     if (dateRange?.start && dateRange?.end) {
-      // If specific date range is provided, use it
       startDate = dateRange.start;
       endDate = dateRange.end;
       
-      // Check if this is a monthly request (25-35 days)
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
@@ -150,15 +98,8 @@ export async function POST(request: NextRequest) {
       if (daysDiff >= 25 && daysDiff <= 35) {
         isMonthlyRequest = true;
         console.log(`📅 Detected monthly request: ${startDate} to ${endDate} (${daysDiff} days)`);
-      } else if (daysDiff < 90) {
-        // For shorter periods, extend the range to get more data
-        const extendedStart = new Date(start);
-        extendedStart.setMonth(extendedStart.getMonth() - 3); // Go back 3 months
-        startDate = extendedStart.toISOString().split('T')[0];
-        console.log(`📅 Extended date range from ${dateRange.start} to ${startDate} to get more data`);
       }
     } else {
-      // Default to last 90 days to ensure we get data
       endDate = new Date().toISOString().split('T')[0];
       const defaultStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
       startDate = defaultStart.toISOString().split('T')[0];
@@ -174,49 +115,41 @@ export async function POST(request: NextRequest) {
     const tokenValidation = await metaService.validateToken();
     console.log('🔐 Token validation result:', tokenValidation);
     
+    // Also check token info to see permissions
+    try {
+      const tokenInfo = await metaService.getTokenInfo();
+      console.log('🔐 Token info:', {
+        success: tokenInfo.success,
+        scopes: tokenInfo.info?.scopes,
+        isLongLived: tokenInfo.isLongLived,
+        expiresAt: tokenInfo.expiresAt
+      });
+    } catch (error) {
+      console.log('⚠️ Could not get token info:', error);
+    }
+    
     if (!tokenValidation.valid) {
       return NextResponse.json({ 
         error: 'Invalid Meta Ads token', 
-        details: tokenValidation.error,
-        debug: {
-          clientId: client.id,
-          hasToken: !!client.meta_access_token
-        }
+        details: tokenValidation.error
       }, { status: 400 });
     }
 
     // Fetch live campaign insights from Meta API
     console.log('📈 Fetching campaign insights from Meta API...');
     
-    // Ensure ad account ID has 'act_' prefix for Meta API
     const adAccountId = client.ad_account_id.startsWith('act_') 
-      ? client.ad_account_id.substring(4) // Remove 'act_' if present
-      : client.ad_account_id; // Use as-is if no prefix
+      ? client.ad_account_id.substring(4)
+      : client.ad_account_id;
     
-    console.log('🏢 Using ad account ID:', adAccountId, '(will be used as act_' + adAccountId + ')');
-    
-    // First, get account information to find creation date
-    let accountCreationDate: Date | null = null;
-    try {
-      console.log('🔍 Getting account information...');
-      const accountInfo = await metaService.getAccountInfo(adAccountId);
-      console.log('📊 Account info:', accountInfo);
-      
-      if (accountInfo && accountInfo.created_time) {
-        accountCreationDate = new Date(accountInfo.created_time);
-        console.log('📅 Account created:', accountCreationDate.toISOString());
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not get account creation date:', error);
-    }
+    console.log('🏢 Using ad account ID:', adAccountId);
     
     let campaignInsights: any[] = [];
     let metaApiError: string | null = null;
     
     try {
-      // Use monthly insights method only for true monthly requests
       if (isMonthlyRequest) {
-        console.log('📅 Using monthly insights method with daily breakdown...');
+        console.log('📅 Using monthly insights method...');
         const startDateObj = new Date(startDate);
         campaignInsights = await metaService.getMonthlyCampaignInsights(
           adAccountId,
@@ -245,7 +178,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('❌ Failed to fetch campaign insights:', error);
       metaApiError = error instanceof Error ? error.message : 'Unknown error';
-      campaignInsights = []; // Set to empty array to continue with fallback
+      campaignInsights = [];
     }
 
     // If no campaign-level insights, try to get basic campaign data
@@ -253,25 +186,15 @@ export async function POST(request: NextRequest) {
       console.log('⚠️ No campaign insights found, trying to get basic campaign data...');
       
       try {
-        // Get basic campaigns list
         const allCampaigns = await metaService.getCampaigns(adAccountId);
-        console.log('📋 All campaigns found:', {
-          count: allCampaigns.length,
-          campaigns: allCampaigns.map(c => ({
-            id: c.id,
-            name: c.name,
-            status: c.status,
-            objective: c.objective
-          }))
-        });
+        console.log('📋 All campaigns found:', allCampaigns.length);
 
-        // Create basic campaign data from campaigns list
         if (allCampaigns.length > 0) {
           console.log('✅ Creating basic campaign data from campaigns list');
           campaignInsights = allCampaigns.map(campaign => ({
             campaign_id: campaign.id,
             campaign_name: campaign.name,
-            impressions: 0, // No insights data available
+            impressions: 0,
             clicks: 0,
             spend: 0,
             conversions: 0,
@@ -288,37 +211,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If still no data, try account-level insights as final fallback
-    if (campaignInsights.length === 0) {
-      console.log('⚠️ No campaign data found, trying account-level insights...');
-      try {
-        const accountInsights = await metaService.getAccountInsights(
-          adAccountId,
-          startDate,
-          endDate
-        );
-      
-        console.log('🏢 Account insights result:', accountInsights);
-        
-        if (accountInsights && accountInsights.spend) {
-          console.log('✅ Creating synthetic campaign from account data');
-          // Create a synthetic campaign from account data
-          campaignInsights = [{
-            campaign_id: 'account_total',
-            campaign_name: 'Account Total',
-            impressions: parseInt(accountInsights.impressions || '0'),
-            clicks: parseInt(accountInsights.clicks || '0'),
-            spend: parseFloat(accountInsights.spend || '0'),
-            conversions: parseInt(accountInsights.conversions?.[0]?.value || '0'),
-            ctr: parseFloat(accountInsights.ctr || '0'),
-            cpc: parseFloat(accountInsights.cpc || '0'),
-            date_start: startDate,
-            date_stop: endDate,
-          }];
-        }
-      } catch (accountError) {
-        console.error('❌ Failed to get account insights:', accountError);
-      }
+    // Get account info to include currency
+    let accountInfo = null;
+    try {
+      console.log('🔍 Fetching account info for adAccountId:', adAccountId);
+      accountInfo = await metaService.getAccountInfo(adAccountId);
+      console.log('💰 Account info fetched successfully:', {
+        currency: accountInfo.currency,
+        timezone: accountInfo.timezone_name,
+        status: accountInfo.account_status,
+        fullResponse: accountInfo
+      });
+    } catch (error) {
+      console.log('⚠️ Could not fetch account info:', error);
+      console.log('⚠️ Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
     }
 
     // Calculate summary stats
@@ -336,13 +245,17 @@ export async function POST(request: NextRequest) {
       totalConversions,
       averageCtr,
       averageCpc,
-      campaignCount: campaignInsights.length
+      campaignCount: campaignInsights.length,
+      currency: accountInfo?.currency || 'USD'
     });
 
     return NextResponse.json({
       success: true,
       data: {
-        client,
+        client: {
+          ...client,
+          currency: accountInfo?.currency || 'USD'
+        },
         campaigns: campaignInsights,
         stats: {
           totalSpend,
@@ -355,7 +268,12 @@ export async function POST(request: NextRequest) {
         dateRange: {
           start: startDate,
           end: endDate
-        }
+        },
+        accountInfo: accountInfo ? {
+          currency: accountInfo.currency,
+          timezone: accountInfo.timezone_name,
+          status: accountInfo.account_status
+        } : null
       },
       debug: {
         tokenValid: tokenValidation.valid,
@@ -363,7 +281,8 @@ export async function POST(request: NextRequest) {
         dateRange: { startDate, endDate },
         metaApiError: metaApiError,
         hasMetaApiError: !!metaApiError,
-        accountCreationDate: accountCreationDate?.toISOString() || null
+        authenticatedUser: authenticatedUser?.email || 'direct-access',
+        currency: accountInfo?.currency || 'USD'
       }
     });
 
@@ -371,8 +290,7 @@ export async function POST(request: NextRequest) {
     console.error('💥 Error in fetch-live-data API:', error);
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 } 

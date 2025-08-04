@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     // Generate the interactive PDF first
     console.log('🔄 Generating interactive PDF for client:', client.name);
     
-    const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-interactive-pdf`, {
+    const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-pdf`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

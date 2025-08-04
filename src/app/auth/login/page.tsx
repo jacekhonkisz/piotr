@@ -2,21 +2,29 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { BarChart3, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { BarChart3, Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { signIn } from '../../../lib/auth';
 import { useAuth } from '../../../components/AuthProvider';
-import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
   const { user, profile, authLoading } = useAuth();
   const redirectedRef = useRef(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus on email input
+  useEffect(() => {
+    if (emailInputRef.current) {
+      emailInputRef.current.focus();
+    }
+  }, []);
 
   // Handle authentication redirects - prevent multiple redirects
   useEffect(() => {
@@ -62,13 +70,19 @@ export default function LoginPage() {
     }
   };
 
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSubmit(e as any);
+    }
+  };
+
   // Show loading while auth is initializing or if user is authenticated but we haven't redirected
   if (authLoading || (user && profile && !redirectedRef.current)) {
     return (
       <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="flex justify-center items-center mb-8">
-            <BarChart3 className="h-8 w-8 text-primary-600" />
+            <BarChart3 className="h-8 w-8 text-blue-600" />
             <h1 className="ml-2 text-xl font-semibold text-gray-900">
               Meta Ads Reporting
             </h1>
@@ -85,7 +99,7 @@ export default function LoginPage() {
       <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
           <div className="flex justify-center items-center mb-8">
-            <BarChart3 className="h-8 w-8 text-primary-600" />
+            <BarChart3 className="h-8 w-8 text-blue-600" />
             <h1 className="ml-2 text-xl font-semibold text-gray-900">
               Meta Ads Reporting
             </h1>
@@ -101,31 +115,26 @@ export default function LoginPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Logo and Header */}
         <div className="flex justify-center items-center mb-8">
-          <BarChart3 className="h-8 w-8 text-primary-600" />
+          <BarChart3 className="h-8 w-8 text-blue-600" />
           <h1 className="ml-2 text-xl font-semibold text-gray-900">
             Meta Ads Reporting
           </h1>
         </div>
         
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Log in to your dashboard
           </h2>
-          <p className="text-gray-600">
-            Sign in to your reporting dashboard
-          </p>
         </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="card card-body">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-8">
           {error && (
-            <div className="mb-4 p-4 bg-error-50 border border-error-200 rounded-md">
-              <div className="flex">
-                <AlertCircle className="h-5 w-5 text-error-400" />
-                <div className="ml-3">
-                  <p className="text-sm text-error-800">{error}</p>
-                </div>
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                <p className="ml-3 text-sm text-red-800">{error}</p>
               </div>
             </div>
           )}
@@ -133,12 +142,13 @@ export default function LoginPage() {
           <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="form-label">
-                Email address
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
+                  ref={emailInputRef}
                   id="email"
                   name="email"
                   type="email"
@@ -146,7 +156,8 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="form-input pl-10"
+                  onKeyPress={handleKeyPress}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200"
                   placeholder="Enter your email"
                   disabled={loading}
                 />
@@ -155,24 +166,53 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="form-label">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   id="password"
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="form-input pl-10"
+                  onKeyPress={handleKeyPress}
+                  className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200"
                   placeholder="Enter your password"
                   disabled={loading}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
+                  disabled={loading}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
               </div>
+            </div>
+
+            {/* Remember Me Checkbox */}
+            <div className="flex items-center">
+              <input
+                id="remember-me"
+                name="remember-me"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                disabled={loading}
+              />
+              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                Remember me
+              </label>
             </div>
 
             {/* Submit Button */}
@@ -180,7 +220,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="btn-primary w-full flex items-center justify-center group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
@@ -193,35 +233,11 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-
-          {/* Divider */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  New to our platform?
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Sign Up Link */}
-          <div className="mt-6">
-            <Link
-              href="/auth/register"
-              className="btn-secondary w-full text-center"
-            >
-              Create an account
-            </Link>
-          </div>
         </div>
 
         {/* Demo Credentials */}
-        <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-900 mb-2">Demo Credentials</h3>
+        <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+          <h3 className="text-xs font-medium text-gray-900 mb-2">Demo login</h3>
           <div className="text-xs text-gray-600 space-y-1">
             <p><strong>Admin:</strong> admin@example.com / password123</p>
             <p><strong>Client:</strong> client@example.com / password123</p>

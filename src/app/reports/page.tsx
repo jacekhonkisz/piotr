@@ -163,6 +163,8 @@ function ReportsPageContent() {
 
   // Load data for a specific month
   const loadMonthData = async (monthId: string) => {
+    console.log('🚀 loadMonthData called with:', { monthId, client: client?.id });
+    
     // Guard: Ensure client is loaded before making API calls
     if (!client) {
       console.warn('⚠️ Client not loaded yet, skipping API call');
@@ -191,68 +193,8 @@ function ReportsPageContent() {
       
       console.log(`📅 Generated date range for ${monthId}: ${monthStartDate} to ${monthEndDate}`);
       
-      // First, try to load existing report from database
-      console.log(`📊 Checking for existing report in database...`);
-      
-      if (!client?.id || client.id === 'demo-client-id') {
-        // Skip database check for demo client
-        console.log(`🎭 Demo client, skipping database check`);
-      } else {
-        const { data: existingReports, error: reportsError } = await supabase
-          .from('reports')
-          .select('*')
-          .eq('client_id', client.id)
-          .eq('date_range_start', monthStartDate)
-          .eq('date_range_end', monthEndDate)
-          .order('generated_at', { ascending: false })
-          .limit(1);
-
-        if (!reportsError && existingReports && existingReports.length > 0) {
-          console.log(`✅ Found existing report in database`);
-          const existingReport = existingReports[0];
-          
-          // Get campaigns for this report
-          const { data: existingCampaigns } = await supabase
-            .from('campaigns')
-            .select('*')
-            .eq('client_id', client.id)
-            .eq('date_range_start', monthStartDate)
-            .eq('date_range_end', monthEndDate);
-
-        const campaigns: Campaign[] = existingCampaigns?.map((campaign: any) => ({
-          id: `${campaign.campaign_id}-${monthId}`,
-          campaign_id: campaign.campaign_id,
-          campaign_name: campaign.campaign_name,
-          spend: campaign.spend || 0,
-          impressions: campaign.impressions || 0,
-          clicks: campaign.clicks || 0,
-          conversions: campaign.conversions || 0,
-          ctr: campaign.ctr || 0,
-          cpc: campaign.cpc || 0,
-          cpp: campaign.cpp,
-          frequency: campaign.frequency,
-          reach: campaign.reach,
-          date_range_start: monthStartDate,
-          date_range_end: monthEndDate,
-          status: campaign.status,
-          objective: campaign.objective
-        })) || [];
-
-        const report: MonthlyReport = {
-          id: monthId,
-          date_range_start: monthStartDate,
-          date_range_end: monthEndDate,
-          generated_at: existingReport?.generated_at || new Date().toISOString(),
-          campaigns: campaigns
-        };
-
-        setReports(prev => ({ ...prev, [monthId]: report }));
-        return;
-      }
-    }
-
-    // If no existing report, fetch from API
-    console.log(`📅 No existing report found, fetching from Meta API...`);
+            // ALWAYS fetch fresh data from Meta API (no database caching)
+      console.log(`📡 ALWAYS fetching fresh data from Meta API...`);
     
     // Skip API call for demo clients
     if (client?.id === 'demo-client-id') {
@@ -327,8 +269,13 @@ function ReportsPageContent() {
         campaigns: demoCampaigns
       };
 
-      setReports(prev => ({ ...prev, [monthId]: demoReport }));
-      return;
+              console.log('💾 Setting demo report in state:', demoReport);
+        setReports(prev => {
+          const newState = { ...prev, [monthId]: demoReport };
+          console.log('💾 New reports state:', newState);
+          return newState;
+        });
+        return;
     }
     
     // Make API call for the specific month
@@ -395,36 +342,7 @@ function ReportsPageContent() {
         }));
 
         console.log(`✅ ${liveCampaigns.length} campaigns found for ${monthId}`);
-
-        // Store the report in database (only for real clients, not demo)
-        if (client?.id !== 'demo-client-id') {
-          try {
-            console.log(`💾 Storing report in database...`);
-            const reportResponse = await fetch('/api/reports', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`
-              },
-              body: JSON.stringify({
-                clientId: client?.id,
-                dateRangeStart: monthStartDate,
-                dateRangeEnd: monthEndDate,
-                reportData: {
-                  campaigns: liveCampaigns
-                }
-              })
-            });
-
-            if (reportResponse.ok) {
-              console.log(`✅ Report stored in database`);
-            } else {
-              console.warn(`⚠️ Failed to store report in database`);
-            }
-          } catch (storeError) {
-            console.warn(`⚠️ Error storing report:`, storeError);
-          }
-        }
+        console.log(`📡 Fresh data from Meta API - not storing in database`);
 
         const report: MonthlyReport = {
           id: monthId,
@@ -455,6 +373,7 @@ function ReportsPageContent() {
       setError(`Failed to load data for ${monthId}: ${error.message}`);
     } finally {
       setLoadingMonth(null);
+      console.log('✅ loadMonthData completed for:', monthId);
     }
   };
 
@@ -560,7 +479,23 @@ function ReportsPageContent() {
       setSelectedMonth(currentMonthId);
       console.log(`📅 Current month: ${currentMonthId}`);
 
-      // Note: loadMonthData will be called by useEffect when client and selectedMonth are ready
+      // Force load data for demo client immediately
+      if (profileData?.role === 'admin' && !clientIdFromUrl) {
+        console.log('🎭 Demo client detected, forcing data load...');
+        const demoClient: Client = {
+          id: 'demo-client-id',
+          name: 'Demo Client',
+          email: user.email || 'admin@example.com',
+          ad_account_id: 'demo-ad-account-123'
+        };
+        setClient(demoClient);
+        
+        // Force load data immediately
+        setTimeout(() => {
+          console.log('🔄 Force loading demo data...');
+          loadMonthData(currentMonthId);
+        }, 100);
+      }
 
     } catch (error: any) {
       console.error('❌ Error initializing page:', error);
@@ -574,6 +509,14 @@ function ReportsPageContent() {
   useEffect(() => {
     initializePage();
   }, []);
+
+  // Effect to load month data when client and selected month are ready
+  useEffect(() => {
+    if (client && selectedMonth && !reports[selectedMonth]) {
+      console.log('🔄 Client and month ready, loading data...');
+      loadMonthData(selectedMonth);
+    }
+  }, [client, selectedMonth]);
 
   // Handle month selection
   const handleMonthChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -733,9 +676,21 @@ function ReportsPageContent() {
 
   // Calculate totals for selected month
   const getSelectedMonthTotals = () => {
-    if (!selectedMonth || !reports[selectedMonth]) return null;
+    console.log('📊 getSelectedMonthTotals called:', { 
+      selectedMonth, 
+      hasReport: !!reports[selectedMonth],
+      reportsKeys: Object.keys(reports),
+      selectedReport: reports[selectedMonth]
+    });
+    
+    if (!selectedMonth || !reports[selectedMonth]) {
+      console.log('❌ No report found for selected month');
+      return null;
+    }
     
     const selectedReport = reports[selectedMonth];
+    console.log('📊 Selected report campaigns:', selectedReport.campaigns);
+    
     const totals = selectedReport.campaigns.reduce((acc, campaign) => ({
       spend: acc.spend + campaign.spend,
       impressions: acc.impressions + campaign.impressions,
@@ -743,11 +698,14 @@ function ReportsPageContent() {
       conversions: acc.conversions + campaign.conversions
     }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
 
-    return {
+    const result = {
       ...totals,
       ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
       cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0
     };
+    
+    console.log('📊 Calculated totals:', result);
+    return result;
   };
 
 
@@ -821,6 +779,74 @@ function ReportsPageContent() {
     );
   }
 
+  // Show loading animation when switching months
+  if (loadingMonth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg p-8 mb-8 border border-gray-200/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl">
+                  <BarChart3 className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                    Raporty Miesięczne
+                  </h1>
+                  <p className="text-gray-600">{client?.name} - Premium Analytics Dashboard</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
+                  className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl"
+                >
+                  {profile?.role === 'admin' ? 'Back to Admin' : 'Powrót do Dashboard'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Loading State */}
+          <div className="text-center py-20">
+            <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-16 max-w-2xl mx-auto border border-gray-200/50">
+              <div className="relative mb-8">
+                <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full mx-auto flex items-center justify-center mb-6">
+                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600"></div>
+                </div>
+                <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center animate-pulse">
+                  <Loader2 className="h-4 w-4 text-white animate-spin" />
+                </div>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-gray-900 mb-4">
+                Ładowanie danych...
+              </h3>
+              <p className="text-gray-600 mb-8 text-lg leading-relaxed">
+                Pobieranie danych z Meta API dla wybranego miesiąca. 
+                To może potrwać kilka sekund.
+              </p>
+              
+              <div className="flex justify-center space-x-2 mb-8">
+                <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce"></div>
+                <div className="w-3 h-3 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                <div className="w-3 h-3 bg-green-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+              </div>
+              
+              <div className="text-sm text-gray-500">
+                Pobieranie kampanii i metryk...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show empty state only when not loading and no data exists
   if (!selectedMonth || !reports[selectedMonth]) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
@@ -1011,6 +1037,9 @@ function ReportsPageContent() {
                     dateStart={selectedReport?.date_range_start || ''}
                     dateEnd={selectedReport?.date_range_end || ''}
                     className="inline-block"
+                    campaigns={selectedReport?.campaigns || []}
+                    totals={getSelectedMonthTotals()}
+                    client={client}
                   />
                   
                   <button

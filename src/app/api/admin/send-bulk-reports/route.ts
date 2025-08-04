@@ -51,7 +51,7 @@ export async function POST() {
     for (const client of clients) {
       try {
         // Generate interactive PDF report for the client
-        const interactivePdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-interactive-pdf`, {
+        const interactivePdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

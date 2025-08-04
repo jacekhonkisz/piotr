@@ -201,7 +201,7 @@ export default function GenerateReportModal({
       }
 
       // Then generate PDF
-      const pdfResponse = await fetch('/api/generate-interactive-pdf', {
+              const pdfResponse = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
