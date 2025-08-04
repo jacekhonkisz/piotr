@@ -116,21 +116,21 @@ export async function POST(request: NextRequest) {
       placementData = await metaService.getPlacementPerformance(client.ad_account_id, dateStart, dateEnd);
       console.log('✅ Placement data fetched successfully:', placementData.length, 'records');
     } catch (error) {
-      console.log('⚠️ Placement data fetch failed:', error.message);
+      console.log('⚠️ Placement data fetch failed:', error instanceof Error ? error.message : String(error));
     }
 
     try {
       demographicData = await metaService.getDemographicPerformance(client.ad_account_id, dateStart, dateEnd);
       console.log('✅ Demographic data fetched successfully:', demographicData.length, 'records');
     } catch (error) {
-      console.log('⚠️ Demographic data fetch failed:', error.message);
+      console.log('⚠️ Demographic data fetch failed:', error instanceof Error ? error.message : String(error));
     }
 
     try {
       adRelevanceData = await metaService.getAdRelevanceResults(client.ad_account_id, dateStart, dateEnd);
       console.log('✅ Ad relevance data fetched successfully:', adRelevanceData.length, 'records');
     } catch (error) {
-      console.log('⚠️ Ad relevance data fetch failed:', error.message);
+      console.log('⚠️ Ad relevance data fetch failed:', error instanceof Error ? error.message : String(error));
     }
 
     return NextResponse.json({

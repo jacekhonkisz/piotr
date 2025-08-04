@@ -23,7 +23,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Home,
-  Users
+  Users,
+  Activity
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -278,7 +279,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                 <div>
                   <h4 className="font-medium text-blue-900 mb-1">💡 Recommended: System User Token</h4>
                   <p className="text-sm text-blue-800 mb-2">
-                    For permanent access that never expires, use a System User token from the client's Business Manager.
+                    For permanent access that never expires, use a System User token from the client&apos;s Business Manager.
                   </p>
                   <button
                     type="button"
@@ -1179,6 +1180,15 @@ export default function AdminPage() {
                 <div className="flex items-center">
                   <Settings className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
                   <span className="text-sm font-medium text-gray-700">Settings</span>
+                </div>
+              </button>
+              <button
+                onClick={() => router.push('/admin/monitoring')}
+                className="group nav-premium-button"
+              >
+                <div className="flex items-center">
+                  <Activity className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700">Monitoring</span>
                 </div>
               </button>
               <button

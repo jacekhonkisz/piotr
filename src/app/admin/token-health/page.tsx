@@ -9,8 +9,6 @@ import {
   Clock, 
   RefreshCw,
   ArrowLeft,
-  TrendingUp,
-  TrendingDown,
   Activity,
   Calendar
 } from 'lucide-react';
@@ -303,7 +301,7 @@ export default function TokenHealthPage() {
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-lg font-medium text-gray-900">Token Status Overview</h2>
             <p className="text-sm text-gray-600 mt-1">
-              Monitor and manage your clients' Meta API token health
+              Monitor and manage your clients&apos; Meta API token health
             </p>
           </div>
           

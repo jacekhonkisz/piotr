@@ -1,3 +1,5 @@
+const { withSentryConfig } = require("@sentry/nextjs");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Ensure environment variables are available in browser
@@ -13,6 +15,8 @@ const nextConfig = {
 
   // Production optimizations
   swcMinify: true,
+  compress: true,
+  poweredByHeader: false,
   
   // Security headers
   async headers() {
@@ -32,10 +36,28 @@ const nextConfig = {
             key: 'Referrer-Policy',
             value: 'origin-when-cross-origin',
           },
+          {
+            key: 'Content-Security-Policy',
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://graph.facebook.com;",
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=()',
+          },
         ],
       },
     ];
   },
 }
 
-module.exports = nextConfig 
+const sentryWebpackPluginOptions = {
+  silent: true,
+  org: "your-org",
+  project: "meta-ads-reporting",
+};
+
+module.exports = withSentryConfig(nextConfig, sentryWebpackPluginOptions); 

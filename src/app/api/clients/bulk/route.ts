@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from '../../../lib/meta-api';
+import { MetaAPIService } from '../../../../lib/meta-api';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -265,8 +265,15 @@ async function handleBulkGenerateReports(clientIds: string[], results: any) {
       const endDate = new Date().toISOString().split('T')[0];
       const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
+      if (!client.ad_account_id) {
+        results.failed.push({ clientId, error: 'Client has no ad account ID' });
+        continue;
+      }
+      
+      const adAccountId = client.ad_account_id.replace('act_', '');
+      
       await metaService.generateClientReport(
-        client.ad_account_id.replace('act_', ''),
+        adAccountId,
         startDate,
         endDate
       );

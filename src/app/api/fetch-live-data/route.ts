@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../lib/meta-api';
+import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
+import logger from '../../../lib/logger';
+import { performanceMonitor } from '../../../lib/performance';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,80 +11,44 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  console.log('🔄 /api/fetch-live-data called - SIMPLIFIED VERSION', new Date().toISOString());
+  const startTime = Date.now();
   
   try {
-    // Extract the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+    logger.info('Live data fetch started', { endpoint: '/api/fetch-live-data' });
+    // Authenticate the request using centralized middleware
+    const authResult = await authenticateRequest(request);
+    
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', authResult.statusCode || 401);
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    console.log('🔑 Token received:', token.substring(0, 20) + '...');
+    const { user } = authResult;
     
-    // Parse request body first
+    // Parse request body
     const requestBody = await request.json();
     const { dateRange, clientId } = requestBody;
     
-    console.log('🔍 Request data:', { clientId, dateRange });
-    
-    let authenticatedUser = null;
-    let client = null;
-    
-    // Try to verify the token
-    try {
-      const { data: { user: verifiedUser }, error: verifyError } = await supabase.auth.getUser(token);
-      
-      if (!verifyError && verifiedUser) {
-        authenticatedUser = verifiedUser;
-        console.log('✅ User authenticated:', verifiedUser.email);
-      } else {
-        console.log('⚠️ Token verification failed, trying direct client access...');
-      }
-    } catch (error) {
-      console.log('⚠️ Token verification error, trying direct client access...');
+    if (!clientId) {
+      return createErrorResponse('Client ID required', 400);
     }
     
     // Get client data
-    if (clientId) {
-      const { data: clientData, error: clientError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('id', clientId)
-        .single();
-        
-      if (clientError || !clientData) {
-        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-      }
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', clientId)
+      .single();
       
-      client = clientData;
-      console.log('✅ Client found:', client.name);
-      
-      // Security check: If user is authenticated, ensure they can access this client
-      if (authenticatedUser && authenticatedUser.email !== client.email) {
-        // Check if user is admin
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', authenticatedUser.id)
-          .single();
-          
-        if (profile?.role !== 'admin') {
-          return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-        }
-      }
-    } else {
-      return NextResponse.json({ error: 'Client ID required' }, { status: 400 });
+    if (clientError || !clientData) {
+      return createErrorResponse('Client not found', 404);
     }
-
-    console.log('📊 Client data loaded:', {
-      id: client.id,
-      name: client.name,
-      email: client.email,
-      adAccountId: client.ad_account_id,
-      hasMetaToken: !!client.meta_access_token
-    });
+    
+    // Check if user can access this client
+    if (!canAccessClient(user, clientData.email)) {
+      return createErrorResponse('Access denied', 403);
+    }
+    
+    const client = clientData;
 
     // Use a more flexible date range strategy
     let startDate, endDate;
@@ -238,7 +205,17 @@ export async function POST(request: NextRequest) {
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
-    console.log('📊 Final calculated stats:', {
+    const responseTime = Date.now() - startTime;
+    performanceMonitor.recordAPICall('fetch-live-data', responseTime);
+    
+    logger.info('Live data fetch completed successfully', {
+      clientId: client.id,
+      responseTime,
+      campaignCount: campaignInsights.length,
+      currency: accountInfo?.currency || 'USD'
+    });
+    
+    logger.info('Final calculated stats', {
       totalSpend,
       totalImpressions, 
       totalClicks,
@@ -281,13 +258,20 @@ export async function POST(request: NextRequest) {
         dateRange: { startDate, endDate },
         metaApiError: metaApiError,
         hasMetaApiError: !!metaApiError,
-        authenticatedUser: authenticatedUser?.email || 'direct-access',
+        authenticatedUser: user.email,
         currency: accountInfo?.currency || 'USD'
       }
     });
 
   } catch (error) {
-    console.error('💥 Error in fetch-live-data API:', error);
+    const responseTime = Date.now() - startTime;
+    
+    logger.error('Live data fetch failed', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      responseTime
+    });
+    
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'

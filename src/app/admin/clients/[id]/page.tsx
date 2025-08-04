@@ -233,9 +233,7 @@ export default function ClientDetailPage() {
         throw new Error('Report not found');
       }
 
-      // Generate month ID from report dates
-      const startDate = new Date(report.date_range_start);
-      const monthId = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+      // Send interactive report
 
       const response = await fetch('/api/send-interactive-report', {
         method: 'POST',
@@ -260,7 +258,7 @@ export default function ClientDetailPage() {
         throw new Error(errorData.error || 'Failed to send PDF report');
       }
 
-      const result = await response.json();
+      await response.json();
       alert(`PDF report sent successfully to ${client.email}`);
 
     } catch (error) {

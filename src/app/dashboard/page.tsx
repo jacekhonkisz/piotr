@@ -211,10 +211,16 @@ export default function DashboardPage() {
       }
 
       // Get client data first to get the client ID
+      // For client users, find by email; for admin users, find by admin_id
+      if (!user!.email) {
+        console.error('User email is required');
+        return;
+      }
+      
       const { data: currentClient } = await supabase
         .from('clients')
         .select('*')
-        .eq('admin_id', user!.id)
+        .eq(user!.role === 'admin' ? 'admin_id' : 'email', user!.role === 'admin' ? user!.id : user!.email)
         .single();
 
       if (!currentClient) {
@@ -312,11 +318,16 @@ export default function DashboardPage() {
     try {
       console.log('Loading dashboard data from database (fallback)');
       
-      // Get client data first - find by admin_id (user ID)
+      // Get client data first - find by email for client users, admin_id for admin users
+      if (!user!.email) {
+        console.error('User email is required');
+        return;
+      }
+      
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('*')
-        .eq('admin_id', user!.id)
+        .eq(user!.role === 'admin' ? 'admin_id' : 'email', user!.role === 'admin' ? user!.id : user!.email)
         .single();
 
       if (clientError || !clientData) {
@@ -446,10 +457,16 @@ export default function DashboardPage() {
       }
 
       // Get client data to get the client ID
+      // For client users, find by email; for admin users, find by admin_id
+      if (!user!.email) {
+        console.error('User email is required');
+        return;
+      }
+      
       const { data: currentClient } = await supabase
         .from('clients')
         .select('*')
-        .eq('admin_id', user!.id)
+        .eq(user!.role === 'admin' ? 'admin_id' : 'email', user!.role === 'admin' ? user!.id : user!.email)
         .single();
 
       if (!currentClient) {

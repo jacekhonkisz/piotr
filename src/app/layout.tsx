@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '../components/AuthProvider';
-import AuthDebugger from '../components/AuthDebugger';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -12,7 +11,7 @@ export const metadata: Metadata = {
   description: 'Automated Meta Ads reporting platform for agencies and their clients',
   keywords: ['meta ads', 'facebook ads', 'reporting', 'saas', 'automation'],
   authors: [{ name: 'Your Agency Name' }],
-  robots: 'noindex, nofollow', // Remove in production
+  robots: 'index, follow', // Changed from 'noindex, nofollow'
 };
 
 export const viewport = {
@@ -32,7 +31,6 @@ export default function RootLayout({
           <div id="root" className="min-h-full">
             {children}
           </div>
-          <AuthDebugger />
         </AuthProvider>
       </body>
     </html>

@@ -39,7 +39,6 @@ export default function GenerateReportModal({
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const [customDateRange, setCustomDateRange] = useState<DateRange>(() => {
     const today = new Date();
-    const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     return {
       start: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
@@ -67,7 +66,6 @@ export default function GenerateReportModal({
       const year = date.getFullYear();
       const month = date.getMonth();
       
-      const firstDayOfMonth = new Date(year, month, 1);
       const lastDayOfMonth = new Date(year, month + 1, 0);
       
       const monthNames = [
@@ -532,7 +530,7 @@ export default function GenerateReportModal({
                     </div>
                     <div>
                       <p className="text-blue-700 text-sm font-medium">Existing Report Retrieved</p>
-                      <p className="text-blue-600 text-xs">This report was already generated for the selected date range. We've retrieved the existing data instead of creating a new one.</p>
+                      <p className="text-blue-600 text-xs">This report was already generated for the selected date range. We&apos;ve retrieved the existing data instead of creating a new one.</p>
                     </div>
                   </div>
                 </div>

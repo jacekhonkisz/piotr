@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../lib/meta-api';
+import logger from '../../../lib/logger';
+import { performanceMonitor } from '../../../lib/performance';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,7 +10,10 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
+    logger.info('Report generation started', { endpoint: '/api/generate-report' });
     
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Get the user from the token
     const { data: { user }, error: authError } = await userSupabase.auth.getUser();
     if (authError || !user) {
-      console.error('Token verification failed:', authError);
+      logger.error('Token verification failed', { error: authError?.message });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -391,7 +396,7 @@ export async function POST(request: NextRequest) {
         .insert(campaignData);
 
       if (campaignError) {
-        console.error('Error saving campaigns:', campaignError);
+        logger.error('Error saving campaigns', { error: campaignError.message });
       }
     }
 
@@ -401,6 +406,16 @@ export async function POST(request: NextRequest) {
       .update({ last_report_date: new Date().toISOString() })
       .eq('id', targetClient.id);
 
+    const responseTime = Date.now() - startTime;
+    performanceMonitor.recordAPICall('generate-report', responseTime);
+    
+    logger.info('Report generation completed successfully', {
+      clientId: targetClient.id,
+      reportId: reportRecord.id,
+      responseTime,
+      campaignCount: report.campaigns.length
+    });
+    
     return NextResponse.json({
       success: true,
       report: {
@@ -415,7 +430,14 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error generating report:', error);
+    const responseTime = Date.now() - startTime;
+    
+    logger.error('Report generation failed', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      responseTime
+    });
+    
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error instanceof Error ? error.message : 'Unknown error'
