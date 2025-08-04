@@ -546,39 +546,15 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Fetch Meta Ads tables data only if not provided directly
-    if (!metaTablesData) {
-      try {
-        console.log('🔍 Fetching Meta Ads tables data for PDF...');
-        
-        const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-meta-tables`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer mock-token-for-pdf-generation`
-          },
-          body: JSON.stringify({
-            dateStart: dateRange.start,
-            dateEnd: dateRange.end,
-            clientId: clientId
-          })
-        });
-
-        if (metaTablesResponse.ok) {
-          const metaTablesResult = await metaTablesResponse.json();
-          if (metaTablesResult.success) {
-            metaTablesData = metaTablesResult.data;
-            console.log('✅ Meta Ads tables data fetched successfully for PDF');
-            console.log(`   Placement: ${metaTablesData.placementPerformance?.length || 0} records`);
-            console.log(`   Demographic: ${metaTablesData.demographicPerformance?.length || 0} records`);
-            console.log(`   Ad Relevance: ${metaTablesData.adRelevanceResults?.length || 0} records`);
-          }
-        } else {
-          console.log('⚠️ Meta tables API call failed');
-        }
-      } catch (error) {
-        console.log('⚠️ Error fetching Meta Ads tables data for PDF:', error);
-      }
+    // Use Meta Ads tables data if provided directly, otherwise skip (avoid 401 error)
+    if (!metaTablesData && directMetaTables) {
+      console.log('📊 Using provided Meta tables data for PDF generation');
+      metaTablesData = directMetaTables;
+      console.log(`   Placement: ${metaTablesData.placementPerformance?.length || 0} records`);
+      console.log(`   Demographic: ${metaTablesData.demographicPerformance?.length || 0} records`);
+      console.log(`   Ad Relevance: ${metaTablesData.adRelevanceResults?.length || 0} records`);
+    } else if (!metaTablesData) {
+      console.log('⚠️ No Meta Ads tables data available for PDF generation - skipping Meta tables section');
     }
 
     // Prepare report data
@@ -596,7 +572,8 @@ export async function POST(request: NextRequest) {
       campaigns: reportData.campaigns.length,
       spend: (reportData.totals.spend || 0).toFixed(2) + ' zł',
       impressions: (reportData.totals.impressions || 0).toLocaleString(),
-      clicks: (reportData.totals.clicks || 0).toLocaleString()
+      clicks: (reportData.totals.clicks || 0).toLocaleString(),
+      hasMetaTables: !!reportData.metaTables
     });
 
     // Generate PDF HTML

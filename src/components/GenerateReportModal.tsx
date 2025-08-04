@@ -200,7 +200,7 @@ export default function GenerateReportModal({
         setIsExistingReport(true);
       }
 
-      // Then generate PDF
+      // Then generate PDF with Meta Ads tables data
       const pdfResponse = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
@@ -209,8 +209,8 @@ export default function GenerateReportModal({
         },
         body: JSON.stringify({
           clientId,
-          dateRange
-          // Note: metaTables data not available in this modal, will use fallback API call
+          dateRange,
+          metaTables: reportData.report?.meta_tables // Pass Meta Ads tables data from report generation
         })
       });
 

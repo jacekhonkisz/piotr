@@ -119,6 +119,35 @@ export async function POST(request: NextRequest) {
     );
     const generationTime = Date.now() - startTime;
 
+    // Fetch Meta Ads tables data for consistency across all report generation methods
+    let metaTablesData: any = null;
+    try {
+      console.log('🔍 Fetching Meta Ads tables data for report generation...');
+      
+      // Fetch placement performance
+      const placementData = await metaService.getPlacementPerformance(targetClient.ad_account_id, startDate, endDate);
+      console.log('✅ Placement data fetched successfully:', placementData.length, 'records');
+      
+      // Fetch demographic performance
+      const demographicData = await metaService.getDemographicPerformance(targetClient.ad_account_id, startDate, endDate);
+      console.log('✅ Demographic data fetched successfully:', demographicData.length, 'records');
+      
+      // Fetch ad relevance results
+      const adRelevanceData = await metaService.getAdRelevanceResults(targetClient.ad_account_id, startDate, endDate);
+      console.log('✅ Ad relevance data fetched successfully:', adRelevanceData.length, 'records');
+      
+      metaTablesData = {
+        placementPerformance: placementData,
+        demographicPerformance: demographicData,
+        adRelevanceResults: adRelevanceData
+      };
+      
+      console.log('✅ Meta Ads tables data fetched successfully for report generation');
+    } catch (error) {
+      console.log('⚠️ Error fetching Meta Ads tables data for report generation:', error);
+      // Continue without Meta tables data - this is not critical for report generation
+    }
+
     // Store report in database
     const { data: reportRecord, error: reportError } = await supabase
       .from('reports')
@@ -195,6 +224,26 @@ export async function POST(request: NextRequest) {
             endDate
           );
           
+          // Fetch Meta Ads tables data for the fresh report
+          let freshMetaTablesData: any = null;
+          try {
+            console.log('🔍 Fetching Meta Ads tables data for fresh report...');
+            
+            const placementData = await metaService.getPlacementPerformance(targetClient.ad_account_id, startDate, endDate);
+            const demographicData = await metaService.getDemographicPerformance(targetClient.ad_account_id, startDate, endDate);
+            const adRelevanceData = await metaService.getAdRelevanceResults(targetClient.ad_account_id, startDate, endDate);
+            
+            freshMetaTablesData = {
+              placementPerformance: placementData,
+              demographicPerformance: demographicData,
+              adRelevanceResults: adRelevanceData
+            };
+            
+            console.log('✅ Meta Ads tables data fetched successfully for fresh report');
+          } catch (error) {
+            console.log('⚠️ Error fetching Meta Ads tables data for fresh report:', error);
+          }
+          
           // Store the new report
           const { data: newReportRecord, error: newReportError } = await supabase
             .from('reports')
@@ -263,7 +312,8 @@ export async function POST(request: NextRequest) {
               generation_time_ms: 0,
               account_summary: freshReport.account_summary,
               campaign_count: freshReport.campaigns.length,
-              is_existing: false
+              is_existing: false,
+              meta_tables: freshMetaTablesData
             }
           });
         }
@@ -302,7 +352,8 @@ export async function POST(request: NextRequest) {
             generation_time_ms: existingReport.generation_time_ms || 0,
             account_summary: accountSummary,
             campaign_count: filteredCampaigns.length,
-            is_existing: true
+            is_existing: true,
+            meta_tables: metaTablesData
           }
         });
       }
@@ -358,7 +409,8 @@ export async function POST(request: NextRequest) {
         generated_at: report.generated_at,
         generation_time_ms: generationTime,
         account_summary: report.account_summary,
-        campaign_count: report.campaigns.length
+        campaign_count: report.campaigns.length,
+        meta_tables: metaTablesData
       }
     });
 
