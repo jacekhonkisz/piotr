@@ -201,7 +201,7 @@ export default function GenerateReportModal({
       }
 
       // Then generate PDF
-              const pdfResponse = await fetch('/api/generate-pdf', {
+      const pdfResponse = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -210,6 +210,7 @@ export default function GenerateReportModal({
         body: JSON.stringify({
           clientId,
           dateRange
+          // Note: metaTables data not available in this modal, will use fallback API call
         })
       });
 

@@ -6,14 +6,10 @@ import {
   ArrowLeft,
   BarChart3,
   FileText,
-  Calendar,
   Download,
-  Mail,
   Eye,
   RefreshCw,
-  AlertCircle,
-  CheckCircle,
-  Clock
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../../../../components/AuthProvider';
 import { supabase } from '../../../../../lib/supabase';
@@ -137,26 +133,7 @@ export default function ClientReportsPage() {
     }
   };
 
-  const sendReportEmail = async (reportId: string) => {
-    try {
-      console.log('Sending report email for report ID:', reportId);
-      
-      // Update report to mark as sent
-      const { error: updateError } = await supabase
-        .from('reports')
-        .update({
-          email_sent: true,
-          email_sent_at: new Date().toISOString()
-        })
-        .eq('id', reportId);
 
-      if (updateError) throw updateError;
-
-      await fetchClientData();
-    } catch (error) {
-      console.error('Error sending report email:', error);
-    }
-  };
 
   const downloadReport = async (reportId: string) => {
     try {
@@ -168,17 +145,7 @@ export default function ClientReportsPage() {
     }
   };
 
-  const getReportStatusIcon = (emailSent: boolean) => {
-    if (emailSent) {
-      return <CheckCircle className="h-4 w-4 text-green-600" />;
-    } else {
-      return <Clock className="h-4 w-4 text-yellow-600" />;
-    }
-  };
 
-  const getReportStatusText = (emailSent: boolean) => {
-    return emailSent ? 'Sent' : 'Not Sent';
-  };
 
   if (loading) {
     return (
@@ -297,9 +264,7 @@ export default function ClientReportsPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Generated
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
+
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
@@ -324,19 +289,7 @@ export default function ClientReportsPage() {
                           {new Date(report.generated_at).toLocaleTimeString()}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          {getReportStatusIcon(report.email_sent)}
-                          <span className="ml-2 text-sm text-gray-900">
-                            {getReportStatusText(report.email_sent)}
-                          </span>
-                        </div>
-                        {report.email_sent_at && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Sent: {new Date(report.email_sent_at).toLocaleDateString()}
-                          </div>
-                        )}
-                      </td>
+
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end space-x-2">
                           <button
@@ -353,14 +306,7 @@ export default function ClientReportsPage() {
                           >
                             <Download className="h-4 w-4" />
                           </button>
-                          <button
-                            title="Send Email"
-                            onClick={() => sendReportEmail(report.id)}
-                            disabled={report.email_sent}
-                            className="text-green-600 hover:text-green-900 p-1 disabled:opacity-50"
-                          >
-                            <Mail className="h-4 w-4" />
-                          </button>
+
                         </div>
                       </td>
                     </tr>

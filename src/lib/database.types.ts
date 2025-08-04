@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_summaries: {
+        Row: {
+          active_campaigns: number
+          average_cpa: number
+          average_cpc: number
+          average_ctr: number
+          campaign_data: Json | null
+          client_id: string
+          created_at: string
+          data_source: string | null
+          id: string
+          last_updated: string | null
+          meta_tables: Json | null
+          summary_date: string
+          summary_type: string
+          total_campaigns: number
+          total_clicks: number
+          total_conversions: number
+          total_impressions: number
+          total_spend: number
+        }
+        Insert: {
+          active_campaigns?: number
+          average_cpa?: number
+          average_cpc?: number
+          average_ctr?: number
+          campaign_data?: Json | null
+          client_id: string
+          created_at?: string
+          data_source?: string | null
+          id?: string
+          last_updated?: string | null
+          meta_tables?: Json | null
+          summary_date: string
+          summary_type: string
+          total_campaigns?: number
+          total_clicks?: number
+          total_conversions?: number
+          total_impressions?: number
+          total_spend?: number
+        }
+        Update: {
+          active_campaigns?: number
+          average_cpa?: number
+          average_cpc?: number
+          average_ctr?: number
+          campaign_data?: Json | null
+          client_id?: string
+          created_at?: string
+          data_source?: string | null
+          id?: string
+          last_updated?: string | null
+          meta_tables?: Json | null
+          summary_date?: string
+          summary_type?: string
+          total_campaigns?: number
+          total_clicks?: number
+          total_conversions?: number
+          total_impressions?: number
+          total_spend?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_summaries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_summaries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           campaign_id: string
@@ -210,7 +288,7 @@ export type Database = {
           id?: string
           last_report_date?: string | null
           last_token_validation?: string | null
-          meta_access_token?: string
+          meta_access_token?: string | null
           name?: string
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
@@ -414,6 +492,70 @@ export type Database = {
           },
         ]
       }
+      sent_reports: {
+        Row: {
+          client_id: string
+          created_at: string
+          file_size_bytes: number | null
+          id: string
+          meta: Json | null
+          pdf_url: string
+          recipient_email: string
+          report_id: string
+          report_period: string
+          sent_at: string
+          status: string | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          file_size_bytes?: number | null
+          id?: string
+          meta?: Json | null
+          pdf_url: string
+          recipient_email: string
+          report_id: string
+          report_period: string
+          sent_at?: string
+          status?: string | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          file_size_bytes?: number | null
+          id?: string
+          meta?: Json | null
+          pdf_url?: string
+          recipient_email?: string
+          report_id?: string
+          report_period?: string
+          sent_at?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sent_reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sent_reports_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sent_reports_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_settings: {
         Row: {
           created_at: string
@@ -481,7 +623,41 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      cleanup_old_campaign_summaries: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_old_sent_reports: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      get_campaign_summary: {
+        Args: {
+          p_client_id: string
+          p_summary_type: string
+          p_summary_date: string
+        }
+        Returns: {
+          id: string
+          client_id: string
+          summary_type: string
+          summary_date: string
+          total_spend: number
+          total_impressions: number
+          total_clicks: number
+          total_conversions: number
+          average_ctr: number
+          average_cpc: number
+          average_cpa: number
+          active_campaigns: number
+          total_campaigns: number
+          campaign_data: Json
+          meta_tables: Json
+          data_source: string
+          last_updated: string
+          created_at: string
+        }[]
+      }
     }
     Enums: {
       api_status: "valid" | "invalid" | "expired" | "pending"

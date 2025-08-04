@@ -12,6 +12,11 @@ interface InteractivePDFButtonProps {
   campaigns?: any[];
   totals?: any;
   client?: any;
+  metaTables?: {
+    placementPerformance: any[];
+    demographicPerformance: any[];
+    adRelevanceResults: any[];
+  } | null;
 }
 
 const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
@@ -21,7 +26,8 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
   className = '',
   campaigns,
   totals,
-  client
+  client,
+  metaTables
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +53,8 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         // Pass the data directly to avoid API calls
         campaigns,
         totals,
-        client
+        client,
+        metaTables // Add metaTables data for faster generation
       } : {
         clientId,
         dateRange: {
@@ -128,9 +135,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         </div>
       )}
       
-      <div className="mt-2 text-xs text-gray-600 bg-blue-50 p-2 rounded-lg border border-blue-200">
-        <p className="font-medium">📄 Standard PDF Report</p>
-      </div>
+
     </div>
   );
 };

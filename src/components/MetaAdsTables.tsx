@@ -54,9 +54,14 @@ interface MetaAdsTablesProps {
   dateStart: string;
   dateEnd: string;
   clientId?: string;
+  onDataLoaded?: (data: {
+    placementPerformance: PlacementPerformance[];
+    demographicPerformance: DemographicPerformance[];
+    adRelevanceResults: AdRelevanceResult[];
+  }) => void;
 }
 
-const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId }) => {
+const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded }) => {
   const [placementData, setPlacementData] = useState<PlacementPerformance[]>([]);
   const [demographicData, setDemographicData] = useState<DemographicPerformance[]>([]);
   const [adRelevanceData, setAdRelevanceData] = useState<AdRelevanceResult[]>([]);
@@ -99,6 +104,15 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         setPlacementData(result.data.placementPerformance || []);
         setDemographicData(result.data.demographicPerformance || []);
         setAdRelevanceData(result.data.adRelevanceResults || []);
+        
+        // Call the callback with the loaded data
+        if (onDataLoaded) {
+          onDataLoaded({
+            placementPerformance: result.data.placementPerformance || [],
+            demographicPerformance: result.data.demographicPerformance || [],
+            adRelevanceResults: result.data.adRelevanceResults || []
+          });
+        }
       } else {
         throw new Error(result.error || 'Failed to fetch data');
       }

@@ -343,7 +343,19 @@ export class MetaAPIService {
   async validateToken(): Promise<{ valid: boolean; error?: string; permissions?: string[] }> {
     try {
       // First, test basic token validity
-      const response = await fetch(`${this.baseUrl}/me?access_token=${this.accessToken}`);
+      console.log('⏱️ Starting token validation with timeout...');
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Token validation timeout after 10 seconds')), 10000);
+      });
+      
+      const response = await Promise.race([
+        fetch(`${this.baseUrl}/me?access_token=${this.accessToken}`),
+        timeoutPromise
+      ]) as Response;
+      
+      console.log('📡 Token validation fetch completed...');
+      
       const data = await response.json();
 
       if (data.error) {
@@ -352,9 +364,16 @@ export class MetaAPIService {
 
       // Test if token has ads_read permission by trying to get ad accounts
       try {
-        const adAccountsResponse = await fetch(
-          `${this.baseUrl}/me/adaccounts?fields=id,name,account_id&access_token=${this.accessToken}`
-        );
+        console.log('⏱️ Testing ad accounts access with timeout...');
+        
+        const adAccountsResponse = await Promise.race([
+          fetch(
+            `${this.baseUrl}/me/adaccounts?fields=id,name,account_id&access_token=${this.accessToken}`
+          ),
+          timeoutPromise
+        ]) as Response;
+        
+        console.log('📡 Ad accounts test completed...');
         
         if (adAccountsResponse.status === 403) {
           return { 
@@ -393,9 +412,20 @@ export class MetaAPIService {
       // Remove 'act_' prefix if present
       const cleanAccountId = adAccountId.replace('act_', '');
       
-      const response = await fetch(
-        `${this.baseUrl}/act_${cleanAccountId}?fields=id,name,account_id,account_status,currency,timezone_name&access_token=${this.accessToken}`
-      );
+      console.log('⏱️ Starting ad account validation with timeout...');
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Ad account validation timeout after 10 seconds')), 10000);
+      });
+      
+      const response = await Promise.race([
+        fetch(
+          `${this.baseUrl}/act_${cleanAccountId}?fields=id,name,account_id,account_status,currency,timezone_name&access_token=${this.accessToken}`
+        ),
+        timeoutPromise
+      ]) as Response;
+      
+      console.log('📡 Ad account validation fetch completed...');
       
       if (response.status === 403) {
         return { 
@@ -523,7 +553,21 @@ export class MetaAPIService {
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
-      const response = await fetch(url);
+      console.log('⏱️ Starting Meta API fetch with timeout...');
+      
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Meta API call timeout after 15 seconds')), 15000);
+      });
+      
+      // Race between the fetch and timeout
+      const response = await Promise.race([
+        fetch(url),
+        timeoutPromise
+      ]) as Response;
+      
+      console.log('📡 Meta API fetch completed, processing response...');
+      
       const data: MetaAPIResponse = await response.json();
 
       console.log('📥 Meta API Response Status:', response.status);
@@ -661,7 +705,21 @@ export class MetaAPIService {
       const url = `${this.baseUrl}/${endpoint}?${params}`;
       console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
       
-      const response = await fetch(url);
+      console.log('⏱️ Starting Meta API fetch with timeout...');
+      
+      // Create a timeout promise
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Meta API call timeout after 15 seconds')), 15000);
+      });
+      
+      // Race between the fetch and timeout
+      const response = await Promise.race([
+        fetch(url),
+        timeoutPromise
+      ]) as Response;
+      
+      console.log('📡 Meta API fetch completed, processing response...');
+      
       const data: MetaAPIResponse = await response.json();
       
       console.log('📥 Meta API Response Status:', response.status);
@@ -719,7 +777,19 @@ export class MetaAPIService {
       const url = `${this.baseUrl}/${endpoint}?${params}`;
       console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
       
-      const response = await fetch(url);
+      console.log('⏱️ Starting account info fetch with timeout...');
+      
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Account info fetch timeout after 10 seconds')), 10000);
+      });
+      
+      const response = await Promise.race([
+        fetch(url),
+        timeoutPromise
+      ]) as Response;
+      
+      console.log('📡 Account info fetch completed...');
+      
       const data = await response.json();
       
       console.log('📥 Meta API Response Status:', response.status);

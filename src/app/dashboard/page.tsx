@@ -214,7 +214,7 @@ export default function DashboardPage() {
       const { data: currentClient } = await supabase
         .from('clients')
         .select('*')
-        .eq('email', user!.email || '')
+        .eq('admin_id', user!.id)
         .single();
 
       if (!currentClient) {
@@ -312,11 +312,11 @@ export default function DashboardPage() {
     try {
       console.log('Loading dashboard data from database (fallback)');
       
-      // Get client data first
+      // Get client data first - find by admin_id (user ID)
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('*')
-        .eq('email', user!.email || '')
+        .eq('admin_id', user!.id)
         .single();
 
       if (clientError || !clientData) {
@@ -449,7 +449,7 @@ export default function DashboardPage() {
       const { data: currentClient } = await supabase
         .from('clients')
         .select('*')
-        .eq('email', user!.email || '')
+        .eq('admin_id', user!.id)
         .single();
 
       if (!currentClient) {
@@ -611,10 +611,12 @@ export default function DashboardPage() {
     let currentMonth = new Date(twoYearsAgo);
     
     while (currentMonth <= sixMonthsAhead) {
-      const monthId = `${currentMonth?.getFullYear() || new Date().getFullYear()}-${String((currentMonth?.getMonth() || new Date().getMonth()) + 1).padStart(2, '0')}`;
-      const monthName = getCurrentMonthName(currentMonth || new Date());
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth() + 1;
+      const monthId = `${year}-${String(month).padStart(2, '0')}`;
+      const monthName = getCurrentMonthName(currentMonth);
       months.push({ value: monthId, label: monthName });
-              currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+      currentMonth = new Date(year, month, 1);
     }
     
     return months;
