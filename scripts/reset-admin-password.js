@@ -29,7 +29,7 @@ async function resetAdminPassword() {
       
       const { error: resetError } = await supabase.auth.admin.updateUserById(
         adminUser.id,
-        { password: 'password123' }
+        { password: process.env.ADMIN_PASSWORD || 'password123' }
       );
 
       if (resetError) {
@@ -46,7 +46,7 @@ async function resetAdminPassword() {
       
       const { error: resetError } = await supabase.auth.admin.updateUserById(
         jacUser.id,
-        { password: 'password123' }
+        { password: process.env.JACEK_PASSWORD || 'v&6uP*1UqTQN' }
       );
 
       if (resetError) {
@@ -57,9 +57,10 @@ async function resetAdminPassword() {
     }
 
     console.log('\n📋 Admin Credentials:');
-    console.log('admin@example.com / password123');
-    console.log('jac.honkisz@gmail.com / password123');
+    console.log('admin@example.com / [check environment variable ADMIN_PASSWORD]');
+    console.log('jac.honkisz@gmail.com / [check environment variable JACEK_PASSWORD]');
     console.log('\n🎉 Both admin users are ready to use!');
+    console.log('\n⚠️  WARNING: In production, set ADMIN_PASSWORD and JACEK_PASSWORD environment variables!');
 
   } catch (error) {
     console.error('❌ Error resetting passwords:', error.message);

@@ -560,7 +560,7 @@ export default function AdminPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  const [generatingCredentials, setGeneratingCredentials] = useState<string | null>(null);
+
   const [generatingReport] = useState<string | null>(null);
   const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
   const [selectedClientForReport, setSelectedClientForReport] = useState<Client | null>(null);
@@ -588,12 +588,12 @@ export default function AdminPage() {
   });
   const [credentialsModal, setCredentialsModal] = useState<{
     isOpen: boolean;
-    credentials: { username: string; password: string } | null;
+    clientId: string;
     clientName: string;
     clientEmail: string;
   }>({
     isOpen: false,
-    credentials: null,
+    clientId: '',
     clientName: '',
     clientEmail: ''
   });
@@ -691,18 +691,7 @@ export default function AdminPage() {
     }
   };
 
-  const generateSecurePassword = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
-  };
 
-  const generateUsername = (email: string) => {
-    return email; // Use email as username
-  };
 
   const addClient = async (clientData: Partial<Client>) => {
     if (!user) return;
@@ -735,7 +724,7 @@ export default function AdminPage() {
       if (result.credentials) {
         setCredentialsModal({
           isOpen: true,
-          credentials: result.credentials,
+          clientId: result.id || '',
           clientName: clientData.name || '',
           clientEmail: clientData.email || ''
         });
@@ -783,42 +772,7 @@ export default function AdminPage() {
     }
   };
 
-  const regenerateCredentials = async (clientId: string) => {
-    setGeneratingCredentials(clientId);
-    try {
-      const client = clients.find(c => c.id === clientId);
-      if (!client) return;
 
-      const newPassword = generateSecurePassword();
-      const newUsername = generateUsername(client.email);
-
-      // Update client user password
-      const { error: authError } = await supabase.auth.admin.updateUserById(
-        client.id, // This should be the user ID, not client ID - we need to fix this
-        { password: newPassword }
-      );
-
-      if (authError) throw authError;
-
-      // Update client record
-      const { error: clientError } = await supabase
-        .from('clients')
-        .update({
-          generated_password: newPassword,
-          generated_username: newUsername,
-          credentials_generated_at: new Date().toISOString()
-        })
-        .eq('id', clientId);
-
-      if (clientError) throw clientError;
-
-      await fetchClients();
-    } catch (error) {
-      console.error('Error regenerating credentials:', error);
-    } finally {
-      setGeneratingCredentials(null);
-    }
-  };
 
   const generateReport = async (clientId: string) => {
     const client = clients.find(c => c.id === clientId);
@@ -1445,16 +1399,16 @@ export default function AdminPage() {
                       
                       <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
-                          title="Regenerate Credentials"
-                          onClick={() => regenerateCredentials(client.id)}
-                          disabled={generatingCredentials === client.id}
-                          className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Credentials"
+                          onClick={() => setCredentialsModal({
+                            isOpen: true,
+                            clientId: client.id,
+                            clientName: client.name,
+                            clientEmail: client.email
+                          })}
+                          className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 hover:scale-105"
                         >
-                          {generatingCredentials === client.id ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <UserPlus className="h-4 w-4" />
-                          )}
+                          <UserPlus className="h-4 w-4" />
                         </button>
                       </div>
 
@@ -1526,15 +1480,14 @@ export default function AdminPage() {
         client={editingClient}
       />
 
-      {credentialsModal.credentials && (
-        <CredentialsModal
-          isOpen={credentialsModal.isOpen}
-          onClose={() => setCredentialsModal({ ...credentialsModal, isOpen: false })}
-          credentials={credentialsModal.credentials}
-          clientName={credentialsModal.clientName}
-          clientEmail={credentialsModal.clientEmail}
-        />
-      )}
+      <CredentialsModal
+        isOpen={credentialsModal.isOpen}
+        onClose={() => setCredentialsModal({ ...credentialsModal, isOpen: false })}
+        clientId={credentialsModal.clientId}
+        clientName={credentialsModal.clientName}
+        clientEmail={credentialsModal.clientEmail}
+        onCredentialsUpdated={fetchClients}
+      />
 
       {selectedClientForReport && (
         <GenerateReportModal
