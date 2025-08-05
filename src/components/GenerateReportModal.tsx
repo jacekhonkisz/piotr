@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Calendar, FileText, Send, Eye, ChevronDown, Download } from 'lucide-react';
+
 
 interface GenerateReportModalProps {
   isOpen: boolean;
@@ -56,46 +57,77 @@ export default function GenerateReportModal({
   const [isExistingReport, setIsExistingReport] = useState(false);
 
   // Generate month options for the last 12 months
-  const generateMonthOptions = () => {
-    const today = new Date();
-    const months: MonthOption[] = [];
-    
-    // Generate last 12 months from today
-    for (let i = 0; i < 12; i++) {
-      const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      const year = date.getFullYear();
-      const month = date.getMonth();
-      
-      const lastDayOfMonth = new Date(year, month + 1, 0);
-      
-      const monthNames = [
-        'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
-        'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
-      ];
-      
-      months.push({
-        id: `${year}-${String(month + 1).padStart(2, '0')}`,
-        label: `${monthNames[month]} ${year}`,
-        startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
-        endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`
-      });
-    }
-    
-    setMonthOptions(months);
-    
-    // Set current month as default selection
-    if (months.length > 0) {
-      setSelectedMonth(months[0]?.id || '');
-      setCurrentMonthIndex(0);
-    }
-  };
 
-  // Load month options when modal opens
+
+  // Reset modal state when it opens
   useEffect(() => {
-    if (isOpen && monthOptions.length === 0) {
-      generateMonthOptions();
+    if (isOpen) {
+      console.log('📅 Modal opened, resetting state...');
+      setSelectedRange('monthly');
+      setSelectedMonth('');
+      setMonthOptions([]);
+      setCurrentMonthIndex(0);
+      setShowMonthDropdown(false);
+      setGenerating(false);
+      setReportGenerated(false);
+      setPdfUrl(null);
+      setError(null);
+      setSending(false);
+      setEmailSent(false);
+      setIsExistingReport(false);
+      
+      // Reset custom date range to current month
+      const today = new Date();
+      const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const currentMonthRange = {
+        start: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
+        end: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`
+      };
+      setCustomDateRange(currentMonthRange);
+      console.log('📅 Reset custom date range to current month:', currentMonthRange);
+      
+      // Generate fresh month options and set default immediately
+      const months: MonthOption[] = [];
+      
+      // Generate last 12 months from today
+      for (let i = 0; i < 12; i++) {
+        const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+        
+        const monthNames = [
+          'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+          'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+        ];
+        
+        months.push({
+          id: `${year}-${String(month + 1).padStart(2, '0')}`,
+          label: `${monthNames[month]} ${year}`,
+          startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+          endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`
+        });
+      }
+      
+      setMonthOptions(months);
+      
+      // Set current month as default selection immediately
+      if (months.length > 0) {
+        const currentMonthId = months[0]?.id || '';
+        setSelectedMonth(currentMonthId);
+        setCurrentMonthIndex(0);
+        console.log('📅 Set default selected month immediately:', currentMonthId);
+      }
     }
   }, [isOpen]);
+
+  // Force date inputs to update when customDateRange changes
+  useEffect(() => {
+    if (isOpen && selectedRange === 'custom') {
+      console.log('📅 Custom date range updated:', customDateRange);
+    }
+  }, [isOpen, selectedRange, customDateRange]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -112,25 +144,33 @@ export default function GenerateReportModal({
     };
   }, [showMonthDropdown]);
 
-  const getDateRange = (): DateRange => {
+  const getDateRange = useCallback(() => {
+    console.log('📅 getDateRange called with:', { selectedRange, selectedMonth, monthOptions: monthOptions.length });
+    
     if (selectedRange === 'quarterly') {
       const today = new Date();
       const currentQuarter = Math.floor(today.getMonth() / 3);
       const quarterStart = new Date(today.getFullYear(), currentQuarter * 3, 1);
       const quarterEnd = new Date(today.getFullYear(), (currentQuarter + 1) * 3, 0);
-      return {
+      const result = {
         start: `${quarterStart.getFullYear()}-${String(quarterStart.getMonth() + 1).padStart(2, '0')}-01`,
         end: `${quarterEnd.getFullYear()}-${String(quarterEnd.getMonth() + 1).padStart(2, '0')}-${String(quarterEnd.getDate()).padStart(2, '0')}`
       };
+      console.log('📅 Quarterly date range:', result);
+      return result;
     } else if (selectedRange === 'monthly' && selectedMonth) {
       const selectedOption = monthOptions.find(option => option.id === selectedMonth);
       if (selectedOption) {
+        console.log('📅 Monthly date range from selected option:', selectedOption);
         return {
           start: selectedOption.startDate,
           end: selectedOption.endDate
         };
       }
     } else if (selectedRange === 'custom') {
+      console.log('📅 Custom date range:', customDateRange);
+      console.log('📅 Custom date range start:', customDateRange.start);
+      console.log('📅 Custom date range end:', customDateRange.end);
       return customDateRange;
     }
     
@@ -139,11 +179,13 @@ export default function GenerateReportModal({
     const year = today.getFullYear();
     const month = today.getMonth();
     const lastDayOfMonth = new Date(year, month + 1, 0);
-    return {
+    const result = {
       start: `${year}-${String(month + 1).padStart(2, '0')}-01`,
       end: `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`
     };
-  };
+    console.log('📅 Fallback date range:', result);
+    return result;
+  }, [selectedRange, selectedMonth, monthOptions, customDateRange]);
 
   const getRangeLabel = (): string => {
     if (selectedRange === 'quarterly') {
@@ -158,6 +200,9 @@ export default function GenerateReportModal({
   };
 
   const generateReport = async () => {
+    console.log('📅 Generate Report button clicked');
+    console.log('📅 Current state:', { selectedRange, selectedMonth, monthOptions: monthOptions.length });
+    
     setGenerating(true);
     setError(null);
     setIsExistingReport(false);
@@ -172,6 +217,22 @@ export default function GenerateReportModal({
       }
 
       const dateRange = getDateRange();
+      
+      console.log('📅 Generate Report Modal - Sending date range:', dateRange);
+      console.log('📅 Generate Report Modal - Selected range type:', selectedRange);
+      console.log('📅 Generate Report Modal - Selected month:', selectedMonth);
+      console.log('📅 Generate Report Modal - Custom date range:', customDateRange);
+      console.log('📅 Generate Report Modal - Date range object type:', typeof dateRange);
+      console.log('📅 Generate Report Modal - Date range has start:', !!dateRange?.start);
+      console.log('📅 Generate Report Modal - Date range has end:', !!dateRange?.end);
+      console.log('📅 Generate Report Modal - Date range start value:', dateRange?.start);
+      console.log('📅 Generate Report Modal - Date range end value:', dateRange?.end);
+      console.log('📅 Generate Report Modal - Custom date range start:', customDateRange?.start);
+      console.log('📅 Generate Report Modal - Custom date range end:', customDateRange?.end);
+      console.log('📅 Generate Report Modal - Full request body:', JSON.stringify({
+        clientId,
+        dateRange
+      }, null, 2));
       
       // First, generate the report data
       const response = await fetch('/api/generate-report', {
@@ -325,7 +386,37 @@ export default function GenerateReportModal({
           </div>
           <div className="flex items-center space-x-3">
             <button
-              onClick={generateMonthOptions}
+              onClick={() => {
+                // Regenerate month options
+                const today = new Date();
+                const months: MonthOption[] = [];
+                
+                for (let i = 0; i < 12; i++) {
+                  const date = new Date(today.getFullYear(), today.getMonth() - i, 1);
+                  const year = date.getFullYear();
+                  const month = date.getMonth();
+                  
+                  const lastDayOfMonth = new Date(year, month + 1, 0);
+                  
+                  const monthNames = [
+                    'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+                    'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
+                  ];
+                  
+                  months.push({
+                    id: `${year}-${String(month + 1).padStart(2, '0')}`,
+                    label: `${monthNames[month]} ${year}`,
+                    startDate: `${year}-${String(month + 1).padStart(2, '0')}-01`,
+                    endDate: `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDayOfMonth.getDate()).padStart(2, '0')}`
+                  });
+                }
+                
+                setMonthOptions(months);
+                if (months.length > 0) {
+                  setSelectedMonth(months[0]?.id || '');
+                  setCurrentMonthIndex(0);
+                }
+              }}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center space-x-2"
             >
               <FileText className="h-4 w-4" />
@@ -462,8 +553,9 @@ export default function GenerateReportModal({
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
                         <input
+                          key={`start-date-${customDateRange.start}`}
                           type="date"
-                          value={customDateRange.start}
+                          defaultValue={customDateRange.start}
                           onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
@@ -471,8 +563,9 @@ export default function GenerateReportModal({
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
                         <input
+                          key={`end-date-${customDateRange.end}`}
                           type="date"
-                          value={customDateRange.end}
+                          defaultValue={customDateRange.end}
                           onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />

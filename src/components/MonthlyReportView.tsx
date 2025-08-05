@@ -624,8 +624,8 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
             <div className="bg-white rounded-xl shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Campaign Performance</h2>
               
-              {/* Winner Campaign */}
-              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-200 mb-6">
+              {/* Top Campaign */}
+              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-200">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center">
                     <div className="p-3 bg-yellow-100 rounded-lg mr-4">
@@ -633,56 +633,58 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600">Top Performing Campaign</p>
-                      <p className="text-xl font-bold text-gray-900">{monthlyStats.topCampaigns[0].campaign_name}</p>
+                      <p className="text-xl font-bold text-gray-900">{monthlyStats.topCampaigns[0]?.campaign_name || 'No campaigns'}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyStats.topCampaigns[0].spend || 0)}</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyStats.topCampaigns[0]?.spend || 0)}</p>
                     <p className="text-sm text-gray-600">Total Spend</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-gray-600">Impressions</p>
-                    <p className="font-semibold">{formatNumber(monthlyStats.topCampaigns[0].impressions || 0)}</p>
+                    <p className="font-semibold">{formatNumber(monthlyStats.topCampaigns[0]?.impressions || 0)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">CTR</p>
-                    <p className="font-semibold">{(monthlyStats.topCampaigns[0].ctr || 0).toFixed(2)}%</p>
+                    <p className="font-semibold">{(monthlyStats.topCampaigns[0]?.ctr || 0).toFixed(2)}%</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Conversions</p>
-                    <p className="font-semibold">{formatNumber(monthlyStats.topCampaigns[0].conversions || 0)}</p>
+                    <p className="font-semibold">{formatNumber(monthlyStats.topCampaigns[0]?.conversions || 0)}</p>
                   </div>
                 </div>
               </div>
 
               {/* Other Campaigns */}
-              <div className="space-y-3">
-                {monthlyStats.topCampaigns.slice(1).map((campaign, index) => (
-                  <div key={campaign.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center">
-                      <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center mr-3">
-                        <span className="text-xs font-medium text-gray-600">#{index + 2}</span>
+              {monthlyStats.topCampaigns.length > 1 && (
+                <div className="space-y-3">
+                  {monthlyStats.topCampaigns.slice(1).map((campaign, index) => (
+                    <div key={campaign.campaign_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center">
+                        <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center mr-3">
+                          <span className="text-xs font-medium text-gray-600">#{index + 2}</span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{campaign.campaign_name}</p>
+                          <p className="text-sm text-gray-600">{formatCurrency(campaign.spend || 0)} • {(campaign.ctr || 0).toFixed(2)}% CTR</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{campaign.campaign_name}</p>
-                        <p className="text-sm text-gray-600">{formatCurrency(campaign.spend || 0)} • {(campaign.ctr || 0).toFixed(2)}% CTR</p>
-                      </div>
+                      <button
+                        onClick={() => toggleCampaignExpansion(campaign.campaign_id)}
+                        className="p-1 text-gray-400 hover:text-gray-600"
+                      >
+                        {expandedCampaigns.has(campaign.campaign_id) ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
-                    <button
-                      onClick={() => toggleCampaignExpansion(campaign.id)}
-                      className="p-1 text-gray-400 hover:text-gray-600"
-                    >
-                      {expandedCampaigns.has(campaign.id) ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

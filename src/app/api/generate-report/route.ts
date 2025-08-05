@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../lib/meta-api';
 import logger from '../../../lib/logger';
 import { performanceMonitor } from '../../../lib/performance';
+import { validateDateRange } from '../../../lib/date-range-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,6 +46,14 @@ export async function POST(request: NextRequest) {
 
     // Parse request body first (can only be done once)
     const { clientId, dateRange } = await request.json();
+
+    console.log('📅 Generate Report - Received date range:', dateRange);
+    console.log('📅 Generate Report - Client ID:', clientId);
+    console.log('📅 Generate Report - Date range type:', typeof dateRange);
+    console.log('📅 Generate Report - Date range is null/undefined:', dateRange == null);
+    console.log('📅 Generate Report - Date range has start:', !!dateRange?.start);
+    console.log('📅 Generate Report - Date range has end:', !!dateRange?.end);
+    console.log('📅 Generate Report - Full request body:', JSON.stringify({ clientId, dateRange }, null, 2));
 
     // Get user profile to check role
     const { data: profile } = await supabase
@@ -93,9 +102,21 @@ export async function POST(request: NextRequest) {
     // For client role, targetClient is the same as client
     const targetClient = client;
     
-    // Use provided date range or default to broader range
-    const startDate = dateRange?.start || '2024-01-01';
-    const endDate = dateRange?.end || new Date().toISOString().split('T')[0];
+    // Use provided date range or default to last 30 days
+    const defaultEndDate = new Date().toISOString().split('T')[0] || '';
+    const defaultStartDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] || '';
+    
+    const startDate = dateRange?.start || defaultStartDate;
+    const endDate = dateRange?.end || defaultEndDate;
+    
+    // Validate the date range
+    const validation = validateDateRange(startDate, endDate);
+    if (!validation.isValid) {
+      return NextResponse.json({ 
+        error: 'Invalid date range', 
+        details: validation.error 
+      }, { status: 400 });
+    }
 
     // Initialize Meta API service
     const metaService = new MetaAPIService(targetClient.meta_access_token);

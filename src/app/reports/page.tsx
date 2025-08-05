@@ -23,6 +23,7 @@ import MetaAdsTables from '../../components/MetaAdsTables';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
+import { getMonthBoundaries, getWeekBoundaries } from '../../lib/date-range-utils';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 
@@ -200,7 +201,7 @@ function ReportsPageContent() {
   // Generate period options based on view type
   const generatePeriodOptions = (type: 'monthly' | 'weekly') => {
     const periods: string[] = [];
-    // Use current date as reference
+    // Use current date as reference, but ensure we don't generate future periods
     const currentDate = new Date();
     const limit = type === 'monthly' ? 24 : 52; // 2 years for monthly, 1 year for weekly
     
@@ -208,12 +209,21 @@ function ReportsPageContent() {
       let periodDate: Date;
       
       if (type === 'monthly') {
+        // For monthly, go back from current month
         periodDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
       } else {
+        // For weekly, go back from current week
         periodDate = new Date(currentDate.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
       }
       
-      periods.push(generatePeriodId(periodDate, type));
+      // Validate that the period is not in the future
+      if (periodDate > currentDate) {
+        console.log(`⚠️ Skipping future period: ${generatePeriodId(periodDate, type)}`);
+        continue;
+      }
+      
+      const periodId = generatePeriodId(periodDate, type);
+      periods.push(periodId);
     }
     
     return periods;
@@ -270,34 +280,33 @@ function ReportsPageContent() {
         throw new Error('No access token available');
       }
 
-      let startDate: Date, endDate: Date;
+      let dateRange: { start: string; end: string };
 
       if (viewType === 'monthly') {
-        // Parse month ID to get start and end dates
+        // Parse month ID to get start and end dates using standardized utility
         const [year, month] = periodId.split('-').map(Number);
-        startDate = new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
-        endDate = new Date(year || new Date().getFullYear(), month || 1, 0); // Last day of the month
+        dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
         
         console.log(`📅 Monthly date parsing:`, {
           periodId,
           year,
           month,
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString()
+          startDate: dateRange.start,
+          endDate: dateRange.end
         });
       } else {
-        // Parse week ID to get start and end dates
+        // Parse week ID to get start and end dates using standardized utility
         const [year, weekStr] = periodId.split('-W');
         const week = parseInt(weekStr || '1');
         const firstDayOfYear = new Date(parseInt(year || new Date().getFullYear().toString()), 0, 1);
         const days = (week - 1) * 7;
-        startDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
-        endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+        const weekStartDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
+        dateRange = getWeekBoundaries(weekStartDate);
       }
       
-      // Format dates in local timezone to avoid UTC conversion issues
-      periodStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
-      periodEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+      // Use standardized date formatting
+      periodStartDate = dateRange.start;
+      periodEndDate = dateRange.end;
       
       console.log(`📅 Generated date range for ${periodId}: ${periodStartDate} to ${periodEndDate}`);
       

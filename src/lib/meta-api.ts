@@ -954,17 +954,38 @@ export class MetaAPIService {
       }
 
       if (data.data) {
-        const placements = data.data.map(insight => ({
-          placement: insight.publisher_platform || 'Unknown',
-          spend: parseFloat(insight.spend || '0'),
-          impressions: parseInt(insight.impressions || '0'),
-          clicks: parseInt(insight.clicks || '0'),
-          ctr: parseFloat(insight.ctr || '0'),
-          cpc: parseFloat(insight.cpc || '0'),
-          cpp: insight.cpp ? parseFloat(insight.cpp) : null,
-        }));
+        const placements = data.data.map(insight => {
+          // Handle missing publisher_platform data
+          let placement = insight.publisher_platform;
+          if (!placement || placement === 'unknown' || placement === 'Unknown') {
+            // Try to infer placement from other fields or use a default
+            if (insight.publisher_platform === 'facebook') {
+              placement = 'Facebook';
+            } else if (insight.publisher_platform === 'instagram') {
+              placement = 'Instagram';
+            } else if (insight.publisher_platform === 'audience_network') {
+              placement = 'Audience Network';
+            } else if (insight.publisher_platform === 'messenger') {
+              placement = 'Messenger';
+            } else {
+              // Use a more descriptive default
+              placement = 'Meta Platform';
+            }
+          }
+          
+          return {
+            placement: placement,
+            spend: parseFloat(insight.spend || '0'),
+            impressions: parseInt(insight.impressions || '0'),
+            clicks: parseInt(insight.clicks || '0'),
+            ctr: parseFloat(insight.ctr || '0'),
+            cpc: parseFloat(insight.cpc || '0'),
+            cpp: insight.cpp ? parseFloat(insight.cpp) : null,
+          };
+        });
 
         console.log('✅ Parsed placement performance:', placements.length, 'placements');
+        console.log('   Placement types found:', Array.from(new Set(placements.map(p => p.placement))));
         return placements;
       }
 

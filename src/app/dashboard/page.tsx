@@ -25,6 +25,7 @@ import { supabase } from '../../lib/supabase';
 import { getClientDashboardData } from '../../lib/database';
 import type { Database } from '../../lib/database.types';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { getMonthBoundaries } from '../../lib/date-range-utils';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 type Report = Database['public']['Tables']['reports']['Row'];
@@ -61,7 +62,18 @@ export default function DashboardPage() {
   const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [dashboardInitialized, setDashboardInitialized] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Helper function to get current date (use actual system date)
+  const getCurrentDate = () => {
+    return new Date();
+  };
+  
+  // Initialize with current month
+  const getCurrentMonthDate = () => {
+    const currentDate = getCurrentDate();
+    return new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  };
+  
+  const [currentMonth, setCurrentMonth] = useState(getCurrentMonthDate());
   const { user, profile, authLoading, signOut } = useAuth();
   const router = useRouter();
 
@@ -79,7 +91,7 @@ export default function DashboardPage() {
   };
 
   // Get cache key for current user
-  const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}`;
+  const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}_v4`;
 
 
 
@@ -92,7 +104,7 @@ export default function DashboardPage() {
         dataSource: source
       };
       localStorage.setItem(getCacheKey(), JSON.stringify(cacheData));
-      setLastUpdated(new Date());
+      setLastUpdated(getCurrentDate());
       console.log('Data saved to cache with source:', source);
     } catch (error) {
       console.error('Error saving to cache:', error);
@@ -165,12 +177,15 @@ export default function DashboardPage() {
 
 
 
+  // Load dashboard data with cache management
   const loadClientDashboardWithCache = async () => {
     if (loadingRef.current) return;
-    
+    loadingRef.current = true;
+    setLoading(true);
+
     try {
-      loadingRef.current = true;
-      setLoading(true);
+      // Clear cache to ensure fresh data with new date range
+      clearCache();
       
       // Always try to fetch live data first (real-time from Meta API)
       console.log('🔄 Loading live data from Meta API...');
@@ -194,7 +209,7 @@ export default function DashboardPage() {
       
       // Get session token for API call - try refreshing first
       console.log('🔄 Refreshing session...');
-      const { data: refreshedSession, error: refreshError } = await supabase.auth.refreshSession();
+      const { data: refreshedSession, error: refreshError } = await supabase.auth.getSession();
       
       const sessionToUse = refreshedSession?.session || (await supabase.auth.getSession()).data.session;
       
@@ -228,45 +243,9 @@ export default function DashboardPage() {
         return;
       }
 
-      // Fetch live data from Meta API with cache busting
-      const response = await fetch('/api/fetch-live-data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionToUse.access_token}`,
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        },
-        body: JSON.stringify({
-          clientId: currentClient.id,
-          dateRange: {
-            start: '2024-01-01', // Broader range to capture all historical data
-            end: new Date().toISOString().split('T')[0]
-          },
-          _t: Date.now() // Cache busting timestamp
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Failed to fetch live data:', error);
-        
-        // Throw error to trigger fallback in parent function
-        throw new Error(`API failed: ${error.error || 'Unknown error'}`);
-      }
-
-      const result = await response.json();
-      console.log('Live data fetched successfully:', result);
-      console.log('🔍 Currency from main API call:', result.data?.client?.currency);
-      console.log('🔍 Full client data from main API:', result.data?.client);
+      // Use current month data instead of hardcoded dates
+      await loadCurrentMonthData(currentMonth);
       
-      // Check for Meta API errors in debug info
-      if (result.debug?.hasMetaApiError) {
-        console.warn('⚠️ Meta API Error detected:', result.debug.metaApiError);
-        alert(`Meta API Issue: ${result.debug.metaApiError}\n\nThis might explain why data shows zeros. Please check your Meta Ads account permissions and token.`);
-      }
-
       // Get reports from database using the current client
       const { data: reports } = await supabase
         .from('reports')
@@ -275,28 +254,24 @@ export default function DashboardPage() {
         .order('generated_at', { ascending: false })
         .limit(10);
 
+      // Use the current month data for the dashboard
       const dashboardData = {
-        client: result.data.client,
+        client: currentClient,
         reports: reports || [],
-        campaigns: result.data.campaigns.map((campaign: any) => ({
-          id: campaign.campaign_id,
-          campaign_id: campaign.campaign_id,
-          campaign_name: campaign.campaign_name,
-          spend: campaign.spend,
-          impressions: campaign.impressions,
-          clicks: campaign.clicks,
-          conversions: campaign.conversions,
-          ctr: campaign.ctr,
-          cpc: campaign.cpc,
-          date_range_start: result.data.dateRange.start,
-          date_range_end: result.data.dateRange.end
-        })),
-        stats: result.data.stats
+        campaigns: currentMonthData.campaigns,
+        stats: currentMonthData.stats || {
+          totalSpend: 0,
+          totalImpressions: 0,
+          totalClicks: 0,
+          totalConversions: 0,
+          averageCtr: 0,
+          averageCpc: 0
+        }
       };
 
-      setClientData(dashboardData);
-      setDataSource('live');
-      setLastUpdated(new Date());
+              setClientData(dashboardData);
+        setDataSource('live');
+        setLastUpdated(getCurrentDate());
       
       // Save to cache with live data
       saveToCache(dashboardData, 'live');
@@ -404,7 +379,7 @@ export default function DashboardPage() {
   // Format last updated time
   const formatLastUpdated = () => {
     if (!lastUpdated) return '';
-    const now = new Date();
+    const now = getCurrentDate();
     const diffMs = now.getTime() - lastUpdated.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     
@@ -438,16 +413,20 @@ export default function DashboardPage() {
   const loadCurrentMonthData = async (month: Date) => {
     try {
       const year = month.getFullYear();
-      const monthNum = month.getMonth();
+      const monthNum = month.getMonth() + 1; // getMonth() returns 0-11, we need 1-12
       
-      // Generate date range for the month
-      const startDate = new Date(year, monthNum, 1);
-      const endDate = new Date(year, monthNum + 1, 0); // Last day of the month
+      // Debug: Log the month being processed
+      console.log(`🔍 Debug: Processing month:`, {
+        month: month.toISOString().split('T')[0],
+        year,
+        monthNum,
+        monthId: `${year}-${String(monthNum).padStart(2, '0')}`
+      });
       
-      const monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
-      const monthEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+      // Use standardized month boundaries utility
+      const monthRange = getMonthBoundaries(year, monthNum);
       
-      console.log(`📅 Loading dashboard data for ${monthStartDate} to ${monthEndDate}`);
+      console.log(`📅 Loading dashboard data for ${monthRange.start} to ${monthRange.end}`);
       
       // Get session for API calls
       const { data: { session } } = await supabase.auth.getSession();
@@ -475,6 +454,9 @@ export default function DashboardPage() {
       }
 
       // Fetch data from Meta API for this month with cache busting
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
@@ -487,15 +469,18 @@ export default function DashboardPage() {
         body: JSON.stringify({
           clientId: currentClient.id,
           dateRange: {
-            start: monthStartDate,
-            end: monthEndDate
+            start: monthRange.start,
+            end: monthRange.end
           },
           _t: Date.now() // Cache busting timestamp
-        })
+        }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        console.log(`API call failed for ${monthStartDate} to ${monthEndDate}`);
+        console.log(`API call failed for ${monthRange.start} to ${monthRange.end}`);
         // Set empty data instead of null
         setCurrentMonthData({
           campaigns: [],
@@ -527,8 +512,8 @@ export default function DashboardPage() {
           conversions: campaign.conversions || 0,
           ctr: campaign.ctr || 0,
           cpc: campaign.cpc || 0,
-          date_range_start: monthStartDate,
-          date_range_end: monthEndDate
+          date_range_start: monthRange.start,
+          date_range_end: monthRange.end
         }));
 
         // Calculate stats
@@ -579,7 +564,12 @@ export default function DashboardPage() {
         });
       }
     } catch (error) {
-      console.error('Error loading current month data:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('Fetch request timed out after 30 seconds');
+        console.log('Setting empty data due to timeout');
+      } else {
+        console.error('Error loading current month data:', error);
+      }
       // Set empty data on error
       setCurrentMonthData({
         campaigns: [],
@@ -607,40 +597,46 @@ export default function DashboardPage() {
 
 
 
-  // Navigate to previous/next month (unlimited)
+  // Navigate to previous/next month (limited to current month)
   const navigateMonth = (direction: 'prev' | 'next') => {
     const newMonth = new Date(currentMonth);
     if (direction === 'next') {
       newMonth.setMonth(newMonth.getMonth() + 1);
+      // Prevent navigation to future months
+      const currentDate = getCurrentDate();
+      const currentMonthDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      if (newMonth > currentMonthDate) {
+        return; // Don't allow navigation to future months
+      }
     } else {
       newMonth.setMonth(newMonth.getMonth() - 1);
     }
     setCurrentMonth(newMonth);
   };
 
-  // Generate month options for dropdown (last 2 years + future 6 months)
+  // Generate month options for dropdown (last 2 years up to current month)
   const generateMonthOptions = () => {
     const months: { value: string; label: string }[] = [];
-    const currentDate = new Date();
+    const currentDate = getCurrentDate();
     const twoYearsAgo = new Date(currentDate.getFullYear() - 2, 0, 1);
-    const sixMonthsAhead = new Date(currentDate.getFullYear(), currentDate.getMonth() + 6, 1);
+    const currentMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     
-    let currentMonth = new Date(twoYearsAgo);
+    let monthIterator = new Date(twoYearsAgo);
     
-    while (currentMonth <= sixMonthsAhead) {
-      const year = currentMonth.getFullYear();
-      const month = currentMonth.getMonth() + 1;
+    while (monthIterator <= currentMonth) {
+      const year = monthIterator.getFullYear();
+      const month = monthIterator.getMonth() + 1;
       const monthId = `${year}-${String(month).padStart(2, '0')}`;
-      const monthName = getCurrentMonthName(currentMonth);
+      const monthName = getCurrentMonthName(monthIterator);
       months.push({ value: monthId, label: monthName });
-      currentMonth = new Date(year, month, 1);
+      monthIterator = new Date(year, month, 1);
     }
     
     return months;
   };
 
   // Get month name for any date
-  const getCurrentMonthName = (date: Date = currentMonth || new Date()) => {
+  const getCurrentMonthName = (date: Date = currentMonth || getCurrentDate()) => {
     const months = [
       'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
       'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'
@@ -653,6 +649,15 @@ export default function DashboardPage() {
     const [year, month] = event.target.value.split('-').map(Number);
     if (year && month) {
       const newMonth = new Date(year, month - 1, 1);
+      
+      // Prevent selection of future months
+      const currentDate = getCurrentDate();
+      const currentMonthDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+      if (newMonth > currentMonthDate) {
+        console.log('⚠️ Cannot select future month:', event.target.value);
+        return;
+      }
+      
       setCurrentMonth(newMonth);
     }
   };
@@ -940,7 +945,7 @@ export default function DashboardPage() {
                 
                 {/* Month Picker Dropdown */}
                 <select
-                  value={`${currentMonth?.getFullYear() || new Date().getFullYear()}-${String((currentMonth?.getMonth() || new Date().getMonth()) + 1).padStart(2, '0')}`}
+                  value={`${currentMonth?.getFullYear() || getCurrentDate().getFullYear()}-${String((currentMonth?.getMonth() || getCurrentDate().getMonth()) + 1).padStart(2, '0')}`}
                   onChange={handleMonthChange}
                   className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
@@ -982,7 +987,7 @@ export default function DashboardPage() {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                 <h4 className="font-semibold text-yellow-800 mb-2">Debug Info:</h4>
                 <div className="text-sm text-yellow-700 space-y-1">
-                  <div>Current Month: {getCurrentMonthName(currentMonth || new Date())} ({currentMonth?.getFullYear() || new Date().getFullYear()}-{currentMonth ? currentMonth.getMonth() + 1 : new Date().getMonth() + 1})</div>
+                  <div>Current Month: {getCurrentMonthName(currentMonth || getCurrentDate())} ({currentMonth?.getFullYear() || getCurrentDate().getFullYear()}-{currentMonth ? currentMonth.getMonth() + 1 : getCurrentDate().getMonth() + 1})</div>
                   <div>Meta API Campaigns: {currentMonthData.campaigns.length}</div>
                   <div>Meta API Stats: {currentMonthData.stats ? 'Loaded' : 'Loading...'}</div>
                   <div>Data Source: Meta API (Live)</div>

@@ -4,6 +4,11 @@ import { MetaAPIService } from '../../../lib/meta-api';
 import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
 import logger from '../../../lib/logger';
 import { performanceMonitor } from '../../../lib/performance';
+import { 
+  analyzeDateRange, 
+  selectMetaAPIMethod, 
+  validateDateRange
+} from '../../../lib/date-range-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -50,29 +55,47 @@ export async function POST(request: NextRequest) {
     
     const client = clientData;
 
-    // Use a more flexible date range strategy
-    let startDate, endDate;
-    let isMonthlyRequest = false;
+    // Use standardized date range strategy
+    let startDate: string;
+    let endDate: string;
+    let rangeAnalysis;
+    let apiMethod;
     
     if (dateRange?.start && dateRange?.end) {
       startDate = dateRange.start;
       endDate = dateRange.end;
       
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const daysDiff = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-      
-      if (daysDiff >= 25 && daysDiff <= 35) {
-        isMonthlyRequest = true;
-        console.log(`📅 Detected monthly request: ${startDate} to ${endDate} (${daysDiff} days)`);
+      // Validate date range
+      const validation = validateDateRange(startDate, endDate);
+      if (!validation.isValid) {
+        return NextResponse.json({ 
+          error: 'Invalid date range', 
+          details: validation.error
+        }, { status: 400 });
       }
+      
+      // Analyze date range
+      rangeAnalysis = analyzeDateRange(startDate, endDate);
+      apiMethod = selectMetaAPIMethod({ start: startDate, end: endDate });
+      
+      console.log(`📅 Date range analysis:`, {
+        rangeType: rangeAnalysis.rangeType,
+        daysDiff: rangeAnalysis.daysDiff,
+        isValidMonthly: rangeAnalysis.isValidMonthly,
+        selectedMethod: apiMethod.method
+      });
     } else {
-      endDate = new Date().toISOString().split('T')[0];
-      const defaultStart = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-      startDate = defaultStart.toISOString().split('T')[0];
+      // Default to last 30 days if no date range provided
+      const currentDate = new Date();
+      endDate = currentDate.toISOString().split('T')[0] || '';
+      const defaultStart = new Date(currentDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+      startDate = defaultStart.toISOString().split('T')[0] || '';
+      
+      rangeAnalysis = analyzeDateRange(startDate, endDate);
+      apiMethod = selectMetaAPIMethod({ start: startDate, end: endDate });
     }
 
-    console.log('📅 Date range for API call:', { startDate, endDate });
+    console.log('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
 
     // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);
@@ -115,20 +138,20 @@ export async function POST(request: NextRequest) {
     let metaApiError: string | null = null;
     
     try {
-      if (isMonthlyRequest) {
-        console.log('📅 Using monthly insights method...');
-        const startDateObj = new Date(startDate);
+      if (apiMethod.method === 'getMonthlyCampaignInsights') {
+        console.log(`📅 Using monthly insights method for ${apiMethod.parameters.year}-${apiMethod.parameters.month}...`);
         campaignInsights = await metaService.getMonthlyCampaignInsights(
           adAccountId,
-          startDateObj.getFullYear(),
-          startDateObj.getMonth() + 1
+          apiMethod.parameters.year,
+          apiMethod.parameters.month
         );
       } else {
-        console.log('📅 Using standard campaign insights method...');
+        console.log(`📅 Using standard campaign insights method with time increment: ${apiMethod.parameters.timeIncrement}...`);
         campaignInsights = await metaService.getCampaignInsights(
           adAccountId,
-          startDate,
-          endDate
+          apiMethod.parameters.dateStart,
+          apiMethod.parameters.dateEnd,
+          apiMethod.parameters.timeIncrement
         );
       }
 

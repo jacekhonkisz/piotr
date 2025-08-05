@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from './meta-api';
 import { SmartDataLoader } from './smart-data-loader';
+import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -102,17 +103,21 @@ export class BackgroundDataCollector {
   private async collectMonthlySummaryForClient(client: Client): Promise<void> {
     console.log(`📊 Collecting monthly summary for ${client.name}...`);
 
-    // Get the last 12 months
+    // Get the last 12 months using standardized utilities
     const currentDate = new Date();
     const monthsToCollect = [];
 
     for (let i = 0; i < 12; i++) {
       const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const monthRange = getMonthBoundaries(year, month);
+      
       monthsToCollect.push({
-        year: date.getFullYear(),
-        month: date.getMonth() + 1,
-        startDate: date.toISOString().split('T')[0],
-        endDate: new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0]
+        year,
+        month,
+        startDate: monthRange.start,
+        endDate: monthRange.end
       });
     }
 
@@ -198,18 +203,19 @@ export class BackgroundDataCollector {
   private async collectWeeklySummaryForClient(client: Client): Promise<void> {
     console.log(`📊 Collecting weekly summary for ${client.name}...`);
 
-    // Get the last 52 weeks
+    // Get the last 52 weeks using standardized utilities
     const currentDate = new Date();
     const weeksToCollect = [];
 
     for (let i = 0; i < 52; i++) {
-      const endDate = new Date(currentDate.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
-      const startDate = new Date(endDate.getTime() - (6 * 24 * 60 * 60 * 1000)); // 7 days before
+      const weekEndDate = new Date(currentDate.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+      const weekStartDate = new Date(weekEndDate.getTime() - (6 * 24 * 60 * 60 * 1000)); // 7 days before
+      const weekRange = getWeekBoundaries(weekStartDate);
       
       weeksToCollect.push({
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-        weekNumber: Math.ceil((endDate.getTime() - new Date(endDate.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
+        startDate: weekRange.start,
+        endDate: weekRange.end,
+        weekNumber: Math.ceil((weekEndDate.getTime() - new Date(weekEndDate.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
       });
     }
 

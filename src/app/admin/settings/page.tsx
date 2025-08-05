@@ -21,7 +21,6 @@ import {
   ArrowLeft,
   Server,
   Lock,
-  Bell,
   Zap,
   Database,
   Key,

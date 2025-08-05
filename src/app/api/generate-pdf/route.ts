@@ -449,6 +449,14 @@ export async function POST(request: NextRequest) {
   console.log('📄 PDF Generation Request Started');
 
   try {
+    // Extract the authorization header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
     const { clientId, dateRange, campaigns: directCampaigns, totals: directTotals, client: directClient, metaTables: directMetaTables } = await request.json();
 
     if (!clientId || !dateRange) {
@@ -496,11 +504,11 @@ export async function POST(request: NextRequest) {
       console.log('📡 Using dashboard API call for consistent data...');
       
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-live-data`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-live-data`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer mock-token-for-pdf-generation`
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
             dateRange: {
@@ -513,6 +521,13 @@ export async function POST(request: NextRequest) {
 
         if (response.ok) {
           const data = await response.json();
+          console.log('📄 PDF Generation - API response:', {
+            success: data.success,
+            campaignsCount: data.data?.campaigns?.length || 0,
+            stats: data.data?.stats,
+            dateRange: data.data?.dateRange
+          });
+          
           if (data.success && data.data?.campaigns) {
             campaigns = data.data.campaigns;
             console.log('✅ Using dashboard API data for PDF generation');

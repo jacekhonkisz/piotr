@@ -5,14 +5,9 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
 import { 
   ArrowLeft, 
-  BarChart3, 
-  Eye, 
   Download, 
   Mail, 
   RefreshCw,
-  Calendar,
-  Users,
-  FileText,
   Clock,
   CheckCircle,
   XCircle,
@@ -192,10 +187,6 @@ export default function AdminSentReportsPage() {
       newExpanded.add(groupKey);
     }
     setExpandedGroups(newExpanded);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pl-PL');
   };
 
   const formatDateTime = (dateString: string) => {
