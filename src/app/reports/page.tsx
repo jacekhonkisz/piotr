@@ -304,30 +304,6 @@ function ReportsPageContent() {
       
       console.log(`📅 Effective start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
       
-      const startYear = effectiveStartDate.getFullYear();
-      const startMonth = effectiveStartDate.getMonth();
-      const startDay = effectiveStartDate.getDate();
-      const currentYear = currentDate.getFullYear();
-      const currentMonth = currentDate.getMonth();
-      const currentDay = currentDate.getDate();
-      
-      console.log(`📅 Business perspective: Fetching from earliest campaign creation date`);
-      console.log(`📅 API limitation: Meta API only allows data from last 37 months`);
-      console.log(`📅 Fetching all-time data from ${startYear}-${String(startMonth + 1).padStart(2, '0')}-${String(startDay).padStart(2, '0')} to ${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')} (month by month)`);
-      
-      let allCampaigns: Campaign[] = [];
-      let totalMonths = 0;
-      let processedMonths = 0;
-      
-      // Calculate total months to process
-      for (let year = startYear; year <= currentYear; year++) {
-        const monthEnd = year === currentYear ? currentMonth : 11;
-        const monthStart = year === startYear ? startMonth : 0;
-        totalMonths += monthEnd - monthStart + 1;
-      }
-      
-      console.log(`📊 Total months to process: ${totalMonths}`);
-      
       // Format dates properly for API
       const formatDateForAPI = (date: Date): string => {
         const year = date.getFullYear();
@@ -335,191 +311,140 @@ function ReportsPageContent() {
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       };
-      
-      // Fetch data month by month
-      for (let year = startYear; year <= currentYear; year++) {
-        const monthEnd = year === currentYear ? currentMonth : 11;
-        const monthStart = year === startYear ? startMonth : 0;
-        
-        for (let month = monthStart; month <= monthEnd; month++) {
-          processedMonths++;
-          console.log(`📅 Processing ${year}-${String(month + 1).padStart(2, '0')} (${processedMonths}/${totalMonths})`);
-          
-          try {
-            // Use exact dates for first and last months, full months for others
-            let startDay = '01';
-            let endDay = String(new Date(year, month + 1, 0).getDate());
-            
-            // For the first month, use the exact day from effective start date
-            if (year === startYear && month === startMonth) {
-              startDay = String(startDay).padStart(2, '0');
-            }
-            
-            // For the last month, use the exact day from current date
-            if (year === currentYear && month === currentMonth) {
-              endDay = String(currentDay).padStart(2, '0');
-            }
-            
-            const requestBody = {
-              dateRange: {
-                start: `${year}-${String(month + 1).padStart(2, '0')}-${startDay}`,
-                end: `${year}-${String(month + 1).padStart(2, '0')}-${endDay}`
-              },
-              clientId: client.id
-            };
-            
-            console.log(`📡 Making API call for ${year}-${String(month + 1).padStart(2, '0')}:`, requestBody);
-            
-            const response = await fetch('/api/fetch-live-data', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`
-              },
-              body: JSON.stringify(requestBody)
-            });
 
-            console.log(`📡 Response for ${year}-${String(month + 1).padStart(2, '0')}:`, {
-              status: response.status,
-              ok: response.ok,
-              statusText: response.statusText
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              console.log(`📊 Data for ${year}-${String(month + 1).padStart(2, '0')}:`, {
-                hasData: !!data,
-                hasDataProperty: !!data.data,
-                campaignsInData: data.data?.campaigns?.length || 0,
-                campaignsDirect: data.campaigns?.length || 0,
-                dataKeys: Object.keys(data || {})
-              });
-              
-              const monthCampaigns = data.data?.campaigns || data.campaigns || [];
-              
-              if (monthCampaigns.length > 0) {
-                console.log(`✅ Found ${monthCampaigns.length} campaigns for ${year}-${String(month + 1).padStart(2, '0')}`);
-                
-                const campaigns: Campaign[] = monthCampaigns.map((campaign: any, index: number) => {
-                  const transformedCampaign = {
-                    id: `${campaign.campaign_id}-${year}-${String(month + 1).padStart(2, '0')}` || `campaign-${index}-${year}-${month}`,
-                    campaign_id: campaign.campaign_id || '',
-                    campaign_name: campaign.campaign_name || 'Unknown Campaign',
-                    spend: parseFloat(campaign.spend || '0'),
-                    impressions: parseInt(campaign.impressions || '0'),
-                    clicks: parseInt(campaign.clicks || '0'),
-                    conversions: parseInt(campaign.conversions || '0'),
-                    ctr: parseFloat(campaign.ctr || '0'),
-                    cpc: parseFloat(campaign.cpc || '0'),
-                    cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
-                    frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
-                    reach: campaign.reach ? parseInt(campaign.reach) : undefined,
-                    relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
-                    landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
-                    ad_type: campaign.ad_type || undefined,
-                    objective: campaign.objective || undefined
-                  };
-                  
-                  console.log(`📊 Transformed campaign ${index + 1}:`, {
-                    original: campaign,
-                    transformed: transformedCampaign,
-                    hasSpend: transformedCampaign.spend > 0,
-                    hasImpressions: transformedCampaign.impressions > 0,
-                    hasClicks: transformedCampaign.clicks > 0
-                  });
-                  
-                  return transformedCampaign;
-                });
-                
-                allCampaigns.push(...campaigns);
-              }
-            } else {
-              console.log(`⚠️ No data for ${year}-${String(month + 1).padStart(2, '0')}`);
-              try {
-                const errorData = await response.json();
-                console.log(`❌ Error details for ${year}-${String(month + 1).padStart(2, '0')}:`, errorData);
-              } catch (e) {
-                console.log(`❌ Could not parse error response for ${year}-${String(month + 1).padStart(2, '0')}`);
-              }
-            }
-            
-            // Small delay to avoid overwhelming the API
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-          } catch (monthError) {
-            console.log(`⚠️ Error processing ${year}-${String(month + 1).padStart(2, '0')}:`, monthError);
-            // Continue with next month instead of failing completely
-          }
-        }
-      }
+      const startDate = formatDateForAPI(effectiveStartDate);
+      const endDate = formatDateForAPI(currentDate);
       
-      console.log(`📊 All-time data collection complete. Total campaigns found: ${allCampaigns.length}`);
+      console.log(`📅 OPTIMIZED: Fetching all-time data in single API call from ${startDate} to ${endDate}`);
+      console.log(`📅 Business perspective: Fetching from earliest campaign creation date`);
+      console.log(`📅 API limitation: Meta API only allows data from last 37 months`);
       
-      // Remove duplicates based on campaign_id and aggregate data
-      const campaignMap = new Map<string, Campaign>();
-      
-      allCampaigns.forEach(campaign => {
-        const existing = campaignMap.get(campaign.campaign_id);
-        if (existing) {
-          // Aggregate data for the same campaign across different months
-          existing.spend += campaign.spend;
-          existing.impressions += campaign.impressions;
-          existing.clicks += campaign.clicks;
-          existing.conversions += campaign.conversions;
-          // Recalculate metrics
-          existing.ctr = existing.impressions > 0 ? (existing.clicks / existing.impressions) * 100 : 0;
-          existing.cpc = existing.clicks > 0 ? existing.spend / existing.clicks : 0;
-        } else {
-          campaignMap.set(campaign.campaign_id, { ...campaign });
-        }
-      });
-      
-      const uniqueCampaigns = Array.from(campaignMap.values());
-      
-      console.log(`📊 After deduplication and aggregation: ${uniqueCampaigns.length} unique campaigns`);
-      
-      // Calculate totals for validation
-      const totalSpend = uniqueCampaigns.reduce((sum, campaign) => sum + campaign.spend, 0);
-      const totalImpressions = uniqueCampaigns.reduce((sum, campaign) => sum + campaign.impressions, 0);
-      const totalClicks = uniqueCampaigns.reduce((sum, campaign) => sum + campaign.clicks, 0);
-      
-      console.log(`📊 Aggregated totals: ${totalSpend.toFixed(2)} PLN, ${totalImpressions.toLocaleString()} impressions, ${totalClicks.toLocaleString()} clicks`);
-      
-      // Create the all-time report with improved validation
-      const report: MonthlyReport | WeeklyReport = {
-        id: 'all-time',
-        date_range_start: formatDateForAPI(effectiveStartDate),
-        date_range_end: formatDateForAPI(currentDate),
-        generated_at: new Date().toISOString(),
-        campaigns: uniqueCampaigns
+      // OPTIMIZATION: Single API call instead of month-by-month
+      const requestBody = {
+        dateRange: {
+          start: startDate,
+          end: endDate
+        },
+        clientId: client.id
       };
+      
+      console.log(`📡 Making OPTIMIZED single API call for entire date range:`, requestBody);
+      
+      const response = await fetch('/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-      console.log('💾 Setting all-time report:', report);
-      console.log('📊 Report details:', {
-        id: report.id,
-        date_range_start: report.date_range_start,
-        date_range_end: report.date_range_end,
-        campaignsCount: report.campaigns.length,
-        totalSpend: totalSpend.toFixed(2),
-        totalImpressions: totalImpressions.toLocaleString(),
-        totalClicks: totalClicks.toLocaleString(),
-        hasValidDates: !!(report.date_range_start && report.date_range_end)
+      console.log(`📡 Response for optimized all-time call:`, {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText
       });
-      
-      // Validate that we have meaningful data
-      if (uniqueCampaigns.length === 0) {
-        console.log('⚠️ No campaigns found in the date range - this might be normal if no campaigns were active');
-      } else if (totalSpend === 0) {
-        console.log('⚠️ Campaigns found but no spend data - this might indicate campaigns were paused or had no activity');
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`📊 Optimized all-time data result:`, {
+          hasData: !!data,
+          hasDataProperty: !!data.data,
+          campaignsInData: data.data?.campaigns?.length || 0,
+          campaignsDirect: data.campaigns?.length || 0,
+          dataKeys: Object.keys(data || {})
+        });
+        
+        const allCampaigns = data.data?.campaigns || data.campaigns || [];
+        
+        console.log(`📊 All-time data collection complete. Total campaigns found: ${allCampaigns.length}`);
+        
+        // Transform campaigns to match expected format
+        const transformedCampaigns: Campaign[] = allCampaigns.map((campaign: any, index: number) => ({
+          id: campaign.campaign_id || `campaign-${index}`,
+          campaign_id: campaign.campaign_id || '',
+          campaign_name: campaign.campaign_name || 'Unknown Campaign',
+          spend: parseFloat(campaign.spend || '0'),
+          impressions: parseInt(campaign.impressions || '0'),
+          clicks: parseInt(campaign.clicks || '0'),
+          conversions: parseInt(campaign.conversions || '0'),
+          ctr: parseFloat(campaign.ctr || '0'),
+          cpc: parseFloat(campaign.cpc || '0'),
+          cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+          frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+          reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+          relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+          landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+          ad_type: campaign.ad_type || undefined,
+          objective: campaign.objective || undefined
+        }));
+        
+        console.log(`📊 Transformed ${transformedCampaigns.length} campaigns for all-time view`);
+        
+        // Calculate totals for validation
+        const totalSpend = transformedCampaigns.reduce((sum, campaign) => sum + campaign.spend, 0);
+        const totalImpressions = transformedCampaigns.reduce((sum, campaign) => sum + campaign.impressions, 0);
+        const totalClicks = transformedCampaigns.reduce((sum, campaign) => sum + campaign.clicks, 0);
+        
+        console.log(`📊 Aggregated totals: ${totalSpend.toFixed(2)} PLN, ${totalImpressions.toLocaleString()} impressions, ${totalClicks.toLocaleString()} clicks`);
+        
+        // Create the all-time report with improved validation
+        const report: MonthlyReport | WeeklyReport = {
+          id: 'all-time',
+          date_range_start: startDate,
+          date_range_end: endDate,
+          generated_at: new Date().toISOString(),
+          campaigns: transformedCampaigns
+        };
+
+        console.log('💾 Setting all-time report:', report);
+        console.log('📊 Report details:', {
+          id: report.id,
+          date_range_start: report.date_range_start,
+          date_range_end: report.date_range_end,
+          campaignsCount: report.campaigns.length,
+          totalSpend: totalSpend.toFixed(2),
+          totalImpressions: totalImpressions.toLocaleString(),
+          totalClicks: totalClicks.toLocaleString(),
+          hasValidDates: !!(report.date_range_start && report.date_range_end)
+        });
+        
+        // Validate that we have meaningful data
+        if (transformedCampaigns.length === 0) {
+          console.log('⚠️ No campaigns found in the date range - this might be normal if no campaigns were active');
+        } else if (totalSpend === 0) {
+          console.log('⚠️ Campaigns found but no spend data - this might indicate campaigns were paused or had no activity');
+        } else {
+          console.log('✅ Successfully loaded all-time data with meaningful spend information');
+        }
+        
+        setReports(prev => {
+          const newReports = { ...prev, 'all-time': report };
+          console.log('💾 Updated reports state:', newReports);
+          return newReports;
+        });
+
       } else {
-        console.log('✅ Successfully loaded all-time data with meaningful spend information');
+        console.log(`⚠️ Optimized API call failed`);
+        try {
+          const errorData = await response.json();
+          console.log(`❌ Error details for optimized call:`, errorData);
+        } catch (e) {
+          console.log(`❌ Could not parse error response for optimized call`);
+        }
+        
+        // Fallback to empty report
+        const emptyReport: MonthlyReport | WeeklyReport = {
+          id: 'all-time',
+          date_range_start: startDate,
+          date_range_end: endDate,
+          generated_at: new Date().toISOString(),
+          campaigns: []
+        };
+        
+        console.log('💾 Setting empty all-time report due to API failure');
+        setReports(prev => ({ ...prev, 'all-time': emptyReport }));
       }
-      
-      setReports(prev => {
-        const newReports = { ...prev, 'all-time': report };
-        console.log('💾 Updated reports state:', newReports);
-        return newReports;
-      });
 
     } catch (error) {
       console.error('❌ Error loading all-time data:', error);
