@@ -125,6 +125,11 @@ export async function PUT(
 
     // Parse request body
     const requestData = await request.json();
+    console.log('Updating client with data:', {
+      name: requestData.name,
+      email: requestData.email,
+      contact_emails: requestData.contact_emails
+    });
 
     // Prepare updates object
     const updates: any = {};
@@ -136,6 +141,7 @@ export async function PUT(
     if (requestData.ad_account_id !== undefined) updates.ad_account_id = requestData.ad_account_id;
     if (requestData.reporting_frequency !== undefined) updates.reporting_frequency = requestData.reporting_frequency;
     if (requestData.notes !== undefined) updates.notes = requestData.notes;
+    if (requestData.contact_emails !== undefined) updates.contact_emails = requestData.contact_emails;
 
     // Handle token update if provided
     let tokenValidation: any = null;

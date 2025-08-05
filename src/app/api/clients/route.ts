@@ -295,6 +295,8 @@ export async function POST(request: NextRequest) {
         generated_password: generatedPassword,
         generated_username: generatedUsername,
         credentials_generated_at: new Date().toISOString(),
+        // Contact emails - initialize with main email
+        contact_emails: [requestData.email],
         // Enhanced token management fields
         token_expires_at: tokenValidation.expiresAt?.toISOString() || null,
         token_refresh_count: tokenValidation.convertedToken ? 1 : 0,

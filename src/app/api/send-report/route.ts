@@ -91,39 +91,60 @@ export async function POST(request: NextRequest) {
       console.log('PDF generation would happen here');
     }
 
-    // Send email
+    // Send email to all contact emails
     const emailService = EmailService.getInstance();
-    const emailResult = await emailService.sendReportEmail(
-      client.email,
-      client.name,
-      sampleReportData,
-      pdfBuffer
-    );
-
-    if (!emailResult.success) {
+    const contactEmails = client.contact_emails || [client.email];
+    
+    let emailResults = [];
+    for (const email of contactEmails) {
+      try {
+        const emailResult = await emailService.sendReportEmail(
+          email,
+          client.name,
+          sampleReportData,
+          pdfBuffer
+        );
+        emailResults.push({ email, success: emailResult.success, error: emailResult.error });
+      } catch (error) {
+        emailResults.push({ 
+          email, 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
+      }
+    }
+    
+    // Check if at least one email was sent successfully
+    const successfulEmails = emailResults.filter(result => result.success);
+    const failedEmails = emailResults.filter(result => !result.success);
+    
+    if (successfulEmails.length === 0) {
       return NextResponse.json({ 
-        error: 'Failed to send email',
-        details: emailResult.error 
+        error: 'Failed to send email to any recipients',
+        details: failedEmails.map(f => `${f.email}: ${f.error}`).join(', ')
       }, { status: 500 });
     }
 
-    // Log email sending in database
-    const { error: logError } = await supabase
-      .from('email_logs')
-      .insert({
-        client_id: clientId,
-        admin_id: user.id,
-        email_type: 'report',
-        recipient_email: client.email,
-        subject: `Your Meta Ads Report - ${sampleReportData.dateRange}`,
-        message_id: emailResult.messageId,
-        sent_at: new Date().toISOString(),
-        status: 'sent'
-      });
+    // Log email sending in database for all emails
+    for (const result of emailResults) {
+      const { error: logError } = await supabase
+        .from('email_logs')
+        .insert({
+          client_id: clientId,
+          admin_id: user.id,
+          email_type: 'report',
+          recipient_email: result.email,
+          subject: `Your Meta Ads Report - ${sampleReportData.dateRange}`,
+          message_id: result.success ? 'sent' : null,
+          sent_at: new Date().toISOString(),
+          status: result.success ? 'sent' : 'failed',
+          error_message: result.error || null
+        });
 
-    if (logError) {
-      console.error('Error logging email:', logError);
-      // Don't fail the request if logging fails
+      if (logError) {
+        console.error('Error logging email:', logError);
+        // Don't fail the request if logging fails
+      }
     }
 
     // Update report if it exists
@@ -164,8 +185,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      messageId: emailResult.messageId,
-      message: 'Report sent successfully'
+      message: `Report sent successfully to ${successfulEmails.length} recipient(s)${failedEmails.length > 0 ? `, failed to send to ${failedEmails.length} recipient(s)` : ''}`,
+      details: {
+        successful: successfulEmails.map(e => e.email),
+        failed: failedEmails.map(e => ({ email: e.email, error: e.error }))
+      }
     });
 
   } catch (error) {

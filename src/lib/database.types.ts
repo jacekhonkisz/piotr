@@ -234,6 +234,7 @@ export type Database = {
           admin_id: string
           api_status: Database["public"]["Enums"]["api_status"]
           company: string | null
+          contact_emails: string[]
           created_at: string
           credentials_generated_at: string | null
           email: string
@@ -257,6 +258,7 @@ export type Database = {
           admin_id: string
           api_status?: Database["public"]["Enums"]["api_status"]
           company?: string | null
+          contact_emails?: string[]
           created_at?: string
           credentials_generated_at?: string | null
           email: string
@@ -280,6 +282,7 @@ export type Database = {
           admin_id?: string
           api_status?: Database["public"]["Enums"]["api_status"]
           company?: string | null
+          contact_emails?: string[]
           created_at?: string
           credentials_generated_at?: string | null
           email?: string

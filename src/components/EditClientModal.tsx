@@ -23,7 +23,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     meta_access_token: '',
     system_user_token: '',
     reporting_frequency: 'monthly' as Database['public']['Enums']['reporting_frequency'],
-    notes: ''
+    notes: '',
+    contact_emails: [] as string[]
   });
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -38,15 +39,26 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   // Initialize form data when client changes
   useEffect(() => {
     if (client) {
+      // Get all contact emails except the main email (which is shown separately)
+      const contactEmails = client.contact_emails || [];
+      const additionalEmails = contactEmails.filter(email => email !== client.email);
+      
+      console.log('Initializing client form:', {
+        mainEmail: client.email,
+        allContactEmails: contactEmails,
+        additionalEmails: additionalEmails
+      });
+      
       setFormData({
         name: client.name || '',
-        email: client.email || '',
+        email: client.email || '', // This should always be the original login email
         company: client.company || '',
         ad_account_id: client.ad_account_id || '',
         meta_access_token: '', // Don't pre-fill tokens for security
         system_user_token: '', // Don't pre-fill tokens for security
         reporting_frequency: client.reporting_frequency || 'monthly',
-        notes: client.notes || ''
+        notes: client.notes || '',
+        contact_emails: additionalEmails
       });
       setValidationStatus({ status: 'idle', message: '' });
       setSubmitError('');
@@ -62,15 +74,16 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       return true;
     }
     
-    // Check if it starts with "act_" and contains only numbers after that
-    const actPattern = /^act_\d+$/;
+    // Accept both formats: "act_123456789" or just "123456789"
+    const actPattern = /^(act_)?\d+$/;
     if (!actPattern.test(accountId)) {
-      setAdAccountIdError('Ad Account ID should start with "act_" followed by numbers (e.g., act_123456789)');
+      setAdAccountIdError('Ad Account ID should be numbers only or start with "act_" followed by numbers (e.g., 123456789 or act_123456789)');
       return false;
     }
     
-    // Check if it's at least 12 characters (act_ + 9 digits minimum)
-    if (accountId.length < 12) {
+    // Check if it's at least 9 digits (for numeric-only format) or 12 characters (for act_ format)
+    const numericPart = accountId.replace('act_', '');
+    if (numericPart.length < 9) {
       setAdAccountIdError('Ad Account ID seems too short. Please check the format.');
       return false;
     }
@@ -83,6 +96,65 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     const newValue = e.target.value;
     setFormData({...formData, ad_account_id: newValue});
     validateAdAccountIdFormat(newValue);
+  };
+
+  // Email validation function
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+    return emailRegex.test(email);
+  };
+
+  // Add a new email to the contact_emails array
+  const addEmail = () => {
+    setFormData({
+      ...formData,
+      contact_emails: [...formData.contact_emails, '']
+    });
+  };
+
+  // Remove an email from the contact_emails array
+  const removeEmail = (index: number) => {
+    if (index === 0) return; // Don't allow removing the main email
+    const newEmails = formData.contact_emails.filter((_, i) => i !== index);
+    setFormData({
+      ...formData,
+      contact_emails: newEmails
+    });
+  };
+
+  // Update an email in the contact_emails array
+  const updateEmail = (index: number, value: string) => {
+    const newEmails = [...formData.contact_emails];
+    newEmails[index] = value;
+    setFormData({
+      ...formData,
+      contact_emails: newEmails
+    });
+  };
+
+  // Validate all emails before submission
+  const validateEmails = (): boolean => {
+    // Check if main email is valid
+    if (!validateEmail(formData.email)) {
+      return false;
+    }
+    
+    // Check if all contact emails are valid
+    for (let i = 0; i < formData.contact_emails.length; i++) {
+      const email = formData.contact_emails[i];
+      if (email && !validateEmail(email)) {
+        return false;
+      }
+    }
+    
+    // Check for duplicates
+    const allEmails = [formData.email, ...formData.contact_emails.filter(email => email && email.trim() !== '')];
+    const uniqueEmails = new Set(allEmails);
+    if (allEmails.length !== uniqueEmails.size) {
+      return false;
+    }
+    
+    return true;
   };
 
   const validateMetaCredentials = async () => {
@@ -222,6 +294,12 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     // Clear previous errors
     setSubmitError('');
     
+    // Validate emails
+    if (!validateEmails()) {
+      setSubmitError('Please fix email validation errors before saving');
+      return;
+    }
+    
     // Validate Ad Account ID format
     if (!validateAdAccountIdFormat(formData.ad_account_id)) {
       setSubmitError('Please fix the Ad Account ID format before saving');
@@ -245,6 +323,20 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       if (formData.ad_account_id !== client.ad_account_id) updates.ad_account_id = formData.ad_account_id;
       if (formData.reporting_frequency !== client.reporting_frequency) updates.reporting_frequency = formData.reporting_frequency;
       if (formData.notes !== client.notes) updates.notes = formData.notes;
+      
+      // Update contact_emails - ensure main email is always first and no duplicates
+      const additionalEmails = formData.contact_emails.filter(email => email && email.trim() !== '' && email !== formData.email);
+      const updatedContactEmails = [formData.email, ...additionalEmails];
+      
+      console.log('Saving contact emails:', {
+        currentClientEmails: client.contact_emails,
+        newContactEmails: updatedContactEmails,
+        willUpdate: JSON.stringify(updatedContactEmails) !== JSON.stringify(client.contact_emails || [client.email])
+      });
+      
+      if (JSON.stringify(updatedContactEmails) !== JSON.stringify(client.contact_emails || [client.email])) {
+        updates.contact_emails = updatedContactEmails;
+      }
       
       // Only include tokens if they were changed
       if (showTokenFields) {
@@ -299,16 +391,69 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Email *
+              Contact Email * (Main Login)
             </label>
             <input
               type="email"
               required
               value={formData.email}
               onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-gray-50"
               placeholder="contact@company.com"
+              title="This is the main login email and cannot be changed"
             />
+            <p className="text-xs text-gray-500 mt-1">This is the main login email and will always receive reports.</p>
+          </div>
+          
+          {/* Additional Contact Emails Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Additional Contact Emails
+            </label>
+            <div className="space-y-2">
+              {formData.contact_emails.map((email, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => updateEmail(index, e.target.value)}
+                    className={`flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                      email && !validateEmail(email) 
+                        ? 'border-red-300 focus:ring-red-500' 
+                        : email && validateEmail(email)
+                        ? 'border-green-300 focus:ring-green-500'
+                        : 'border-gray-300 focus:ring-primary-500'
+                    }`}
+                    placeholder="additional@company.com"
+                  />
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEmail(index)}
+                      className="px-2 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                  {email && validateEmail(email) && (
+                    <div className="flex-shrink-0">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addEmail}
+                className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+              >
+                <span className="mr-1">+</span>
+                Add another email
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Additional emails will receive all reports and notifications for this client.
+            </p>
           </div>
           
           <div>
