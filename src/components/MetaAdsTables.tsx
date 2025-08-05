@@ -13,10 +13,13 @@ import {
   Eye,
   DollarSign,
   Target,
-  Zap
+  Zap,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import DemographicPieCharts from './DemographicPieCharts';
 
 interface PlacementPerformance {
   placement: string;
@@ -45,9 +48,6 @@ interface AdRelevanceResult {
   impressions: number;
   clicks: number;
   cpp?: number;
-  quality_ranking: string;
-  engagement_rate_ranking: string;
-  conversion_rate_ranking: string;
 }
 
 interface MetaAdsTablesProps {
@@ -68,6 +68,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
+  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks'>('impressions');
+  const [showDetailedTable, setShowDetailedTable] = useState(false);
 
   useEffect(() => {
     fetchMetaTablesData();
@@ -124,18 +126,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     }
   };
 
-  const getRankingLabel = (ranking: string) => {
-    switch (ranking) {
-      case 'ABOVE_AVERAGE':
-        return { label: 'Above Average', color: 'text-white', bgColor: 'bg-gradient-to-r from-green-500 to-emerald-500' };
-      case 'AVERAGE':
-        return { label: 'Average', color: 'text-white', bgColor: 'bg-gradient-to-r from-yellow-500 to-orange-500' };
-      case 'BELOW_AVERAGE':
-        return { label: 'Below Average', color: 'text-white', bgColor: 'bg-gradient-to-r from-red-500 to-pink-500' };
-      default:
-        return { label: 'Unknown', color: 'text-gray-700', bgColor: 'bg-gradient-to-r from-gray-200 to-gray-300' };
-    }
-  };
+
 
   const exportToCSV = (data: any[], filename: string) => {
     if (data.length === 0) return;
@@ -409,126 +400,195 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         {activeTab === 'demographic' && (
           <div>
-            <div className="flex items-center justify-between p-6 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100">
+            <div className="flex items-center justify-between p-8 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm border-b border-purple-100/50">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">Demographic Performance</h3>
-                <p className="text-sm text-gray-600">Skuteczność reklam według wieku i płci</p>
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-purple-900 bg-clip-text text-transparent mb-2">Demographic Performance</h3>
+                <p className="text-gray-600">Skuteczność reklam według wieku i płci</p>
               </div>
-              <button
-                onClick={() => exportToCSV(demographicData, 'demographic-performance')}
-                className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-4 py-3 rounded-xl hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
-              >
-                <FileSpreadsheet className="h-4 w-4" />
-                <span className="font-medium">Export CSV</span>
-              </button>
+              <div className="flex items-center space-x-4">
+                {/* Metric Selector */}
+                <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-xl p-1 border border-purple-200">
+                  <button
+                    onClick={() => setDemographicMetric('impressions')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      demographicMetric === 'impressions'
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-purple-50'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Eye className="h-4 w-4" />
+                      <span>Wyświetlenia</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setDemographicMetric('clicks')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      demographicMetric === 'clicks'
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-purple-50'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <MousePointer className="h-4 w-4" />
+                      <span>Kliknięcia</span>
+                    </div>
+                  </button>
+
+                </div>
+                <button
+                  onClick={() => exportToCSV(demographicData, 'demographic-performance')}
+                  className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  <FileSpreadsheet className="h-5 w-5" />
+                  <span className="font-medium">Export CSV</span>
+                </button>
+              </div>
             </div>
             
             {demographicData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gradient-to-r from-purple-50 to-pink-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-purple-100 rounded-md">
-                            <Users className="h-3 w-3 text-purple-600" />
-                          </div>
-                          <span>Age Group</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-pink-100 rounded-md">
-                            <Users className="h-3 w-3 text-pink-600" />
-                          </div>
-                          <span>Gender</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-green-100 rounded-md">
-                            <DollarSign className="h-3 w-3 text-green-600" />
-                          </div>
-                          <span>Spend</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-purple-100 rounded-md">
-                            <Eye className="h-3 w-3 text-purple-600" />
-                          </div>
-                          <span>Impressions</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-orange-100 rounded-md">
-                            <MousePointer className="h-3 w-3 text-orange-600" />
-                          </div>
-                          <span>Clicks</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-red-100 rounded-md">
-                            <TrendingUp className="h-3 w-3 text-red-600" />
-                          </div>
-                          <span>CTR</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-yellow-100 rounded-md">
-                            <Zap className="h-3 w-3 text-yellow-600" />
-                          </div>
-                          <span>CPC</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-indigo-100 rounded-md">
-                            <Award className="h-3 w-3 text-indigo-600" />
-                          </div>
-                          <span>CPA (CPP)</span>
-                        </div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {demographicData
-                      .sort((a, b) => (a.cpp || 0) - (b.cpp || 0))
-                      .map((demo, index) => (
-                        <tr key={index} className="hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 transition-all duration-200 group">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">{demo.age}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm font-semibold text-gray-900 group-hover:text-pink-700 transition-colors">{demo.gender}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-lg font-bold text-green-600">{formatCurrency(demo.spend)}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-gray-800">{formatNumber(demo.impressions)}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-gray-800">{formatNumber(demo.clicks)}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-red-600">{formatPercentage(demo.ctr)}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-yellow-600">{formatCurrency(demo.cpc)}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-indigo-600">
-                              {demo.cpp ? formatCurrency(demo.cpp) : '–'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <div className="p-8">
+                {/* Pie Charts Section */}
+                <DemographicPieCharts data={demographicData} metric={demographicMetric} />
+                
+                {/* Detailed Table Toggle */}
+                <div className="mt-8 text-center">
+                  <button
+                    onClick={() => setShowDetailedTable(!showDetailedTable)}
+                    className="flex items-center space-x-2 mx-auto bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-6 py-3 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                  >
+                    {showDetailedTable ? (
+                      <>
+                        <ChevronUp className="h-5 w-5" />
+                        <span className="font-medium">Ukryj szczegóły</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-5 w-5" />
+                        <span className="font-medium">Zobacz szczegóły</span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-sm text-gray-500 mt-2">Wszystkie szczegółowe dane w tabeli poniżej</p>
+                </div>
+
+                {/* Detailed Table */}
+                {showDetailedTable && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="mt-8 overflow-hidden"
+                  >
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gradient-to-r from-purple-50 to-pink-50">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-purple-100 rounded-md">
+                                  <Users className="h-3 w-3 text-purple-600" />
+                                </div>
+                                <span>Age Group</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-pink-100 rounded-md">
+                                  <Users className="h-3 w-3 text-pink-600" />
+                                </div>
+                                <span>Gender</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-green-100 rounded-md">
+                                  <DollarSign className="h-3 w-3 text-green-600" />
+                                </div>
+                                <span>Spend</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-purple-100 rounded-md">
+                                  <Eye className="h-3 w-3 text-purple-600" />
+                                </div>
+                                <span>Impressions</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-orange-100 rounded-md">
+                                  <MousePointer className="h-3 w-3 text-orange-600" />
+                                </div>
+                                <span>Clicks</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-red-100 rounded-md">
+                                  <TrendingUp className="h-3 w-3 text-red-600" />
+                                </div>
+                                <span>CTR</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-yellow-100 rounded-md">
+                                  <Zap className="h-3 w-3 text-yellow-600" />
+                                </div>
+                                <span>CPC</span>
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                              <div className="flex items-center space-x-2">
+                                <div className="p-1.5 bg-indigo-100 rounded-md">
+                                  <Award className="h-3 w-3 text-indigo-600" />
+                                </div>
+                                <span>CPA (CPP)</span>
+                              </div>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white/95 backdrop-blur-sm divide-y divide-gray-100/50">
+                          {demographicData
+                            .sort((a, b) => (a.cpp || 0) - (b.cpp || 0))
+                            .map((demo, index) => (
+                              <tr key={index} className="hover:bg-gradient-to-r hover:from-purple-50/80 hover:to-pink-50/80 transition-all duration-300 group hover:shadow-sm">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-sm font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">{demo.age}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-sm font-semibold text-gray-900 group-hover:text-pink-700 transition-colors">{demo.gender}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-lg font-bold text-green-600">{formatCurrency(demo.spend)}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-base font-semibold text-gray-800">{formatNumber(demo.impressions)}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-base font-semibold text-gray-800">{formatNumber(demo.clicks)}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-base font-semibold text-red-600">{formatPercentage(demo.ctr)}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-base font-semibold text-yellow-600">{formatCurrency(demo.cpc)}</span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="text-base font-semibold text-indigo-600">
+                                    {demo.cpp ? formatCurrency(demo.cpp) : '–'}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">
@@ -606,39 +666,14 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                           <span>CPA (CPP)</span>
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-blue-100 rounded-md">
-                            <Award className="h-3 w-3 text-blue-600" />
-                          </div>
-                          <span>Quality Ranking</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-yellow-100 rounded-md">
-                            <TrendingUp className="h-3 w-3 text-yellow-600" />
-                          </div>
-                          <span>Engagement Ranking</span>
-                        </div>
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-red-100 rounded-md">
-                            <Zap className="h-3 w-3 text-red-600" />
-                          </div>
-                          <span>Conversion Ranking</span>
-                        </div>
-                      </th>
+
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {adRelevanceData
                       .sort((a, b) => b.spend - a.spend)
                       .map((ad, index) => {
-                        const qualityRanking = getRankingLabel(ad.quality_ranking);
-                        const engagementRanking = getRankingLabel(ad.engagement_rate_ranking);
-                        const conversionRanking = getRankingLabel(ad.conversion_rate_ranking);
+
                         
                         return (
                           <tr key={index} className="hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 transition-all duration-200 group">
@@ -671,21 +706,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                                 {ad.cpp ? formatCurrency(ad.cpp) : '–'}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold shadow-sm ${qualityRanking.bgColor} ${qualityRanking.color}`}>
-                                {qualityRanking.label}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold shadow-sm ${engagementRanking.bgColor} ${engagementRanking.color}`}>
-                                {engagementRanking.label}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold shadow-sm ${conversionRanking.bgColor} ${conversionRanking.color}`}>
-                                {conversionRanking.label}
-                              </span>
-                            </td>
+
                           </tr>
                         );
                       })}

@@ -1076,10 +1076,7 @@ export class MetaAPIService {
         'spend',
         'impressions',
         'clicks',
-        'cpp',
-        'quality_ranking',
-        'engagement_rate_ranking',
-        'conversion_rate_ranking'
+        'cpp'
       ].join(',');
 
       const params = new URLSearchParams({
@@ -1113,9 +1110,6 @@ export class MetaAPIService {
           impressions: parseInt(insight.impressions || '0'),
           clicks: parseInt(insight.clicks || '0'),
           cpp: insight.cpp ? parseFloat(insight.cpp) : null,
-          quality_ranking: insight.quality_ranking || 'UNKNOWN',
-          engagement_rate_ranking: insight.engagement_rate_ranking || 'UNKNOWN',
-          conversion_rate_ranking: insight.conversion_rate_ranking || 'UNKNOWN',
         }));
 
         console.log('✅ Parsed ad relevance results:', ads.length, 'ads');

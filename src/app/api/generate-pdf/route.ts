@@ -412,9 +412,7 @@ function generatePDFHTML(reportData: ReportData): string {
                     <thead>
                         <tr>
                             <th>Ad Name</th>
-                            <th>Quality Ranking</th>
-                            <th>Engagement Ranking</th>
-                            <th>Conversion Ranking</th>
+                            
                             <th>Spend</th>
                             <th>Impressions</th>
                         </tr>
@@ -423,9 +421,6 @@ function generatePDFHTML(reportData: ReportData): string {
                         ${reportData.metaTables.adRelevanceResults.slice(0, 10).map(ad => `
                             <tr>
                                 <td>${ad.ad_name || 'Unknown'}</td>
-                                <td>${ad.quality_ranking || 'N/A'}</td>
-                                <td>${ad.engagement_rate_ranking || 'N/A'}</td>
-                                <td>${ad.conversion_rate_ranking || 'N/A'}</td>
                                 <td>${formatCurrency(ad.spend)}</td>
                                 <td>${formatNumber(ad.impressions)}</td>
                             </tr>

@@ -33,11 +33,7 @@ import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
-interface SystemSetting {
-  key: string;
-  value: any;
-  description: string | null;
-}
+
 
 interface EmailConfig {
   smtp_host: string;
