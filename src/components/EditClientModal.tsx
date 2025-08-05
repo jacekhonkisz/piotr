@@ -77,14 +77,14 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     // Accept both formats: "act_123456789" or just "123456789"
     const actPattern = /^(act_)?\d+$/;
     if (!actPattern.test(accountId)) {
-      setAdAccountIdError('Ad Account ID should be numbers only or start with "act_" followed by numbers (e.g., 123456789 or act_123456789)');
+      setAdAccountIdError('ID konta reklamowego powinien zawierać tylko cyfry lub zaczynać się od "act_" po którym następują cyfry (np. 123456789 lub act_123456789)');
       return false;
     }
     
     // Check if it's at least 9 digits (for numeric-only format) or 12 characters (for act_ format)
     const numericPart = accountId.replace('act_', '');
     if (numericPart.length < 9) {
-      setAdAccountIdError('Ad Account ID seems too short. Please check the format.');
+      setAdAccountIdError('ID konta reklamowego wydaje się za krótki. Sprawdź format.');
       return false;
     }
     
@@ -308,7 +308,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     
     // If token fields are shown and filled, validate them
     if (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.status !== 'valid') {
-      setValidationStatus({ status: 'invalid', message: 'Please validate your Meta Ads credentials first' });
+      setValidationStatus({ status: 'invalid', message: 'Proszę najpierw zweryfikować swoje poświadczenia Meta Ads' });
       return;
     }
 
@@ -355,7 +355,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       onClose();
     } catch (error) {
       console.error('Error updating client:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update client. Please try again.';
+      const errorMessage = error instanceof Error ? error.message : 'Nie udało się zaktualizować klienta. Spróbuj ponownie.';
       setSubmitError(errorMessage);
     } finally {
       setLoading(false);
@@ -368,7 +368,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Edit Client: {client.name}</h2>
+          <h2 className="text-lg font-semibold">Edytuj klienta: {client.name}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
           </button>
@@ -377,7 +377,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Company Name *
+              Nazwa firmy *
             </label>
             <input
               type="text"
@@ -385,13 +385,13 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Enter company name"
+              placeholder="Wprowadź nazwę firmy"
             />
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Email * (Main Login)
+              Adres e-mail kontaktowy * (Główne logowanie)
             </label>
             <input
               type="email"
@@ -400,15 +400,15 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
               onChange={(e) => setFormData({...formData, email: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 bg-gray-50"
               placeholder="contact@company.com"
-              title="This is the main login email and cannot be changed"
+              title="To jest główny adres e-mail logowania i nie może być zmieniony"
             />
-            <p className="text-xs text-gray-500 mt-1">This is the main login email and will always receive reports.</p>
+            <p className="text-xs text-gray-500 mt-1">To jest główny adres e-mail logowania i zawsze będzie otrzymywał raporty.</p>
           </div>
           
           {/* Additional Contact Emails Section */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Additional Contact Emails
+              Dodatkowe adresy e-mail kontaktowe
             </label>
             <div className="space-y-2">
               {formData.contact_emails.map((email, index) => (
@@ -424,7 +424,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                         ? 'border-green-300 focus:ring-green-500'
                         : 'border-gray-300 focus:ring-primary-500'
                     }`}
-                    placeholder="additional@company.com"
+                    placeholder="dodatkowy@firma.com"
                   />
                   {index > 0 && (
                     <button
@@ -448,17 +448,17 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                 className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
               >
                 <span className="mr-1">+</span>
-                Add another email
+                Dodaj inny e-mail
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Additional emails will receive all reports and notifications for this client.
+              Dodatkowe adresy e-mail będą otrzymywać wszystkie raporty i powiadomienia dla tego klienta.
             </p>
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Meta Ad Account ID *
+              ID konta reklamowego Meta *
             </label>
             <div className="relative">
               <input
@@ -489,13 +489,13 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           {/* Token Management Section */}
           <div className="bg-gray-50 p-3 rounded-md">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Meta API Tokens</span>
+              <span className="text-sm font-medium text-gray-700">Tokeny API Meta</span>
               <button
                 type="button"
                 onClick={() => setShowTokenFields(!showTokenFields)}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                {showTokenFields ? 'Hide' : 'Update Tokens'}
+                {showTokenFields ? 'Ukryj' : 'Aktualizuj tokeny'}
               </button>
             </div>
             
@@ -505,7 +505,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
                     <Key className="h-4 w-4 mr-2" />
-                    Choose Your Token Type (Select One)
+                    Wybierz typ tokenu (Wybierz jeden)
                   </h4>
                   
                   <div className="grid grid-cols-1 gap-4">
@@ -516,7 +516,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                       <div className="flex items-center mb-2">
                         <Shield className="h-4 w-4 mr-2 text-blue-600" />
                         <label className="text-sm font-medium text-gray-700">
-                          System User Token (Recommended)
+                          Token Systemowego Użytkownika (Zalecane)
                         </label>
                       </div>
                       <div className="relative">
@@ -525,7 +525,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                           value={formData.system_user_token}
                           onChange={(e) => setFormData({...formData, system_user_token: e.target.value, meta_access_token: ''})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Paste System User token for permanent access"
+                          placeholder="Wklej token Systemowego Użytkownika dla trwałego dostępu"
                         />
                         {formData.system_user_token && formData.system_user_token.startsWith('EAA') && (
                           <div className="absolute right-2 top-2">
@@ -534,7 +534,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                         )}
                       </div>
                       <p className="text-xs text-gray-600 mt-2">
-                        ✅ Permanent access, never expires
+                        ✅ Dostęp trwały, nigdy nie wygasa
                       </p>
                     </div>
 
@@ -545,7 +545,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                       <div className="flex items-center mb-2">
                         <Clock className="h-4 w-4 mr-2 text-orange-600" />
                         <label className="text-sm font-medium text-gray-700">
-                          Meta Access Token (60 days)
+                          Token Meta Access (60 dni)
                         </label>
                       </div>
                       <div className="relative">
@@ -554,7 +554,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                           value={formData.meta_access_token}
                           onChange={(e) => setFormData({...formData, meta_access_token: e.target.value, system_user_token: ''})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          placeholder="EAA... (starts with EAA)"
+                          placeholder="EAA... (zaczyna się od EAA)"
                         />
                         {formData.meta_access_token && formData.meta_access_token.startsWith('EAA') && (
                           <div className="absolute right-2 top-2">
@@ -563,7 +563,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                         )}
                       </div>
                       <p className="text-xs text-gray-600 mt-2">
-                        ⏰ Expires in 60 days, requires renewal
+                        ⏰ Wygasa za 60 dni, wymaga odnowienia
                       </p>
                     </div>
                   </div>
@@ -572,7 +572,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                 {/* Token Choice Status */}
                 {(formData.meta_access_token || formData.system_user_token) && (
                   <div className="p-3 bg-gray-50 rounded-md">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Token Status:</h4>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Status wybranego tokenu:</h4>
                     <div className="space-y-2">
                       {formData.system_user_token && (
                         <div className={`flex items-center text-sm p-2 rounded ${
@@ -587,8 +587,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                           )}
                           <span>
                             {formData.system_user_token.startsWith('EAA') 
-                              ? '✅ System User Token Selected (Permanent Access)' 
-                              : '⚠️ System User token should start with "EAA" for Meta API'
+                              ? '✅ Token Systemowego Użytkownika wybrany (Dostęp trwały)' 
+                              : '⚠️ Token Systemowego Użytkownika powinien zaczynać się od "EAA" dla API Meta'
                             }
                           </span>
                         </div>
@@ -607,8 +607,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                           )}
                           <span>
                             {formData.meta_access_token.startsWith('EAA') 
-                              ? '✅ Meta Access Token Selected (60-day access)' 
-                              : '⚠️ Meta Access token should start with "EAA" for Meta API'
+                              ? '✅ Token Meta Access wybrany (dostęp 60-dniowy)' 
+                              : '⚠️ Token Meta Access powinien zaczynać się od "EAA" dla API Meta'
                             }
                           </span>
                         </div>
@@ -622,7 +622,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-medium text-gray-700 flex items-center">
                       <RefreshCw className="h-4 w-4 mr-2" />
-                      Test Connection & Validate Token
+                      Test połączenia i walidacja tokenu
                     </span>
                     <button
                       type="button"
@@ -633,12 +633,12 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                       {validating ? (
                         <>
                           <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Testing...
+                          Testowanie...
                         </>
                       ) : (
                         <>
                           <CheckCircle className="h-4 w-4 mr-2" />
-                          Test Connection
+                          Test połączenia
                         </>
                       )}
                     </button>
@@ -669,7 +669,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             ) : (
               <div className="text-sm text-gray-600">
                 <div className="flex items-center justify-between">
-                  <span>Current token: ••••••••••••••••</span>
+                  <span>Bieżący token: ••••••••••••••••</span>
                   <span className={`px-2 py-1 rounded text-xs ${
                     client.token_health_status === 'valid' ? 'bg-green-100 text-green-800' :
                     client.token_health_status === 'expiring_soon' ? 'bg-orange-100 text-orange-800' :
@@ -681,12 +681,12 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                 </div>
                 {client.token_expires_at && (
                   <div className="text-xs text-gray-500 mt-1">
-                    Expires: {new Date(client.token_expires_at).toLocaleDateString()}
+                    Wygasa: {new Date(client.token_expires_at).toLocaleDateString()}
                   </div>
                 )}
                 {client.last_token_validation && (
                   <div className="text-xs text-gray-500">
-                    Last validated: {new Date(client.last_token_validation).toLocaleDateString()}
+                    Ostatnia walidacja: {new Date(client.last_token_validation).toLocaleDateString()}
                   </div>
                 )}
               </div>

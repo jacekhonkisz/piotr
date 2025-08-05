@@ -476,7 +476,7 @@ export default function AdminSettingsPage() {
             >
               <div className="flex items-center">
                 <ArrowLeft className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Back to Admin</span>
+                <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Powrót do Admina</span>
               </div>
             </button>
           </div>

@@ -67,7 +67,7 @@ export default function SearchFilters({
           </div>
           <input
             type="text"
-            placeholder="Search clients by name, email, or company..."
+            placeholder="Szukaj klientów po nazwie, e-mailu lub firmie..."
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
             className="w-full pl-14 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 shadow-sm hover:shadow-md transition-all duration-200 text-lg"
@@ -85,7 +85,7 @@ export default function SearchFilters({
           <SlidersHorizontal className={`h-5 w-5 transition-colors ${
             showFilters ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700'
           }`} />
-          <span className="font-medium text-lg">Filters</span>
+          <span className="font-medium text-lg">Filtry</span>
           {hasActiveFilters && (
             <div className="w-3 h-3 bg-blue-600 rounded-full animate-pulse"></div>
           )}
@@ -97,7 +97,7 @@ export default function SearchFilters({
             className="group relative px-5 py-4 text-lg text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-2xl transition-all duration-200 flex items-center space-x-3 border border-gray-200 hover:border-gray-300"
           >
             <X className="h-5 w-5" />
-            <span className="font-medium">Clear All</span>
+            <span className="font-medium">Wyczyść wszystko</span>
           </button>
         )}
       </div>
@@ -109,42 +109,42 @@ export default function SearchFilters({
             {/* Status Filter */}
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-gray-700">
-                API Status
+                Status API
               </label>
               <select
                 value={currentStatusFilter}
                 onChange={(e) => onStatusFilterChange(e.target.value)}
                 className="w-full px-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200 text-lg"
               >
-                <option value="">All Statuses</option>
-                <option value="valid">Valid</option>
-                <option value="invalid">Invalid/Expired</option>
-                <option value="pending">Pending</option>
-                <option value="expiring_soon">Expiring Soon</option>
+                <option value="">Wszystkie statusy</option>
+                <option value="valid">Prawidłowy</option>
+                <option value="invalid">Nieprawidłowy/Wygasły</option>
+                <option value="pending">Oczekujący</option>
+                <option value="expiring_soon">Wygasa wkrótce</option>
               </select>
             </div>
 
             {/* Frequency Filter */}
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-gray-700">
-                Reporting Frequency
+                Częstotliwość raportowania
               </label>
               <select
                 value={currentFrequencyFilter}
                 onChange={(e) => onFrequencyFilterChange(e.target.value)}
                 className="w-full px-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200 text-lg"
               >
-                <option value="">All Frequencies</option>
-                <option value="monthly">Monthly</option>
-                <option value="weekly">Weekly</option>
-                <option value="on_demand">On Demand</option>
+                <option value="">Wszystkie częstotliwości</option>
+                <option value="monthly">Miesięcznie</option>
+                <option value="weekly">Co tydzień</option>
+                <option value="on_demand">Na żądanie</option>
               </select>
             </div>
 
             {/* Sort Options */}
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-gray-700">
-                Sort By
+                Sortuj według
               </label>
               <div className="flex space-x-3">
                 <select
@@ -152,11 +152,11 @@ export default function SearchFilters({
                   onChange={(e) => onSortChange(e.target.value, currentSortOrder)}
                   className="flex-1 px-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200 text-lg"
                 >
-                  <option value="name">Name</option>
-                  <option value="email">Email</option>
-                  <option value="api_status">API Status</option>
-                  <option value="last_report_date">Last Report</option>
-                  <option value="created_at">Created Date</option>
+                  <option value="name">Nazwa</option>
+                  <option value="email">E-mail</option>
+                  <option value="api_status">Status API</option>
+                  <option value="last_report_date">Ostatni raport</option>
+                  <option value="created_at">Data utworzenia</option>
                 </select>
                 <button
                   onClick={() => onSortChange(currentSortBy, currentSortOrder === 'asc' ? 'desc' : 'asc')}
@@ -174,7 +174,7 @@ export default function SearchFilters({
           {/* Enhanced Active Filters Display */}
           {(currentStatusFilter || currentFrequencyFilter) && (
             <div className="border-t border-gray-200/50 pt-6">
-              <h4 className="text-sm font-semibold text-gray-700 mb-4">Active Filters:</h4>
+              <h4 className="text-sm font-semibold text-gray-700 mb-4">Aktywne filtry:</h4>
               <div className="flex flex-wrap gap-4">
                 {currentStatusFilter && (
                   <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800 border border-blue-200 shadow-sm">
@@ -189,7 +189,7 @@ export default function SearchFilters({
                 )}
                 {currentFrequencyFilter && (
                   <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800 border border-green-200 shadow-sm">
-                    Frequency: {currentFrequencyFilter}
+                    Częstotliwość: {currentFrequencyFilter}
                     <button
                       onClick={() => onFrequencyFilterChange('')}
                       className="ml-3 hover:bg-green-200 rounded-full p-1 transition-colors duration-200"

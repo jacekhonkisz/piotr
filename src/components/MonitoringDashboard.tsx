@@ -90,22 +90,19 @@ export default function MonitoringDashboard() {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Healthy</span>;
-      case 'degraded':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Degraded</span>;
-      case 'unhealthy':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Unhealthy</span>;
-      default:
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Unknown</span>;
-    }
+    if (status === 'healthy')
+      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Sprawny</span>;
+    if (status === 'degraded')
+      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Obniżona wydajność</span>;
+    if (status === 'unhealthy')
+      return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Niesprawny</span>;
+    return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Nieznany</span>;
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">System Monitoring</h2>
+        <h2 className="text-2xl font-bold">Monitorowanie systemu</h2>
         <button 
           onClick={checkHealth} 
           disabled={loading}
@@ -121,19 +118,19 @@ export default function MonitoringDashboard() {
         <div className="px-4 py-5 sm:p-6">
           <h3 className="text-lg leading-6 font-medium text-gray-900 flex items-center gap-2">
             {healthStatus && getStatusIcon(healthStatus.status)}
-            System Health
+            Stan systemu
           </h3>
           <div className="mt-4">
             {healthStatus ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Overall Status</span>
+                  <span className="text-sm text-gray-600">Status ogólny</span>
                   {getStatusBadge(healthStatus.status)}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Database</span>
+                    <span className="text-sm text-gray-600">Baza danych</span>
                     {getStatusBadge(healthStatus.services.database)}
                   </div>
                   <div className="flex items-center justify-between">
@@ -143,7 +140,7 @@ export default function MonitoringDashboard() {
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Response Time</span>
+                  <span className="text-sm text-gray-600">Czas odpowiedzi</span>
                   <span className="text-sm font-mono">{healthStatus.responseTime}</span>
                 </div>
                 
@@ -154,13 +151,13 @@ export default function MonitoringDashboard() {
                 )}
                 
                 <div className="text-xs text-gray-500">
-                  Last updated: {lastUpdated?.toLocaleString()}
+                  Ostatnia aktualizacja: {lastUpdated?.toLocaleString()}
                 </div>
               </div>
             ) : (
               <div className="text-center py-4">
                 <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-gray-400" />
-                <p className="text-sm text-gray-600">Loading health status...</p>
+                <p className="text-sm text-gray-600">Ładowanie statusu zdrowia...</p>
               </div>
             )}
           </div>
@@ -170,7 +167,7 @@ export default function MonitoringDashboard() {
       {/* Performance Metrics */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Performance Metrics</h3>
+          <h3 className="text-lg leading-6 font-medium text-gray-900">Wydajność metryk</h3>
           <div className="mt-4">
             <div className="space-y-3">
               {Object.entries(performanceMetrics).map(([metric, value]) => (
@@ -189,25 +186,25 @@ export default function MonitoringDashboard() {
       {/* System Information */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">System Information</h3>
+          <h3 className="text-lg leading-6 font-medium text-gray-900">Informacje o systemie</h3>
           <div className="mt-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Environment</span>
+                <span className="text-sm text-gray-600">Środowisko</span>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                   {process.env.NEXT_PUBLIC_ENVIRONMENT || 'development'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Version</span>
+                <span className="text-sm text-gray-600">Wersja</span>
                 <span className="text-sm font-mono">1.0.0</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Uptime</span>
+                <span className="text-sm text-gray-600">Czas działania</span>
                 <span className="text-sm font-mono">
                   {healthStatus?.timestamp ? 
                     new Date(healthStatus.timestamp).toLocaleString() : 
-                    'Unknown'
+                    'Nieznany'
                   }
                 </span>
               </div>

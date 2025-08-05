@@ -247,23 +247,23 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
     const insights: string[] = [];
     
     if (changes.conversions > 10) {
-      insights.push(`Excellent! ${changes.conversions.toFixed(1)}% increase in conversions this month`);
+      insights.push(`Świetny wynik! ${changes.conversions.toFixed(1)}% wzrost w konwersjach w tym miesiącu`);
     }
     
     if (cpa < 50) {
-      insights.push(`Great optimization! CPA of $${cpa.toFixed(0)} is below industry average`);
+      insights.push(`Świetna optymalizacja! CPA w wysokości $${cpa.toFixed(0)} jest poniżej średniej branżowej`);
     }
     
     if (ctr > 2.5) {
-      insights.push(`Strong CTR performance at ${ctr.toFixed(2)}% - above target`);
+      insights.push(`Dobry wynik CTR w ${ctr.toFixed(2)}% - powyżej celu`);
     }
     
     if (changes.spend > 0 && changes.conversions > changes.spend) {
-      insights.push(`Efficient spending! Conversions grew faster than spend`);
+      insights.push(`Efektywne wydatki! Konwersje wzrosły szybciej niż wydatki`);
     }
     
     if (insights.length === 0) {
-      insights.push(`Solid performance this month. Consider A/B testing to improve results`);
+      insights.push(`Solidna wydajność w tym miesiącu. Rozważ przeprowadzenie testów A/B, aby poprawić wyniki`);
     }
     
     return insights.slice(0, 3); // Max 3 insights
@@ -322,9 +322,9 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
   const getBenchmarkStatus = (current: number, target: number, lowerIsBetter: boolean = false) => {
     if (lowerIsBetter) {
-      return current <= target ? 'achieved' : 'missed';
+      return current <= target ? 'osiągnięty' : 'nieosiągnięty';
     }
-    return current >= target ? 'achieved' : 'missed';
+    return current >= target ? 'osiągnięty' : 'nieosiągnięty';
   };
 
   const toggleCampaignExpansion = (campaignId: string) => {
@@ -355,10 +355,10 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
     // Performance overview chart data - showing key metrics
     const performanceData = {
-      labels: ['Spend', 'CTR', 'Leads', 'CPA'],
+      labels: ['Wydatki', 'CTR', 'Leady', 'CPA'],
       datasets: [
         {
-          label: 'Current Month',
+          label: 'Bieżący miesiąc',
           data: [
             monthlyStats.totalSpend / 100, // Scale down for better visualization
             monthlyStats.averageCtr * 10, // Scale up for visibility
@@ -410,7 +410,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
               {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </h2>
             <p className="text-gray-600 mt-1">
-              {monthlyStats?.reportCount || 0} report{monthlyStats?.reportCount !== 1 ? 's' : ''} • {monthlyStats?.campaignCount || 0} campaigns
+              {monthlyStats?.reportCount || 0} raport{monthlyStats?.reportCount !== 1 ? 'y' : ''} • {monthlyStats?.campaignCount || 0} kampanie
             </p>
           </div>
 
@@ -537,8 +537,8 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
               </p>
               <p className="text-green-100">
                 {monthlyStats.averageCtr > monthlyStats.benchmarks.ctr 
-                  ? "Best performance in last 6 months!" 
-                  : "Below target - consider optimization"}
+                  ? "Najlepszy wynik w ostatnich 6 miesiącach!" 
+                  : "Poniżej celu - rozważ optymalizację"}
               </p>
             </div>
 
@@ -633,7 +633,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-600">Top Performing Campaign</p>
-                      <p className="text-xl font-bold text-gray-900">{monthlyStats.topCampaigns[0]?.campaign_name || 'No campaigns'}</p>
+                      <p className="text-xl font-bold text-gray-900">{monthlyStats.topCampaigns[0]?.campaign_name || 'Brak kampanii'}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -714,7 +714,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                     <div className="p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-gray-700">CTR Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCtr, monthlyStats.benchmarks.ctr) === 'achieved' ? (
+                        {getBenchmarkStatus(monthlyStats.averageCtr, monthlyStats.benchmarks.ctr) === 'osiągnięty' ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
@@ -727,7 +727,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                     <div className="p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-gray-700">CPC Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCpc, monthlyStats.benchmarks.cpc, true) === 'achieved' ? (
+                        {getBenchmarkStatus(monthlyStats.averageCpc, monthlyStats.benchmarks.cpc, true) === 'osiągnięty' ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
@@ -740,7 +740,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                     <div className="p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-gray-700">CPA Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCpa, monthlyStats.benchmarks.cpa, true) === 'achieved' ? (
+                        {getBenchmarkStatus(monthlyStats.averageCpa, monthlyStats.benchmarks.cpa, true) === 'osiągnięty' ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
@@ -816,10 +816,10 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
               </div>
             </div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              No campaigns this month
+              Brak kampanii w tym miesiącu
             </h3>
             <p className="text-gray-600 mb-6">
-              Start your first campaign to see results here! Reports are automatically generated based on your campaign performance.
+              Rozpocznij swoją pierwszą kampanię, aby zobaczyć wyniki tutaj! Raporty są automatycznie generowane na podstawie wydajności Twoich kampanii.
             </p>
             <div className="flex justify-center space-x-4">
               <button

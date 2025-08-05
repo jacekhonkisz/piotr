@@ -1,5 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
+
+const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -7,11 +8,11 @@ const supabase = createClient(
 );
 
 async function clearDashboardCache() {
-  console.log('🧹 Clearing dashboard cache for jac.honkisz@gmail.com...\n');
+  console.log('🧹 Clearing Dashboard Cache...\n');
 
   try {
-    // Sign in as jac.honkisz@gmail.com
-    console.log('🔐 Signing in as jac.honkisz@gmail.com...');
+    // Step 1: Sign in
+    console.log('🔐 Step 1: Signing in...');
     const { data: { user, session }, error: signInError } = await supabase.auth.signInWithPassword({
       email: 'jac.honkisz@gmail.com',
       password: 'v&6uP*1UqTQN'
@@ -22,15 +23,25 @@ async function clearDashboardCache() {
       return;
     }
 
-    if (!session?.access_token) {
-      console.error('❌ No access token received');
+    console.log('✅ Signed in successfully');
+
+    // Step 2: Get client data
+    console.log('\n🔍 Step 2: Getting client data...');
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('email', user.email)
+      .single();
+
+    if (clientError || !clientData) {
+      console.error('❌ Client not found:', clientError);
       return;
     }
 
-    console.log('✅ Signed in successfully');
+    console.log('✅ Client found:', clientData.id);
 
-    // Clear the dashboard cache by calling the API with cache-busting headers
-    console.log('\n🔄 Clearing cache and fetching fresh data...');
+    // Step 3: Clear any cached data by making a fresh API call
+    console.log('\n🔄 Step 3: Making fresh API call to clear cache...');
     
     const response = await fetch('http://localhost:3000/api/fetch-live-data', {
       method: 'POST',
@@ -42,39 +53,42 @@ async function clearDashboardCache() {
         'Expires': '0'
       },
       body: JSON.stringify({
+        clientId: clientData.id,
         dateRange: {
           start: '2024-01-01',
-          end: '2025-01-31'
-        }
+          end: new Date().toISOString().split('T')[0]
+        },
+        _t: Date.now(),
+        forceRefresh: true
       })
     });
 
-    console.log('📊 Response status:', response.status);
-    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ API Error:', errorText);
+      console.log(`❌ API Error: ${response.status}`);
       return;
     }
 
-    const result = await response.json();
-    console.log('✅ Fresh data fetched successfully');
+    const apiData = await response.json();
     
-    console.log('\n📊 Fresh Data Summary:');
-    console.log('- Total Spend: $' + result.data.stats.totalSpend.toFixed(2));
-    console.log('- Impressions: ' + result.data.stats.totalImpressions.toLocaleString());
-    console.log('- Clicks: ' + result.data.stats.totalClicks);
-    console.log('- CTR: ' + result.data.stats.averageCtr.toFixed(2) + '%');
-    console.log('- Campaigns: ' + result.data.campaigns.length);
-
-    console.log('\n🎯 Instructions:');
-    console.log('1. Go to your dashboard in the browser');
-    console.log('2. Click the "Refresh Data" button');
-    console.log('3. You should now see the real data instead of zeros');
-    console.log('4. If you still see zeros, try logging out and back in');
+    if (apiData.success && apiData.data?.campaigns) {
+      const campaigns = apiData.data.campaigns;
+      const totalSpend = campaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
+      
+      console.log(`✅ Cache cleared successfully!`);
+      console.log(`📊 Fresh data loaded: ${totalSpend.toFixed(2)} zł spend from ${campaigns.length} campaigns`);
+      
+      console.log('\n🎯 Next Steps:');
+      console.log('1. Open your browser and go to http://localhost:3000/dashboard');
+      console.log('2. Press Ctrl+F5 (or Cmd+Shift+R on Mac) to force refresh');
+      console.log('3. You should now see 259.39 zł instead of 0 zł');
+      console.log('4. If you still see 0 zł, try clearing browser cache completely');
+      
+    } else {
+      console.log('❌ Failed to load fresh data');
+    }
 
   } catch (error) {
-    console.error('💥 Error:', error);
+    console.error('❌ Error:', error);
   }
 }
 

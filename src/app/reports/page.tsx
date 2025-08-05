@@ -878,7 +878,7 @@ function ReportsPageContent() {
                 onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
                 className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
-                {profile?.role === 'admin' ? 'Back to Admin' : 'Powrót do Dashboard'}
+                {profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}
               </button>
             </div>
           </div>

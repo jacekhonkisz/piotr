@@ -180,7 +180,7 @@ export default function ClientDetailPage() {
   };
 
   const deleteClient = async () => {
-    if (!client || !confirm('Are you sure you want to delete this client? This action cannot be undone.')) return;
+    if (!client || !confirm('Czy na pewno chcesz usunąć tego klienta? Ta akcja nie może zostać cofnięta.')) return;
 
     try {
       console.log('Starting client deletion for ID:', client.id);
@@ -201,7 +201,7 @@ export default function ClientDetailPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete client');
+        throw new Error(errorData.error || 'Nie udało się usunąć klienta');
       }
 
       const result = await response.json();
@@ -210,7 +210,7 @@ export default function ClientDetailPage() {
       router.push('/admin');
     } catch (error: any) {
       console.error('Error deleting client:', error);
-      alert('Failed to delete client. Please try again.');
+      alert('Nie udało się usunąć klienta. Spróbuj ponownie.');
     }
   };
 
@@ -288,17 +288,17 @@ export default function ClientDetailPage() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'valid':
-        return 'Active';
+        return 'Aktywny';
       case 'pending':
-        return 'Pending';
+        return 'Oczekujący';
       case 'invalid':
-        return 'Invalid';
+        return 'Nieprawidłowy';
       case 'expired':
-        return 'Expired';
+        return 'Wygasły';
       case 'expiring_soon':
-        return 'Expiring Soon';
+        return 'Wygasa wkrótce';
       default:
-        return 'Unknown';
+        return 'Nieznany';
     }
   };
 
@@ -320,22 +320,22 @@ export default function ClientDetailPage() {
   const getTokenHealthText = (healthStatus: string) => {
     switch (healthStatus) {
       case 'valid':
-        return 'Healthy';
+        return 'Zdrowy';
       case 'expiring_soon':
-        return 'Expiring Soon';
+        return 'Wygasa wkrótce';
       case 'expired':
-        return 'Expired';
+        return 'Wygasły';
       case 'invalid':
-        return 'Invalid';
+        return 'Nieprawidłowy';
       default:
-        return 'Unknown';
+        return 'Nieznany';
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner text="Loading client details..." />
+        <LoadingSpinner text="Ładowanie szczegółów klienta..." />
       </div>
     );
   }
@@ -352,7 +352,7 @@ export default function ClientDetailPage() {
             className="btn-primary"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Admin
+            Powrót do Admina
           </button>
         </div>
       </div>
@@ -374,7 +374,7 @@ export default function ClientDetailPage() {
               </button>
               <BarChart3 className="h-8 w-8 text-primary-600" />
               <h1 className="ml-2 text-xl font-semibold text-gray-900">
-                Client Details: {client.name}
+                Szczegóły klienta: {client.name}
               </h1>
             </div>
             <div className="flex items-center space-x-2">
@@ -383,14 +383,14 @@ export default function ClientDetailPage() {
                 className="btn-secondary"
               >
                 <Edit className="h-4 w-4 mr-2" />
-                Edit Client
+                Edytuj klienta
               </button>
               <button
                 onClick={deleteClient}
                 className="btn-danger"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Delete Client
+                Usuń klienta
               </button>
             </div>
           </div>
@@ -531,7 +531,7 @@ export default function ClientDetailPage() {
                   ) : (
                     <FileText className="h-4 w-4 mr-2" />
                   )}
-                  {generatingReport ? 'Generating...' : 'Generate Report'}
+                  {generatingReport ? 'Generowanie...' : 'Generuj raport'}
                 </button>
               </div>
               

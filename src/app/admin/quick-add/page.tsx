@@ -41,7 +41,7 @@ export default function QuickAddPage() {
                 className="flex items-center text-gray-600 hover:text-gray-900"
               >
                 <ArrowLeft className="w-5 h-5 mr-2" />
-                Back to Admin
+                Powrót do Admina
               </button>
               <h1 className="text-2xl font-bold text-gray-900">Quick Add Client</h1>
             </div>
@@ -121,7 +121,7 @@ export default function QuickAddPage() {
                     <span className="text-blue-600 font-semibold text-sm">1</span>
                   </div>
                   <div>
-                    <h4 className="font-medium">Add Client Details</h4>
+                    <h4 className="font-medium">Dodaj szczegóły klienta</h4>
                     <p className="text-sm text-gray-600">
                       Enter client name, email, and optional Meta account information.
                     </p>

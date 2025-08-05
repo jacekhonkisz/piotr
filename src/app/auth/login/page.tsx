@@ -84,10 +84,10 @@ export default function LoginPage() {
           <div className="flex justify-center items-center mb-8">
             <BarChart3 className="h-8 w-8 text-blue-600" />
             <h1 className="ml-2 text-xl font-semibold text-gray-900">
-              Meta Ads Reporting
+              Meta Ads Raportowanie
             </h1>
           </div>
-          <LoadingSpinner text={authLoading ? "Initializing..." : "Redirecting..."} />
+          <LoadingSpinner text={authLoading ? "Inicjalizacja..." : "Przekierowywanie..."} />
         </div>
       </div>
     );
@@ -101,10 +101,10 @@ export default function LoginPage() {
           <div className="flex justify-center items-center mb-8">
             <BarChart3 className="h-8 w-8 text-blue-600" />
             <h1 className="ml-2 text-xl font-semibold text-gray-900">
-              Meta Ads Reporting
+              Meta Ads Raportowanie
             </h1>
           </div>
-          <LoadingSpinner text="Loading profile..." />
+          <LoadingSpinner text="Ładowanie profilu..." />
         </div>
       </div>
     );
@@ -117,13 +117,13 @@ export default function LoginPage() {
         <div className="flex justify-center items-center mb-8">
           <BarChart3 className="h-8 w-8 text-blue-600" />
           <h1 className="ml-2 text-xl font-semibold text-gray-900">
-            Meta Ads Reporting
+            Meta Ads Raportowanie
           </h1>
         </div>
         
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-900">
-            Log in to your dashboard
+            Zaloguj się do swojego panelu
           </h2>
         </div>
       </div>
@@ -143,7 +143,7 @@ export default function LoginPage() {
             {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
+                Adres e-mail
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -158,7 +158,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyPress={handleKeyPress}
                   className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200"
-                  placeholder="Enter your email"
+                  placeholder="Wprowadź swój e-mail"
                   disabled={loading}
                 />
               </div>
@@ -167,7 +167,7 @@ export default function LoginPage() {
             {/* Password Field */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Password
+                Hasło
               </label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -181,7 +181,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyPress={handleKeyPress}
                   className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200"
-                  placeholder="Enter your password"
+                  placeholder="Wprowadź swoje hasło"
                   disabled={loading}
                 />
                 <button
@@ -211,7 +211,7 @@ export default function LoginPage() {
                 disabled={loading}
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                Remember me
+                Zapamiętaj mnie
               </label>
             </div>
 
@@ -226,7 +226,7 @@ export default function LoginPage() {
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                 ) : (
                   <>
-                    Sign in
+                    Zaloguj się
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </>
                 )}
@@ -237,7 +237,7 @@ export default function LoginPage() {
 
         {/* Demo Credentials */}
         <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <h3 className="text-xs font-medium text-gray-900 mb-2">Demo login</h3>
+          <h3 className="text-xs font-medium text-gray-900 mb-2">Demo logowanie</h3>
           <div className="text-xs text-gray-600 space-y-1">
             <p><strong>Admin:</strong> admin@example.com / password123</p>
             <p><strong>Client:</strong> client@example.com / password123</p>

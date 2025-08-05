@@ -12,11 +12,11 @@ export default function DeleteUserPage() {
 
   const deleteUser = async () => {
     if (!email.trim()) {
-      alert('Please enter an email address');
+      alert('Wprowadź adres e-mail');
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete user: ${email}? This action cannot be undone.`)) {
+    if (!confirm(`Czy na pewno chcesz usunąć użytkownika: ${email}? Tej operacji nie można cofnąć.`)) {
       return;
     }
 
@@ -27,7 +27,7 @@ export default function DeleteUserPage() {
       // Get the current session token
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
-        throw new Error('No valid session found');
+        throw new Error('Brak ważnej sesji');
       }
 
       // Call server-side API to delete user
@@ -43,7 +43,7 @@ export default function DeleteUserPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete user');
+        throw new Error(data.error || 'Nie udało się usunąć użytkownika');
       }
 
       setResult({
@@ -66,8 +66,8 @@ export default function DeleteUserPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h1>
-          <p className="text-gray-600">Only administrators can access this page.</p>
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Brak dostępu</h1>
+          <p className="text-gray-600">Tylko administratorzy mają dostęp do tej strony.</p>
         </div>
       </div>
     );
@@ -87,18 +87,16 @@ export default function DeleteUserPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Delete User from Supabase</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Usuń użytkownika z Supabase</h1>
         
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">⚠️ Warning</h2>
-          <p className="text-red-600 mb-4">
-            This will permanently delete a user from Supabase auth. This action cannot be undone.
-          </p>
+          <h2 className="text-xl font-semibold mb-4">⚠️ Ostrzeżenie</h2>
+          <p>To trwale usunie użytkownika z autoryzacji Supabase. Tej operacji nie można cofnąć.</p>
           
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address to Delete
+                Adres e-mail do usunięcia
               </label>
               <input
                 type="email"
@@ -106,7 +104,7 @@ export default function DeleteUserPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter email address"
+                placeholder="Wprowadź adres e-mail"
               />
             </div>
             
@@ -115,7 +113,7 @@ export default function DeleteUserPage() {
               disabled={loading}
               className="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Deleting User...' : 'Delete User'}
+              {loading ? 'Usuwanie użytkownika...' : 'Usuń użytkownika'}
             </button>
           </div>
         </div>

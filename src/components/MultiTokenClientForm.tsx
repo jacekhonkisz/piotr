@@ -149,7 +149,7 @@ export default function MultiTokenClientForm({ onSuccess, onCancel, editClient }
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
       <h2 className="text-2xl font-bold mb-6">
-        {editClient ? 'Edit Client' : 'Add New Client'}
+        {editClient ? 'Edytuj klienta' : 'Dodaj nowego klienta'}
       </h2>
       
       <form onSubmit={handleSubmit} className="space-y-4">

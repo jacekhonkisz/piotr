@@ -69,22 +69,22 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
   const validateMetaCredentials = async () => {
     // Check if Ad Account ID is provided (required)
     if (!formData.ad_account_id) {
-      setValidationStatus({ status: 'invalid', message: 'Meta Ad Account ID is required' });
+      setValidationStatus({ status: 'invalid', message: 'Meta Ad Account ID jest wymagane' });
       return;
     }
     
     // Check if at least one token is provided
     if (!formData.meta_access_token && !formData.system_user_token) {
-      setValidationStatus({ status: 'invalid', message: 'Please provide either a Meta Access Token (60 days) or System User Token (permanent)' });
+      setValidationStatus({ status: 'invalid', message: 'Podaj token Meta Access (60 dni) lub System User Token (permanentny)' });
       return;
     }
     
     // Use System User token if provided (permanent), otherwise use regular access token (60 days)
     const tokenToUse = formData.system_user_token || formData.meta_access_token;
-    const tokenType = formData.system_user_token ? 'System User Token (Permanent)' : 'Meta Access Token (60 days)';
+    const tokenType = formData.system_user_token ? 'System User Token (Permanentny)' : 'Meta Access Token (60 dni)';
 
     setValidating(true);
-    setValidationStatus({ status: 'validating', message: `Validating ${tokenType}...` });
+    setValidationStatus({ status: 'validating', message: `Walidacja ${tokenType}...` });
 
     try {
       const metaService = new MetaAPIService(tokenToUse);
@@ -93,15 +93,15 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
       const tokenValidation = await metaService.validateAndConvertToken();
       
       if (!tokenValidation.valid) {
-        let errorMessage = `Token validation failed: ${tokenValidation.error}`;
+        let errorMessage = `Walidacja tokenu nie powiodła się: ${tokenValidation.error}`;
         
         // Provide helpful guidance based on error type
         if (tokenValidation.error?.includes('expired')) {
-          errorMessage += '\n💡 Tip: Use a System User token for permanent access that never expires.';
+          errorMessage += '\n💡 Wskazówka: Użyj tokenu System User dla permanentnego dostępu, który nigdy nie wygasa.';
         } else if (tokenValidation.error?.includes('permissions')) {
-          errorMessage += '\n💡 Tip: Make sure your token has ads_read and ads_management permissions.';
+          errorMessage += '\n💡 Wskazówka: Upewnij się, że twój token ma dostęp do tego konta reklamowego.';
         } else if (tokenValidation.error?.includes('invalid')) {
-          errorMessage += '\n💡 Tip: Check that your token starts with "EAA" and is copied correctly.';
+          errorMessage += '\n💡 Wskazówka: Sprawdź, czy twój token zaczyna się od "EAA" i jest skopiowany poprawnie.';
         }
         
         setValidationStatus({ 
@@ -115,13 +115,13 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
       const accountValidation = await metaService.validateAdAccount(formData.ad_account_id);
       
       if (!accountValidation.valid) {
-        let errorMessage = `Ad Account validation failed: ${accountValidation.error}`;
+        let errorMessage = `Walidacja konta reklamowego nie powiodła się: ${accountValidation.error}`;
         
         // Provide helpful guidance
         if (accountValidation.error?.includes('not found')) {
-          errorMessage += '\n💡 Tip: Check your Ad Account ID format (should be like "act_123456789").';
+          errorMessage += '\n💡 Wskazówka: Sprawdź format ID konta reklamowego (powinien być podobny do "act_123456789").';
         } else if (accountValidation.error?.includes('access denied')) {
-          errorMessage += '\n💡 Tip: Make sure your token has access to this ad account.';
+          errorMessage += '\n💡 Wskazówka: Upewnij się, że twój token ma dostęp do tego konta reklamowego.';
         }
         
         setValidationStatus({ 
@@ -135,19 +135,19 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
       try {
         const campaigns = await metaService.getCampaigns(formData.ad_account_id.replace('act_', ''));
         
-        let statusMessage = `✅ Connection successful! Account: ${accountValidation.account?.name || formData.ad_account_id}. Found ${campaigns.length} campaigns.`;
+        let statusMessage = `✅ Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Znaleziono ${campaigns.length} kampanie.`;
         
         // Enhanced token status information with user-friendly guidance
         if (tokenValidation.convertedToken) {
-          statusMessage += '\n🔄 Your token will be automatically converted to permanent access (no expiration).';
+          statusMessage += '\n🔄 Twój token zostanie automatycznie przekonwertowany na permanentny dostęp (bez wygaśnięcia).';
         } else if (tokenValidation.isLongLived) {
-          statusMessage += '\n✅ Perfect! Your token is already permanent (System User token).';
+          statusMessage += '\n✅ Perfekcyjnie! Twój token jest już permanentny (System User token).';
         } else if (tokenValidation.expiresAt) {
           const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
           if (daysUntilExpiry <= 7) {
-            statusMessage += `\n⚠️ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
+            statusMessage += `\n⚠️ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
           } else {
-            statusMessage += `\n⏰ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
+            statusMessage += `\n⏰ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
           }
         }
         
@@ -157,19 +157,19 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         });
       } catch (campaignError) {
         // Campaign fetch failed, but credentials are still valid
-        let statusMessage = `✅ Connection successful! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.`;
+        let statusMessage = `✅ Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Dostęp do kampanii może być ograniczony.`;
         
         // Enhanced token status information with user-friendly guidance
         if (tokenValidation.convertedToken) {
-          statusMessage += '\n🔄 Your token will be automatically converted to permanent access (no expiration).';
+          statusMessage += '\n🔄 Twój token zostanie automatycznie przekonwertowany na permanentny dostęp (bez wygaśnięcia).';
         } else if (tokenValidation.isLongLived) {
-          statusMessage += '\n✅ Perfect! Your token is already permanent (System User token).';
+          statusMessage += '\n✅ Perfekcyjnie! Twój token jest już permanentny (System User token).';
         } else if (tokenValidation.expiresAt) {
           const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
           if (daysUntilExpiry <= 7) {
-            statusMessage += `\n⚠️ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
+            statusMessage += `\n⚠️ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
           } else {
-            statusMessage += `\n⏰ Token expires in ${daysUntilExpiry} days - will be converted to permanent access.`;
+            statusMessage += `\n⏰ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
           }
         }
         
@@ -182,7 +182,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     } catch (error) {
       setValidationStatus({ 
         status: 'invalid', 
-        message: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        message: `Błąd walidacji: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
       });
     } finally {
       setValidating(false);
@@ -196,7 +196,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     setSubmitError('');
     
     if (validationStatus.status !== 'valid') {
-      setValidationStatus({ status: 'invalid', message: 'Please validate your Meta Ads credentials first' });
+      setValidationStatus({ status: 'invalid', message: 'Proszę najpierw zweryfikować swoje poświadczenia Meta Ads.' });
       return;
     }
 
@@ -218,7 +218,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
       onClose();
     } catch (error) {
       console.error('Error adding client:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to add client. Please try again.';
+      const errorMessage = error instanceof Error ? error.message : 'Nie udało się dodać klienta. Spróbuj ponownie.';
       setSubmitError(errorMessage);
     } finally {
       setLoading(false);
@@ -231,7 +231,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Add New Client</h2>
+          <h2 className="text-lg font-semibold">Dodaj nowego klienta</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />
           </button>
@@ -240,7 +240,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Company Name *
+              Nazwa firmy *
             </label>
             <input
               type="text"
@@ -248,13 +248,13 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Enter company name"
+              placeholder="Wprowadź nazwę firmy"
             />
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Email *
+              Adres e-mail kontaktowy *
             </label>
             <input
               type="email"
@@ -270,23 +270,23 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           <div className="border-t pt-4">
             <h3 className="text-lg font-semibold mb-4 flex items-center">
               <Key className="h-5 w-5 mr-2 text-blue-600" />
-              Meta API Setup (Permanent Access)
+              Konfiguracja API Meta (Dostęp trwały)
             </h3>
             
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <div className="flex items-start">
                 <Shield className="h-5 w-5 mr-2 text-blue-600 mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-blue-900 mb-1">💡 Recommended: System User Token</h4>
+                  <h4 className="font-medium text-blue-900 mb-1">💡 Zalecane: Token Systemowego Użytkownika</h4>
                   <p className="text-sm text-blue-800 mb-2">
-                    For permanent access that never expires, use a System User token from the client&apos;s Business Manager.
+                    Dla trwałego dostępu, który nigdy nie wygasa, użyj tokenu Systemowego Użytkownika z Business Manager klienta.
                   </p>
                   <button
                     type="button"
                     onClick={() => window.open('https://business.facebook.com/', '_blank')}
                     className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
                   >
-                    Open Business Manager
+                    Otwórz Business Manager
                   </button>
                 </div>
               </div>
@@ -295,7 +295,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
             {/* Required Ad Account ID */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Meta Ad Account ID *
+                ID konta reklamowego Meta *
               </label>
               <input
                 type="text"
@@ -303,10 +303,10 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                 value={formData.ad_account_id}
                 onChange={(e) => setFormData({...formData, ad_account_id: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., act_123456789"
+                placeholder="np. act_123456789"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Find this in Ads Manager → Account Settings
+                Znajdź to w Ads Manager → Ustawienia konta
               </p>
             </div>
 
@@ -314,7 +314,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
             <div className="mt-6">
               <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
                 <Key className="h-4 w-4 mr-2" />
-                Choose Your Token Type (Select One)
+                Wybierz typ tokenu (Wybierz jeden)
               </h4>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -325,7 +325,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                   <div className="flex items-center mb-2">
                     <Shield className="h-4 w-4 mr-2 text-blue-600" />
                     <label className="text-sm font-medium text-gray-700">
-                      System User Token (Recommended)
+                      Token Systemowego Użytkownika (Zalecane)
                     </label>
                   </div>
                   <div className="relative">
@@ -334,7 +334,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                       value={formData.system_user_token}
                       onChange={(e) => setFormData({...formData, system_user_token: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Paste System User token for permanent access"
+                      placeholder="Wklej token Systemowego Użytkownika dla trwałego dostępu"
                     />
                     {formData.system_user_token && formData.system_user_token.startsWith('EAA') && (
                       <div className="absolute right-2 top-2">
@@ -343,7 +343,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                     )}
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
-                    ✅ Permanent access, never expires
+                    ✅ Dostęp trwały, nigdy nie wygasa
                   </p>
                 </div>
 
@@ -354,7 +354,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                   <div className="flex items-center mb-2">
                     <Clock className="h-4 w-4 mr-2 text-orange-600" />
                     <label className="text-sm font-medium text-gray-700">
-                      Meta Access Token (60 days)
+                      Token Meta Access (60 dni)
                     </label>
                   </div>
                   <div className="relative">
@@ -363,7 +363,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                       value={formData.meta_access_token}
                       onChange={(e) => setFormData({...formData, meta_access_token: e.target.value})}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="EAA... (starts with EAA)"
+                      placeholder="EAA... (zaczyna się od EAA)"
                     />
                     {formData.meta_access_token && formData.meta_access_token.startsWith('EAA') && (
                       <div className="absolute right-2 top-2">
@@ -372,7 +372,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                     )}
                   </div>
                   <p className="text-xs text-gray-600 mt-2">
-                    ⏰ Expires in 60 days, requires renewal
+                    ⏰ Wygasa za 60 dni, wymaga odnowienia
                   </p>
                 </div>
               </div>
@@ -383,7 +383,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
             {/* Token Choice Status */}
             {(formData.meta_access_token || formData.system_user_token) && (
               <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Token Status:</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Status wybranego tokenu:</h4>
                 <div className="space-y-2">
                   {formData.system_user_token && (
                     <div className={`flex items-center text-sm p-2 rounded ${
@@ -398,8 +398,8 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                       )}
                       <span>
                         {formData.system_user_token.startsWith('EAA') 
-                          ? '✅ System User Token Selected (Permanent Access)' 
-                          : '⚠️ System User token should start with "EAA" for Meta API'
+                          ? '✅ Token Systemowego Użytkownika wybrany (Dostęp trwały)' 
+                          : '⚠️ Token Systemowego Użytkownika powinien zaczynać się od "EAA" dla API Meta'
                         }
                       </span>
                     </div>
@@ -418,8 +418,8 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                       )}
                       <span>
                         {formData.meta_access_token.startsWith('EAA') 
-                          ? '✅ Meta Access Token Selected (60-day access)' 
-                          : '⚠️ Meta Access token should start with "EAA" for Meta API'
+                          ? '✅ Token Meta Access wybrany (dostęp 60-dniowy)' 
+                          : '⚠️ Token Meta Access powinien zaczynać się od "EAA" dla API Meta'
                         }
                       </span>
                     </div>
@@ -433,7 +433,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium text-gray-700 flex items-center">
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Test Connection & Validate Token
+                  Test połączenia i walidacja tokenu
                 </span>
                 <button
                   type="button"
@@ -444,12 +444,12 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                   {validating ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Testing...
+                      Testowanie...
                     </>
                   ) : (
                     <>
                       <CheckCircle className="h-4 w-4 mr-2" />
-                      Test Connection
+                      Test połączenia
                     </>
                   )}
                 </button>
@@ -479,17 +479,17 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
 
                          {/* Quick Help */}
              <div className="mt-4 p-3 bg-gray-50 rounded-md">
-               <h4 className="text-sm font-medium text-gray-700 mb-2">🔧 Token Choice Guide:</h4>
+               <h4 className="text-sm font-medium text-gray-700 mb-2">🔧 Przewodnik wyboru tokenu:</h4>
                <div className="text-xs text-gray-600 space-y-1">
-                 <p>• <strong>Meta Ad Account ID</strong> (Required): Your ad account identifier</p>
-                 <p>• <strong>Choose ONE token type:</strong></p>
+                 <p>• <strong>ID konta reklamowego Meta</strong> (Wymagane): Twój identyfikator konta reklamowego</p>
+                 <p>• <strong>Wybierz jeden typ tokenu:</strong></p>
                  <div className="ml-4 space-y-1">
-                   <p>🛡️ <strong>System User Token:</strong> Permanent access, never expires (Recommended)</p>
-                   <p>⏰ <strong>Meta Access Token:</strong> 60-day access, requires manual renewal</p>
+                   <p>🛡️ <strong>Token Systemowego Użytkownika:</strong> Dostęp trwały, nigdy nie wygasa (Zalecane)</p>
+                   <p>⏰ <strong>Token Meta Access:</strong> Dostęp 60-dniowy, wymaga odnowienia ręcznego</p>
                  </div>
                </div>
                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
-                 <strong>💡 Tip:</strong> System User tokens are preferred for permanent access. If you have one, use it!
+                 <strong>💡 Wskazówka:</strong> Tokeny Systemowego Użytkownika są preferowane dla dostępu trwałego. Jeśli masz jeden, użyj go!
                </div>
              </div>
           </div>
@@ -506,29 +506,29 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Reporting Frequency
+              Częstotliwość raportowania
             </label>
             <select
               value={formData.reporting_frequency}
               onChange={(e) => setFormData({...formData, reporting_frequency: e.target.value as any})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
-              <option value="on_demand">On Demand</option>
+              <option value="monthly">Miesięcznie</option>
+              <option value="weekly">Co tydzień</option>
+              <option value="on_demand">Na żądanie</option>
             </select>
           </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
+              Uwagi
             </label>
             <textarea
               value={formData.notes || ''}
               onChange={(e) => setFormData({...formData, notes: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               rows={3}
-              placeholder="Optional notes about this client"
+              placeholder="Uwagi dotyczące tego klienta"
             />
           </div>
           
@@ -538,14 +538,14 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
               onClick={onClose}
               className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
             >
-              Cancel
+              Anuluj
             </button>
             <button
               type="submit"
               disabled={loading || validationStatus.status !== 'valid'}
               className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
             >
-              {loading ? 'Adding...' : 'Add Client'}
+              {loading ? 'Dodawanie...' : 'Dodaj klienta'}
             </button>
           </div>
         </form>
@@ -823,7 +823,7 @@ export default function AdminPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete clients');
+        throw new Error(errorData.error || 'Nie udało się usunąć klientów');
       }
 
       const result = await response.json();
@@ -831,10 +831,10 @@ export default function AdminPage() {
       
       setSelectedClients([]);
       await fetchClients();
-      alert(`Successfully deleted ${result.results.success.length} clients`);
+      alert(`Pomyślnie usunięto ${result.results.success.length} klientów`);
     } catch (error) {
       console.error('Error in bulk delete:', error);
-      alert('Failed to delete some clients. Please try again.');
+      alert('Nie udało się usunąć niektórych klientów. Spróbuj ponownie.');
     } finally {
       setIsProcessing(false);
     }
@@ -872,10 +872,10 @@ export default function AdminPage() {
       
       setSelectedClients([]);
       await fetchClients();
-      alert(`Successfully regenerated credentials for ${result.results.success.length} clients`);
+      alert(`Pomyślnie ponownie wygenerowano poświadczenia dla ${result.results.success.length} klientów`);
     } catch (error) {
       console.error('Error in bulk regenerate credentials:', error);
-      alert('Failed to regenerate some credentials. Please try again.');
+      alert('Nie udało się ponownie wygenerować niektórych poświadczeń. Spróbuj ponownie.');
     } finally {
       setIsProcessing(false);
     }
@@ -903,7 +903,7 @@ export default function AdminPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate reports');
+        throw new Error(errorData.error || 'Nie udało się wygenerować raportów');
       }
 
       const result = await response.json();
@@ -911,10 +911,10 @@ export default function AdminPage() {
       
       setSelectedClients([]);
       await fetchClients();
-      alert(`Successfully generated ${result.results.success.length} reports`);
+      alert(`Pomyślnie wygenerowano ${result.results.success.length} raportów`);
     } catch (error) {
       console.error('Error in bulk generate reports:', error);
-      alert('Failed to generate some reports. Please try again.');
+      alert('Nie udało się wygenerować niektórych raportów. Spróbuj ponownie.');
     } finally {
       setIsProcessing(false);
     }
@@ -951,17 +951,17 @@ export default function AdminPage() {
       
       setSelectedClients([]);
       await fetchClients();
-      alert(`Successfully changed frequency for ${result.results.success.length} clients`);
+      alert(`Pomyślnie zmieniono częstotliwość dla ${result.results.success.length} klientów`);
     } catch (error) {
       console.error('Error in bulk change frequency:', error);
-      alert('Failed to change frequency for some clients. Please try again.');
+      alert('Nie udało się zmienić częstotliwości dla niektórych klientów. Spróbuj ponownie.');
     } finally {
       setIsProcessing(false);
     }
   };
 
   const deleteClient = async (clientId: string) => {
-    if (!confirm('Are you sure you want to delete this client? This will also delete their user account from Supabase.')) return;
+    if (!confirm('Czy na pewno chcesz usunąć tego klienta? Usunięcie tego klienta spowoduje również usunięcie konta użytkownika z Supabase.')) return;
 
     try {
       console.log('Starting client deletion for ID:', clientId);
@@ -992,7 +992,7 @@ export default function AdminPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete client');
+        throw new Error(errorData.error || 'Nie udało się usunąć klienta');
       }
 
       const result = await response.json();
@@ -1002,9 +1002,9 @@ export default function AdminPage() {
     } catch (error: any) {
       console.error('Error deleting client:', error);
       if (error.name === 'AbortError') {
-        alert('Delete request timed out. Please try again.');
+        alert('Żądanie usunięcia wygasło. Spróbuj ponownie.');
       } else {
-        alert('Failed to delete client. Please try again.');
+        alert('Nie udało się usunąć klienta. Spróbuj ponownie.');
       }
     }
   };
@@ -1028,17 +1028,17 @@ export default function AdminPage() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'valid':
-        return 'Active';
+        return 'Aktywny';
       case 'pending':
-        return 'Pending';
+        return 'Oczekujący';
       case 'invalid':
-        return 'Invalid';
+        return 'Nieprawidłowy';
       case 'expired':
-        return 'Expired';
+        return 'Wygasły';
       case 'expiring_soon':
-        return 'Expiring Soon';
+        return 'Wygasa wkrótce';
       default:
-        return 'Unknown';
+        return 'Nieznany';
     }
   };
 
@@ -1060,15 +1060,15 @@ export default function AdminPage() {
   const getTokenHealthText = (healthStatus: string) => {
     switch (healthStatus) {
       case 'valid':
-        return 'Healthy';
+        return 'Zdrowy';
       case 'expiring_soon':
-        return 'Expiring Soon';
+        return 'Wygasa wkrótce';
       case 'expired':
-        return 'Expired';
+        return 'Wygasły';
       case 'invalid':
-        return 'Invalid';
+        return 'Nieprawidłowy';
       default:
-        return 'Unknown';
+        return 'Nieznany';
     }
   };
 
@@ -1076,7 +1076,7 @@ export default function AdminPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
         <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-12">
-          <LoadingSpinner text="Loading clients..." />
+          <LoadingSpinner text="Ładowanie klientów..." />
         </div>
       </div>
     );
@@ -1093,10 +1093,8 @@ export default function AdminPage() {
                 <BarChart3 className="h-8 w-8 text-white" />
               </div>
               <div className="ml-4">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Client Management
-                </h1>
-                <p className="text-sm text-gray-600">Manage your client accounts and reports</p>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Zarządzanie klientami</h1>
+                <p className="text-gray-600">Zarządzaj kontami klientów i raportami</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
@@ -1106,7 +1104,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <Shield className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Token Health</span>
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Stan tokenów</span>
                 </div>
               </button>
               <button
@@ -1115,7 +1113,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <FileText className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">View All Reports</span>
+                  <span className="text-sm font-medium">Zobacz wszystkie raporty</span>
                 </div>
               </button>
               <button
@@ -1124,7 +1122,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <Mail className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700">Email Logs</span>
+                  <span className="text-sm font-medium text-gray-700">Logi e-mail</span>
                 </div>
               </button>
               <button
@@ -1133,7 +1131,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <Settings className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700">Settings</span>
+                  <span className="text-sm font-medium text-gray-700">Ustawienia</span>
                 </div>
               </button>
               <button
@@ -1142,7 +1140,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <Activity className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700">Monitoring</span>
+                  <span className="text-sm font-medium text-gray-700">Monitorowanie</span>
                 </div>
               </button>
               <button
@@ -1151,7 +1149,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <Plus className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Add Client</span>
+                  <span className="text-sm font-medium">Dodaj klienta</span>
                 </div>
               </button>
               <button
@@ -1160,7 +1158,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center">
                   <LogOut className="h-4 w-4 mr-2 text-gray-600 group-hover:text-red-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-red-700">Log Out</span>
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-red-700">Wyloguj się</span>
                 </div>
               </button>
             </div>
@@ -1174,13 +1172,13 @@ export default function AdminPage() {
           <div className="flex items-center py-3 space-x-6">
             <div className="flex items-center text-sm text-gray-600">
               <Home className="h-4 w-4 mr-2" />
-              <span>Dashboard</span>
+              <span>Panel</span>
               <ChevronRight className="h-4 w-4 mx-2 text-gray-400" />
               <Users className="h-4 w-4 mr-2" />
-              <span className="font-medium text-gray-900">Client Management</span>
+              <span className="font-medium text-gray-900">Zarządzanie klientami</span>
             </div>
             <div className="text-sm text-gray-500">
-              {clients.length} client{clients.length !== 1 ? 's' : ''} • {selectedClients.length} selected
+              {clients.length} klient{clients.length !== 1 ? 'ów' : ''} • {selectedClients.length} wybranych
             </div>
           </div>
         </div>
@@ -1211,12 +1209,12 @@ export default function AdminPage() {
               <Building className="h-16 w-16 text-gray-400" />
             </div>
             <h3 className="text-2xl font-bold text-gray-900 mb-3">
-              {searchTerm || statusFilter || frequencyFilter ? 'No clients found' : 'No clients yet'}
+              {searchTerm || statusFilter || frequencyFilter ? 'Nie znaleziono klientów' : 'Brak klientów'}
             </h3>
             <p className="text-gray-600 mb-10 max-w-md mx-auto text-lg">
               {searchTerm || statusFilter || frequencyFilter 
-                ? 'Try adjusting your search or filter criteria to find what you\'re looking for.' 
-                : 'Get started by adding your first client to the system.'}
+                ? 'Spróbuj dostosować kryteria wyszukiwania lub filtry, aby znaleźć to, czego szukasz.' 
+                : 'Rozpocznij dodając pierwszego klienta do systemu.'}
             </p>
             {!searchTerm && !statusFilter && !frequencyFilter && (
                               <button
@@ -1225,7 +1223,7 @@ export default function AdminPage() {
                 >
                 <div className="flex items-center">
                   <Plus className="h-6 w-6 mr-3" />
-                  <span className="font-semibold">Add Your First Client</span>
+                  <span className="font-semibold">Dodaj pierwszego klienta</span>
                 </div>
               </button>
             )}
@@ -1333,7 +1331,7 @@ export default function AdminPage() {
                         <div className="flex items-center justify-center text-gray-600 mb-1">
                           <Key className="h-3 w-3 mr-1" />
                           <span className={client.generated_username ? 'text-gray-900' : 'text-gray-400'}>
-                            {client.generated_username || 'Not generated'}
+                            {client.generated_username || 'Nie wygenerowano'}
                           </span>
                         </div>
                         {client.credentials_generated_at && (
@@ -1344,13 +1342,13 @@ export default function AdminPage() {
                       </div>
                       
                       <div className="text-center">
-                        <div className="text-gray-600 mb-1">Last Report</div>
+                        <div className="text-gray-600 mb-1">Ostatni raport</div>
                         {client.last_report_date ? (
                           <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
                             {new Date(client.last_report_date).toLocaleDateString()}
                           </div>
                         ) : (
-                          <span className="text-gray-400 bg-gray-100 px-3 py-1 rounded-full text-xs">No reports yet</span>
+                          <span className="text-gray-400 bg-gray-100 px-3 py-1 rounded-full text-xs">Brak raportów</span>
                         )}
                       </div>
                     </div>
@@ -1359,7 +1357,7 @@ export default function AdminPage() {
                     <div className="flex items-center space-x-2">
                       <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
-                          title="Edit Client"
+                          title="Edytuj klienta"
                           onClick={() => {
                             setEditingClient(client);
                             setShowEditModal(true);
@@ -1374,7 +1372,7 @@ export default function AdminPage() {
                       
                       <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
-                          title="View Reports"
+                          title="Zobacz raporty"
                           onClick={() => router.push(`/reports?clientId=${client.id}`)}
                           className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 hover:scale-105"
                         >
@@ -1384,7 +1382,7 @@ export default function AdminPage() {
 
                       <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
-                          title="Generate Report"
+                          title="Generuj raport"
                           onClick={() => generateReport(client.id)}
                           disabled={generatingReport === client.id}
                           className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1399,7 +1397,7 @@ export default function AdminPage() {
                       
                       <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
-                          title="Credentials"
+                          title="Dane logowania"
                           onClick={() => setCredentialsModal({
                             isOpen: true,
                             clientId: client.id,
@@ -1414,7 +1412,7 @@ export default function AdminPage() {
 
                       <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
-                          title="Delete Client"
+                          title="Usuń klienta"
                           onClick={() => deleteClient(client.id)}
                           className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-105"
                         >
@@ -1432,9 +1430,9 @@ export default function AdminPage() {
               <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-700">
-                    Showing <span className="font-semibold">{((pagination.page - 1) * pagination.limit) + 1}</span> to{' '}
-                    <span className="font-semibold">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> of{' '}
-                    <span className="font-semibold">{pagination.total}</span> clients
+                    Showing <span className="font-semibold">{((pagination.page - 1) * pagination.limit) + 1}</span> do{' '}
+                    <span className="font-semibold">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> z{' '}
+                    <span className="font-semibold">{pagination.total}</span> klientów
                   </div>
                   <div className="flex items-center space-x-3">
                     <button
@@ -1443,17 +1441,17 @@ export default function AdminPage() {
                       className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2"
                     >
                       <ChevronLeft className="h-4 w-4" />
-                      <span>Previous</span>
+                      <span>Poprzednia</span>
                     </button>
                     <div className="bg-gray-100 px-4 py-2 rounded-xl text-sm text-gray-700 font-medium">
-                      Page {pagination.page} of {pagination.totalPages}
+                      Strona {pagination.page} z {pagination.totalPages}
                     </div>
                     <button
                       onClick={() => fetchClients(pagination.page + 1)}
                       disabled={pagination.page >= pagination.totalPages}
                       className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center space-x-2"
                     >
-                      <span>Next</span>
+                      <span>Następna</span>
                       <ChevronRight className="h-4 w-4" />
                     </button>
                   </div>

@@ -10,16 +10,16 @@ export default function ForgotPasswordPage() {
         <div className="flex justify-center items-center mb-8">
           <BarChart3 className="h-8 w-8 text-primary-600" />
           <h1 className="ml-2 text-xl font-semibold text-gray-900">
-            Meta Ads Reporting
+            Meta Ads Raportowanie
           </h1>
         </div>
         
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Reset your password
+            Zresetuj swoje hasło
           </h2>
           <p className="text-gray-600">
-            Enter your email and we&apos;ll send you a reset link
+            Wpisz swój e-mail, a wyślemy Ci link do resetowania hasła
           </p>
         </div>
       </div>

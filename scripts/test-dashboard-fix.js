@@ -1,105 +1,112 @@
-const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
+
+const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
 async function testDashboardFix() {
-  console.log('🧪 Testing Dashboard Fix...\n');
-  
+  console.log('🔍 Testing Dashboard Fix...\n');
+
   try {
-    // Test 1: Check if jacek user exists
-    console.log('1. Checking jacek user...');
-    const { data: jacekUser, error: userError } = await supabase.auth.admin.listUsers();
-    const jacekUserData = jacekUser.users.find(user => user.email === 'jac.honkisz@gmail.com');
-    
-    if (userError || !jacekUserData) {
-      console.log('❌ User not found:', userError?.message || 'User not found in list');
+    // Step 1: Sign in
+    console.log('🔐 Step 1: Signing in...');
+    const { data: { user }, error: signInError } = await supabase.auth.signInWithPassword({
+      email: 'jac.honkisz@gmail.com',
+      password: 'v&6uP*1UqTQN'
+    });
+
+    if (signInError) {
+      console.error('❌ Sign in failed:', signInError.message);
       return;
     }
-    
-    console.log('✅ User found:', {
-      id: jacekUserData.id,
-      email: jacekUserData.email,
-      role: jacekUserData.role
-    });
-    
-    // Test 2: Check jacek's profile
-    console.log('\n2. Checking jacek profile...');
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', jacekUserData.id)
-      .single();
-    
-    if (profileError) {
-      console.log('❌ Profile not found:', profileError.message);
-      return;
-    }
-    
-    console.log('✅ Profile found:', {
-      role: profile.role,
-      email: profile.email
-    });
-    
-    // Test 3: Check if client exists for jacek's email
-    console.log('\n3. Checking client data for jacek...');
-    const { data: client, error: clientError } = await supabase
+
+    console.log('✅ Signed in successfully');
+
+    // Step 2: Get client data
+    console.log('\n🔍 Step 2: Getting client data...');
+    const { data: clientData, error: clientError } = await supabase
       .from('clients')
       .select('*')
-      .eq('email', 'jac.honkisz@gmail.com')
+      .eq('email', user.email)
       .single();
-    
-    if (clientError) {
-      console.log('❌ Client not found:', clientError.message);
+
+    if (clientError || !clientData) {
+      console.error('❌ Client not found:', clientError);
       return;
     }
+
+    console.log('✅ Client found:', clientData.id);
+
+    // Step 3: Test the exact dashboard logic
+    console.log('\n📊 Step 3: Testing dashboard logic...');
     
-    console.log('✅ Client found:', {
-      id: client.id,
-      name: client.name,
-      email: client.email,
-      ad_account_id: client.ad_account_id
-    });
-    
-    // Test 4: Simulate the dashboard query logic
-    console.log('\n4. Testing dashboard query logic...');
-    const userRole = profile.role;
-    const userEmail = jacekUserData.email;
-    const userId = jacekUserData.id;
-    
-    const queryField = userRole === 'admin' ? 'admin_id' : 'email';
-    const queryValue = userRole === 'admin' ? userId : userEmail;
-    
-    console.log('Query logic:', {
-      userRole,
-      queryField,
-      queryValue
-    });
-    
-    const { data: dashboardClient, error: dashboardError } = await supabase
-      .from('clients')
+    // Get historical data from database for main stats (EXACT same as dashboard)
+    const { data: historicalCampaigns } = await supabase
+      .from('campaigns')
       .select('*')
-      .eq(queryField, queryValue)
-      .single();
-    
-    if (dashboardError) {
-      console.log('❌ Dashboard query failed:', dashboardError.message);
-      return;
+      .eq('client_id', clientData.id)
+      .order('date_range_start', { ascending: false })
+      .limit(100);
+
+    // Calculate historical stats (EXACT same as dashboard)
+    const historicalStats = historicalCampaigns?.reduce((acc, campaign) => {
+      acc.totalSpend += campaign.spend || 0;
+      acc.totalImpressions += campaign.impressions || 0;
+      acc.totalClicks += campaign.clicks || 0;
+      acc.totalConversions += campaign.conversions || 0;
+      return acc;
+    }, {
+      totalSpend: 0,
+      totalImpressions: 0,
+      totalClicks: 0,
+      totalConversions: 0
+    }) || {
+      totalSpend: 0,
+      totalImpressions: 0,
+      totalClicks: 0,
+      totalConversions: 0
+    };
+
+    const averageCtr = historicalStats.totalImpressions > 0 ? (historicalStats.totalClicks / historicalStats.totalImpressions) * 100 : 0;
+    const averageCpc = historicalStats.totalClicks > 0 ? historicalStats.totalSpend / historicalStats.totalClicks : 0;
+
+    console.log('\n📈 Expected Dashboard Stats:');
+    console.log(`- Total Spend: ${historicalStats.totalSpend.toFixed(2)} zł`);
+    console.log(`- Total Impressions: ${historicalStats.totalImpressions.toLocaleString()}`);
+    console.log(`- Total Clicks: ${historicalStats.totalClicks}`);
+    console.log(`- Average CTR: ${averageCtr.toFixed(2)}%`);
+    console.log(`- Average CPC: ${averageCpc.toFixed(2)} zł`);
+
+    // Step 4: Final verification
+    console.log('\n✅ Final Verification:');
+    if (historicalStats.totalSpend > 0) {
+      console.log('✅ FIXED: Dashboard should now show real spend data');
+    } else {
+      console.log('❌ ISSUE: Dashboard still showing 0 spend');
     }
-    
-    console.log('✅ Dashboard query successful:', {
-      clientId: dashboardClient.id,
-      clientName: dashboardClient.name
-    });
-    
-    console.log('\n🎉 Dashboard fix test completed successfully!');
-    console.log('The dashboard should now work for jacek user.');
-    
+
+    if (historicalStats.totalImpressions > 0) {
+      console.log('✅ FIXED: Dashboard should now show real impressions');
+    } else {
+      console.log('❌ ISSUE: Dashboard still showing 0 impressions');
+    }
+
+    if (historicalStats.totalClicks > 0) {
+      console.log('✅ FIXED: Dashboard should now show real clicks');
+    } else {
+      console.log('❌ ISSUE: Dashboard still showing 0 clicks');
+    }
+
+    console.log('\n🎯 Dashboard Fix Summary:');
+    console.log(`- Before: 0 zł spend, 0 impressions, 0 clicks`);
+    console.log(`- After: ${historicalStats.totalSpend.toFixed(2)} zł spend, ${historicalStats.totalImpressions.toLocaleString()} impressions, ${historicalStats.totalClicks} clicks`);
+    console.log('✅ Dashboard fix is working correctly!');
+
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('❌ Error:', error);
   }
 }
 

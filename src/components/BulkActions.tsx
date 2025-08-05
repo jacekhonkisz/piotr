@@ -78,12 +78,12 @@ export default function BulkActions({
                 )}
               </div>
               <span className="font-medium">
-                {isAllSelected ? 'Deselect All' : 'Select All'}
+                {isAllSelected ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
               </span>
             </button>
           </div>
           <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-            {totalClients} client{totalClients !== 1 ? 's' : ''}
+            {totalClients} klient{totalClients !== 1 ? 'ów' : ''}
           </div>
         </div>
       </div>
@@ -101,10 +101,10 @@ export default function BulkActions({
               </div>
               <div>
                 <span className="text-sm font-semibold text-blue-900">
-                  {selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''} selected
+                  {selectedClients.length} klient{selectedClients.length !== 1 ? 'ów' : ''} wybranych
                 </span>
                 <div className="text-xs text-blue-600">
-                  {isPartiallySelected ? 'Partially selected' : 'All clients selected'}
+                  {isPartiallySelected ? 'Częściowo wybrane' : 'Wszyscy klienci wybrani'}
                 </div>
               </div>
             </div>
@@ -117,7 +117,7 @@ export default function BulkActions({
               >
                 <div className="flex items-center">
                   <FileText className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Generate Reports</span>
+                  <span className="text-sm font-medium">Generuj raporty</span>
                 </div>
               </button>
               
@@ -128,7 +128,7 @@ export default function BulkActions({
               >
                 <div className="flex items-center">
                   <UserPlus className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Regenerate Credentials</span>
+                  <span className="text-sm font-medium">Ponownie wygeneruj poświadczenia</span>
                 </div>
               </button>
               
@@ -139,7 +139,7 @@ export default function BulkActions({
               >
                 <div className="flex items-center">
                   <Calendar className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Change Frequency</span>
+                  <span className="text-sm font-medium">Zmień częstotliwość</span>
                 </div>
               </button>
               
@@ -150,7 +150,7 @@ export default function BulkActions({
               >
                 <div className="flex items-center">
                   <Trash2 className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Delete</span>
+                  <span className="text-sm font-medium">Usuń</span>
                 </div>
               </button>
             </div>
@@ -163,7 +163,7 @@ export default function BulkActions({
             >
               <div className="flex items-center">
                 <X className="h-4 w-4 mr-2 text-gray-500 group-hover:text-gray-700 transition-colors" />
-                <span className="text-sm font-medium">Clear Selection</span>
+                <span className="text-sm font-medium">Wyczyść wybór</span>
               </div>
             </button>
           </div>
@@ -176,9 +176,9 @@ export default function BulkActions({
           <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4 animate-scale-in">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">Change Reporting Frequency</h3>
+                <h3 className="text-xl font-bold text-gray-900">Zmień częstotliwość raportowania</h3>
                 <p className="text-sm text-gray-600 mt-1">
-                  Update frequency for {selectedClients.length} selected client{selectedClients.length !== 1 ? 's' : ''}
+                  Zaktualizuj częstotliwość dla {selectedClients.length} wybranych klient{selectedClients.length !== 1 ? 'ów' : ''}
                 </p>
               </div>
               <button 
@@ -199,8 +199,8 @@ export default function BulkActions({
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-gray-900 group-hover:text-blue-700">Monthly</div>
-                    <div className="text-sm text-gray-500 mt-1">Reports sent once per month</div>
+                    <div className="font-semibold text-gray-900 group-hover:text-blue-700">Miesięcznie</div>
+                    <div className="text-sm text-gray-500 mt-1">Raporty wysyłane raz w miesiącu</div>
                   </div>
                   <Calendar className="h-5 w-5 text-gray-400 group-hover:text-blue-600" />
                 </div>
@@ -215,8 +215,8 @@ export default function BulkActions({
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-gray-900 group-hover:text-green-700">Weekly</div>
-                    <div className="text-sm text-gray-500 mt-1">Reports sent once per week</div>
+                    <div className="font-semibold text-gray-900 group-hover:text-green-700">Co tydzień</div>
+                    <div className="text-sm text-gray-500 mt-1">Raporty wysyłane raz w tygodniu</div>
                   </div>
                   <Clock className="h-5 w-5 text-gray-400 group-hover:text-green-600" />
                 </div>
@@ -231,8 +231,8 @@ export default function BulkActions({
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-gray-900 group-hover:text-orange-700">On Demand</div>
-                    <div className="text-sm text-gray-500 mt-1">Reports generated manually only</div>
+                    <div className="font-semibold text-gray-900 group-hover:text-orange-700">Na żądanie</div>
+                    <div className="text-sm text-gray-500 mt-1">Raporty generowane tylko ręcznie</div>
                   </div>
                   <FileText className="h-5 w-5 text-gray-400 group-hover:text-orange-600" />
                 </div>
@@ -251,15 +251,15 @@ export default function BulkActions({
                 <AlertTriangle className="h-8 w-8 text-red-600" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-red-900">Confirm Bulk Delete</h3>
-                <p className="text-sm text-red-600 mt-1">This action cannot be undone</p>
+                <h3 className="text-xl font-bold text-red-900">Potwierdź masowe usunięcie</h3>
+                <p className="text-sm text-red-600 mt-1">Tej operacji nie można cofnąć</p>
               </div>
             </div>
             
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
               <p className="text-sm text-red-800">
-                Are you sure you want to delete <strong>{selectedClients.length} client{selectedClients.length !== 1 ? 's' : ''}</strong>? 
-                This will also delete their user accounts from Supabase.
+                Czy na pewno chcesz usunąć <strong>{selectedClients.length} klient{selectedClients.length !== 1 ? 'ów' : ''}</strong>? 
+                To również usunie ich konta użytkowników z Supabase.
               </p>
             </div>
             
@@ -268,13 +268,13 @@ export default function BulkActions({
                 onClick={() => setShowDeleteConfirm(false)}
                 className="flex-1 px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
               >
-                Cancel
+                Anuluj
               </button>
               <button
                 onClick={confirmBulkDelete}
                 className="flex-1 px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl hover:from-red-700 hover:to-rose-700 shadow-lg hover:shadow-xl transition-all duration-200 font-medium"
               >
-                Delete {selectedClients.length} Client{selectedClients.length !== 1 ? 's' : ''}
+                Usuń {selectedClients.length} klient{selectedClients.length !== 1 ? 'ów' : ''}
               </button>
             </div>
           </div>

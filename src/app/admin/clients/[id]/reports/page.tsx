@@ -167,7 +167,7 @@ export default function ClientReportsPage() {
             className="btn-primary"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Admin
+            Powrót do Admina
           </button>
         </div>
       </div>

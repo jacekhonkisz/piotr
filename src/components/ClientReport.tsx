@@ -77,7 +77,7 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
       );
       setReport(reportData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate report');
+      setError(err instanceof Error ? err.message : 'Nie udało się wygenerować raportu');
     } finally {
       setLoading(false);
     }

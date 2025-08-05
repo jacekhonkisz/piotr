@@ -1,106 +1,162 @@
-const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config({ path: '.env.local' });
+
+const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
 async function checkCampaignStatus() {
-  try {
-    console.log('🔍 Checking campaign status and spend data...\n');
+  console.log('🔍 Checking Campaign Status for jac.honkisz@gmail.com...\n');
 
-    // Get jacek client data
-    const { data: client, error: clientError } = await supabase
+  try {
+    // Step 1: Sign in
+    console.log('🔐 Step 1: Signing in...');
+    const { data: { user, session }, error: signInError } = await supabase.auth.signInWithPassword({
+      email: 'jac.honkisz@gmail.com',
+      password: 'v&6uP*1UqTQN'
+    });
+
+    if (signInError) {
+      console.error('❌ Sign in failed:', signInError.message);
+      return;
+    }
+
+    console.log('✅ Signed in successfully');
+
+    // Step 2: Get client data
+    console.log('\n🔍 Step 2: Getting client data...');
+    const { data: clientData, error: clientError } = await supabase
       .from('clients')
       .select('*')
-      .eq('email', 'jac.honkisz@gmail.com')
+      .eq('email', user.email)
       .single();
 
-    if (clientError || !client) {
+    if (clientError || !clientData) {
       console.error('❌ Client not found:', clientError);
       return;
     }
 
-    const accessToken = client.meta_access_token;
-    const adAccountId = client.ad_account_id.replace('act_', '');
+    console.log('✅ Client found:', clientData.id);
+    console.log(`📊 Ad Account ID: ${clientData.ad_account_id}`);
+    console.log(`🔑 Token Status: ${clientData.api_status}`);
 
-    // Get detailed campaign information
-    console.log('🎯 Getting detailed campaign information...');
-    const campaignsResponse = await fetch(`https://graph.facebook.com/v18.0/act_${adAccountId}/campaigns?fields=id,name,status,objective,created_time,updated_time,start_time,stop_time,spend_cap,spend_cap_amount&access_token=${accessToken}`);
-    const campaignsData = await campaignsResponse.json();
+    // Step 3: Check database campaigns
+    console.log('\n📊 Step 3: Checking database campaigns...');
+    const { data: dbCampaigns, error: dbError } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('client_id', clientData.id)
+      .order('date_range_start', { ascending: false })
+      .limit(10);
+
+    if (dbError) {
+      console.error('❌ Error fetching database campaigns:', dbError);
+      return;
+    }
+
+    console.log(`✅ Found ${dbCampaigns?.length || 0} campaigns in database`);
     
-    if (campaignsData.data) {
-      console.log(`📊 Found ${campaignsData.data.length} campaigns:\n`);
-      
-      for (const campaign of campaignsData.data) {
-        console.log(`🎯 Campaign: ${campaign.name}`);
-        console.log(`   ID: ${campaign.id}`);
-        console.log(`   Status: ${campaign.status}`);
-        console.log(`   Objective: ${campaign.objective}`);
-        console.log(`   Created: ${campaign.created_time}`);
-        console.log(`   Updated: ${campaign.updated_time}`);
-        console.log(`   Start: ${campaign.start_time || 'Not set'}`);
-        console.log(`   Stop: ${campaign.stop_time || 'Not set'}`);
-        console.log(`   Spend Cap: ${campaign.spend_cap || 'Not set'}`);
-        console.log(`   Spend Cap Amount: ${campaign.spend_cap_amount || 'Not set'}`);
+    if (dbCampaigns && dbCampaigns.length > 0) {
+      console.log('\n📈 Database Campaigns (last 10):');
+      dbCampaigns.forEach((campaign, index) => {
+        console.log(`  ${index + 1}. ${campaign.campaign_name}`);
+        console.log(`     Campaign ID: ${campaign.campaign_id}`);
+        console.log(`     Status: ${campaign.status}`);
+        console.log(`     Spend: ${campaign.spend} zł`);
+        console.log(`     Date: ${campaign.date_range_start} to ${campaign.date_range_end}`);
+        console.log(`     Impressions: ${campaign.impressions}`);
+        console.log(`     Clicks: ${campaign.clicks}`);
         console.log('');
+      });
+    }
+
+    // Step 4: Check Meta API campaigns
+    console.log('\n🌐 Step 4: Checking Meta API campaigns...');
+    
+    try {
+      const response = await fetch('http://localhost:3000/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        },
+        body: JSON.stringify({
+          clientId: clientData.id,
+          dateRange: {
+            start: '2025-08-01',
+            end: new Date().toISOString().split('T')[0] // Today's date
+          },
+          _t: Date.now()
+        })
+      });
+
+      if (!response.ok) {
+        console.log(`❌ API Error: ${response.status}`);
+        const errorText = await response.text();
+        console.log(`Error details: ${errorText}`);
+        return;
       }
-    }
 
-    // Check account-level insights (overall spend)
-    console.log('💰 Checking account-level spend data...');
-    const accountInsightsUrl = `https://graph.facebook.com/v18.0/act_${adAccountId}/insights?fields=spend,impressions,clicks&time_range={"since":"2024-01-01","until":"2025-12-31"}&level=account&access_token=${accessToken}`;
-    
-    const accountInsightsResponse = await fetch(accountInsightsUrl);
-    const accountInsightsData = await accountInsightsResponse.json();
-    
-    if (accountInsightsData.data && accountInsightsData.data.length > 0) {
-      console.log('✅ Account has spend data:');
-      accountInsightsData.data.forEach((insight, index) => {
-        console.log(`   Record ${index + 1}:`);
-        console.log(`      💰 Spend: $${insight.spend || 0}`);
-        console.log(`      👁️  Impressions: ${insight.impressions || 0}`);
-        console.log(`      🖱️  Clicks: ${insight.clicks || 0}`);
-      });
-    } else {
-      console.log('❌ No account-level spend data found');
-      if (accountInsightsData.error) {
-        console.log(`   Error: ${accountInsightsData.error.message}`);
+      const apiData = await response.json();
+      
+      if (apiData.success && apiData.data?.campaigns) {
+        const campaigns = apiData.data.campaigns;
+        console.log(`✅ Found ${campaigns.length} campaigns in Meta API`);
+        
+        console.log('\n📋 Meta API Campaigns:');
+        campaigns.forEach((campaign, index) => {
+          console.log(`  ${index + 1}. ${campaign.campaign_name}`);
+          console.log(`     Campaign ID: ${campaign.campaign_id}`);
+          console.log(`     Status: ${campaign.status || 'Unknown'}`);
+          console.log(`     Spend: ${campaign.spend || 0} zł`);
+          console.log(`     Impressions: ${campaign.impressions || 0}`);
+          console.log(`     Clicks: ${campaign.clicks || 0}`);
+          console.log(`     CTR: ${campaign.ctr || 0}%`);
+          console.log('');
+        });
+
+        // Check if any campaigns have spend
+        const totalSpend = campaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
+        const totalImpressions = campaigns.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
+        const totalClicks = campaigns.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
+
+        console.log('\n📊 Meta API Summary:');
+        console.log(`- Total Spend: ${totalSpend.toFixed(2)} zł`);
+        console.log(`- Total Impressions: ${totalImpressions.toLocaleString()}`);
+        console.log(`- Total Clicks: ${totalClicks}`);
+
+        if (totalSpend === 0) {
+          console.log('\n⚠️ ISSUE: All campaigns have 0 spend');
+          console.log('Possible reasons:');
+          console.log('1. Campaigns are paused in Meta Ads');
+          console.log('2. Campaigns have no budget allocated');
+          console.log('3. Campaigns are not running in the current period');
+          console.log('4. API permissions are limited');
+        } else {
+          console.log('\n✅ SUCCESS: Found real data in Meta API');
+        }
+      } else {
+        console.log('❌ No campaign data returned from Meta API');
       }
+    } catch (error) {
+      console.log(`❌ Error calling Meta API: ${error.message}`);
     }
-    console.log('');
 
-    // Check if there are any adsets or ads
-    console.log('📋 Checking for adsets and ads...');
-    const adsetsResponse = await fetch(`https://graph.facebook.com/v18.0/act_${adAccountId}/adsets?fields=id,name,status,campaign_id&access_token=${accessToken}`);
-    const adsetsData = await adsetsResponse.json();
-    
-    if (adsetsData.data && adsetsData.data.length > 0) {
-      console.log(`✅ Found ${adsetsData.data.length} adsets:`);
-      adsetsData.data.forEach((adset, index) => {
-        console.log(`   ${index + 1}. ${adset.name} (${adset.status}) - Campaign: ${adset.campaign_id}`);
-      });
-    } else {
-      console.log('❌ No adsets found');
-    }
-    console.log('');
-
-    // Check for ads
-    const adsResponse = await fetch(`https://graph.facebook.com/v18.0/act_${adAccountId}/ads?fields=id,name,status,adset_id&access_token=${accessToken}`);
-    const adsData = await adsResponse.json();
-    
-    if (adsData.data && adsData.data.length > 0) {
-      console.log(`✅ Found ${adsData.data.length} ads:`);
-      adsData.data.forEach((ad, index) => {
-        console.log(`   ${index + 1}. ${ad.name} (${ad.status}) - Adset: ${ad.adset_id}`);
-      });
-    } else {
-      console.log('❌ No ads found');
-    }
+    // Step 5: Recommendations
+    console.log('\n🎯 Recommendations:');
+    console.log('1. Check if campaigns are active in Meta Ads Manager');
+    console.log('2. Verify campaign budgets and spending limits');
+    console.log('3. Check if campaigns are scheduled for the current period');
+    console.log('4. Verify API permissions for the access token');
+    console.log('5. Consider testing with a different date range');
 
   } catch (error) {
-    console.error('❌ Error checking campaign status:', error);
+    console.error('❌ Error:', error);
   }
 }
 

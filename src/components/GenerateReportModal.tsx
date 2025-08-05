@@ -189,14 +189,14 @@ export default function GenerateReportModal({
 
   const getRangeLabel = (): string => {
     if (selectedRange === 'quarterly') {
-      return 'This Quarter';
+      return 'Ten Kwartał';
     } else if (selectedRange === 'monthly' && selectedMonth) {
       const selectedOption = monthOptions.find(option => option.id === selectedMonth);
-      return selectedOption?.label || 'Monthly Range';
+      return selectedOption?.label || 'Zakres Miesięczny';
     } else if (selectedRange === 'custom') {
-      return 'Custom Range';
+      return 'Zakres Niestandardowy';
     }
-    return 'Custom Range';
+    return 'Zakres Niestandardowy';
   };
 
   const generateReport = async () => {
@@ -213,7 +213,7 @@ export default function GenerateReportModal({
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.access_token) {
-        throw new Error('No access token available');
+        throw new Error('Brak tokenu dostępu');
       }
 
       const dateRange = getDateRange();
@@ -249,7 +249,7 @@ export default function GenerateReportModal({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate report');
+        throw new Error(errorData.error || 'Nie udało się wygenerować raportu');
       }
 
       const reportData = await response.json();
@@ -275,7 +275,7 @@ export default function GenerateReportModal({
 
       if (!pdfResponse.ok) {
         const errorData = await pdfResponse.json();
-        throw new Error(errorData.error || 'Failed to generate PDF');
+        throw new Error(errorData.error || 'Nie udało się wygenerować PDF');
       }
 
       // Store the PDF blob for viewing
@@ -285,7 +285,7 @@ export default function GenerateReportModal({
       setReportGenerated(true);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate report');
+      setError(err instanceof Error ? err.message : 'Nie udało się wygenerować raportu');
     } finally {
       setGenerating(false);
     }
@@ -301,7 +301,7 @@ export default function GenerateReportModal({
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.access_token) {
-        throw new Error('No access token available');
+        throw new Error('Brak tokenu dostępu');
       }
 
       const dateRange = getDateRange();
@@ -323,13 +323,13 @@ export default function GenerateReportModal({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send report');
+        throw new Error(errorData.error || 'Nie udało się wysłać raportu');
       }
 
       setEmailSent(true);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send report');
+      setError(err instanceof Error ? err.message : 'Nie udało się wysłać raportu');
     } finally {
       setSending(false);
     }
@@ -381,8 +381,8 @@ export default function GenerateReportModal({
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Generate Report</h2>
-            <p className="text-gray-600">Client: {clientName}</p>
+            <h2 className="text-2xl font-bold text-gray-900">Generuj Raport</h2>
+            <p className="text-gray-600">Klient: {clientName}</p>
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -453,7 +453,7 @@ export default function GenerateReportModal({
             // Step 1: Date Range Selection
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Report Period</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Wybierz okres raportu</h3>
                 
                 {/* Range Type Selection */}
                 <div className="flex space-x-3 mb-6">
@@ -466,7 +466,7 @@ export default function GenerateReportModal({
                     }`}
                   >
                     <Calendar className="h-4 w-4 inline mr-2" />
-                    Monthly Reports
+                    Raporty Miesięczne
                   </button>
                   <button
                     onClick={() => setSelectedRange('quarterly')}
@@ -477,7 +477,7 @@ export default function GenerateReportModal({
                     }`}
                   >
                     <Calendar className="h-4 w-4 inline mr-2" />
-                    This Quarter
+                    Ten Kwartał
                   </button>
                   <button
                     onClick={() => setSelectedRange('custom')}
@@ -488,7 +488,7 @@ export default function GenerateReportModal({
                     }`}
                   >
                     <Calendar className="h-4 w-4 inline mr-2" />
-                    Custom Range
+                    Zakres Niestandardowy
                   </button>
                 </div>
 
@@ -505,7 +505,7 @@ export default function GenerateReportModal({
                           <div className="flex items-center space-x-3">
                             <Calendar className="h-5 w-5 text-blue-600" />
                             <span className="text-lg font-semibold text-gray-900">
-                              {monthOptions[currentMonthIndex]?.label || 'Loading...'}
+                              {monthOptions[currentMonthIndex]?.label || 'Ładowanie...'}
                             </span>
                           </div>
                           <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${showMonthDropdown ? 'rotate-180' : ''}`} />
@@ -528,7 +528,7 @@ export default function GenerateReportModal({
                                 <div className="flex-1">
                                   <div className="text-sm font-medium">{month.label}</div>
                                   <div className="text-xs text-gray-500 mt-1">
-                                    {month.startDate} to {month.endDate}
+                                    {month.startDate} do {month.endDate}
                                   </div>
                                 </div>
                               </button>
@@ -548,10 +548,10 @@ export default function GenerateReportModal({
                 {/* Custom Date Range */}
                 {selectedRange === 'custom' && (
                   <div className="space-y-4">
-                    <h4 className="text-sm font-medium text-gray-700">Select Custom Date Range</h4>
+                    <h4 className="text-sm font-medium text-gray-700">Wybierz niestandardowy zakres dat</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Data rozpoczęcia</label>
                         <input
                           key={`start-date-${customDateRange.start}`}
                           type="date"
@@ -561,7 +561,7 @@ export default function GenerateReportModal({
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Data zakończenia</label>
                         <input
                           key={`end-date-${customDateRange.end}`}
                           type="date"
@@ -580,7 +580,7 @@ export default function GenerateReportModal({
                     <div className="flex items-center space-x-2">
                       <Calendar className="h-4 w-4 text-blue-600" />
                       <span className="text-sm font-medium text-blue-900">
-                        {getRangeLabel()}: {getDateRange().start} to {getDateRange().end}
+                        {getRangeLabel()}: {getDateRange().start} do {getDateRange().end}
                       </span>
                     </div>
                   </div>
@@ -599,7 +599,7 @@ export default function GenerateReportModal({
                   onClick={handleClose}
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
                 >
-                  Cancel
+                  Anuluj
                 </button>
               </div>
             </div>
@@ -607,7 +607,7 @@ export default function GenerateReportModal({
             // Step 2: PDF Preview and Send
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Report Generated Successfully</h3>
+                <h3 className="text-lg font-semibold text-gray-900">Raport wygenerowany pomyślnie</h3>
                 <span className="text-sm text-green-600 bg-green-100 px-3 py-1 rounded-full">
                   {getRangeLabel()}
                 </span>
@@ -622,8 +622,8 @@ export default function GenerateReportModal({
                       </svg>
                     </div>
                     <div>
-                      <p className="text-blue-700 text-sm font-medium">Existing Report Retrieved</p>
-                      <p className="text-blue-600 text-xs">This report was already generated for the selected date range. We&apos;ve retrieved the existing data instead of creating a new one.</p>
+                      <p className="text-blue-700 text-sm font-medium">Pobrano istniejący raport</p>
+                      <p className="text-blue-600 text-xs">Ten raport został już wygenerowany dla wybranego zakresu dat. Pobraliśmy istniejące dane zamiast tworzyć nowe.</p>
                     </div>
                   </div>
                 </div>
@@ -637,7 +637,7 @@ export default function GenerateReportModal({
 
               {emailSent && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                  <p className="text-green-700 text-sm">Report sent successfully to {clientEmail}</p>
+                  <p className="text-green-700 text-sm">Raport wysłany pomyślnie do {clientEmail}</p>
                 </div>
               )}
 
@@ -645,21 +645,21 @@ export default function GenerateReportModal({
               {pdfUrl && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-md font-medium text-gray-900">Report Preview</h4>
+                    <h4 className="text-md font-medium text-gray-900">Podgląd raportu</h4>
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => setShowPreview(!showPreview)}
                         className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
                       >
                         <Eye className="h-4 w-4" />
-                        <span>{showPreview ? 'Hide Preview' : 'Show Preview'}</span>
+                        <span>{showPreview ? 'Ukryj podgląd' : 'Pokaż podgląd'}</span>
                       </button>
                       <button
                         onClick={() => window.open(pdfUrl, '_blank')}
                         className="px-3 py-1 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2"
                       >
                         <Eye className="h-4 w-4" />
-                        <span>Open in New Tab</span>
+                        <span>Otwórz w nowej karcie</span>
                       </button>
                       <button
                         onClick={() => {
@@ -673,7 +673,7 @@ export default function GenerateReportModal({
                         className="px-3 py-1 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center space-x-2"
                       >
                         <Download className="h-4 w-4" />
-                        <span>Download</span>
+                        <span>Pobierz</span>
                       </button>
                     </div>
                   </div>
@@ -683,14 +683,14 @@ export default function GenerateReportModal({
                     <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
                       <div className="flex items-center space-x-2">
                         <FileText className="h-4 w-4 text-gray-600" />
-                        <span className="text-sm font-medium text-gray-700">Interactive PDF Report</span>
+                        <span className="text-sm font-medium text-gray-700">Interaktywny raport PDF</span>
                       </div>
                     </div>
                     <div className="relative" style={{ height: '600px' }}>
                       <iframe
                         src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
                         className="w-full h-full border-0"
-                        title="PDF Report Preview"
+                        title="Podgląd raportu PDF"
                       />
                     </div>
                   </div>
@@ -703,7 +703,7 @@ export default function GenerateReportModal({
                   onClick={() => setReportGenerated(false)}
                   className="px-4 py-2 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
                 >
-                  Back
+                  Wstecz
                 </button>
                 <button
                   onClick={sendReport}
@@ -713,16 +713,16 @@ export default function GenerateReportModal({
                   {sending ? (
                     <>
                       <div className="spinner h-4 w-4"></div>
-                      <span>Sending...</span>
+                      <span>Wysyłanie...</span>
                     </>
                   ) : emailSent ? (
                     <>
-                      <span>Sent ✓</span>
+                      <span>Wysłano ✓</span>
                     </>
                   ) : (
                     <>
                       <Send className="h-4 w-4" />
-                      <span>Send Report</span>
+                      <span>Wyślij raport</span>
                     </>
                   )}
                 </button>
