@@ -1,153 +1,178 @@
+// Test script to check Meta API directly
 const { createClient } = require('@supabase/supabase-js');
-const fetch = require('node-fetch');
-require('dotenv').config({path: '.env.local'});
+require('dotenv').config({ path: '.env.local' });
 
-// Test Meta API directly
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 async function testMetaAPIDirect() {
-  console.log('🧪 Testing Meta API Direct Access...\n');
-
-  // Initialize Supabase
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  console.log('🔍 Testing Meta API directly...\n');
 
   try {
-    // Get a client with Meta API token
+    // 1. Get a client
+    console.log('📋 Step 1: Getting client data...');
     const { data: clients, error: clientError } = await supabase
       .from('clients')
-      .select('id, name, meta_access_token, ad_account_id')
-      .not('meta_access_token', 'is', null)
+      .select('id, name, email, created_at, ad_account_id, meta_access_token')
       .limit(1);
 
-    if (clientError || !clients || clients.length === 0) {
-      console.error('❌ No clients with Meta API tokens found');
+    if (clientError) {
+      console.error('❌ Error fetching clients:', clientError);
+      return;
+    }
+
+    if (!clients || clients.length === 0) {
+      console.error('❌ No clients found');
       return;
     }
 
     const client = clients[0];
-    console.log(`🔍 Testing client: ${client.name}`);
-    console.log(`   ID: ${client.id}`);
-    console.log(`   Ad Account: ${client.ad_account_id}`);
-    console.log(`   Token: ${client.meta_access_token.substring(0, 20)}...`);
+    console.log('✅ Client found:', {
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      created_at: client.created_at,
+      ad_account_id: client.ad_account_id,
+      hasToken: !!client.meta_access_token,
+      tokenLength: client.meta_access_token?.length || 0
+    });
 
-    // Test current month
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    if (!client.meta_access_token) {
+      console.error('❌ No Meta API token found for client');
+      return;
+    }
+
+    // 2. Test Meta API token validation
+    console.log('\n🔐 Step 2: Testing Meta API token...');
     
-    const monthStartDate = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}`;
-    const monthEndDate = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
-
-    console.log(`\n📅 Testing date range: ${monthStartDate} to ${monthEndDate}`);
-
-    // Test direct Meta API call
-    console.log('\n1. Testing direct Meta API call...');
+    const tokenValidationUrl = `https://graph.facebook.com/v18.0/me?access_token=${client.meta_access_token}`;
+    
     try {
-      const metaApiUrl = `https://graph.facebook.com/v18.0/act_${client.ad_account_id}/insights`;
-      const params = new URLSearchParams({
-        access_token: client.meta_access_token,
-        fields: 'campaign_name,spend,impressions,clicks,ctr,cpc,conversions',
-        time_range: JSON.stringify({since: monthStartDate, until: monthEndDate}),
-        level: 'campaign',
-        limit: '10'
+      const response = await fetch(tokenValidationUrl);
+      const data = await response.json();
+      
+      console.log('📡 Token validation response:', {
+        status: response.status,
+        hasError: !!data.error,
+        error: data.error,
+        data: data
       });
-
-      console.log(`   API URL: ${metaApiUrl}`);
-      console.log(`   Testing with ad account: ${client.ad_account_id}`);
-
-      const metaResponse = await fetch(`${metaApiUrl}?${params}`);
-      const metaData = await metaResponse.json();
-
-      if (metaData.error) {
-        console.log(`   ❌ Meta API Error: ${metaData.error.message}`);
-        console.log(`   Error Code: ${metaData.error.code}`);
-        console.log(`   Error Subcode: ${metaData.error.error_subcode}`);
-        
-        if (metaData.error.code === 190) {
-          console.log(`   💡 Token might be expired or invalid`);
-        } else if (metaData.error.code === 100) {
-          console.log(`   💡 Ad account ID might be incorrect`);
-        } else if (metaData.error.code === 294) {
-          console.log(`   💡 Managing Ad Account permission required`);
-        }
-      } else {
-        console.log(`   ✅ Meta API Success: ${metaData.data?.length || 0} campaigns found`);
-        if (metaData.data && metaData.data.length > 0) {
-          console.log('\n📊 Real campaign data:');
-          metaData.data.forEach((campaign, index) => {
-            console.log(`   ${index + 1}. ${campaign.campaign_name}`);
-            console.log(`      Spend: ${campaign.spend} zł`);
-            console.log(`      Impressions: ${campaign.impressions}`);
-            console.log(`      Clicks: ${campaign.clicks}`);
-            console.log(`      CTR: ${campaign.ctr}%`);
-            console.log(`      CPC: ${campaign.cpc} zł`);
-            console.log(`      Conversions: ${campaign.conversions || 0}`);
-          });
-        } else {
-          console.log('   ⚠️  No campaigns found for this period');
-        }
+      
+      if (data.error) {
+        console.log('❌ Meta API token is invalid:', data.error);
+        return;
       }
-    } catch (metaError) {
-      console.log(`   ❌ Meta API call failed: ${metaError.message}`);
+      
+      console.log('✅ Meta API token is valid');
+    } catch (error) {
+      console.log('❌ Error validating token:', error.message);
+      return;
     }
 
-    // Test fetch-live-data endpoint
-    console.log('\n2. Testing fetch-live-data endpoint...');
+    // 3. Test getting ad accounts
+    console.log('\n🏢 Step 3: Testing ad accounts...');
+    
+    const adAccountsUrl = `https://graph.facebook.com/v18.0/me/adaccounts?access_token=${client.meta_access_token}`;
+    
     try {
-      const apiResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/fetch-live-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
-        },
-        body: JSON.stringify({
-          dateRange: {
-            start: monthStartDate,
-            end: monthEndDate
-          },
-          clientId: client.id
-        })
+      const response = await fetch(adAccountsUrl);
+      const data = await response.json();
+      
+      console.log('📡 Ad accounts response:', {
+        status: response.status,
+        hasError: !!data.error,
+        error: data.error,
+        accountsCount: data.data?.length || 0
       });
-
-      if (apiResponse.ok) {
-        const monthData = await apiResponse.json();
-        
-        if (monthData.success && monthData.data?.campaigns) {
-          console.log(`   ✅ fetch-live-data Success: ${monthData.data.campaigns.length} campaigns`);
-          if (monthData.data.campaigns.length > 0) {
-            console.log('\n📊 Processed campaign data:');
-            monthData.data.campaigns.forEach((campaign, index) => {
-              console.log(`   ${index + 1}. ${campaign.campaign_name}`);
-              console.log(`      Spend: ${campaign.spend} zł`);
-              console.log(`      Impressions: ${campaign.impressions}`);
-              console.log(`      Clicks: ${campaign.clicks}`);
-              console.log(`      CTR: ${campaign.ctr}%`);
-            });
-          }
-        } else {
-          console.log(`   ⚠️  No campaigns in fetch-live-data response`);
-          console.log(`   Response:`, monthData);
-        }
-      } else {
-        const errorData = await apiResponse.json().catch(() => ({}));
-        console.log(`   ❌ fetch-live-data failed: ${apiResponse.status} - ${errorData.error || 'Unknown error'}`);
+      
+      if (data.data) {
+        console.log('📊 Ad accounts found:', data.data.map(account => ({
+          id: account.id,
+          name: account.name,
+          account_id: account.account_id,
+          account_status: account.account_status
+        })));
       }
-    } catch (apiError) {
-      console.log(`   ❌ fetch-live-data call failed: ${apiError.message}`);
+    } catch (error) {
+      console.log('❌ Error getting ad accounts:', error.message);
     }
 
-    console.log('\n🎉 Meta API direct test completed!');
-    console.log('\n📋 Analysis:');
-    console.log('   - If Meta API returns real data → PDF should show real data');
-    console.log('   - If Meta API returns no data → PDF will show demo data');
-    console.log('   - If Meta API returns errors → Check token permissions');
+    // 4. Test getting campaigns for the specific ad account
+    console.log('\n📊 Step 4: Testing campaigns...');
+    
+    const adAccountId = client.ad_account_id.startsWith('act_') 
+      ? client.ad_account_id.substring(4)
+      : client.ad_account_id;
+    
+    const campaignsUrl = `https://graph.facebook.com/v18.0/act_${adAccountId}/campaigns?access_token=${client.meta_access_token}&fields=id,name,status,objective,created_time,start_time,stop_time`;
+    
+    try {
+      const response = await fetch(campaignsUrl);
+      const data = await response.json();
+      
+      console.log('📡 Campaigns response:', {
+        status: response.status,
+        hasError: !!data.error,
+        error: data.error,
+        campaignsCount: data.data?.length || 0
+      });
+      
+      if (data.data) {
+        console.log('📊 Campaigns found:', data.data.map(campaign => ({
+          id: campaign.id,
+          name: campaign.name,
+          status: campaign.status,
+          objective: campaign.objective,
+          created_time: campaign.created_time,
+          start_time: campaign.start_time,
+          stop_time: campaign.stop_time
+        })));
+      }
+    } catch (error) {
+      console.log('❌ Error getting campaigns:', error.message);
+    }
+
+    // 5. Test getting insights for a specific month
+    console.log('\n📈 Step 5: Testing insights...');
+    
+    const insightsUrl = `https://graph.facebook.com/v18.0/act_${adAccountId}/insights?access_token=${client.meta_access_token}&fields=campaign_id,campaign_name,impressions,clicks,spend,conversions&time_range={"since":"2024-01-01","until":"2024-01-31"}&level=campaign`;
+    
+    try {
+      const response = await fetch(insightsUrl);
+      const data = await response.json();
+      
+      console.log('📡 Insights response:', {
+        status: response.status,
+        hasError: !!data.error,
+        error: data.error,
+        insightsCount: data.data?.length || 0
+      });
+      
+      if (data.data) {
+        console.log('📊 Insights found:', data.data.map(insight => ({
+          campaign_id: insight.campaign_id,
+          campaign_name: insight.campaign_name,
+          impressions: insight.impressions,
+          clicks: insight.clicks,
+          spend: insight.spend,
+          conversions: insight.conversions
+        })));
+      }
+    } catch (error) {
+      console.log('❌ Error getting insights:', error.message);
+    }
+
+    console.log('\n🔍 Summary:');
+    console.log('- Check if Meta API token is valid');
+    console.log('- Check if ad account exists and is accessible');
+    console.log('- Check if campaigns exist in the ad account');
+    console.log('- Check if campaigns have data for the specified date range');
 
   } catch (error) {
-    console.error('\n❌ Test failed:', error.message);
+    console.error('❌ Test failed:', error);
   }
 }
 
-// Run the test
-testMetaAPIDirect().catch(console.error); 
+testMetaAPIDirect(); 

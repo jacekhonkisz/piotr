@@ -45,8 +45,18 @@ export async function POST(request: NextRequest) {
       .single();
       
     if (clientError || !clientData) {
+      console.error('❌ Client not found:', { clientId, error: clientError });
       return createErrorResponse('Client not found', 404);
     }
+    
+    console.log('✅ Client found:', {
+      id: clientData.id,
+      name: clientData.name,
+      email: clientData.email,
+      hasAdAccountId: !!clientData.ad_account_id,
+      hasMetaToken: !!clientData.meta_access_token,
+      adAccountId: clientData.ad_account_id
+    });
     
     // Check if user can access this client
     if (!canAccessClient(user, clientData.email)) {
@@ -65,13 +75,41 @@ export async function POST(request: NextRequest) {
       startDate = dateRange.start;
       endDate = dateRange.end;
       
-      // Validate date range
-      const validation = validateDateRange(startDate, endDate);
-      if (!validation.isValid) {
-        return NextResponse.json({ 
-          error: 'Invalid date range', 
-          details: validation.error
-        }, { status: 400 });
+      console.log('📅 Received date range:', { startDate, endDate });
+      
+      // Check if this is an all-time request (very old start date)
+      const startDateObj = new Date(startDate);
+      const currentDate = new Date();
+      const maxPastDate = new Date();
+      maxPastDate.setMonth(maxPastDate.getMonth() - 37); // Meta API limit
+      
+      const isAllTimeRequest = startDateObj.getFullYear() <= 2010;
+      const isWithinAPILimits = startDateObj >= maxPastDate;
+      
+      console.log('📅 Request type:', { 
+        isAllTimeRequest, 
+        startYear: startDateObj.getFullYear(),
+        isWithinAPILimits,
+        maxPastDate: maxPastDate.toISOString().split('T')[0],
+        requestedStartDate: startDate
+      });
+      
+      // Only validate date range for requests within API limits
+      if (isWithinAPILimits) {
+        const validation = validateDateRange(startDate, endDate);
+        console.log('📅 Date range validation result:', validation);
+        
+        if (!validation.isValid) {
+          console.log('❌ Date range validation failed:', validation.error);
+          return NextResponse.json({ 
+            error: 'Invalid date range', 
+            details: validation.error
+          }, { status: 400 });
+        }
+      } else if (isAllTimeRequest) {
+        console.log('📅 All-time request detected, skipping date range validation');
+      } else {
+        console.log('⚠️ Date range exceeds Meta API limits (37 months), but proceeding anyway');
       }
       
       // Analyze date range
@@ -288,6 +326,13 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     const responseTime = Date.now() - startTime;
+    
+    console.error('❌ Live data fetch failed with error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      responseTime,
+      errorType: error?.constructor?.name
+    });
     
     logger.error('Live data fetch failed', { 
       error: error instanceof Error ? error.message : 'Unknown error',

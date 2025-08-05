@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -12,7 +12,9 @@ import {
   Zap,
   Award,
   Calendar,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import AnimatedCounter from './AnimatedCounter';
 
@@ -45,7 +47,7 @@ interface WeeklyReport {
 
 interface WeeklyReportViewProps {
   reports: { [key: string]: WeeklyReport };
-  viewType?: 'monthly' | 'weekly'; // Add viewType prop
+  viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom'; // Add viewType prop
 }
 
 const formatCurrency = (amount: number) => {
@@ -67,7 +69,15 @@ const formatNumber = (num: number) => {
 };
 
 const formatDate = (dateString: string) => {
+  if (!dateString || dateString.trim() === '') {
+    return 'Brak daty';
+  }
+  
   const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    return 'Nieprawidłowa data';
+  }
+  
   return date.toLocaleDateString('pl-PL', {
     weekday: 'short',
     year: 'numeric',
@@ -101,7 +111,15 @@ const getWeekNumber = (date: Date) => {
 };
 
 export default function WeeklyReportView({ reports, viewType = 'weekly' }: WeeklyReportViewProps) {
+  const [expandedReports, setExpandedReports] = useState<{ [key: string]: boolean }>({});
   const reportIds = Object.keys(reports);
+
+  const toggleReportExpansion = (reportId: string) => {
+    setExpandedReports(prev => ({
+      ...prev,
+      [reportId]: !prev[reportId]
+    }));
+  };
   
   if (reportIds.length === 0) {
     return (
@@ -146,6 +164,24 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         const startDate = new Date(report.date_range_start);
         const weekNumber = getWeekNumber(startDate);
 
+        // Sort campaigns by clicks (descending) and separate top 5 from the rest
+        const sortedCampaigns = [...campaigns].sort((a, b) => (b.clicks || 0) - (a.clicks || 0));
+        const top5Campaigns = sortedCampaigns.slice(0, 5);
+        const remainingCampaigns = sortedCampaigns.slice(5);
+        const isExpanded = expandedReports[reportId] || false;
+
+        // Determine report title based on report ID and view type
+        let reportTitle = 'Raport';
+        if (reportId === 'all-time') {
+          reportTitle = 'Raport - Cały Okres';
+        } else if (reportId === 'custom') {
+          reportTitle = 'Raport - Własny Zakres';
+        } else if (viewType === 'monthly') {
+          reportTitle = 'Raport - Miesiąc';
+        } else {
+          reportTitle = `Raport - ${getWeekDateRange(startDate.getFullYear(), weekNumber)}`;
+        }
+
         return (
           <div key={reportId} className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
             {/* Header */}
@@ -157,7 +193,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold">
-                      Raport - {viewType === 'monthly' ? 'Miesiąc' : getWeekDateRange(startDate.getFullYear(), weekNumber)}
+                      {reportTitle}
                     </h2>
                     <p className="text-blue-100 text-lg">
                       {formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}
@@ -307,7 +343,9 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                 <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
                   <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
                     <h3 className="text-lg font-semibold text-gray-900">Kampanie Tygodniowe</h3>
-                    <p className="text-sm text-gray-600">{campaigns.length} aktywnych kampanii</p>
+                    <p className="text-sm text-gray-600">
+                      Top 5 kampanii według kliknięć • {campaigns.length} aktywnych kampanii
+                    </p>
                   </div>
                   
                   <div className="overflow-x-auto">
@@ -338,18 +376,31 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {campaigns.map((campaign) => {
+                        {/* Top 5 Campaigns */}
+                        {top5Campaigns.map((campaign, index) => {
                           const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
                           const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
                           
                           return (
                             <tr key={`${reportId}-${campaign.campaign_id}`} className="hover:bg-gray-50">
                               <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {campaign.campaign_name}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {campaign.objective || 'N/A'}
+                                <div className="flex items-center space-x-3">
+                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold ${
+                                    index === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
+                                    index === 1 ? 'bg-gradient-to-r from-gray-300 to-gray-400' :
+                                    index === 2 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
+                                    'bg-gradient-to-r from-blue-100 to-blue-200 text-blue-700'
+                                  }`}>
+                                    #{index + 1}
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {campaign.campaign_name}
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                      {campaign.objective || 'N/A'}
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -358,7 +409,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {formatNumber(campaign.impressions)}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
                                 {formatNumber(campaign.clicks)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -373,6 +424,74 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                             </tr>
                           );
                         })}
+
+                        {/* Remaining Campaigns (Collapsible) */}
+                        {remainingCampaigns.length > 0 && (
+                          <>
+                            {/* Collapsible Section */}
+                            {isExpanded && remainingCampaigns.map((campaign) => {
+                              const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
+                              const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
+                              
+                              return (
+                                <tr key={`${reportId}-${campaign.campaign_id}`} className="hover:bg-gray-50 bg-gray-25">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex items-center space-x-3">
+                                      <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600 text-sm font-bold">
+                                        •
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-medium text-gray-700">
+                                          {campaign.campaign_name}
+                                        </div>
+                                        <div className="text-sm text-gray-500">
+                                          {campaign.objective || 'N/A'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {formatCurrency(campaign.spend)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {formatNumber(campaign.impressions)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {formatNumber(campaign.clicks)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {formatNumber(campaign.conversions)}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {ctr.toFixed(2)}%
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {formatCurrency(cpc)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* Toggle Button */}
+                            <tr className="bg-gray-50 hover:bg-gray-100 cursor-pointer" onClick={() => toggleReportExpansion(reportId)}>
+                              <td colSpan={7} className="px-6 py-4">
+                                <div className="flex items-center justify-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors">
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="h-4 w-4" />
+                                      <span className="text-sm font-medium">Ukryj pozostałe kampanie ({remainingCampaigns.length})</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="h-4 w-4" />
+                                      <span className="text-sm font-medium">Pokaż wszystkie kampanie ({remainingCampaigns.length} więcej)</span>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          </>
+                        )}
                       </tbody>
                     </table>
                   </div>

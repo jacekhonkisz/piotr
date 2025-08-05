@@ -262,8 +262,8 @@ async function handleBulkGenerateReports(clientIds: string[], results: any) {
 
       // Generate report
       const metaService = new MetaAPIService(client.meta_access_token);
-      const endDate = new Date().toISOString().split('T')[0];
-      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const endDate = new Date().toISOString().split('T')[0] || '';
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] || '';
       
       if (!client.ad_account_id) {
         results.failed.push({ clientId, error: 'Client has no ad account ID' });

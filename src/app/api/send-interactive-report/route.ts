@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const { clientId, dateRange, emailRecipient, emailSubject, emailMessage } = await request.json();
+    const { clientId, dateRange, emailRecipient, emailSubject } = await request.json();
 
     if (!clientId || !dateRange) {
       return NextResponse.json({ error: 'Client ID and date range are required' }, { status: 400 });

@@ -589,6 +589,12 @@ export class MetaAPIService {
         throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
       }
 
+      // Handle case where no data is returned (common for large date ranges with no campaigns)
+      if (!data.data || data.data.length === 0) {
+        console.log('⚠️ No campaign data returned from Meta API - this is normal for date ranges with no active campaigns');
+        return [];
+      }
+
       if (data.data) {
         const insights = data.data.map(insight => ({
           campaign_id: insight.campaign_id || 'unknown',

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { generatePassword, generateUsername } from '../../../lib/user-credentials';
+import { generatePassword } from '../../../lib/user-credentials';
 import { MetaAPIService } from '../../../lib/meta-api';
 
 const supabase = createClient(

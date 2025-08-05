@@ -190,7 +190,7 @@ export async function PUT(
 
     // If email is being changed, check for conflicts
     if (requestData.email && requestData.email !== existingClient.email) {
-      const { data: emailConflict, error: emailError } = await supabase
+      const { data: emailConflict } = await supabase
         .from('clients')
         .select('id')
         .eq('admin_id', user.id)

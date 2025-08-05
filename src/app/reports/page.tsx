@@ -109,8 +109,13 @@ function ReportsPageContent() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
   const [loadingPeriod, setLoadingPeriod] = useState<string | null>(null);
-  const [viewType, setViewType] = useState<'monthly' | 'weekly'>('monthly');
+  const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'all-time' | 'custom'>('monthly');
   const [apiCallInProgress, setApiCallInProgress] = useState(false);
+  const [customDateRange, setCustomDateRange] = useState<{ start: string; end: string }>({
+    start: '',
+    end: ''
+  });
+  const [isGeneratingCustomReport, setIsGeneratingCustomReport] = useState(false);
   const [metaTablesData, setMetaTablesData] = useState<{
     placementPerformance: any[];
     demographicPerformance: any[];
@@ -189,6 +194,497 @@ function ReportsPageContent() {
     }
   };
 
+  // Load all-time data by fetching month by month
+  const loadAllTimeData = async () => {
+    console.log('🚀 loadAllTimeData function called!');
+    
+    if (!client) {
+      console.log('⚠️ Client not loaded yet, cannot load all-time data');
+      return;
+    }
+
+    console.log('📊 Loading all-time data for client:', {
+      id: client.id,
+      name: client.name,
+      email: client.email,
+      adAccountId: client.ad_account_id,
+      hasMetaToken: !!client.meta_access_token,
+      tokenLength: client.meta_access_token?.length || 0
+    });
+    
+    // Prevent duplicate calls (but allow all-time to override)
+    if (loadingRef.current || apiCallInProgress) {
+      console.log('⚠️ Already loading data, but this is all-time request - proceeding anyway');
+      // For all-time requests, we want to proceed even if other data is loading
+      // Reset the loading state to allow all-time to proceed
+      loadingRef.current = false;
+      setApiCallInProgress(false);
+    }
+
+    try {
+      loadingRef.current = true;
+      setApiCallInProgress(true);
+      setLoadingPeriod('all-time');
+      setError(null); // Clear any previous errors
+      
+      // Get session for API calls
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No access token available');
+      }
+
+      // For all-time, we need to determine the effective start date
+      // First, get campaign creation dates to find the earliest campaign
+      console.log('🔍 Getting campaign creation dates to determine effective start date...');
+      
+      const adAccountId = client.ad_account_id.startsWith('act_') 
+        ? client.ad_account_id.substring(4)
+        : client.ad_account_id;
+      
+      // Get campaigns to find earliest creation date with better error handling
+      let earliestCampaignDate = null;
+      let campaignsData = null;
+      
+      try {
+        const campaignsResponse = await fetch(`https://graph.facebook.com/v18.0/act_${adAccountId}/campaigns?access_token=${client.meta_access_token}&fields=id,name,created_time,status`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        if (campaignsResponse.ok) {
+          campaignsData = await campaignsResponse.json();
+          if (campaignsData.data && campaignsData.data.length > 0) {
+            console.log(`📊 Found ${campaignsData.data.length} campaigns in account`);
+            
+            // Find the earliest campaign creation date
+            const campaignDates = campaignsData.data.map((c: any) => new Date(c.created_time));
+            earliestCampaignDate = new Date(Math.min(...campaignDates));
+            console.log(`📅 Earliest campaign created: ${earliestCampaignDate.toISOString().split('T')[0]}`);
+            
+            // Log campaign details for debugging
+            campaignsData.data.forEach((campaign: any) => {
+              const createdDate = new Date(campaign.created_time);
+              console.log(`📊 Campaign: ${campaign.name} (${campaign.id}) - Created: ${createdDate.toISOString().split('T')[0]}, Status: ${campaign.status}`);
+            });
+          } else {
+            console.log('⚠️ No campaigns found in account');
+          }
+        } else {
+          console.log(`⚠️ Failed to fetch campaigns: ${campaignsResponse.status} ${campaignsResponse.statusText}`);
+        }
+      } catch (campaignError) {
+        console.log('⚠️ Error fetching campaigns:', campaignError);
+        // Continue with fallback logic
+      }
+
+      // Calculate effective start date with improved logic
+      const currentDate = new Date();
+      const maxPastDate = new Date();
+      maxPastDate.setMonth(maxPastDate.getMonth() - 37); // Meta API limit: 37 months
+      
+      // Get client's business start date (when they were created in the system)
+      const clientStartDate = new Date(client.created_at);
+      console.log(`📅 Client business start date: ${clientStartDate.toISOString().split('T')[0]}`);
+      console.log(`📅 Meta API limit date: ${maxPastDate.toISOString().split('T')[0]}`);
+      
+      // Use the earliest of: campaign creation date, client start date, or API limit date
+      let effectiveStartDate;
+      if (earliestCampaignDate) {
+        // Use the earliest campaign date, but respect API limits
+        effectiveStartDate = earliestCampaignDate > maxPastDate ? earliestCampaignDate : maxPastDate;
+        console.log(`📅 Using campaign-based start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
+      } else {
+        // Fallback to client start date
+        effectiveStartDate = clientStartDate > maxPastDate ? clientStartDate : maxPastDate;
+        console.log(`📅 Using client-based start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
+      }
+      
+      console.log(`📅 Effective start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
+      
+      const startYear = effectiveStartDate.getFullYear();
+      const startMonth = effectiveStartDate.getMonth();
+      const startDay = effectiveStartDate.getDate();
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth();
+      const currentDay = currentDate.getDate();
+      
+      console.log(`📅 Business perspective: Fetching from earliest campaign creation date`);
+      console.log(`📅 API limitation: Meta API only allows data from last 37 months`);
+      console.log(`📅 Fetching all-time data from ${startYear}-${String(startMonth + 1).padStart(2, '0')}-${String(startDay).padStart(2, '0')} to ${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')} (month by month)`);
+      
+      let allCampaigns: Campaign[] = [];
+      let totalMonths = 0;
+      let processedMonths = 0;
+      
+      // Calculate total months to process
+      for (let year = startYear; year <= currentYear; year++) {
+        const monthEnd = year === currentYear ? currentMonth : 11;
+        const monthStart = year === startYear ? startMonth : 0;
+        totalMonths += monthEnd - monthStart + 1;
+      }
+      
+      console.log(`📊 Total months to process: ${totalMonths}`);
+      
+      // Format dates properly for API
+      const formatDateForAPI = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      
+      // Fetch data month by month
+      for (let year = startYear; year <= currentYear; year++) {
+        const monthEnd = year === currentYear ? currentMonth : 11;
+        const monthStart = year === startYear ? startMonth : 0;
+        
+        for (let month = monthStart; month <= monthEnd; month++) {
+          processedMonths++;
+          console.log(`📅 Processing ${year}-${String(month + 1).padStart(2, '0')} (${processedMonths}/${totalMonths})`);
+          
+          try {
+            // Use exact dates for first and last months, full months for others
+            let startDay = '01';
+            let endDay = String(new Date(year, month + 1, 0).getDate());
+            
+            // For the first month, use the exact day from effective start date
+            if (year === startYear && month === startMonth) {
+              startDay = String(startDay).padStart(2, '0');
+            }
+            
+            // For the last month, use the exact day from current date
+            if (year === currentYear && month === currentMonth) {
+              endDay = String(currentDay).padStart(2, '0');
+            }
+            
+            const requestBody = {
+              dateRange: {
+                start: `${year}-${String(month + 1).padStart(2, '0')}-${startDay}`,
+                end: `${year}-${String(month + 1).padStart(2, '0')}-${endDay}`
+              },
+              clientId: client.id
+            };
+            
+            console.log(`📡 Making API call for ${year}-${String(month + 1).padStart(2, '0')}:`, requestBody);
+            
+            const response = await fetch('/api/fetch-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify(requestBody)
+            });
+
+            console.log(`📡 Response for ${year}-${String(month + 1).padStart(2, '0')}:`, {
+              status: response.status,
+              ok: response.ok,
+              statusText: response.statusText
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              console.log(`📊 Data for ${year}-${String(month + 1).padStart(2, '0')}:`, {
+                hasData: !!data,
+                hasDataProperty: !!data.data,
+                campaignsInData: data.data?.campaigns?.length || 0,
+                campaignsDirect: data.campaigns?.length || 0,
+                dataKeys: Object.keys(data || {})
+              });
+              
+              const monthCampaigns = data.data?.campaigns || data.campaigns || [];
+              
+              if (monthCampaigns.length > 0) {
+                console.log(`✅ Found ${monthCampaigns.length} campaigns for ${year}-${String(month + 1).padStart(2, '0')}`);
+                
+                const campaigns: Campaign[] = monthCampaigns.map((campaign: any, index: number) => {
+                  const transformedCampaign = {
+                    id: `${campaign.campaign_id}-${year}-${String(month + 1).padStart(2, '0')}` || `campaign-${index}-${year}-${month}`,
+                    campaign_id: campaign.campaign_id || '',
+                    campaign_name: campaign.campaign_name || 'Unknown Campaign',
+                    spend: parseFloat(campaign.spend || '0'),
+                    impressions: parseInt(campaign.impressions || '0'),
+                    clicks: parseInt(campaign.clicks || '0'),
+                    conversions: parseInt(campaign.conversions || '0'),
+                    ctr: parseFloat(campaign.ctr || '0'),
+                    cpc: parseFloat(campaign.cpc || '0'),
+                    cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+                    frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+                    reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+                    relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+                    landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+                    ad_type: campaign.ad_type || undefined,
+                    objective: campaign.objective || undefined
+                  };
+                  
+                  console.log(`📊 Transformed campaign ${index + 1}:`, {
+                    original: campaign,
+                    transformed: transformedCampaign,
+                    hasSpend: transformedCampaign.spend > 0,
+                    hasImpressions: transformedCampaign.impressions > 0,
+                    hasClicks: transformedCampaign.clicks > 0
+                  });
+                  
+                  return transformedCampaign;
+                });
+                
+                allCampaigns.push(...campaigns);
+              }
+            } else {
+              console.log(`⚠️ No data for ${year}-${String(month + 1).padStart(2, '0')}`);
+              try {
+                const errorData = await response.json();
+                console.log(`❌ Error details for ${year}-${String(month + 1).padStart(2, '0')}:`, errorData);
+              } catch (e) {
+                console.log(`❌ Could not parse error response for ${year}-${String(month + 1).padStart(2, '0')}`);
+              }
+            }
+            
+            // Small delay to avoid overwhelming the API
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+          } catch (monthError) {
+            console.log(`⚠️ Error processing ${year}-${String(month + 1).padStart(2, '0')}:`, monthError);
+            // Continue with next month instead of failing completely
+          }
+        }
+      }
+      
+      console.log(`📊 All-time data collection complete. Total campaigns found: ${allCampaigns.length}`);
+      
+      // Remove duplicates based on campaign_id and aggregate data
+      const campaignMap = new Map<string, Campaign>();
+      
+      allCampaigns.forEach(campaign => {
+        const existing = campaignMap.get(campaign.campaign_id);
+        if (existing) {
+          // Aggregate data for the same campaign across different months
+          existing.spend += campaign.spend;
+          existing.impressions += campaign.impressions;
+          existing.clicks += campaign.clicks;
+          existing.conversions += campaign.conversions;
+          // Recalculate metrics
+          existing.ctr = existing.impressions > 0 ? (existing.clicks / existing.impressions) * 100 : 0;
+          existing.cpc = existing.clicks > 0 ? existing.spend / existing.clicks : 0;
+        } else {
+          campaignMap.set(campaign.campaign_id, { ...campaign });
+        }
+      });
+      
+      const uniqueCampaigns = Array.from(campaignMap.values());
+      
+      console.log(`📊 After deduplication and aggregation: ${uniqueCampaigns.length} unique campaigns`);
+      
+      // Calculate totals for validation
+      const totalSpend = uniqueCampaigns.reduce((sum, campaign) => sum + campaign.spend, 0);
+      const totalImpressions = uniqueCampaigns.reduce((sum, campaign) => sum + campaign.impressions, 0);
+      const totalClicks = uniqueCampaigns.reduce((sum, campaign) => sum + campaign.clicks, 0);
+      
+      console.log(`📊 Aggregated totals: ${totalSpend.toFixed(2)} PLN, ${totalImpressions.toLocaleString()} impressions, ${totalClicks.toLocaleString()} clicks`);
+      
+      // Create the all-time report with improved validation
+      const report: MonthlyReport | WeeklyReport = {
+        id: 'all-time',
+        date_range_start: formatDateForAPI(effectiveStartDate),
+        date_range_end: formatDateForAPI(currentDate),
+        generated_at: new Date().toISOString(),
+        campaigns: uniqueCampaigns
+      };
+
+      console.log('💾 Setting all-time report:', report);
+      console.log('📊 Report details:', {
+        id: report.id,
+        date_range_start: report.date_range_start,
+        date_range_end: report.date_range_end,
+        campaignsCount: report.campaigns.length,
+        totalSpend: totalSpend.toFixed(2),
+        totalImpressions: totalImpressions.toLocaleString(),
+        totalClicks: totalClicks.toLocaleString(),
+        hasValidDates: !!(report.date_range_start && report.date_range_end)
+      });
+      
+      // Validate that we have meaningful data
+      if (uniqueCampaigns.length === 0) {
+        console.log('⚠️ No campaigns found in the date range - this might be normal if no campaigns were active');
+      } else if (totalSpend === 0) {
+        console.log('⚠️ Campaigns found but no spend data - this might indicate campaigns were paused or had no activity');
+      } else {
+        console.log('✅ Successfully loaded all-time data with meaningful spend information');
+      }
+      
+      setReports(prev => {
+        const newReports = { ...prev, 'all-time': report };
+        console.log('💾 Updated reports state:', newReports);
+        return newReports;
+      });
+
+    } catch (error) {
+      console.error('❌ Error loading all-time data:', error);
+      
+      // Show a more user-friendly error message with specific guidance
+      let errorMessage = 'Failed to load all-time data';
+      let errorDetails = '';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Meta API Error')) {
+          errorMessage = 'Meta API error: Unable to fetch campaign data';
+          errorDetails = 'This might be due to token permissions, API limits, or no campaigns in the date range.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out: Meta API is taking too long to respond';
+          errorDetails = 'Please try again. If the problem persists, the date range might be too large.';
+        } else if (error.message.includes('No access token')) {
+          errorMessage = 'Authentication error: No access token available';
+          errorDetails = 'Please refresh the page and try again.';
+        } else {
+          errorMessage = `Error: ${error.message}`;
+          errorDetails = 'Please check your internet connection and try again.';
+        }
+      }
+      
+      console.log(`❌ Error details: ${errorMessage} - ${errorDetails}`);
+      setError(`${errorMessage}. ${errorDetails}`);
+      
+      // Show empty report instead of completely failing
+      const emptyReport: MonthlyReport | WeeklyReport = {
+        id: 'all-time',
+        date_range_start: '',
+        date_range_end: '',
+        generated_at: new Date().toISOString(),
+        campaigns: []
+      };
+      
+      console.log('💾 Setting empty all-time report due to error');
+      setReports(prev => ({ ...prev, 'all-time': emptyReport }));
+    } finally {
+      loadingRef.current = false;
+      setApiCallInProgress(false);
+      setLoadingPeriod(null);
+    }
+  };
+
+  // Load custom date range data
+  const loadCustomDateData = async (startDate: string, endDate: string) => {
+    if (!client) {
+      console.log('⚠️ Client not loaded yet, cannot load custom date data');
+      return;
+    }
+
+    console.log('📊 Loading custom date data:', { startDate, endDate });
+    
+    // Prevent duplicate calls
+    if (loadingRef.current || apiCallInProgress) {
+      console.log('⚠️ Already loading data, skipping duplicate call');
+      return;
+    }
+
+    try {
+      loadingRef.current = true;
+      setApiCallInProgress(true);
+      setLoadingPeriod('custom');
+      setIsGeneratingCustomReport(true);
+      
+      // Get session for API calls
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No access token available');
+      }
+
+      const requestBody = {
+        dateRange: {
+          start: startDate,
+          end: endDate
+        },
+        clientId: client.id
+      };
+      
+      console.log('📡 Making custom date API call with request body:', requestBody);
+      
+      const response = await fetch('/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to load custom date data');
+      }
+
+      const data = await response.json();
+      const rawCampaigns = data.data?.campaigns || data.campaigns || [];
+      
+      const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => ({
+        id: campaign.campaign_id || `campaign-${index}`,
+        campaign_id: campaign.campaign_id || '',
+        campaign_name: campaign.campaign_name || 'Unknown Campaign',
+        spend: parseFloat(campaign.spend || '0'),
+        impressions: parseInt(campaign.impressions || '0'),
+        clicks: parseInt(campaign.clicks || '0'),
+        conversions: parseInt(campaign.conversions || '0'),
+        ctr: parseFloat(campaign.ctr || '0'),
+        cpc: parseFloat(campaign.cpc || '0'),
+        cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+        frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+        reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+        relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+        landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+        ad_type: campaign.ad_type || undefined,
+        objective: campaign.objective || undefined
+      }));
+      
+      const report: MonthlyReport | WeeklyReport = {
+        id: 'custom',
+        date_range_start: startDate,
+        date_range_end: endDate,
+        generated_at: new Date().toISOString(),
+        campaigns: campaigns
+      };
+
+      console.log('💾 Setting custom date report:', report);
+      setReports(prev => ({ ...prev, 'custom': report }));
+
+    } catch (error) {
+      console.error('❌ Error loading custom date data:', error);
+      
+      // Show a more user-friendly error message
+      let errorMessage = 'Failed to load custom date data';
+      if (error instanceof Error) {
+        if (error.message.includes('Meta API Error')) {
+          errorMessage = 'Meta API error: The date range might be too large or there might be no data for this period.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Request timed out: The Meta API is taking too long to respond. Please try again.';
+        } else {
+          errorMessage = `Error: ${error.message}`;
+        }
+      }
+      
+      setError(errorMessage);
+      
+      // Show empty report instead of completely failing
+      const emptyReport: MonthlyReport | WeeklyReport = {
+        id: 'custom',
+        date_range_start: startDate,
+        date_range_end: endDate,
+        generated_at: new Date().toISOString(),
+        campaigns: []
+      };
+      
+      console.log('💾 Setting empty custom report due to error');
+      setReports(prev => ({ ...prev, 'custom': emptyReport }));
+    } finally {
+      loadingRef.current = false;
+      setApiCallInProgress(false);
+      setLoadingPeriod(null);
+      setIsGeneratingCustomReport(false);
+    }
+  };
+
   // Get ISO week number
   const getWeekNumber = (date: Date) => {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -199,7 +695,11 @@ function ReportsPageContent() {
   };
 
   // Generate period options based on view type
-  const generatePeriodOptions = (type: 'monthly' | 'weekly') => {
+  const generatePeriodOptions = (type: 'monthly' | 'weekly' | 'all-time' | 'custom') => {
+    if (type === 'all-time' || type === 'custom') {
+      return []; // No periods for all-time and custom
+    }
+    
     const periods: string[] = [];
     // Use current date as reference, but ensure we don't generate future periods
     const currentDate = new Date();
@@ -601,44 +1101,103 @@ function ReportsPageContent() {
   };
 
   // Handle view type change
-  const handleViewTypeChange = (newViewType: 'monthly' | 'weekly') => {
+  const handleViewTypeChange = (newViewType: 'monthly' | 'weekly' | 'all-time' | 'custom') => {
+    console.log('🔄 View type changed to:', newViewType);
     setViewType(newViewType);
     setReports({}); // Clear existing reports
-    const newPeriods = generatePeriodOptions(newViewType);
-    setAvailablePeriods(newPeriods);
     
-    if (newPeriods.length > 0) {
-      const firstPeriod = newPeriods[0];
-      if (firstPeriod) {
-        setSelectedPeriod(firstPeriod);
-        loadPeriodData(firstPeriod);
+    if (newViewType === 'all-time' || newViewType === 'custom') {
+      // For all-time and custom, we don't use periods
+      setAvailablePeriods([]);
+      setSelectedPeriod('');
+      
+      if (newViewType === 'all-time' && client) {
+        console.log('🚀 Calling loadAllTimeData from handleViewTypeChange');
+        // Load all-time data immediately
+        loadAllTimeData();
+      } else if (newViewType === 'all-time' && !client) {
+        console.log('⚠️ Cannot load all-time data: client not loaded');
+      }
+    } else {
+      // For monthly and weekly, use period-based approach
+      const newPeriods = generatePeriodOptions(newViewType);
+      setAvailablePeriods(newPeriods);
+      
+      if (newPeriods.length > 0) {
+        const firstPeriod = newPeriods[0];
+        if (firstPeriod) {
+          setSelectedPeriod(firstPeriod);
+          loadPeriodData(firstPeriod);
+        }
       }
     }
   };
 
   // Handle refresh
   const handleRefresh = () => {
-    if (!selectedPeriod || !client) {
-      console.log('⚠️ Cannot refresh: no period selected or client not loaded');
+    if (!client) {
+      console.log('⚠️ Cannot refresh: client not loaded');
       return;
     }
     
-    console.log('🔄 Refreshing data for period:', selectedPeriod);
-    
-    // Clear existing data for this period
-    setReports(prev => {
-      const newReports = { ...prev };
-      delete newReports[selectedPeriod];
-      return newReports;
-    });
-    
-    // Reset loading state and load fresh data
-    loadingRef.current = false;
-    loadPeriodData(selectedPeriod);
+    if (viewType === 'all-time') {
+      console.log('🔄 Refreshing all-time data');
+      setReports(prev => {
+        const newReports = { ...prev };
+        delete newReports['all-time'];
+        return newReports;
+      });
+      loadingRef.current = false;
+      loadAllTimeData();
+    } else if (viewType === 'custom') {
+      console.log('🔄 Refreshing custom date data');
+      if (customDateRange.start && customDateRange.end) {
+        setReports(prev => {
+          const newReports = { ...prev };
+          delete newReports['custom'];
+          return newReports;
+        });
+        loadingRef.current = false;
+        loadCustomDateData(customDateRange.start, customDateRange.end);
+      } else {
+        setError('Proszę wybrać zakres dat przed odświeżeniem');
+      }
+    } else if (selectedPeriod) {
+      console.log('🔄 Refreshing data for period:', selectedPeriod);
+      
+      // Clear existing data for this period
+      setReports(prev => {
+        const newReports = { ...prev };
+        delete newReports[selectedPeriod];
+        return newReports;
+      });
+      
+      // Reset loading state and load fresh data
+      loadingRef.current = false;
+      loadPeriodData(selectedPeriod);
+    } else {
+      console.log('⚠️ Cannot refresh: no period selected');
+    }
   };
 
   // Get selected report
-  const selectedReport = selectedPeriod ? reports[selectedPeriod] : null;
+  const selectedReport = viewType === 'all-time' 
+    ? reports['all-time'] 
+    : viewType === 'custom' 
+    ? reports['custom'] 
+    : selectedPeriod 
+    ? reports[selectedPeriod] 
+    : null;
+
+  console.log('🔍 Selected report logic:', {
+    viewType,
+    selectedPeriod,
+    allTimeReport: reports['all-time'],
+    customReport: reports['custom'],
+    periodReport: selectedPeriod ? reports[selectedPeriod] : null,
+    finalSelectedReport: selectedReport,
+    allReportKeys: Object.keys(reports)
+  });
 
   // Debug selected report
   console.log('🔍 Selected report debug:', {
@@ -858,7 +1417,12 @@ function ReportsPageContent() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                  Raporty {viewType === 'monthly' ? 'Miesięczne' : 'Tygodniowe'}
+                  Raporty {
+                    viewType === 'monthly' ? 'Miesięczne' :
+                    viewType === 'weekly' ? 'Tygodniowe' :
+                    viewType === 'all-time' ? 'Całego Okresu' :
+                    'Własnego Zakresu'
+                  }
                 </h1>
                 <div className="flex items-center space-x-2 mt-2">
                   <div className="p-1 bg-orange-100 rounded-lg">
@@ -898,7 +1462,7 @@ function ReportsPageContent() {
             </div>
           </div>
 
-          <div className="flex items-center justify-center space-x-6">
+          <div className="flex items-center justify-center space-x-4 flex-wrap">
             <button
               onClick={() => handleViewTypeChange('monthly')}
               className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
@@ -926,11 +1490,131 @@ function ReportsPageContent() {
               {viewType === 'weekly' && <ToggleRight className="w-5 h-5" />}
               {viewType !== 'weekly' && <ToggleLeft className="w-5 h-5" />}
             </button>
+
+            <button
+              onClick={() => handleViewTypeChange('all-time')}
+              className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+                viewType === 'all-time'
+                  ? 'bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+              title="Pokaż dane z całego dostępnego okresu (od 2010 do dziś)"
+            >
+              <BarChart3 className="w-5 h-5" />
+              <span className="font-medium">Cały Okres</span>
+              {viewType === 'all-time' && <ToggleRight className="w-5 h-5" />}
+              {viewType !== 'all-time' && <ToggleLeft className="w-5 h-5" />}
+            </button>
+
+            <button
+              onClick={() => handleViewTypeChange('custom')}
+              className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+                viewType === 'custom'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Calendar className="w-5 h-5" />
+              <span className="font-medium">Własny Zakres</span>
+              {viewType === 'custom' && <ToggleRight className="w-5 h-5" />}
+              {viewType !== 'custom' && <ToggleLeft className="w-5 h-5" />}
+            </button>
           </div>
         </div>
 
-        {/* Period Selector */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
+        {/* All Time Warning */}
+        {viewType === 'all-time' && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertCircle className="h-5 w-5 text-yellow-400" />
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  <strong>Uwaga:</strong> Widok "Cały Okres" pobiera dane od momentu uruchomienia biznesu klienta lub z ostatnich 37 miesięcy (ograniczenie Meta API) - w zależności od tego, która data jest późniejsza.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Date Range Selector */}
+        {viewType === 'custom' && (
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg">
+                  <Calendar className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Własny Zakres Dat</h2>
+                  <p className="text-sm text-gray-500">Wybierz początek i koniec okresu analizy</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data Początkowa</label>
+                <input
+                  type="date"
+                  value={customDateRange.start}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white/80 backdrop-blur-sm shadow-lg"
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Data Końcowa</label>
+                <input
+                  type="date"
+                  value={customDateRange.end}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white/80 backdrop-blur-sm shadow-lg"
+                  max={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div className="flex-shrink-0">
+                <button
+                  onClick={() => {
+                    if (customDateRange.start && customDateRange.end) {
+                      if (new Date(customDateRange.start) >= new Date(customDateRange.end)) {
+                        setError('Data początkowa musi być wcześniejsza niż data końcowa');
+                        return;
+                      }
+                      loadCustomDateData(customDateRange.start, customDateRange.end);
+                    } else {
+                      setError('Proszę wybrać datę początkową i końcową');
+                    }
+                  }}
+                  disabled={!customDateRange.start || !customDateRange.end || isGeneratingCustomReport}
+                  className="flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 transform hover:scale-105"
+                >
+                  {isGeneratingCustomReport ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <BarChart3 className="w-4 h-4" />
+                  )}
+                  <span>{isGeneratingCustomReport ? 'Generowanie...' : 'Generuj Raport'}</span>
+                </button>
+              </div>
+            </div>
+
+            {customDateRange.start && customDateRange.end && (
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  <strong>Wybrany zakres:</strong> {new Date(customDateRange.start).toLocaleDateString('pl-PL')} - {new Date(customDateRange.end).toLocaleDateString('pl-PL')}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Period Selector - Only for Monthly and Weekly */}
+        {(viewType === 'monthly' || viewType === 'weekly') && (
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
@@ -952,7 +1636,7 @@ function ReportsPageContent() {
                 <span>Odśwież</span>
               </button>
               
-              {selectedPeriod && reports[selectedPeriod] && reports[selectedPeriod].campaigns.length > 0 && (
+              {selectedReport && selectedReport.campaigns.length > 0 && (
                 <InteractivePDFButton
                   clientId={client?.id || ''}
                   dateStart={selectedReport?.date_range_start || ''}
@@ -1115,13 +1799,21 @@ function ReportsPageContent() {
             </p>
           </div>
         </div>
+        )}
 
         {/* Report Content */}
         {loadingPeriod && (
           <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-6 border border-white/20">
             <div className="flex items-center justify-center space-x-3">
               <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-200 border-t-blue-600"></div>
-              <p className="text-lg text-gray-600">Ładowanie danych {viewType === 'monthly' ? 'miesięcznych' : 'tygodniowych'}...</p>
+              <p className="text-lg text-gray-600">
+                Ładowanie danych {
+                  viewType === 'monthly' ? 'miesięcznych' :
+                  viewType === 'weekly' ? 'tygodniowych' :
+                  viewType === 'all-time' ? 'całego okresu' :
+                  'własnego zakresu'
+                }...
+              </p>
             </div>
           </div>
         )}
@@ -1129,7 +1821,11 @@ function ReportsPageContent() {
         {selectedReport && !loadingPeriod && (
           <>
             <WeeklyReportView
-              reports={{ [selectedPeriod]: selectedReport }}
+              reports={{ 
+                [viewType === 'all-time' ? 'all-time' : 
+                 viewType === 'custom' ? 'custom' : 
+                 selectedPeriod]: selectedReport 
+              }}
               viewType={viewType}
             />
             
@@ -1147,23 +1843,32 @@ function ReportsPageContent() {
                 </div>
               </div>
               
-              <MetaAdsTables
-                dateStart={selectedReport.date_range_start}
-                dateEnd={selectedReport.date_range_end}
-                clientId={client?.id || ''}
-                onDataLoaded={setMetaTablesData}
-              />
+              {selectedReport.date_range_start && selectedReport.date_range_end && (
+                <MetaAdsTables
+                  dateStart={selectedReport.date_range_start}
+                  dateEnd={selectedReport.date_range_end}
+                  clientId={client?.id || ''}
+                  onDataLoaded={setMetaTablesData}
+                />
+              )}
             </div>
           </>
         )}
 
-        {!selectedReport && !loadingPeriod && selectedPeriod && (
+        {!selectedReport && !loadingPeriod && (
           <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-6 border border-white/20">
             <div className="text-center">
               <DatabaseIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych</h3>
               <p className="text-gray-600">
-                Nie znaleziono danych dla wybranego okresu {viewType === 'monthly' ? 'miesięcznego' : 'tygodniowego'}.
+                {viewType === 'all-time' && 'Nie znaleziono danych dla całego okresu.'}
+                {viewType === 'custom' && 'Nie znaleziono danych dla wybranego zakresu dat.'}
+                {(viewType === 'monthly' || viewType === 'weekly') && selectedPeriod && 
+                  `Nie znaleziono danych dla wybranego okresu ${viewType === 'monthly' ? 'miesięcznego' : 'tygodniowego'}.`
+                }
+                {(viewType === 'monthly' || viewType === 'weekly') && !selectedPeriod && 
+                  'Proszę wybrać okres do analizy.'
+                }
               </p>
             </div>
           </div>
@@ -1249,6 +1954,103 @@ function ReportsPageContent() {
           className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
         >
           Test Connectivity
+        </button>
+        
+        <button
+          onClick={async () => {
+            if (!client) {
+              alert('Client not loaded');
+              return;
+            }
+            
+            console.log('🔍 Testing client Meta API access...');
+            
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session?.access_token) {
+                alert('No session token');
+                return;
+              }
+              
+              // Test with a recent month first
+              const testRequestBody = {
+                dateRange: {
+                  start: '2024-01-01',
+                  end: '2024-01-31'
+                },
+                clientId: client.id
+              };
+              
+              console.log('🔍 Testing with recent data:', testRequestBody);
+              
+              const response = await fetch('/api/fetch-live-data', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify(testRequestBody)
+              });
+              
+              console.log('🔍 Test response status:', response.status);
+              
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                console.error('🔍 Test API error:', errorData);
+                alert(`Test API Error: ${response.status} - ${JSON.stringify(errorData)}`);
+                return;
+              }
+              
+              const data = await response.json();
+              console.log('🔍 Test API response:', data);
+              alert(`Test complete!\nCampaigns found: ${data.data?.campaigns?.length || 0}\nStatus: ${response.status}`);
+              
+            } catch (error) {
+              console.error('🔍 Test error:', error);
+              alert(`Test error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+          }}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
+        >
+          Test Recent Data
+        </button>
+        
+        <button
+          onClick={async () => {
+            if (!client) {
+              alert('Client not loaded');
+              return;
+            }
+            
+            console.log('🔍 Testing all-time function directly...');
+            loadAllTimeData();
+          }}
+          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
+        >
+          Test All-Time
+        </button>
+        
+        <button
+          onClick={() => {
+            const currentDate = new Date();
+            const maxPastDate = new Date();
+            maxPastDate.setMonth(maxPastDate.getMonth() - 37);
+            
+            console.log('📅 Current date:', currentDate.toISOString().split('T')[0]);
+            console.log('📅 37 months ago:', maxPastDate.toISOString().split('T')[0]);
+            console.log('📅 Meta API limit info:', {
+              currentDate: currentDate.toISOString().split('T')[0],
+              maxPastDate: maxPastDate.toISOString().split('T')[0],
+              monthsBack: 37,
+              year: maxPastDate.getFullYear(),
+              month: maxPastDate.getMonth() + 1
+            });
+            
+            alert(`Meta API Limit:\nCurrent: ${currentDate.toISOString().split('T')[0]}\n37 months ago: ${maxPastDate.toISOString().split('T')[0]}`);
+          }}
+          className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
+        >
+          Show API Limits
         </button>
       </div>
     </div>
