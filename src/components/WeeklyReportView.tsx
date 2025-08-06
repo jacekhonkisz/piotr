@@ -3,29 +3,13 @@
 import React, { useState } from 'react';
 import { 
   BarChart3, 
-  TrendingUp, 
-  MousePointer,
-  Eye,
-  Target,
-  DollarSign,
-  Activity,
-  Zap,
-  Award,
-  Calendar,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Phone,
-  Mail,
-  FileText,
-  ShoppingCart,
-  Users,
   ArrowUpRight,
   ArrowDownRight,
   HelpCircle,
-  RefreshCw
+  Calendar,
+  Clock
 } from 'lucide-react';
-import AnimatedCounter from './AnimatedCounter';
+
 import ConversionTrackingSetup from './ConversionTrackingSetup';
 
 interface Campaign {
@@ -231,16 +215,8 @@ const MetricCard = ({
 };
 
 export default function WeeklyReportView({ reports, viewType = 'weekly' }: WeeklyReportViewProps) {
-  const [expandedReports, setExpandedReports] = useState<{ [key: string]: boolean }>({});
   const [showSetupModal, setShowSetupModal] = useState(false);
   const reportIds = Object.keys(reports);
-
-  const toggleReportExpansion = (reportId: string) => {
-    setExpandedReports(prev => ({
-      ...prev,
-      [reportId]: !prev[reportId]
-    }));
-  };
   
   if (reportIds.length === 0) {
     return (
@@ -409,13 +385,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   subtitle="Cost per mille"
                   tooltip="Koszt za 1000 wyświetleń"
                 />
-                
-                <MetricCard
-                  title="Status"
-                  value={campaignTotals.status}
-                  subtitle="Status kampanii"
-                  tooltip="Aktualny status kampanii reklamowych"
-                />
               </div>
             </section>
 
@@ -579,9 +548,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                         <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
                           CPC
                         </th>
-                        <th className="text-center py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Status
-                        </th>
                       </tr>
                     </thead>
                     <tbody style={{ backgroundColor: '#FFFFFF' }}>
@@ -643,24 +609,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                             </td>
                             <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatCurrency(cpc)}
-                            </td>
-                            <td className="py-4 px-5 text-center">
-                              <span 
-                                className="inline-flex px-2 py-1 text-xs rounded-full"
-                                style={{
-                                  backgroundColor: 
-                                    campaign.status === 'ACTIVE' ? '#D1FAE5' :
-                                    campaign.status === 'PAUSED' ? '#FEF3C7' :
-                                    '#F3F4F6',
-                                  color:
-                                    campaign.status === 'ACTIVE' ? '#065F46' :
-                                    campaign.status === 'PAUSED' ? '#92400E' :
-                                    '#374151',
-                                  fontWeight: 500
-                                }}
-                              >
-                                {campaign.status || 'UNKNOWN'}
-                              </span>
                             </td>
                           </tr>
                         );

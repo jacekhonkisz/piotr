@@ -15,8 +15,6 @@ import {
   RefreshCw,
   ArrowLeft,
   Clock,
-  ArrowUp,
-  ArrowDown,
   CheckCircle,
   XCircle,
   AlertCircle
@@ -423,9 +421,6 @@ export default function IndividualReportPage() {
                         Campaign
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Spend
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -453,14 +448,6 @@ export default function IndividualReportPage() {
                             <div className="text-sm text-gray-500">
                               {campaign.campaign_id}
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            {getStatusIcon(campaign.status || 'UNKNOWN')}
-                            <span className={`ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(campaign.status || 'UNKNOWN')}`}>
-                              {campaign.status || 'UNKNOWN'}
-                            </span>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

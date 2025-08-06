@@ -614,6 +614,8 @@ export class MetaAPIService {
       }
 
       if (data.data) {
+
+
         const insights = data.data.map(insight => {
           // Parse conversion tracking data from actions
           let click_to_call = 0;
@@ -682,7 +684,7 @@ export class MetaAPIService {
             ...(insight.cpp && { cpp: parseFloat(insight.cpp) }),
             ...(insight.frequency && { frequency: parseFloat(insight.frequency) }),
             ...(insight.reach && { reach: parseInt(insight.reach) }),
-            ...(insight.status && { status: insight.status }),
+
             ...(insight.cpm && { cpm: parseFloat(insight.cpm) }),
             date_start: insight.date_start || dateStart,
             date_stop: insight.date_stop || dateEnd,

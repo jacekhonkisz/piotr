@@ -13,9 +13,7 @@ import {
   Clock,
   BarChart3,
   TrendingUp,
-  Database as DatabaseIcon,
-  ToggleLeft,
-  ToggleRight
+  Database as DatabaseIcon
 } from 'lucide-react';
 import WeeklyReportView from '../../components/WeeklyReportView';
 import InteractivePDFButton from '../../components/InteractivePDFButton';

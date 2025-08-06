@@ -320,7 +320,6 @@ function generatePDFHTML(reportData: ReportData): string {
                             <th>Clicks</th>
                             <th>CTR</th>
                             <th>CPC</th>
-                            <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -332,9 +331,6 @@ function generatePDFHTML(reportData: ReportData): string {
                                 <td>${formatNumber(campaign.clicks)}</td>
                                 <td>${formatPercentage(campaign.ctr)}</td>
                                 <td>${formatCurrency(campaign.cpc)}</td>
-                                <td class="status-${campaign.status?.toLowerCase() || 'active'}">
-                                    ${campaign.status || 'ACTIVE'}
-                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
