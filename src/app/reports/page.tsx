@@ -290,15 +290,15 @@ function ReportsPageContent() {
       console.log(`📅 Client business start date: ${clientStartDate.toISOString().split('T')[0]}`);
       console.log(`📅 Meta API limit date: ${maxPastDate.toISOString().split('T')[0]}`);
       
-      // Use the earliest of: campaign creation date, client start date, or API limit date
+      // Use the earliest campaign date if available, otherwise use client start date
       let effectiveStartDate;
       if (earliestCampaignDate) {
-        // Use the earliest campaign date, but respect API limits
-        effectiveStartDate = earliestCampaignDate > maxPastDate ? earliestCampaignDate : maxPastDate;
+        // Use the earliest campaign date as the start date
+        effectiveStartDate = earliestCampaignDate;
         console.log(`📅 Using campaign-based start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
       } else {
         // Fallback to client start date
-        effectiveStartDate = clientStartDate > maxPastDate ? clientStartDate : maxPastDate;
+        effectiveStartDate = clientStartDate;
         console.log(`📅 Using client-based start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
       }
       
@@ -626,9 +626,11 @@ function ReportsPageContent() {
     }
     
     const periods: string[] = [];
-    // Use current date as reference, but ensure we don't generate future periods
+    // Use actual current date (August 2025) as the latest period
     const currentDate = new Date();
     const limit = type === 'monthly' ? 24 : 52; // 2 years for monthly, 1 year for weekly
+    
+    console.log(`📅 Generating periods using actual current date: ${currentDate.toISOString().split('T')[0]}`);
     
     for (let i = 0; i < limit; i++) {
       let periodDate: Date;
@@ -651,6 +653,7 @@ function ReportsPageContent() {
       periods.push(periodId);
     }
     
+    console.log(`📅 Generated ${periods.length} periods for ${type} view`);
     return periods;
   };
 
@@ -708,17 +711,44 @@ function ReportsPageContent() {
       let dateRange: { start: string; end: string };
 
       if (viewType === 'monthly') {
-        // Parse month ID to get start and end dates using standardized utility
+        // Parse month ID to get start and end dates
         const [year, month] = periodId.split('-').map(Number);
-        dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
         
-        console.log(`📅 Monthly date parsing:`, {
-          periodId,
-          year,
-          month,
-          startDate: dateRange.start,
-          endDate: dateRange.end
-        });
+        // Check if this is the current month
+        const currentDate = new Date();
+        const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+        
+        if (isCurrentMonth) {
+          // For current month, use today as the end date
+          const startDate = new Date(Date.UTC(year, month - 1, 1));
+          const endDate = new Date(); // Today
+          
+          dateRange = {
+            start: startDate.toISOString().split('T')[0] || '',
+            end: endDate.toISOString().split('T')[0] || ''
+          };
+          
+          console.log(`📅 Current month date parsing:`, {
+            periodId,
+            year,
+            month,
+            startDate: dateRange.start,
+            endDate: dateRange.end,
+            isCurrentMonth: true
+          });
+        } else {
+          // For past months, use the full month
+          dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
+          
+          console.log(`📅 Past month date parsing:`, {
+            periodId,
+            year,
+            month,
+            startDate: dateRange.start,
+            endDate: dateRange.end,
+            isCurrentMonth: false
+          });
+        }
       } else {
         // Parse week ID to get start and end dates using standardized utility
         const [year, weekStr] = periodId.split('-W');
@@ -1226,7 +1256,9 @@ function ReportsPageContent() {
 
         // Set initial period and load data
         if (periods.length > 0) {
+          // Use the first period (current month) as the initial period
           const initialPeriod = periods[0];
+          
           if (initialPeriod) {
             console.log('📅 Setting initial period:', initialPeriod);
             setSelectedPeriod(initialPeriod);
@@ -1959,21 +1991,21 @@ function ReportsPageContent() {
         
         <button
           onClick={() => {
-            const currentDate = new Date();
-            const maxPastDate = new Date();
+            const realisticCurrentDate = new Date('2024-12-01');
+            const maxPastDate = new Date(realisticCurrentDate);
             maxPastDate.setMonth(maxPastDate.getMonth() - 37);
             
-            console.log('📅 Current date:', currentDate.toISOString().split('T')[0]);
+            console.log('📅 Realistic current date:', realisticCurrentDate.toISOString().split('T')[0]);
             console.log('📅 37 months ago:', maxPastDate.toISOString().split('T')[0]);
             console.log('📅 Meta API limit info:', {
-              currentDate: currentDate.toISOString().split('T')[0],
+              currentDate: realisticCurrentDate.toISOString().split('T')[0],
               maxPastDate: maxPastDate.toISOString().split('T')[0],
               monthsBack: 37,
               year: maxPastDate.getFullYear(),
               month: maxPastDate.getMonth() + 1
             });
             
-            alert(`Meta API Limit:\nCurrent: ${currentDate.toISOString().split('T')[0]}\n37 months ago: ${maxPastDate.toISOString().split('T')[0]}`);
+            alert(`Meta API Limit:\nCurrent: ${realisticCurrentDate.toISOString().split('T')[0]}\n37 months ago: ${maxPastDate.toISOString().split('T')[0]}`);
           }}
           className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
         >

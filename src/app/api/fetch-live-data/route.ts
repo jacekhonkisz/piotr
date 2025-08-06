@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       // Check if this is an all-time request (very old start date)
       const startDateObj = new Date(startDate);
       const currentDate = new Date();
-      const maxPastDate = new Date();
+      const maxPastDate = new Date(currentDate);
       maxPastDate.setMonth(maxPastDate.getMonth() - 37); // Meta API limit
       
       const isAllTimeRequest = startDateObj.getFullYear() <= 2010;

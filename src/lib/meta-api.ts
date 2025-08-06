@@ -547,7 +547,6 @@ export class MetaAPIService {
         'cost_per_action_type',
         'cost_per_conversion',
         'conversion_values',
-        'status',
         'cpm',
       ].join(',');
 

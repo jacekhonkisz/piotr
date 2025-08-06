@@ -78,8 +78,9 @@ function isFullMonthRange(start: Date, end: Date): boolean {
  * Generate month boundaries for a given year and month
  */
 export function getMonthBoundaries(year: number, month: number): DateRange {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0); // Last day of the month
+  // Create dates in UTC to avoid timezone issues
+  const startDate = new Date(Date.UTC(year, month - 1, 1));
+  const endDate = new Date(Date.UTC(year, month, 0)); // Last day of the month
   
   return {
     start: formatDateForMetaAPI(startDate),
@@ -92,7 +93,7 @@ export function getMonthBoundaries(year: number, month: number): DateRange {
  */
 export function getWeekBoundaries(startDate: Date): DateRange {
   const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6); // Add 6 days for a 7-day week
+  endDate.setUTCDate(startDate.getUTCDate() + 6); // Add 6 days for a 7-day week
   
   return {
     start: formatDateForMetaAPI(startDate),
@@ -127,7 +128,7 @@ export function validateDateRange(startDate: string, endDate: string): {
     endValid: !isNaN(end.getTime())
   });
   
-  // Use the actual current date (system date) since it's the real current date
+  // Use actual current date for validation
   const currentDate = new Date();
   
   // Check if dates are valid
@@ -157,8 +158,8 @@ export function validateDateRange(startDate: string, endDate: string): {
     return { isValid: false, error: 'End date cannot be in the future' };
   }
   
-  // Check Meta API limits (typically 37 months back)
-  const maxPastDate = new Date();
+  // Check Meta API limits (typically 37 months back) - use actual current date
+  const maxPastDate = new Date(currentDate);
   maxPastDate.setMonth(maxPastDate.getMonth() - 37);
   
   console.log('🔍 Meta API limit check:', {
