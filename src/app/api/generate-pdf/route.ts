@@ -259,8 +259,8 @@ function generatePDFHTML(reportData: ReportData): string {
                 <div class="section-title">Podsumowanie wykonawcze</div>
                 <div class="executive-summary">
                     ${reportData.executiveSummary ? `
-                        <div style="white-space: pre-wrap; line-height: 1.6;">
-                            ${reportData.executiveSummary}
+                        <div style="line-height: 1.6; text-align: left;">
+                            ${reportData.executiveSummary.trim()}
                         </div>
                     ` : `
                         <p>

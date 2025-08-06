@@ -350,9 +350,9 @@ export default function AIExecutiveSummary({
               </div>
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none">
-              <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                {summary.content}
+            <div className="text-gray-700 leading-relaxed text-left" style={{ textIndent: '0', paddingLeft: '0', marginLeft: '0' }}>
+              <div className="whitespace-normal" style={{ textIndent: '0', paddingLeft: '0', marginLeft: '0' }}>
+                {summary.content.trim()}
               </div>
             </div>
           )}

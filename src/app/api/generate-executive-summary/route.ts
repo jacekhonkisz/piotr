@@ -106,6 +106,14 @@ export async function POST(request: NextRequest) {
     // Generate AI summary using OpenAI
     const aiSummary = await generateAISummary(summaryData);
 
+    // If OpenAI failed, return error response
+    if (!aiSummary) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to generate AI summary - OpenAI service unavailable'
+      }, { status: 503 });
+    }
+
     // Save to cache if within retention period (12 months)
     const cacheService = ExecutiveSummaryCacheService.getInstance();
     if (cacheService.isWithinRetentionPeriod(dateRange)) {
@@ -129,7 +137,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateAISummary(data: ExecutiveSummaryData): Promise<string> {
+async function generateAISummary(data: ExecutiveSummaryData): Promise<string | null> {
   try {
     // Format numbers for Polish locale
     const formatCurrency = (amount: number) => {
@@ -177,41 +185,48 @@ async function generateAISummary(data: ExecutiveSummaryData): Promise<string> {
     };
 
     // Prepare the prompt for OpenAI
-    const prompt = `Napisz krótkie podsumowanie miesięczne wyników kampanii Meta Ads dla klienta. Użyj zebranych danych:
+    const prompt = `Napisz miesięczne podsumowanie wyników kampanii Meta Ads w języku polskim.
 
-Dane klienta: ${data.clientName}
+Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy", "zaobserwowaliśmy").
+
+Nie używaj nazwy klienta, firmy ani nazw platformy w tekście podsumowania.
+
+Nie wymyślaj danych ani zdarzeń – opieraj się tylko na dostarczonych liczbach.
+
+Jeśli są dane historyczne (poprzedni miesiąc, rok, 3-miesięczna zmiana), porównaj je rzeczowo (np. "W porównaniu do marca, liczba kliknięć wzrosła o 10%").
+
+Skup się na najważniejszych wskaźnikach: wydatki, wyświetlenia, kliknięcia, CTR, CPC, konwersje, CPA, zmiany miesiąc do miesiąca.
+
+Jeśli nie ma konwersji – zaznacz to krótko i rzeczowo, ewentualnie odnieś się do potencjalnych efektów pośrednich (np. wzrost świadomości marki).
+
+Nie dodawaj żadnych zwrotów grzecznościowych, podziękowań, ani formułek typu "cieszymy się", "dziękujemy" itp.
+
+Nie dopisuj planów na przyszłość, jeśli nie wynikają bezpośrednio z danych (np. "skupimy się na..." tylko jeśli wynika to z analizy spadków/wzrostów).
+
+Tekst ma być spójny, zwięzły, bez zbędnych akapitów czy pustych linii. Nie rozpoczynaj tekstu pustą linią, nie kończ pustą linią. Nie dodawaj żadnych spacji na początku tekstu.
+
+Dane do analizy:
 Okres: ${formatDateRange(data.dateRange.start, data.dateRange.end)}
+Całkowity koszt reklam: ${formatCurrency(data.totalSpend)}
+Liczba wyświetleń: ${formatNumber(data.totalImpressions)}
+Liczba kliknięć: ${formatNumber(data.totalClicks)}
+CTR: ${formatPercentage(data.averageCtr)}
+CPC: ${formatCurrency(data.averageCpc)}
+Liczba konwersji: ${formatNumber(data.totalConversions)}
+CPA: ${formatCurrency(data.averageCpa)}
 
-Metryki:
-- Całkowity koszt reklam: ${formatCurrency(data.totalSpend)}
-- Liczba wyświetleń: ${formatNumber(data.totalImpressions)}
-- Liczba kliknięć: ${formatNumber(data.totalClicks)}
-- Liczba konwersji: ${formatNumber(data.totalConversions)}
-- Średni CTR: ${formatPercentage(data.averageCtr)}
-- Średni CPC: ${formatCurrency(data.averageCpc)}
-- Średni CPA: ${formatCurrency(data.averageCpa)}
+${data.reservations ? `Liczba rezerwacji: ${formatNumber(data.reservations)}` : ''}
+${data.reservationValue ? `Wartość rezerwacji: ${formatCurrency(data.reservationValue)}` : ''}
+${data.roas ? `ROAS: ${formatPercentage(data.roas)}` : ''}
+${data.microConversions ? `Liczba mikrokonwersji: ${formatNumber(data.microConversions)}` : ''}
+${data.costPerReservation ? `Koszt pozyskania rezerwacji: ${formatCurrency(data.costPerReservation)}` : ''}
 
-${data.reservations ? `- Liczba rezerwacji: ${formatNumber(data.reservations)}` : ''}
-${data.reservationValue ? `- Wartość rezerwacji: ${formatCurrency(data.reservationValue)}` : ''}
-${data.roas ? `- ROAS: ${formatPercentage(data.roas)}` : ''}
-${data.microConversions ? `- Liczba mikrokonwersji: ${formatNumber(data.microConversions)}` : ''}
-${data.costPerReservation ? `- Koszt pozyskania rezerwacji: ${formatCurrency(data.costPerReservation)}` : ''}
+Przykład stylu:
 
-Pisz krótko (1–2 akapity), w stylu doradczym i przystępnym. Zacznij od ogólnej oceny miesiąca, potem podaj najważniejsze liczby. Jeśli jest dostępne porównanie rok do roku, skomentuj wynik. Dodaj informację o mikrokonwersjach i potencjalnym wpływie offline. Zakończ stwierdzeniem o całkowitej wartości rezerwacji (online + offline).
+W kwietniu wydaliśmy 246,94 zł na kampanie reklamowe, które wygenerowały 8 099 wyświetleń i 143 kliknięcia, co dało CTR na poziomie 1,77%. Średni koszt kliknięcia wyniósł 1,73 zł. W tym okresie nie zanotowaliśmy żadnych konwersji, dlatego CPA wyniósł 0,00 zł. W porównaniu do poprzedniego miesiąca liczba kliknięć spadła o 8%.
+Pomimo braku konwersji, działania mogły przyczynić się do zwiększenia świadomości marki oraz potencjalnych kontaktów offline.
 
-Unikaj wzmianki o Google Ads – podsumowuj wyłącznie Meta Ads. Wszystkie liczby podaj w odpowiednich formatach i walucie. Styl wzoruj na poniższym przykładzie:
-
-"Podsumowanie ogólne
-
-Za nami ciężki miesiąc, który ostatecznie był tylko trochę gorszy rok do roku pod kątem pozyskania rezerwacji online w kampaniach Meta Ads. Wygenerowaliśmy za to mnóstwo telefonów i innych mikrokonwersji.
-
-Porównanie wyników rok do roku: wartość rezerwacji jest niższa o 22%.
-
-W lipcu pozyskaliśmy 70 rezerwacji online o łącznej wartości ponad 442 tys. zł. Koszt pozyskania jednej rezerwacji wyniósł: 9,77%.
-
-Dodatkowo pozyskaliśmy 383 mikrokonwersje (telefony, e-maile, formularze), które prawdopodobnie przyczyniły się do dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to daje ok. 482 tys. zł.
-
-Sumując rezerwacje online i szacunkowo offline, łączna wartość rezerwacji za lipiec wynosi ok. 924 tys. zł."`;
+Jeśli nie ma danych porównawczych, pomiń zdania porównujące. Zakończ podsumowanie, gdy przekażesz najważniejsze fakty.`;
 
     // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -225,7 +240,7 @@ Sumując rezerwacje online i szacunkowo offline, łączna wartość rezerwacji z
         messages: [
           {
             role: 'system',
-            content: 'Jesteś ekspertem ds. marketingu cyfrowego i Meta Ads. Tworzysz profesjonalne, zwięzłe podsumowania wyników kampanii reklamowych w języku polskim. Używasz stylu doradczego, przystępnego i nieformalnego. Wszystkie liczby podaj w formacie polskim z walutą PLN (zł). Używaj polskich nazw miesięcy (stycznia, lutego, marca, itd.) i polskiego formatowania liczb (spacje jako separatory tysięcy, przecinki jako separatory dziesiętne).'
+            content: 'Jesteś ekspertem ds. marketingu cyfrowego specjalizującym się w Meta Ads. Tworzysz zwięzłe, rzeczowe podsumowania wyników kampanii reklamowych w języku polskim. Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy", "zaobserwowaliśmy"). Nie używaj nazw klientów, firm ani platform w tekście. Opieraj się tylko na dostarczonych danych. Nie dodawaj zwrotów grzecznościowych, podziękowań ani formułek. Nie dopisuj planów na przyszłość, jeśli nie wynikają bezpośrednio z danych. Tekst ma być spójny, zwięzły, bez zbędnych akapitów. Wszystkie liczby podaj w formacie polskim z walutą PLN (zł). Używaj polskich nazw miesięcy i polskiego formatowania liczb.'
           },
           {
             role: 'user',
@@ -248,37 +263,13 @@ Sumując rezerwacje online i szacunkowo offline, łączna wartość rezerwacji z
       throw new Error('No summary generated from OpenAI');
     }
 
-    return summary;
+    // Clean up the summary to ensure proper formatting
+    return summary.trim();
 
   } catch (error) {
     console.error('Error calling OpenAI API:', error);
     
-    // Fallback summary if OpenAI fails
-    return `Podsumowanie ogólne
-
-W analizowanym okresie ${data.clientName} wydał ${new Intl.NumberFormat('pl-PL', {
-      style: 'currency',
-      currency: 'PLN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(data.totalSpend)} na kampanie Meta Ads, osiągając ${new Intl.NumberFormat('pl-PL').format(data.totalImpressions)} wyświetleń i ${new Intl.NumberFormat('pl-PL').format(data.totalClicks)} kliknięć.
-
-Średni CTR wyniósł ${new Intl.NumberFormat('pl-PL', {
-      style: 'percent',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(data.averageCtr / 100)}, a średni koszt kliknięcia to ${new Intl.NumberFormat('pl-PL', {
-      style: 'currency',
-      currency: 'PLN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(data.averageCpc)}.
-
-${data.totalConversions > 0 ? `Pozyskano ${new Intl.NumberFormat('pl-PL').format(data.totalConversions)} konwersji o średnim koszcie ${new Intl.NumberFormat('pl-PL', {
-      style: 'currency',
-      currency: 'PLN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(data.averageCpa)}.` : 'Nie odnotowano konwersji w tym okresie.'}`;
+    // Return null if OpenAI fails - no summary will be generated
+    return null;
   }
 } 
