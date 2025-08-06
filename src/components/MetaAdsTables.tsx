@@ -126,8 +126,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     }
   };
 
-
-
   const exportToCSV = (data: any[], filename: string) => {
     if (data.length === 0) return;
 
@@ -150,15 +148,81 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const formatPercentage = (value: number) => `${value.toFixed(2)}%`;
   const formatNumber = (value: number) => value.toLocaleString();
 
+  // Enhanced ranking badge component with hover effects
+  const RankingBadge = ({ rank, index }: { rank: number; index: number }) => {
+    const [isHovered, setIsHovered] = useState(false);
+    
+    const getBadgeStyle = (index: number) => {
+      const baseStyle = {
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '12px',
+        fontWeight: 600,
+        transition: 'all 0.2s ease',
+        marginRight: '12px'
+      };
+
+      switch (index) {
+        case 0:
+          return {
+            ...baseStyle,
+            background: isHovered 
+              ? 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)' 
+              : 'linear-gradient(135deg, #FEF3C7 0%, #FCD34D 100%)',
+            color: '#92400E',
+            boxShadow: isHovered ? '0 2px 8px rgba(251, 191, 36, 0.3)' : '0 1px 3px rgba(251, 191, 36, 0.2)'
+          };
+        case 1:
+          return {
+            ...baseStyle,
+            background: isHovered 
+              ? 'linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%)' 
+              : 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)',
+            color: '#374151',
+            boxShadow: isHovered ? '0 2px 8px rgba(107, 114, 128, 0.3)' : '0 1px 3px rgba(107, 114, 128, 0.2)'
+          };
+        case 2:
+          return {
+            ...baseStyle,
+            background: isHovered 
+              ? 'linear-gradient(135deg, #FED7AA 0%, #FDBA74 100%)' 
+              : 'linear-gradient(135deg, #FED7AA 0%, #FB923C 100%)',
+            color: '#EA580C',
+            boxShadow: isHovered ? '0 2px 8px rgba(251, 146, 60, 0.3)' : '0 1px 3px rgba(251, 146, 60, 0.2)'
+          };
+        default:
+          return {
+            ...baseStyle,
+            background: isHovered 
+              ? 'linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%)' 
+              : 'linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%)',
+            color: '#6B7280',
+            boxShadow: isHovered ? '0 2px 8px rgba(107, 114, 128, 0.2)' : '0 1px 3px rgba(107, 114, 128, 0.1)'
+          };
+      }
+    };
+
+    return (
+      <div
+        style={getBadgeStyle(index)}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        #{rank}
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="text-center">
-          <div className="relative">
-            <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-              <RefreshCw className="h-8 w-8 animate-spin text-white" />
-            </div>
-            <div className="absolute inset-0 w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full opacity-20 animate-ping"></div>
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Ładowanie danych z Meta Ads</h3>
           <p className="text-gray-600">Pobieranie najnowszych informacji o kampaniach...</p>
@@ -170,14 +234,15 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   if (error) {
     return (
       <div className="text-center py-16">
-        <div className="w-20 h-20 bg-gradient-to-r from-red-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-          <AlertCircle className="h-10 w-10 text-white" />
+        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <AlertCircle className="h-10 w-10 text-red-600" />
         </div>
         <h3 className="text-xl font-bold text-gray-900 mb-3">Błąd podczas ładowania danych</h3>
         <p className="text-gray-600 mb-6 max-w-md mx-auto">{error}</p>
         <button
           onClick={fetchMetaTablesData}
-          className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 font-medium"
+          className="bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md"
+          style={{ borderRadius: '16px' }}
         >
           Spróbuj ponownie
         </button>
@@ -191,190 +256,149 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   if (hasNoData && !loading) {
     return (
       <div className="text-center py-16">
-        <div className="w-20 h-20 bg-gradient-to-r from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-          <BarChart3 className="h-10 w-10 text-white" />
+        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <BarChart3 className="h-10 w-10 text-gray-400" />
         </div>
         <h3 className="text-xl font-bold text-gray-900 mb-3">Brak danych dla tego okresu</h3>
         <p className="text-gray-600 mb-6 max-w-md mx-auto">
           Nie znaleziono danych z Meta Ads API dla wybranego okresu ({dateStart} - {dateEnd}). 
           Sprawdź czy masz aktywne kampanie w tym czasie.
         </p>
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 max-w-md mx-auto border border-blue-100">
-          <p className="text-sm text-blue-700 font-medium">💡 Wskazówka: Spróbuj wybrać inny miesiąc lub sprawdź czy kampanie są aktywne.</p>
+        <div className="bg-gray-50 rounded-2xl p-4 max-w-md mx-auto" style={{ border: '1px solid #E7EAF3' }}>
+          <p className="text-sm text-gray-700 font-medium">💡 Wskazówka: Spróbuj wybrać inny miesiąc lub sprawdź czy kampanie są aktywne.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Tab Navigation - Premium Design */}
-      <div className="flex space-x-2 bg-gradient-to-r from-gray-50 to-gray-100 p-2 rounded-xl shadow-sm border border-gray-200">
+    <div className="space-y-8">
+      {/* Tab Navigation - Clean Design */}
+      <div className="flex space-x-2 bg-white p-2 rounded-2xl" style={{ border: '1px solid #E7EAF3' }}>
         <button
           onClick={() => setActiveTab('placement')}
-          className={`flex items-center space-x-3 px-6 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+          className={`flex items-center space-x-3 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
             activeTab === 'placement'
-              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg transform scale-105'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-white hover:shadow-md'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
           }`}
+          style={{ borderRadius: '16px' }}
         >
-          <div className={`p-1.5 rounded-md ${activeTab === 'placement' ? 'bg-white/20' : 'bg-blue-100'}`}>
-            <BarChart3 className="h-4 w-4" />
-          </div>
+          <BarChart3 className="h-4 w-4" />
           <span>Top Placement Performance</span>
         </button>
         <button
           onClick={() => setActiveTab('demographic')}
-          className={`flex items-center space-x-3 px-6 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+          className={`flex items-center space-x-3 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
             activeTab === 'demographic'
-              ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg transform scale-105'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-white hover:shadow-md'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
           }`}
+          style={{ borderRadius: '16px' }}
         >
-          <div className={`p-1.5 rounded-md ${activeTab === 'demographic' ? 'bg-white/20' : 'bg-purple-100'}`}>
-            <Users className="h-4 w-4" />
-          </div>
+          <Users className="h-4 w-4" />
           <span>Demographic Performance</span>
         </button>
         <button
           onClick={() => setActiveTab('adRelevance')}
-          className={`flex items-center space-x-3 px-6 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+          className={`flex items-center space-x-3 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
             activeTab === 'adRelevance'
-              ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg transform scale-105'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-white hover:shadow-md'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
           }`}
+          style={{ borderRadius: '16px' }}
         >
-          <div className={`p-1.5 rounded-md ${activeTab === 'adRelevance' ? 'bg-white/20' : 'bg-emerald-100'}`}>
-            <Award className="h-4 w-4" />
-          </div>
+          <Award className="h-4 w-4" />
           <span>Ad Relevance & Results</span>
         </button>
       </div>
 
-      {/* Table Content - Premium Card Design */}
+      {/* Table Content - Clean Card Design */}
       <motion.div
         key={activeTab}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden border border-white/20 hover:shadow-3xl transition-all duration-300"
+        className="bg-white rounded-2xl overflow-hidden"
+        style={{ border: '1px solid #E7EAF3' }}
       >
         {activeTab === 'placement' && (
           <div>
-            <div className="flex items-center justify-between p-8 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 backdrop-blur-sm border-b border-blue-100/50">
+            <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
               <div>
-                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-blue-900 bg-clip-text text-transparent mb-2">Top Placement Performance</h3>
-                <p className="text-gray-600">Skuteczność reklam według placementów</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-1">Top Placement Performance</h3>
+                <p className="text-sm text-gray-600">Skuteczność reklam według placementów</p>
               </div>
               <button
                 onClick={() => exportToCSV(placementData, 'placement-performance')}
-                className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                style={{ borderRadius: '16px' }}
               >
-                <FileSpreadsheet className="h-5 w-5" />
+                <FileSpreadsheet className="h-4 w-4" />
                 <span className="font-medium">Export CSV</span>
               </button>
             </div>
             
             {placementData.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gradient-to-r from-gray-50/90 to-gray-100/90 backdrop-blur-sm border-b border-gray-200/50">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-blue-100 rounded-md">
-                            <Target className="h-3 w-3 text-blue-600" />
-                          </div>
-                          <span>Placement</span>
-                        </div>
+                        Placement
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-green-100 rounded-md">
-                            <DollarSign className="h-3 w-3 text-green-600" />
-                          </div>
-                          <span>Spend</span>
-                        </div>
+                        Spend
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-purple-100 rounded-md">
-                            <Eye className="h-3 w-3 text-purple-600" />
-                          </div>
-                          <span>Impressions</span>
-                        </div>
+                        Impressions
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-orange-100 rounded-md">
-                            <MousePointer className="h-3 w-3 text-orange-600" />
-                          </div>
-                          <span>Clicks</span>
-                        </div>
+                        Clicks
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-red-100 rounded-md">
-                            <TrendingUp className="h-3 w-3 text-red-600" />
-                          </div>
-                          <span>CTR</span>
-                        </div>
+                        CTR
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-yellow-100 rounded-md">
-                            <Zap className="h-3 w-3 text-yellow-600" />
-                          </div>
-                          <span>CPC</span>
-                        </div>
+                        CPC
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-indigo-100 rounded-md">
-                            <Award className="h-3 w-3 text-indigo-600" />
-                          </div>
-                          <span>CPA (CPP)</span>
-                        </div>
+                        CPA (CPP)
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white/95 backdrop-blur-sm divide-y divide-gray-100/50">
+                  <tbody className="bg-white">
                     {placementData
                       .sort((a, b) => b.spend - a.spend)
                       .map((placement, index) => (
-                        <tr key={index} className="hover:bg-gradient-to-r hover:from-blue-50/80 hover:to-indigo-50/80 transition-all duration-300 group hover:shadow-sm">
-                          <td className="px-6 py-4 whitespace-nowrap">
+                        <tr 
+                          key={index} 
+                          className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                          style={{ borderColor: '#E7EAF3', height: '56px' }}
+                        >
+                          <td className="px-6 py-4">
                             <div className="flex items-center">
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-4 shadow-sm ${
-                                index === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
-                                index === 1 ? 'bg-gradient-to-r from-gray-300 to-gray-400' :
-                                index === 2 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
-                                'bg-gradient-to-r from-blue-100 to-blue-200'
-                              }`}>
-                                <span className={`text-sm font-bold ${
-                                  index <= 2 ? 'text-white' : 'text-blue-700'
-                                }`}>#{index + 1}</span>
-                              </div>
-                              <span className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">{placement.placement}</span>
+                              <RankingBadge rank={index + 1} index={index} />
+                              <span className="text-sm font-medium text-gray-900">{placement.placement}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-lg font-bold text-green-600">{formatCurrency(placement.spend)}</span>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-semibold text-gray-900">{formatCurrency(placement.spend)}</span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-gray-800">{formatNumber(placement.impressions)}</span>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">{formatNumber(placement.impressions)}</span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-gray-800">{formatNumber(placement.clicks)}</span>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">{formatNumber(placement.clicks)}</span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-red-600">{formatPercentage(placement.ctr)}</span>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">{formatPercentage(placement.ctr)}</span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-yellow-600">{formatCurrency(placement.cpc)}</span>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">{formatCurrency(placement.cpc)}</span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-base font-semibold text-indigo-600">
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">
                               {placement.cpp ? formatCurrency(placement.cpp) : '–'}
                             </span>
                           </td>
@@ -385,13 +409,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
               </div>
             ) : (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <BarChart3 className="h-8 w-8 text-blue-600" />
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <BarChart3 className="h-8 w-8 text-gray-400" />
                 </div>
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">Brak danych o placementach</h4>
                 <p className="text-gray-600 mb-3">Nie znaleziono danych dla tego okresu</p>
-                <div className="bg-blue-50 rounded-lg p-3 max-w-sm mx-auto border border-blue-100">
-                  <p className="text-sm text-blue-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
+                <div className="bg-gray-50 rounded-2xl p-3 max-w-sm mx-auto" style={{ border: '1px solid #E7EAF3' }}>
+                  <p className="text-sm text-gray-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
                 </div>
               </div>
             )}
@@ -400,21 +424,22 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         {activeTab === 'demographic' && (
           <div>
-            <div className="flex items-center justify-between p-8 bg-gradient-to-r from-purple-50/80 to-pink-50/80 backdrop-blur-sm border-b border-purple-100/50">
+            <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
               <div>
-                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-purple-900 bg-clip-text text-transparent mb-2">Demographic Performance</h3>
-                <p className="text-gray-600">Skuteczność reklam według wieku i płci</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-1">Demographic Performance</h3>
+                <p className="text-sm text-gray-600">Skuteczność reklam według wieku i płci</p>
               </div>
               <div className="flex items-center space-x-4">
                 {/* Metric Selector */}
-                <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-xl p-1 border border-purple-200">
+                <div className="flex items-center space-x-2 bg-gray-50 rounded-xl p-1" style={{ border: '1px solid #E7EAF3' }}>
                   <button
                     onClick={() => setDemographicMetric('impressions')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                       demographicMetric === 'impressions'
-                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-purple-50'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-white'
                     }`}
+                    style={{ borderRadius: '16px' }}
                   >
                     <div className="flex items-center space-x-2">
                       <Eye className="h-4 w-4" />
@@ -423,31 +448,32 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                   </button>
                   <button
                     onClick={() => setDemographicMetric('clicks')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                       demographicMetric === 'clicks'
-                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-purple-50'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-white'
                     }`}
+                    style={{ borderRadius: '16px' }}
                   >
                     <div className="flex items-center space-x-2">
                       <MousePointer className="h-4 w-4" />
                       <span>Kliknięcia</span>
                     </div>
                   </button>
-
                 </div>
                 <button
                   onClick={() => exportToCSV(demographicData, 'demographic-performance')}
-                  className="flex items-center space-x-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                  className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  style={{ borderRadius: '16px' }}
                 >
-                  <FileSpreadsheet className="h-5 w-5" />
+                  <FileSpreadsheet className="h-4 w-4" />
                   <span className="font-medium">Export CSV</span>
                 </button>
               </div>
             </div>
             
             {demographicData.length > 0 ? (
-              <div className="p-8">
+              <div className="p-6">
                 {/* Pie Charts Section */}
                 <DemographicPieCharts data={demographicData} metric={demographicMetric} />
                 
@@ -455,7 +481,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 <div className="mt-8 text-center">
                   <button
                     onClick={() => setShowDetailedTable(!showDetailedTable)}
-                    className="flex items-center space-x-2 mx-auto bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 text-gray-700 px-6 py-3 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                    className="flex items-center space-x-2 mx-auto bg-gray-50 hover:bg-gray-100 text-gray-700 px-6 py-3 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md"
+                    style={{ border: '1px solid #E7EAF3', borderRadius: '16px' }}
                   >
                     {showDetailedTable ? (
                       <>
@@ -482,103 +509,67 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                     className="mt-8 overflow-hidden"
                   >
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gradient-to-r from-purple-50 to-pink-50">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
                           <tr>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-purple-100 rounded-md">
-                                  <Users className="h-3 w-3 text-purple-600" />
-                                </div>
-                                <span>Age Group</span>
-                              </div>
+                              Age Group
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-pink-100 rounded-md">
-                                  <Users className="h-3 w-3 text-pink-600" />
-                                </div>
-                                <span>Gender</span>
-                              </div>
+                              Gender
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-green-100 rounded-md">
-                                  <DollarSign className="h-3 w-3 text-green-600" />
-                                </div>
-                                <span>Spend</span>
-                              </div>
+                              Spend
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-purple-100 rounded-md">
-                                  <Eye className="h-3 w-3 text-purple-600" />
-                                </div>
-                                <span>Impressions</span>
-                              </div>
+                              Impressions
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-orange-100 rounded-md">
-                                  <MousePointer className="h-3 w-3 text-orange-600" />
-                                </div>
-                                <span>Clicks</span>
-                              </div>
+                              Clicks
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-red-100 rounded-md">
-                                  <TrendingUp className="h-3 w-3 text-red-600" />
-                                </div>
-                                <span>CTR</span>
-                              </div>
+                              CTR
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-yellow-100 rounded-md">
-                                  <Zap className="h-3 w-3 text-yellow-600" />
-                                </div>
-                                <span>CPC</span>
-                              </div>
+                              CPC
                             </th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              <div className="flex items-center space-x-2">
-                                <div className="p-1.5 bg-indigo-100 rounded-md">
-                                  <Award className="h-3 w-3 text-indigo-600" />
-                                </div>
-                                <span>CPA (CPP)</span>
-                              </div>
+                              CPA (CPP)
                             </th>
                           </tr>
                         </thead>
-                        <tbody className="bg-white/95 backdrop-blur-sm divide-y divide-gray-100/50">
+                        <tbody className="bg-white">
                           {demographicData
                             .sort((a, b) => (a.cpp || 0) - (b.cpp || 0))
                             .map((demo, index) => (
-                              <tr key={index} className="hover:bg-gradient-to-r hover:from-purple-50/80 hover:to-pink-50/80 transition-all duration-300 group hover:shadow-sm">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-sm font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">{demo.age}</span>
+                              <tr 
+                                key={index} 
+                                className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                                style={{ borderColor: '#E7EAF3', height: '56px' }}
+                              >
+                                <td className="px-6 py-4">
+                                  <span className="text-sm font-medium text-gray-900">{demo.age}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-sm font-semibold text-gray-900 group-hover:text-pink-700 transition-colors">{demo.gender}</span>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm font-medium text-gray-900">{demo.gender}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-lg font-bold text-green-600">{formatCurrency(demo.spend)}</span>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm font-semibold text-gray-900">{formatCurrency(demo.spend)}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-base font-semibold text-gray-800">{formatNumber(demo.impressions)}</span>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-gray-900">{formatNumber(demo.impressions)}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-base font-semibold text-gray-800">{formatNumber(demo.clicks)}</span>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-gray-900">{formatNumber(demo.clicks)}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-base font-semibold text-red-600">{formatPercentage(demo.ctr)}</span>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-gray-900">{formatPercentage(demo.ctr)}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-base font-semibold text-yellow-600">{formatCurrency(demo.cpc)}</span>
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-gray-900">{formatCurrency(demo.cpc)}</span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="text-base font-semibold text-indigo-600">
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-gray-900">
                                     {demo.cpp ? formatCurrency(demo.cpp) : '–'}
                                   </span>
                                 </td>
@@ -592,13 +583,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
               </div>
             ) : (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gradient-to-r from-purple-100 to-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Users className="h-8 w-8 text-purple-600" />
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Users className="h-8 w-8 text-gray-400" />
                 </div>
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">Brak danych demograficznych</h4>
                 <p className="text-gray-600 mb-3">Nie znaleziono danych dla tego okresu</p>
-                <div className="bg-purple-50 rounded-lg p-3 max-w-sm mx-auto border border-purple-100">
-                  <p className="text-sm text-purple-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
+                <div className="bg-gray-50 rounded-2xl p-3 max-w-sm mx-auto" style={{ border: '1px solid #E7EAF3' }}>
+                  <p className="text-sm text-gray-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
                 </div>
               </div>
             )}
@@ -607,14 +598,15 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         {activeTab === 'adRelevance' && (
           <div>
-            <div className="flex items-center justify-between p-6 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
+            <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-1">Ad Relevance & Results</h3>
                 <p className="text-sm text-gray-600">Jakość reklam i wyniki według Meta</p>
               </div>
               <button
                 onClick={() => exportToCSV(adRelevanceData, 'ad-relevance-results')}
-                className="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 py-3 rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                style={{ borderRadius: '16px' }}
               >
                 <FileSpreadsheet className="h-4 w-4" />
                 <span className="font-medium">Export CSV</span>
@@ -623,105 +615,69 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             
             {adRelevanceData.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gradient-to-r from-emerald-50 to-teal-50">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-emerald-100 rounded-md">
-                            <Award className="h-3 w-3 text-emerald-600" />
-                          </div>
-                          <span>Ad Name</span>
-                        </div>
+                        Ad Name
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-green-100 rounded-md">
-                            <DollarSign className="h-3 w-3 text-green-600" />
-                          </div>
-                          <span>Spend</span>
-                        </div>
+                        Spend
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-purple-100 rounded-md">
-                            <Eye className="h-3 w-3 text-purple-600" />
-                          </div>
-                          <span>Impressions</span>
-                        </div>
+                        Impressions
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-orange-100 rounded-md">
-                            <MousePointer className="h-3 w-3 text-orange-600" />
-                          </div>
-                          <span>Clicks</span>
-                        </div>
+                        Clicks
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        <div className="flex items-center space-x-2">
-                          <div className="p-1.5 bg-indigo-100 rounded-md">
-                            <Target className="h-3 w-3 text-indigo-600" />
-                          </div>
-                          <span>CPA (CPP)</span>
-                        </div>
+                        CPA (CPP)
                       </th>
-
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
+                  <tbody className="bg-white">
                     {adRelevanceData
                       .sort((a, b) => b.spend - a.spend)
-                      .map((ad, index) => {
-
-                        
-                        return (
-                          <tr key={index} className="hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 transition-all duration-200 group">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-4 shadow-sm ${
-                                  index === 0 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' :
-                                  index === 1 ? 'bg-gradient-to-r from-teal-400 to-teal-500' :
-                                  index === 2 ? 'bg-gradient-to-r from-cyan-400 to-cyan-500' :
-                                  'bg-gradient-to-r from-emerald-100 to-emerald-200'
-                                }`}>
-                                  <span className={`text-sm font-bold ${
-                                    index <= 2 ? 'text-white' : 'text-emerald-700'
-                                  }`}>#{index + 1}</span>
-                                </div>
-                                <span className="text-sm font-semibold text-gray-900 group-hover:text-emerald-700 transition-colors">{ad.ad_name}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-lg font-bold text-green-600">{formatCurrency(ad.spend)}</span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-base font-semibold text-gray-800">{formatNumber(ad.impressions)}</span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-base font-semibold text-gray-800">{formatNumber(ad.clicks)}</span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-base font-semibold text-indigo-600">
-                                {ad.cpp ? formatCurrency(ad.cpp) : '–'}
-                              </span>
-                            </td>
-
-                          </tr>
-                        );
-                      })}
+                      .map((ad, index) => (
+                        <tr 
+                          key={index} 
+                          className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                          style={{ borderColor: '#E7EAF3', height: '56px' }}
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center">
+                              <RankingBadge rank={index + 1} index={index} />
+                              <span className="text-sm font-medium text-gray-900">{ad.ad_name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-semibold text-gray-900">{formatCurrency(ad.spend)}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">{formatNumber(ad.impressions)}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">{formatNumber(ad.clicks)}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-900">
+                              {ad.cpp ? formatCurrency(ad.cpp) : '–'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gradient-to-r from-emerald-100 to-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Award className="h-8 w-8 text-emerald-600" />
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Award className="h-8 w-8 text-gray-400" />
                 </div>
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">Brak danych o jakości reklam</h4>
                 <p className="text-gray-600 mb-3">Nie znaleziono danych dla tego okresu</p>
-                <div className="bg-emerald-50 rounded-lg p-3 max-w-sm mx-auto border border-emerald-100">
-                  <p className="text-sm text-emerald-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
+                <div className="bg-gray-50 rounded-2xl p-3 max-w-sm mx-auto" style={{ border: '1px solid #E7EAF3' }}>
+                  <p className="text-sm text-gray-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
                 </div>
               </div>
             )}

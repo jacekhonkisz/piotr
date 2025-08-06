@@ -36,6 +36,18 @@ interface CampaignInsights {
   reach?: number;
   date_start: string;
   date_stop: string;
+  status?: string;
+  cpm?: number;
+  // Conversion tracking fields
+  click_to_call?: number;
+  lead?: number;
+  purchase?: number;
+  purchase_value?: number;
+  booking_step_1?: number;
+  booking_step_2?: number;
+  booking_step_3?: number;
+  roas?: number;
+  cost_per_reservation?: number;
 }
 
 interface AdAccount {
@@ -530,6 +542,13 @@ export class MetaAPIService {
         'reach',
         'date_start',
         'date_stop',
+        'actions',
+        'action_values',
+        'cost_per_action_type',
+        'cost_per_conversion',
+        'conversion_values',
+        'status',
+        'cpm',
       ].join(',');
 
       const params = new URLSearchParams({
@@ -596,21 +615,90 @@ export class MetaAPIService {
       }
 
       if (data.data) {
-        const insights = data.data.map(insight => ({
-          campaign_id: insight.campaign_id || 'unknown',
-          campaign_name: insight.campaign_name || 'Unknown Campaign',
-          impressions: parseInt(insight.impressions || '0'),
-          clicks: parseInt(insight.clicks || '0'),
-          spend: parseFloat(insight.spend || '0'),
-          conversions: parseInt(insight.conversions?.[0]?.value || '0'),
-          ctr: parseFloat(insight.ctr || '0'),
-          cpc: parseFloat(insight.cpc || '0'),
-          ...(insight.cpp && { cpp: parseFloat(insight.cpp) }),
-          ...(insight.frequency && { frequency: parseFloat(insight.frequency) }),
-          ...(insight.reach && { reach: parseInt(insight.reach) }),
-          date_start: insight.date_start || dateStart,
-          date_stop: insight.date_stop || dateEnd,
-        } as CampaignInsights));
+        const insights = data.data.map(insight => {
+          // Parse conversion tracking data from actions
+          let click_to_call = 0;
+          let lead = 0;
+          let purchase = 0;
+          let purchase_value = 0;
+          let booking_step_1 = 0;
+          let booking_step_2 = 0;
+          let booking_step_3 = 0;
+
+          // Extract action data if available
+          if (insight.actions && Array.isArray(insight.actions)) {
+            insight.actions.forEach((action: any) => {
+              const actionType = action.action_type;
+              const value = parseInt(action.value || '0');
+              
+              switch (actionType) {
+                case 'click_to_call':
+                  click_to_call = value;
+                  break;
+                case 'lead':
+                  lead = value;
+                  break;
+                case 'purchase':
+                  purchase = value;
+                  break;
+                case 'booking_step_1':
+                  booking_step_1 = value;
+                  break;
+                case 'booking_step_2':
+                  booking_step_2 = value;
+                  break;
+                case 'booking_step_3':
+                  booking_step_3 = value;
+                  break;
+              }
+            });
+          }
+
+          // Extract purchase value from action_values
+          if (insight.action_values && Array.isArray(insight.action_values)) {
+            insight.action_values.forEach((actionValue: any) => {
+              if (actionValue.action_type === 'purchase') {
+                purchase_value = parseFloat(actionValue.value || '0');
+              }
+            });
+          }
+
+          // Calculate ROAS and cost per reservation
+          const roas = purchase_value > 0 && parseFloat(insight.spend || '0') > 0 
+            ? purchase_value / parseFloat(insight.spend || '0') 
+            : 0;
+          const cost_per_reservation = purchase > 0 && parseFloat(insight.spend || '0') > 0 
+            ? parseFloat(insight.spend || '0') / purchase 
+            : 0;
+
+          return {
+            campaign_id: insight.campaign_id || 'unknown',
+            campaign_name: insight.campaign_name || 'Unknown Campaign',
+            impressions: parseInt(insight.impressions || '0'),
+            clicks: parseInt(insight.clicks || '0'),
+            spend: parseFloat(insight.spend || '0'),
+            conversions: parseInt(insight.conversions?.[0]?.value || '0'),
+            ctr: parseFloat(insight.ctr || '0'),
+            cpc: parseFloat(insight.cpc || '0'),
+            ...(insight.cpp && { cpp: parseFloat(insight.cpp) }),
+            ...(insight.frequency && { frequency: parseFloat(insight.frequency) }),
+            ...(insight.reach && { reach: parseInt(insight.reach) }),
+            ...(insight.status && { status: insight.status }),
+            ...(insight.cpm && { cpm: parseFloat(insight.cpm) }),
+            date_start: insight.date_start || dateStart,
+            date_stop: insight.date_stop || dateEnd,
+            // Conversion tracking data
+            click_to_call,
+            lead,
+            purchase,
+            purchase_value,
+            booking_step_1,
+            booking_step_2,
+            booking_step_3,
+            roas,
+            cost_per_reservation,
+          } as CampaignInsights;
+        });
 
         console.log('✅ Parsed campaign insights:', insights.length, 'campaigns');
         return insights;

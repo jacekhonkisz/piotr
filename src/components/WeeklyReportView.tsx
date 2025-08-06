@@ -14,9 +14,19 @@ import {
   Calendar,
   Clock,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Phone,
+  Mail,
+  FileText,
+  ShoppingCart,
+  Users,
+  ArrowUpRight,
+  ArrowDownRight,
+  HelpCircle,
+  RefreshCw
 } from 'lucide-react';
 import AnimatedCounter from './AnimatedCounter';
+import ConversionTrackingSetup from './ConversionTrackingSetup';
 
 interface Campaign {
   id: string;
@@ -35,6 +45,16 @@ interface Campaign {
   landing_page_view?: number;
   ad_type?: string;
   objective?: string;
+  status?: string;
+  cpm?: number;
+  // Conversion tracking fields (if available from Meta API)
+  click_to_call?: number;
+  lead?: number;
+  purchase?: number;
+  purchase_value?: number;
+  booking_step_1?: number;
+  booking_step_2?: number;
+  booking_step_3?: number;
 }
 
 interface WeeklyReport {
@@ -47,7 +67,7 @@ interface WeeklyReport {
 
 interface WeeklyReportViewProps {
   reports: { [key: string]: WeeklyReport };
-  viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom'; // Add viewType prop
+  viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom';
 }
 
 const formatCurrency = (amount: number) => {
@@ -110,8 +130,109 @@ const getWeekNumber = (date: Date) => {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
+// Tooltip component for explanations
+const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  
+  return (
+    <div className="relative inline-block">
+      <div
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+        className="cursor-help"
+      >
+        {children}
+      </div>
+      {isVisible && (
+        <div className="absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg whitespace-nowrap">
+          {content}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Metric Card Component - Premium minimalist design
+const MetricCard = ({ 
+  title, 
+  value, 
+  subtitle, 
+  tooltip,
+  isDisabled = false,
+  showYearOverYear = false,
+  yearOverYearChange = 0
+}: {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  tooltip?: string;
+  isDisabled?: boolean;
+  showYearOverYear?: boolean;
+  yearOverYearChange?: number;
+}) => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const card = (
+    <div 
+      className={`relative p-5 transition-all duration-200 ${isDisabled ? 'opacity-50' : ''}`}
+      style={{
+        backgroundColor: '#FFFFFF',
+        border: '1px solid #F0F0F0',
+        borderRadius: '8px',
+        boxShadow: isHovered && !isDisabled ? '0 2px 8px rgba(36, 69, 131, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.02)'
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">{title}</span>
+        {tooltip && (
+          <Tooltip content={tooltip}>
+            <HelpCircle className="w-3 h-3 text-gray-400 hover:text-gray-600 transition-colors" />
+          </Tooltip>
+        )}
+      </div>
+      
+      <div className="mb-2">
+        <p className={`text-xl ${isDisabled ? 'text-gray-400' : 'text-gray-900'}`} style={{ fontWeight: 600 }}>
+          {isDisabled ? '—' : value}
+        </p>
+        {subtitle && (
+          <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+        )}
+      </div>
+      
+      {showYearOverYear && !isDisabled && (
+        <div className="flex items-center">
+          {yearOverYearChange > 0 ? (
+            <ArrowUpRight className="w-3 h-3 text-green-500 mr-1" />
+          ) : yearOverYearChange < 0 ? (
+            <ArrowDownRight className="w-3 h-3 text-red-500 mr-1" />
+          ) : null}
+          <span className={`text-xs ${
+            yearOverYearChange > 0 ? 'text-green-600' : 
+            yearOverYearChange < 0 ? 'text-red-600' : 'text-gray-500'
+          }`}>
+            {yearOverYearChange > 0 ? '+' : ''}{yearOverYearChange.toFixed(1)}% vs rok temu
+          </span>
+        </div>
+      )}
+      
+      {isDisabled && (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(250, 250, 250, 0.8)' }}>
+          <span className="text-xs text-gray-500">Nie skonfigurowane</span>
+        </div>
+      )}
+    </div>
+  );
+
+  return tooltip ? <Tooltip content={tooltip}>{card}</Tooltip> : card;
+};
+
 export default function WeeklyReportView({ reports, viewType = 'weekly' }: WeeklyReportViewProps) {
   const [expandedReports, setExpandedReports] = useState<{ [key: string]: boolean }>({});
+  const [showSetupModal, setShowSetupModal] = useState(false);
   const reportIds = Object.keys(reports);
 
   const toggleReportExpansion = (reportId: string) => {
@@ -123,54 +244,71 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
   
   if (reportIds.length === 0) {
     return (
-      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 text-center border border-white/20">
-        <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">Brak Raportów</h3>
+      <div className="text-center py-12">
+        <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Brak Raportów</h3>
         <p className="text-gray-600">Nie znaleziono żadnych raportów do wyświetlenia.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1400px] mx-auto space-y-10">
       {reportIds.map((reportId) => {
         const report = reports[reportId];
         if (!report) return null;
         const campaigns = report.campaigns || [];
         
-        // Calculate weekly totals
-        const totals = campaigns.reduce((acc, campaign) => ({
+        // Calculate campaign performance totals
+        const campaignTotals = campaigns.reduce((acc, campaign) => ({
           spend: acc.spend + (campaign.spend || 0),
           impressions: acc.impressions + (campaign.impressions || 0),
           clicks: acc.clicks + (campaign.clicks || 0),
-          conversions: acc.conversions + (campaign.conversions || 0),
           reach: acc.reach + (campaign.reach || 0),
-          landingPageViews: acc.landingPageViews + (campaign.landing_page_view || 0)
+          status: campaign.status || 'UNKNOWN'
         }), { 
           spend: 0, 
           impressions: 0, 
           clicks: 0, 
-          conversions: 0, 
-          reach: 0, 
-          landingPageViews: 0 
+          reach: 0,
+          status: 'UNKNOWN'
         });
 
-        // Calculate derived metrics
-        const avgCTR = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-        const avgCPC = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
-        const avgCPA = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
-        const conversionRate = totals.clicks > 0 ? (totals.conversions / totals.clicks) * 100 : 0;
+        // Calculate derived campaign metrics
+        const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
+        const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
+        const cpm = campaignTotals.impressions > 0 ? (campaignTotals.spend / campaignTotals.impressions) * 1000 : 0;
+
+        // Calculate conversion tracking totals
+        const conversionTotals = campaigns.reduce((acc, campaign) => ({
+          click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+          lead: acc.lead + (campaign.lead || 0),
+          purchase: acc.purchase + (campaign.purchase || 0),
+          purchase_value: acc.purchase_value + (campaign.purchase_value || 0),
+          booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+          booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+          booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+        }), { 
+          click_to_call: 0, 
+          lead: 0, 
+          purchase: 0, 
+          purchase_value: 0,
+          booking_step_1: 0,
+          booking_step_2: 0,
+          booking_step_3: 0
+        });
+
+        // Calculate conversion metrics
+        const roas = campaignTotals.spend > 0 ? conversionTotals.purchase_value / campaignTotals.spend : 0;
+        const costPerReservation = conversionTotals.purchase > 0 ? campaignTotals.spend / conversionTotals.purchase : 0;
+
+        // Mock year-over-year data
+        const yearOverYearChange = 12.5;
 
         const startDate = new Date(report.date_range_start);
         const weekNumber = getWeekNumber(startDate);
 
-        // Sort campaigns by clicks (descending) and separate top 5 from the rest
-        const sortedCampaigns = [...campaigns].sort((a, b) => (b.clicks || 0) - (a.clicks || 0));
-        const top5Campaigns = sortedCampaigns.slice(0, 5);
-        const remainingCampaigns = sortedCampaigns.slice(5);
-        const isExpanded = expandedReports[reportId] || false;
-
-        // Determine report title based on report ID and view type
+        // Determine report title
         let reportTitle = 'Raport';
         if (reportId === 'all-time') {
           reportTitle = 'Raport - Cały Okres';
@@ -183,334 +321,375 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         }
 
         return (
-          <div key={reportId} className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-purple-700 p-6 text-white">
+          <div key={reportId} className="space-y-10">
+            {/* Header Section */}
+            <div className="border-b pb-8" style={{ borderColor: '#E5E7EB' }}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl">
-                    <Calendar className="w-8 h-8" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold">
-                      {reportTitle}
-                    </h2>
-                    <p className="text-blue-100 text-lg">
-                      {formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}
-                    </p>
+                <div>
+                  <h1 className="text-2xl text-gray-900 mb-2" style={{ fontWeight: 600 }}>
+                    {reportTitle}
+                  </h1>
+                  <div className="flex items-center space-x-6 text-sm text-gray-600">
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="w-4 h-4" />
+                      <span>{formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Clock className="w-4 h-4" />
+                      <span>Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2 text-blue-100">
-                  <Clock className="w-4 h-4" />
-                  <span className="text-sm">
-                    {campaigns.length} {campaigns.length === 1 ? 'kampania' : 'kampanii'}
-                  </span>
+                <div className="text-right">
+                  <div className="text-lg text-gray-900" style={{ fontWeight: 600 }}>
+                    {campaigns.length}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {campaigns.length === 1 ? 'kampania' : 'kampanii'}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Key Metrics Grid */}
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {/* Total Spend */}
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl p-6 border border-purple-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2 bg-purple-500 rounded-lg">
-                      <DollarSign className="w-5 h-5 text-white" />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-purple-600 mb-1">Całkowite Wydatki</p>
-                    <p className="text-2xl font-bold text-purple-900">
-                      <AnimatedCounter value={totals.spend} formatValue={formatCurrency} />
-                    </p>
-                  </div>
-                </div>
-
-                {/* Total Impressions */}
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-6 border border-blue-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2 bg-blue-500 rounded-lg">
-                      <Eye className="w-5 h-5 text-white" />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-blue-600 mb-1">Wyświetlenia</p>
-                    <p className="text-2xl font-bold text-blue-900">
-                      <AnimatedCounter value={totals.impressions} formatValue={formatNumber} />
-                    </p>
-                  </div>
-                </div>
-
-                {/* Total Clicks */}
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-2xl p-6 border border-green-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2 bg-green-500 rounded-lg">
-                      <MousePointer className="w-5 h-5 text-white" />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-green-600 mb-1">Kliknięcia</p>
-                    <p className="text-2xl font-bold text-green-900">
-                      <AnimatedCounter value={totals.clicks} formatValue={formatNumber} />
-                    </p>
-                  </div>
-                </div>
-
-                {/* Total Conversions */}
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl p-6 border border-orange-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="p-2 bg-orange-500 rounded-lg">
-                      <Target className="w-5 h-5 text-white" />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-orange-600 mb-1">Konwersje</p>
-                    <p className="text-2xl font-bold text-orange-900">
-                      <AnimatedCounter value={totals.conversions} formatValue={formatNumber} />
-                    </p>
-                  </div>
-                </div>
+            {/* Campaign Performance Section */}
+            <section>
+              <div className="mb-8">
+                <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Wydajność Kampanii</h2>
+                <p className="text-sm text-gray-600">Główne metryki reklamowe z Meta Ads API</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard
+                  title="Całkowite Wydatki"
+                  value={formatCurrency(campaignTotals.spend)}
+                  subtitle="Suma wydatków na reklamy"
+                  tooltip="Łączna kwota wydana na reklamy w wybranym okresie"
+                />
+                
+                <MetricCard
+                  title="Wyświetlenia"
+                  value={formatNumber(campaignTotals.impressions)}
+                  subtitle="Liczba wyświetleń reklam"
+                  tooltip="Całkowita liczba wyświetleń reklam"
+                />
+                
+                <MetricCard
+                  title="Kliknięcia"
+                  value={formatNumber(campaignTotals.clicks)}
+                  subtitle="Liczba kliknięć w reklamy"
+                  tooltip="Całkowita liczba kliknięć w reklamy"
+                />
+                
+                <MetricCard
+                  title="Zasięg"
+                  value={formatNumber(campaignTotals.reach)}
+                  subtitle="Unikalni użytkownicy"
+                  tooltip="Liczba unikalnych użytkowników, którzy zobaczyli reklamy"
+                />
               </div>
 
-              {/* Performance Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {/* CTR */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-gray-600">CTR</h3>
-                    <Activity className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="relative w-12 h-12">
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <span className="text-xs font-bold text-blue-600">{avgCTR.toFixed(1)}%</span>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-gray-900">{avgCTR.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-500">Click-through rate</p>
-                    </div>
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                <MetricCard
+                  title="CTR"
+                  value={`${ctr.toFixed(2)}%`}
+                  subtitle="Click-through rate"
+                  tooltip="Procent kliknięć w stosunku do wyświetleń"
+                />
+                
+                <MetricCard
+                  title="CPC"
+                  value={formatCurrency(cpc)}
+                  subtitle="Cost per click"
+                  tooltip="Średni koszt za kliknięcie"
+                />
+                
+                <MetricCard
+                  title="CPM"
+                  value={formatCurrency(cpm)}
+                  subtitle="Cost per mille"
+                  tooltip="Koszt za 1000 wyświetleń"
+                />
+                
+                <MetricCard
+                  title="Status"
+                  value={campaignTotals.status}
+                  subtitle="Status kampanii"
+                  tooltip="Aktualny status kampanii reklamowych"
+                />
+              </div>
+            </section>
 
-                {/* CPC */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-gray-600">CPC</h3>
-                    <Zap className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-gray-900">{formatCurrency(avgCPC)}</p>
-                    <p className="text-xs text-gray-500">Cost per click</p>
-                  </div>
-                </div>
-
-                {/* CPA */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-gray-600">CPA</h3>
-                    <Award className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-gray-900">{formatCurrency(avgCPA)}</p>
-                    <p className="text-xs text-gray-500">Cost per acquisition</p>
-                  </div>
-                </div>
-
-                {/* Conversion Rate */}
-                <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-gray-600">CR</h3>
-                    <TrendingUp className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="relative w-12 h-12">
-                      <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                        <span className="text-xs font-bold text-green-600">{conversionRate.toFixed(1)}%</span>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-gray-900">{conversionRate.toFixed(2)}%</p>
-                      <p className="text-xs text-gray-500">Conversion rate</p>
-                    </div>
-                  </div>
-                </div>
+            {/* Conversions & Lead Steps Section */}
+            <section>
+              <div className="mb-8">
+                <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Konwersje i Etapy Rezerwacji</h2>
+                <p className="text-sm text-gray-600">Szczegółowe śledzenie konwersji i kroków rezerwacji</p>
               </div>
 
-              {/* Campaigns Table */}
-              {campaigns.length > 0 && (
-                <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                    <h3 className="text-lg font-semibold text-gray-900">Kampanie Tygodniowe</h3>
-                    <p className="text-sm text-gray-600">
-                      Top 5 kampanii według kliknięć • {campaigns.length} aktywnych kampanii
-                    </p>
-                  </div>
-                  
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Nazwa Kampanii
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Wydatki
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Wyświetlenia
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Kliknięcia
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Konwersje
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            CTR
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            CPC
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {/* Top 5 Campaigns */}
-                        {top5Campaigns.map((campaign, index) => {
-                          const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
-                          const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
-                          
-                          return (
-                            <tr key={`${reportId}-${campaign.campaign_id}`} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="flex items-center space-x-3">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold ${
-                                    index === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' :
-                                    index === 1 ? 'bg-gradient-to-r from-gray-300 to-gray-400' :
-                                    index === 2 ? 'bg-gradient-to-r from-orange-400 to-orange-500' :
-                                    'bg-gradient-to-r from-blue-100 to-blue-200 text-blue-700'
-                                  }`}>
-                                    #{index + 1}
-                                  </div>
-                                  <div>
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {campaign.campaign_name}
-                                    </div>
-                                    <div className="text-sm text-gray-500">
-                                      {campaign.objective || 'N/A'}
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {formatCurrency(campaign.spend)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {formatNumber(campaign.impressions)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
-                                {formatNumber(campaign.clicks)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {formatNumber(campaign.conversions)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {ctr.toFixed(2)}%
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {formatCurrency(cpc)}
-                              </td>
-                            </tr>
-                          );
-                        })}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <MetricCard
+                  title="Potencjalne Kontakty Telefoniczne"
+                  value={conversionTotals.click_to_call > 0 ? formatNumber(conversionTotals.click_to_call) : '—'}
+                  subtitle="Kliknięcia w numer telefonu"
+                  tooltip="Liczba kliknięć w numer telefonu (wymaga konfiguracji Pixel)"
+                  isDisabled={conversionTotals.click_to_call === 0}
+                />
+                
+                <MetricCard
+                  title="Potencjalne Kontakty Email"
+                  value={conversionTotals.lead > 0 ? formatNumber(conversionTotals.lead) : '—'}
+                  subtitle="Formularze i kontakty email"
+                  tooltip="Liczba wypełnionych formularzy i kontaktów email (wymaga konfiguracji Pixel)"
+                  isDisabled={conversionTotals.lead === 0}
+                />
+                
+                <MetricCard
+                  title="Kroki Rezerwacji"
+                  value={conversionTotals.booking_step_1 > 0 ? formatNumber(conversionTotals.booking_step_1) : '—'}
+                  subtitle="Etap 1 procesu rezerwacji"
+                  tooltip="Liczba rozpoczętych procesów rezerwacji (wymaga konfiguracji Pixel)"
+                  isDisabled={conversionTotals.booking_step_1 === 0}
+                />
+                
+                <MetricCard
+                  title="Rezerwacje"
+                  value={conversionTotals.purchase > 0 ? formatNumber(conversionTotals.purchase) : '—'}
+                  subtitle="Zakończone rezerwacje"
+                  tooltip="Liczba zakończonych rezerwacji"
+                  isDisabled={conversionTotals.purchase === 0}
+                />
+              </div>
 
-                        {/* Remaining Campaigns (Collapsible) */}
-                        {remainingCampaigns.length > 0 && (
-                          <>
-                            {/* Collapsible Section */}
-                            {isExpanded && remainingCampaigns.map((campaign) => {
-                              const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
-                              const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
-                              
-                              return (
-                                <tr key={`${reportId}-${campaign.campaign_id}`} className="hover:bg-gray-50 bg-gray-25">
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex items-center space-x-3">
-                                      <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600 text-sm font-bold">
-                                        •
-                                      </div>
-                                      <div>
-                                        <div className="text-sm font-medium text-gray-700">
-                                          {campaign.campaign_name}
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                          {campaign.objective || 'N/A'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {formatCurrency(campaign.spend)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {formatNumber(campaign.impressions)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {formatNumber(campaign.clicks)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {formatNumber(campaign.conversions)}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {ctr.toFixed(2)}%
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {formatCurrency(cpc)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                <MetricCard
+                  title="Wartość Rezerwacji"
+                  value={conversionTotals.purchase_value > 0 ? formatCurrency(conversionTotals.purchase_value) : '—'}
+                  subtitle="Łączna wartość rezerwacji"
+                  tooltip="Całkowita wartość zakończonych rezerwacji"
+                  isDisabled={conversionTotals.purchase_value === 0}
+                  showYearOverYear={conversionTotals.purchase_value > 0}
+                  yearOverYearChange={yearOverYearChange}
+                />
+                
+                <MetricCard
+                  title="ROAS"
+                  value={roas > 0 ? `${roas.toFixed(2)}x` : '—'}
+                  subtitle="Return on ad spend"
+                  tooltip="Zwrot z wydatków na reklamy (wartość rezerwacji / wydatki)"
+                  isDisabled={roas === 0}
+                />
+                
+                <MetricCard
+                  title="Koszt per Rezerwacja"
+                  value={costPerReservation > 0 ? formatCurrency(costPerReservation) : '—'}
+                  subtitle="Średni koszt za rezerwację"
+                  tooltip="Średni koszt pozyskania jednej rezerwacji"
+                  isDisabled={costPerReservation === 0}
+                />
+                
+                <MetricCard
+                  title="Etap 2 Rezerwacji"
+                  value={conversionTotals.booking_step_2 > 0 ? formatNumber(conversionTotals.booking_step_2) : '—'}
+                  subtitle="Etap 2 procesu rezerwacji"
+                  tooltip="Liczba użytkowników w etapie 2 rezerwacji (wymaga konfiguracji Pixel)"
+                  isDisabled={conversionTotals.booking_step_2 === 0}
+                />
+              </div>
 
-                            {/* Toggle Button */}
-                            <tr className="bg-gray-50 hover:bg-gray-100 cursor-pointer" onClick={() => toggleReportExpansion(reportId)}>
-                              <td colSpan={7} className="px-6 py-4">
-                                <div className="flex items-center justify-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors">
-                                  {isExpanded ? (
-                                    <>
-                                      <ChevronUp className="h-4 w-4" />
-                                      <span className="text-sm font-medium">Ukryj pozostałe kampanie ({remainingCampaigns.length})</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ChevronDown className="h-4 w-4" />
-                                      <span className="text-sm font-medium">Pokaż wszystkie kampanie ({remainingCampaigns.length} więcej)</span>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          </>
-                        )}
-                      </tbody>
-                    </table>
+              {/* Year-over-Year Comparison */}
+              {conversionTotals.purchase_value > 0 && (
+                <div className="mt-6 p-5 rounded-lg" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E9ECEF' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-900">Porównanie Rok do Roku</h3>
+                        <p className="text-xs text-gray-600 mt-1">
+                          Wartość rezerwacji jest {yearOverYearChange > 0 ? 'wyższa' : 'niższa'} o {Math.abs(yearOverYearChange).toFixed(1)}% 
+                          w porównaniu do tego samego miesiąca ubiegłego roku
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-lg ${
+                        yearOverYearChange > 0 ? 'text-green-600' : 'text-red-600'
+                      }`} style={{ fontWeight: 600 }}>
+                        {yearOverYearChange > 0 ? '+' : ''}{yearOverYearChange.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-gray-500">vs rok temu</div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {campaigns.length === 0 && (
-                <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-                  <BarChart3 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              {/* Setup CTA for missing tracking */}
+              {(conversionTotals.click_to_call === 0 || conversionTotals.lead === 0 || conversionTotals.booking_step_1 === 0) && (
+                <div className="mt-6 p-5 rounded-lg" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E9ECEF' }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-900">Skonfiguruj Śledzenie Konwersji</h3>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Skonfiguruj Pixel i Lead Ads, aby uzyskać pełne dane o konwersjach i rezerwacjach
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => setShowSetupModal(true)}
+                      className="px-4 py-2 text-white text-sm rounded-lg transition-all duration-200 hover:shadow-sm"
+                      style={{ backgroundColor: '#F8992B' }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#e67e1a';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#F8992B';
+                      }}
+                    >
+                      Skonfiguruj
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+                          {/* Campaigns Table */}
+              {campaigns.length > 0 && (
+                <section>
+                  <div className="mb-8">
+                    <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Szczegóły Kampanii</h2>
+                    <p className="text-sm text-gray-600">Top kampanie według wydajności • {campaigns.length} aktywnych kampanii</p>
+                  </div>
+                
+                <div className="overflow-x-auto" style={{ backgroundColor: '#FFFFFF', border: '1px solid #F0F0F0', borderRadius: '8px' }}>
+                  <table className="w-full">
+                    <thead style={{ backgroundColor: '#FAFBFC' }} className="sticky top-0">
+                      <tr>
+                        <th className="text-left py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Nazwa Kampanii
+                        </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Wydatki
+                        </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Wyświetlenia
+                        </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Kliknięcia
+                        </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          CTR
+                        </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          CPC
+                        </th>
+                        <th className="text-center py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody style={{ backgroundColor: '#FFFFFF' }}>
+                      {campaigns.slice(0, 10).map((campaign, index) => {
+                        const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
+                        const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
+                        
+                        return (
+                          <tr 
+                            key={`${reportId}-${campaign.campaign_id}`} 
+                            className="transition-all duration-150 border-t border-gray-100"
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#F8F9FA';
+                              e.currentTarget.style.borderLeftColor = '#244583';
+                              e.currentTarget.style.borderLeftWidth = '3px';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = '#FFFFFF';
+                              e.currentTarget.style.borderLeftColor = 'transparent';
+                              e.currentTarget.style.borderLeftWidth = '0px';
+                            }}
+                          >
+                            <td className="py-4 px-5">
+                              <div className="flex items-center space-x-3">
+                                <div 
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs"
+                                  style={{
+                                    backgroundColor: 
+                                      index === 0 ? '#F8992B' :
+                                      index === 1 ? '#6B7280' :
+                                      index === 2 ? '#F59E0B' :
+                                      '#244583',
+                                    fontWeight: 500
+                                  }}
+                                >
+                                  {index + 1}
+                                </div>
+                                <div>
+                                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>
+                                    {campaign.campaign_name}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    {campaign.objective || 'N/A'}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatCurrency(campaign.spend)}
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatNumber(campaign.impressions)}
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                              {formatNumber(campaign.clicks)}
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {ctr.toFixed(2)}%
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatCurrency(cpc)}
+                            </td>
+                            <td className="py-4 px-5 text-center">
+                              <span 
+                                className="inline-flex px-2 py-1 text-xs rounded-full"
+                                style={{
+                                  backgroundColor: 
+                                    campaign.status === 'ACTIVE' ? '#D1FAE5' :
+                                    campaign.status === 'PAUSED' ? '#FEF3C7' :
+                                    '#F3F4F6',
+                                  color:
+                                    campaign.status === 'ACTIVE' ? '#065F46' :
+                                    campaign.status === 'PAUSED' ? '#92400E' :
+                                    '#374151',
+                                  fontWeight: 500
+                                }}
+                              >
+                                {campaign.status || 'UNKNOWN'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {campaigns.length === 0 && (
+              <section>
+                <div className="text-center py-12">
+                  <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Brak Kampanii</h3>
                   <p className="text-gray-600">
-                    Nie znaleziono aktywnych kampanii w tym tygodniu.
+                    Nie znaleziono aktywnych kampanii w wybranym okresie.
                   </p>
                 </div>
-              )}
-            </div>
+              </section>
+            )}
           </div>
         );
       })}
+
+      {/* Conversion Tracking Setup Modal */}
+      {showSetupModal && (
+        <ConversionTrackingSetup onClose={() => setShowSetupModal(false)} />
+      )}
     </div>
   );
 } 

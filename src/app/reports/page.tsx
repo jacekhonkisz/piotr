@@ -1319,7 +1319,7 @@ function ReportsPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: '#F7F8FA' }}>
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
           <div className="flex">
@@ -1332,32 +1332,24 @@ function ReportsPageContent() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-6 border border-white/20">
+      <div className="max-w-[1400px] mx-auto px-6 py-8">
+                {/* Header */}
+        <div className="border-b border-gray-200 pb-6 mb-8">
           <div className="flex flex-col lg:flex-row items-center justify-between space-y-4 lg:space-y-0">
-            <div className="flex items-center space-x-4">
-              <div className="p-4 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl shadow-xl">
-                <BarChart3 className="w-10 h-10 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                  Raporty {
-                    viewType === 'monthly' ? 'Miesięczne' :
-                    viewType === 'weekly' ? 'Tygodniowe' :
-                    viewType === 'all-time' ? 'Całego Okresu' :
-                    'Własnego Zakresu'
-                  }
-                </h1>
-                <div className="flex items-center space-x-2 mt-2">
-                  <div className="p-1 bg-orange-100 rounded-lg">
-                    <span className="text-xs">🏠</span>
-                  </div>
-                  <p className="text-gray-600 font-medium">{client?.name} - Premium Analytics Dashboard</p>
-                  <div className="flex items-center space-x-1 text-xs text-gray-500">
-                    <Clock className="w-3 h-3" />
-                    <span>Aktualizacja: 04.08.2025, 11:44</span>
-                  </div>
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900 mb-1">
+                Raporty {
+                  viewType === 'monthly' ? 'Miesięczne' :
+                  viewType === 'weekly' ? 'Tygodniowe' :
+                  viewType === 'all-time' ? 'Całego Okresu' :
+                  'Własnego Zakresu'
+                }
+              </h1>
+              <div className="flex items-center space-x-4 text-sm text-gray-600">
+                <span>{client?.name} - Premium Analytics Dashboard</span>
+                <div className="flex items-center space-x-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
                 </div>
               </div>
             </div>
@@ -1365,7 +1357,18 @@ function ReportsPageContent() {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
-                className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl hover:from-gray-700 hover:to-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="text-sm px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-sm"
+                style={{ 
+                  backgroundColor: '#244583', 
+                  color: 'white',
+                  borderRadius: '8px'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#1a3660';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = '#244583';
+                }}
               >
                 {profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}
               </button>
@@ -1374,78 +1377,79 @@ function ReportsPageContent() {
         </div>
 
         {/* View Type Selector */}
-        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Typ Widoku</h2>
-                <p className="text-sm text-gray-500">Wybierz sposób wyświetlania danych</p>
-              </div>
-            </div>
+        <section className="mb-8">
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Typ Widoku</h2>
+            <p className="text-sm text-gray-600">Wybierz sposób wyświetlania danych</p>
           </div>
 
-          <div className="flex items-center justify-center space-x-4 flex-wrap">
+          <div className="flex items-center justify-center space-x-3 flex-wrap">
             <button
               onClick={() => handleViewTypeChange('monthly')}
-              className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
                 viewType === 'monthly'
-                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'text-white shadow-sm'
+                  : 'text-gray-700 hover:shadow-sm'
               }`}
+              style={viewType === 'monthly' 
+                ? { backgroundColor: '#244583' }
+                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
+              }
             >
-              <Calendar className="w-5 h-5" />
-              <span className="font-medium">Miesięczny</span>
-              {viewType === 'monthly' && <ToggleRight className="w-5 h-5" />}
-              {viewType !== 'monthly' && <ToggleLeft className="w-5 h-5" />}
+              <Calendar className="w-4 h-4" />
+              <span>Miesięczny</span>
             </button>
 
             <button
               onClick={() => handleViewTypeChange('weekly')}
-              className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
                 viewType === 'weekly'
-                  ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'text-white shadow-sm'
+                  : 'text-gray-700 hover:shadow-sm'
               }`}
+              style={viewType === 'weekly' 
+                ? { backgroundColor: '#244583' }
+                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
+              }
             >
-              <CalendarDays className="w-5 h-5" />
-              <span className="font-medium">Tygodniowy</span>
-              {viewType === 'weekly' && <ToggleRight className="w-5 h-5" />}
-              {viewType !== 'weekly' && <ToggleLeft className="w-5 h-5" />}
+              <CalendarDays className="w-4 h-4" />
+              <span>Tygodniowy</span>
             </button>
 
             <button
               onClick={() => handleViewTypeChange('all-time')}
-              className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
                 viewType === 'all-time'
-                  ? 'bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'text-white shadow-sm'
+                  : 'text-gray-700 hover:shadow-sm'
               }`}
+              style={viewType === 'all-time' 
+                ? { backgroundColor: '#244583' }
+                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
+              }
               title="Pokaż dane z całego dostępnego okresu (od 2010 do dziś)"
             >
-              <BarChart3 className="w-5 h-5" />
-              <span className="font-medium">Cały Okres</span>
-              {viewType === 'all-time' && <ToggleRight className="w-5 h-5" />}
-              {viewType !== 'all-time' && <ToggleLeft className="w-5 h-5" />}
+              <BarChart3 className="w-4 h-4" />
+              <span>Cały Okres</span>
             </button>
 
             <button
               onClick={() => handleViewTypeChange('custom')}
-              className={`flex items-center space-x-3 px-6 py-4 rounded-xl transition-all duration-300 ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
                 viewType === 'custom'
-                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'text-white shadow-sm'
+                  : 'text-gray-700 hover:shadow-sm'
               }`}
+              style={viewType === 'custom' 
+                ? { backgroundColor: '#244583' }
+                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
+              }
             >
-              <Calendar className="w-5 h-5" />
-              <span className="font-medium">Własny Zakres</span>
-              {viewType === 'custom' && <ToggleRight className="w-5 h-5" />}
-              {viewType !== 'custom' && <ToggleLeft className="w-5 h-5" />}
+              <Calendar className="w-4 h-4" />
+              <span>Własny Zakres</span>
             </button>
           </div>
-        </div>
+        </section>
 
         {/* All Time Warning */}
         {viewType === 'all-time' && (
@@ -1465,15 +1469,15 @@ function ReportsPageContent() {
 
         {/* Custom Date Range Selector */}
         {viewType === 'custom' && (
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-lg p-6 mb-8">
+            <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
-                <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg">
-                  <Calendar className="w-5 h-5 text-white" />
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Calendar className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Własny Zakres Dat</h2>
-                  <p className="text-sm text-gray-500">Wybierz początek i koniec okresu analizy</p>
+                  <h2 className="text-lg font-bold text-gray-900">Własny Zakres Dat</h2>
+                  <p className="text-sm text-gray-600">Wybierz początek i koniec okresu analizy</p>
                 </div>
               </div>
             </div>
@@ -1481,24 +1485,24 @@ function ReportsPageContent() {
             <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Data Początkowa</label>
-                <input
-                  type="date"
-                  value={customDateRange.start}
-                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
-                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white/80 backdrop-blur-sm shadow-lg"
-                  max={new Date().toISOString().split('T')[0]}
-                />
+                                  <input
+                    type="date"
+                    value={customDateRange.start}
+                    onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    max={new Date().toISOString().split('T')[0]}
+                  />
               </div>
 
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Data Końcowa</label>
-                <input
-                  type="date"
-                  value={customDateRange.end}
-                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
-                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white/80 backdrop-blur-sm shadow-lg"
-                  max={new Date().toISOString().split('T')[0]}
-                />
+                                  <input
+                    type="date"
+                    value={customDateRange.end}
+                    onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    max={new Date().toISOString().split('T')[0]}
+                  />
               </div>
 
               <div className="flex-shrink-0">
@@ -1515,7 +1519,7 @@ function ReportsPageContent() {
                     }
                   }}
                   disabled={!customDateRange.start || !customDateRange.end || isGeneratingCustomReport}
-                  className="flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 transform hover:scale-105"
+                  className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   {isGeneratingCustomReport ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1539,15 +1543,15 @@ function ReportsPageContent() {
 
         {/* Period Selector - Only for Monthly and Weekly */}
         {(viewType === 'monthly' || viewType === 'weekly') && (
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
-          <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-lg p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                <CalendarDays className="w-5 h-5 text-white" />
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <CalendarDays className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Wybór Okresu</h2>
-                <p className="text-sm text-gray-500">Wybierz {viewType === 'monthly' ? 'miesiąc' : 'tydzień'} do analizy</p>
+                <h2 className="text-lg font-bold text-gray-900">Wybór Okresu</h2>
+                <p className="text-sm text-gray-600">Wybierz {viewType === 'monthly' ? 'miesiąc' : 'tydzień'} do analizy</p>
               </div>
             </div>
             
@@ -1555,7 +1559,7 @@ function ReportsPageContent() {
               <button
                 onClick={handleRefresh}
                 disabled={loadingPeriod !== null}
-                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 transform hover:scale-105 text-sm"
+                className="flex items-center space-x-2 bg-[#244583] text-white px-4 py-2 rounded-lg hover:bg-[#1a3366] transition-colors disabled:opacity-50 text-sm"
               >
                 <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
                 <span>Odśwież</span>
@@ -1576,8 +1580,8 @@ function ReportsPageContent() {
             </div>
           </div>
 
-          {/* Period Slider with Navigation */}
-          <div className="flex items-center justify-center space-x-4 md:space-x-6">
+          {/* Period Navigation - Ultra Clean Design */}
+          <div className="flex items-center justify-center space-x-6">
             {/* Left Navigation Button */}
             <button
               onClick={() => {
@@ -1595,9 +1599,10 @@ function ReportsPageContent() {
                 }
               }}
               disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-              className="p-3 md:p-4 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl md:rounded-2xl hover:from-gray-200 hover:to-gray-300 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-30 disabled:cursor-not-allowed transform hover:scale-105"
+              className="p-2.5 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+              title="Poprzedni miesiąc"
             >
-              <ChevronLeft className="w-6 h-6 md:w-8 md:h-8 text-gray-600" />
+              <ChevronLeft className="w-5 h-5 text-gray-500 group-hover:text-gray-700" />
             </button>
 
             {/* Center Period Display with Dropdown */}
@@ -1607,7 +1612,8 @@ function ReportsPageContent() {
                   value={selectedPeriod || ''}
                   onChange={handlePeriodChange}
                   disabled={loadingPeriod !== null}
-                  className="w-full border-2 border-gray-200 rounded-xl md:rounded-2xl px-6 md:px-8 py-4 md:py-5 text-lg md:text-xl font-bold text-center focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 bg-white/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300 cursor-pointer appearance-none"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 cursor-pointer appearance-none bg-white [&::-ms-expand]:hidden"
+                  style={{ backgroundImage: 'none' }}
                 >
                   {availablePeriods.map((periodId) => {
                     if (viewType === 'monthly') {
@@ -1633,26 +1639,21 @@ function ReportsPageContent() {
                   })}
                 </select>
                 
-                {/* Calendar icon inside the selector */}
-                <div className="absolute left-4 md:left-6 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <Calendar className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
-                </div>
-                
-                {/* Custom dropdown arrow */}
-                <div className="absolute right-4 md:right-6 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+                {/* Minimalist dropdown arrow - only one, subtle */}
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
                 </div>
                 
                 {/* Loading indicator */}
                 {loadingPeriod && (
-                  <div className="absolute left-2 md:left-4 top-1/2 transform -translate-y-1/2">
-                    <div className="animate-spin rounded-full h-4 w-4 md:h-5 md:w-5 border-2 md:border-3 border-blue-200 border-t-blue-600"></div>
+                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600"></div>
                   </div>
                 )}
               </div>
               
               {/* Period indicator dots */}
-              <div className="flex justify-center space-x-1.5 md:space-x-2 mt-3">
+              <div className="flex justify-center space-x-1.5 mt-3">
                 {availablePeriods.slice(0, 12).map((periodId) => {
                   let periodName = '';
                   
@@ -1671,7 +1672,7 @@ function ReportsPageContent() {
                   return (
                     <div
                       key={periodId}
-                      className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full transition-all duration-300 cursor-pointer group relative ${
+                      className={`w-1.5 h-1.5 rounded-full transition-all duration-300 cursor-pointer group relative ${
                         selectedPeriod === periodId 
                           ? 'bg-blue-600 scale-125' 
                           : 'bg-gray-300 hover:bg-gray-400 hover:scale-110'
@@ -1687,7 +1688,7 @@ function ReportsPageContent() {
                   );
                 })}
                 {availablePeriods.length > 12 && (
-                  <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-gray-300 flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300 flex items-center justify-center">
                     <span className="text-xs text-gray-500">+</span>
                   </div>
                 )}
@@ -1711,9 +1712,10 @@ function ReportsPageContent() {
                 }
               }}
               disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-              className="p-3 md:p-4 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl md:rounded-2xl hover:from-gray-200 hover:to-gray-300 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-30 disabled:cursor-not-allowed transform hover:scale-105"
+              className="p-2.5 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+              title="Następny miesiąc"
             >
-              <ChevronRight className="w-6 h-6 md:w-8 md:h-8 text-gray-600" />
+              <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-gray-700" />
             </button>
           </div>
 
@@ -1755,15 +1757,15 @@ function ReportsPageContent() {
             />
             
             {/* Meta Ads Tables Section */}
-            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 mb-6 border border-white/20">
+            <div className="bg-white rounded-lg p-6 mb-8">
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                    <BarChart3 className="w-5 h-5 text-white" />
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <BarChart3 className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Meta Ads Analytics</h2>
-                    <p className="text-sm text-gray-500">Szczegółowe analizy z Meta Ads API</p>
+                    <h2 className="text-lg font-bold text-gray-900">Meta Ads Analytics</h2>
+                    <p className="text-sm text-gray-600">Szczegółowe analizy z Meta Ads API</p>
                   </div>
                 </div>
               </div>
@@ -1781,7 +1783,7 @@ function ReportsPageContent() {
         )}
 
         {!selectedReport && !loadingPeriod && (
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-6 border border-white/20">
+          <div className="bg-white rounded-lg p-8 mb-8">
             <div className="text-center">
               <DatabaseIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych</h3>
