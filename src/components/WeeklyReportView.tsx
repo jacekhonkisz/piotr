@@ -12,6 +12,7 @@ import {
 
 import ConversionTrackingSetup from './ConversionTrackingSetup';
 
+
 interface Campaign {
   id: string;
   campaign_id: string;
@@ -326,6 +327,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                 </div>
               </div>
             </div>
+
+
 
             {/* Campaign Performance Section */}
             <section>

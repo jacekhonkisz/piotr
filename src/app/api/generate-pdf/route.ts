@@ -33,6 +33,7 @@ interface ReportData {
     demographicPerformance: any[];
     adRelevanceResults: any[];
   };
+  executiveSummary?: string | undefined;
 }
 
 function generatePDFHTML(reportData: ReportData): string {
@@ -254,15 +255,21 @@ function generatePDFHTML(reportData: ReportData): string {
             </div>
             
             <div class="section">
-                <div class="section-title">Executive Summary</div>
+                <div class="section-title">Podsumowanie wykonawcze</div>
                 <div class="executive-summary">
-                    <p>
-                        W analizowanym okresie wydano ${formatCurrency(totalSpend)}, osiągając ${formatNumber(totalImpressions)} wyświetleń i ${formatNumber(totalClicks)} kliknięć. 
-                        CTR wyniósł ${formatPercentage(ctr)}, co stanowi dobry wynik. Średni koszt kliknięcia (CPC) to ${formatCurrency(cpc)}, co jest wartością normalną. 
-                        Nie odnotowano konwersji, co sugeruje potrzebę optymalizacji ścieżki konwersji. Kampanie dotarły do ${formatNumber(reach)} unikalnych użytkowników 
-                        z częstotliwością ${frequency.toFixed(1)} wyświetleń na użytkownika. Koszt za 1000 wyświetleń (CPM) wyniósł ${formatCurrency(cpm)}. 
-                        W analizowanym okresie aktywnych było ${campaignCount} kampanii.
-                    </p>
+                    ${reportData.executiveSummary ? `
+                        <div style="white-space: pre-wrap; line-height: 1.6;">
+                            ${reportData.executiveSummary}
+                        </div>
+                    ` : `
+                        <p>
+                            W analizowanym okresie wydano ${formatCurrency(totalSpend)}, osiągając ${formatNumber(totalImpressions)} wyświetleń i ${formatNumber(totalClicks)} kliknięć. 
+                            CTR wyniósł ${formatPercentage(ctr)}, co stanowi dobry wynik. Średni koszt kliknięcia (CPC) to ${formatCurrency(cpc)}, co jest wartością normalną. 
+                            Nie odnotowano konwersji, co sugeruje potrzebę optymalizacji ścieżki konwersji. Kampanie dotarły do ${formatNumber(reach)} unikalnych użytkowników 
+                            z częstotliwością ${frequency.toFixed(1)} wyświetleń na użytkownika. Koszt za 1000 wyświetleń (CPM) wyniósł ${formatCurrency(cpm)}. 
+                            W analizowanym okresie aktywnych było ${campaignCount} kampanii.
+                        </p>
+                    `}
                 </div>
             </div>
             
@@ -563,13 +570,84 @@ export async function POST(request: NextRequest) {
       console.log('⚠️ No Meta Ads tables data available for PDF generation - skipping Meta tables section');
     }
 
+    // Fetch AI Executive Summary
+    let executiveSummary: string | undefined;
+    try {
+      console.log('🤖 Fetching AI Executive Summary for PDF...');
+      
+      // First try to get existing summary
+      const summaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/executive-summaries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          clientId,
+          dateRange
+        })
+      });
+
+      if (summaryResponse.ok) {
+        const summaryData = await summaryResponse.json();
+        if (summaryData.summary?.content) {
+          executiveSummary = summaryData.summary.content;
+          console.log('✅ Using existing AI Executive Summary');
+        } else {
+          console.log('⚠️ No existing AI Executive Summary found, generating new one...');
+          
+          // Generate new AI summary
+          const generateResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/generate-executive-summary`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange,
+              reportData: {
+                account_summary: {
+                  total_spend: calculatedTotals.spend,
+                  total_impressions: calculatedTotals.impressions,
+                  total_clicks: calculatedTotals.clicks,
+                  total_conversions: calculatedTotals.conversions,
+                  average_ctr: calculatedTotals.ctr,
+                  average_cpc: calculatedTotals.cpc,
+                  average_cpa: calculatedTotals.conversions > 0 ? calculatedTotals.spend / calculatedTotals.conversions : 0,
+                  total_conversion_value: 0, // Will be calculated if available
+                  roas: 0, // Will be calculated if available
+                  micro_conversions: 0 // Will be calculated if available
+                }
+              }
+            })
+          });
+
+          if (generateResponse.ok) {
+            const generateData = await generateResponse.json();
+            if (generateData.summary) {
+              executiveSummary = generateData.summary;
+              console.log('✅ Generated new AI Executive Summary');
+            }
+          } else {
+            console.log('⚠️ Failed to generate AI Executive Summary');
+          }
+        }
+      } else {
+        console.log('⚠️ Failed to fetch existing AI Executive Summary');
+      }
+    } catch (error) {
+      console.log('⚠️ Error fetching/generating AI Executive Summary:', error);
+    }
+
     // Prepare report data
     const reportData: ReportData = {
       client,
       dateRange,
       campaigns,
       totals: calculatedTotals,
-      metaTables: metaTablesData
+      metaTables: metaTablesData,
+      executiveSummary
     };
 
     console.log('🎯 PDF Generation Data:', {
@@ -579,7 +657,8 @@ export async function POST(request: NextRequest) {
       spend: (reportData.totals.spend || 0).toFixed(2) + ' zł',
       impressions: (reportData.totals.impressions || 0).toLocaleString(),
       clicks: (reportData.totals.clicks || 0).toLocaleString(),
-      hasMetaTables: !!reportData.metaTables
+      hasMetaTables: !!reportData.metaTables,
+      hasExecutiveSummary: !!reportData.executiveSummary
     });
 
     // Generate PDF HTML
