@@ -282,15 +282,19 @@ export type Database = {
           created_at: string
           credentials_generated_at: string | null
           email: string
+          email_send_count: number
           generated_password: string | null
           generated_username: string | null
           id: string
           last_report_date: string | null
+          last_report_sent_at: string | null
           last_token_validation: string | null
           meta_access_token: string | null
           name: string
+          next_report_scheduled_at: string | null
           notes: string | null
           reporting_frequency: Database["public"]["Enums"]["reporting_frequency"]
+          send_day: number
           system_user_token: string | null
           token_expires_at: string | null
           token_health_status: string | null
@@ -306,15 +310,19 @@ export type Database = {
           created_at?: string
           credentials_generated_at?: string | null
           email: string
+          email_send_count?: number
           generated_password?: string | null
           generated_username?: string | null
           id?: string
           last_report_date?: string | null
+          last_report_sent_at?: string | null
           last_token_validation?: string | null
           meta_access_token?: string | null
           name: string
+          next_report_scheduled_at?: string | null
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
+          send_day?: number
           system_user_token?: string | null
           token_expires_at?: string | null
           token_health_status?: string | null
@@ -330,15 +338,19 @@ export type Database = {
           created_at?: string
           credentials_generated_at?: string | null
           email?: string
+          email_send_count?: number
           generated_password?: string | null
           generated_username?: string | null
           id?: string
           last_report_date?: string | null
+          last_report_sent_at?: string | null
           last_token_validation?: string | null
           meta_access_token?: string | null
           name?: string
+          next_report_scheduled_at?: string | null
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
+          send_day?: number
           system_user_token?: string | null
           token_expires_at?: string | null
           token_health_status?: string | null

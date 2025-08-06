@@ -15,6 +15,10 @@
     {
       "path": "/api/background/cleanup-executive-summaries",
       "schedule": "0 3 * * 6"
+    },
+    {
+      "path": "/api/automated/send-scheduled-reports",
+      "schedule": "0 9 * * *"
     }
   ]
 } 

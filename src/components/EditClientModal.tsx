@@ -23,6 +23,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     meta_access_token: '',
     system_user_token: '',
     reporting_frequency: 'monthly' as Database['public']['Enums']['reporting_frequency'],
+    send_day: 5,
     notes: '',
     contact_emails: [] as string[]
   });
@@ -57,6 +58,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
         meta_access_token: '', // Don't pre-fill tokens for security
         system_user_token: '', // Don't pre-fill tokens for security
         reporting_frequency: client.reporting_frequency || 'monthly',
+        send_day: client.send_day || 5,
         notes: client.notes || '',
         contact_emails: additionalEmails
       });
@@ -322,6 +324,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       if (formData.company !== client.company) updates.company = formData.company;
       if (formData.ad_account_id !== client.ad_account_id) updates.ad_account_id = formData.ad_account_id;
       if (formData.reporting_frequency !== client.reporting_frequency) updates.reporting_frequency = formData.reporting_frequency;
+      if (formData.send_day !== client.send_day) updates.send_day = formData.send_day;
       if (formData.notes !== client.notes) updates.notes = formData.notes;
       
       // Update contact_emails - ensure main email is always first and no duplicates
@@ -717,6 +720,40 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
               <option value="on_demand">On Demand</option>
             </select>
           </div>
+          
+          {(formData.reporting_frequency === 'monthly' || formData.reporting_frequency === 'weekly') && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Send Day
+                {formData.reporting_frequency === 'monthly' ? ' (Day of month)' : ' (Day of week)'}
+              </label>
+              <select
+                value={formData.send_day}
+                onChange={(e) => setFormData({...formData, send_day: parseInt(e.target.value)})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {formData.reporting_frequency === 'monthly' ? (
+                  // Days 1-31 for monthly
+                  Array.from({length: 31}, (_, i) => i + 1).map(day => (
+                    <option key={day} value={day}>{day}</option>
+                  ))
+                ) : (
+                  // Days 1-7 for weekly (Monday=1, Sunday=7)
+                  [
+                    {value: 1, label: 'Monday'},
+                    {value: 2, label: 'Tuesday'},
+                    {value: 3, label: 'Wednesday'},
+                    {value: 4, label: 'Thursday'},
+                    {value: 5, label: 'Friday'},
+                    {value: 6, label: 'Saturday'},
+                    {value: 7, label: 'Sunday'}
+                  ].map(day => (
+                    <option key={day.value} value={day.value}>{day.label}</option>
+                  ))
+                )}
+              </select>
+            </div>
+          )}
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -1490,7 +1490,7 @@ function ReportsPageContent() {
               </div>
               <div className="ml-3">
                 <p className="text-sm text-yellow-700">
-                  <strong>Uwaga:</strong> Widok "Cały Okres" pobiera dane od momentu uruchomienia biznesu klienta lub z ostatnich 37 miesięcy (ograniczenie Meta API) - w zależności od tego, która data jest późniejsza.
+                  <strong>Uwaga:</strong> Widok &quot;Cały Okres&quot; pobiera dane od momentu uruchomienia biznesu klienta lub z ostatnich 37 miesięcy (ograniczenie Meta API) - w zależności od tego, która data jest późniejsza.
                 </p>
               </div>
             </div>
