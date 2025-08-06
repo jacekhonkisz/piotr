@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,64 +87,19 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      // Check if summary already exists for this client and date range
-      const { data: existingSummary } = await supabase
-        .from('executive_summaries')
-        .select('*')
-        .eq('client_id', clientId)
-        .eq('date_range_start', dateRange.start)
-        .eq('date_range_end', dateRange.end)
-        .single();
+      // Use cache service to save summary
+      const cacheService = ExecutiveSummaryCacheService.getInstance();
+      const result = await cacheService.saveSummary(
+        clientId,
+        dateRange,
+        summary.content,
+        summary.is_ai_generated
+      );
 
-      let result;
-      if (existingSummary) {
-        // Update existing summary
-        const { data: updatedSummary, error: updateError } = await supabase
-          .from('executive_summaries')
-          .update({
-            content: summary.content,
-            is_ai_generated: summary.is_ai_generated,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingSummary.id)
-          .select()
-          .single();
-
-        if (updateError) {
-          console.error('Error updating executive summary:', updateError);
-          return NextResponse.json({ 
-            error: 'Failed to update executive summary',
-            details: updateError.message
-          }, { status: 500 });
-        }
-
-        result = updatedSummary;
-      } else {
-        // Create new summary
-        const { data: newSummary, error: insertError } = await supabase
-          .from('executive_summaries')
-          .insert({
-            client_id: clientId,
-            date_range_start: dateRange.start,
-            date_range_end: dateRange.end,
-            content: summary.content,
-            is_ai_generated: summary.is_ai_generated,
-            generated_at: summary.generated_at || new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error('Error creating executive summary:', insertError);
-          return NextResponse.json({ 
-            error: 'Failed to create executive summary',
-            details: insertError.message
-          }, { status: 500 });
-        }
-
-        result = newSummary;
+      if (!result) {
+        return NextResponse.json({ 
+          error: 'Failed to save executive summary'
+        }, { status: 500 });
       }
 
       return NextResponse.json({
@@ -151,26 +107,13 @@ export async function POST(request: NextRequest) {
         summary: result
       });
     } else {
-      // Load existing summary
-      const { data: existingSummary, error: loadError } = await supabase
-        .from('executive_summaries')
-        .select('*')
-        .eq('client_id', clientId)
-        .eq('date_range_start', dateRange.start)
-        .eq('date_range_end', dateRange.end)
-        .single();
-
-      if (loadError && loadError.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Error loading executive summary:', loadError);
-        return NextResponse.json({ 
-          error: 'Failed to load executive summary',
-          details: loadError.message
-        }, { status: 500 });
-      }
+      // Load existing summary using cache service
+      const cacheService = ExecutiveSummaryCacheService.getInstance();
+      const existingSummary = await cacheService.getCachedSummary(clientId, dateRange);
 
       return NextResponse.json({
         success: true,
-        summary: existingSummary || null
+        summary: existingSummary
       });
     }
 

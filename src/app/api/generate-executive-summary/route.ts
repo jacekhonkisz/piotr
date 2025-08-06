@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -104,6 +105,15 @@ export async function POST(request: NextRequest) {
 
     // Generate AI summary using OpenAI
     const aiSummary = await generateAISummary(summaryData);
+
+    // Save to cache if within retention period (12 months)
+    const cacheService = ExecutiveSummaryCacheService.getInstance();
+    if (cacheService.isWithinRetentionPeriod(dateRange)) {
+      await cacheService.saveSummary(clientId, dateRange, aiSummary);
+      console.log('💾 Saved AI Executive Summary to cache');
+    } else {
+      console.log('⚠️ Summary not saved to cache (outside 12-month retention period)');
+    }
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
+import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -570,71 +571,66 @@ export async function POST(request: NextRequest) {
       console.log('⚠️ No Meta Ads tables data available for PDF generation - skipping Meta tables section');
     }
 
-    // Fetch AI Executive Summary
+    // Fetch AI Executive Summary with caching
     let executiveSummary: string | undefined;
     try {
-      console.log('🤖 Fetching AI Executive Summary for PDF...');
+      console.log('🤖 Fetching AI Executive Summary for PDF with caching...');
       
-      // First try to get existing summary
-      const summaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/executive-summaries`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          clientId,
-          dateRange
-        })
-      });
-
-      if (summaryResponse.ok) {
-        const summaryData = await summaryResponse.json();
-        if (summaryData.summary?.content) {
-          executiveSummary = summaryData.summary.content;
-          console.log('✅ Using existing AI Executive Summary');
-        } else {
-          console.log('⚠️ No existing AI Executive Summary found, generating new one...');
-          
-          // Generate new AI summary
-          const generateResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/generate-executive-summary`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              clientId,
-              dateRange,
-              reportData: {
-                account_summary: {
-                  total_spend: calculatedTotals.spend,
-                  total_impressions: calculatedTotals.impressions,
-                  total_clicks: calculatedTotals.clicks,
-                  total_conversions: calculatedTotals.conversions,
-                  average_ctr: calculatedTotals.ctr,
-                  average_cpc: calculatedTotals.cpc,
-                  average_cpa: calculatedTotals.conversions > 0 ? calculatedTotals.spend / calculatedTotals.conversions : 0,
-                  total_conversion_value: 0, // Will be calculated if available
-                  roas: 0, // Will be calculated if available
-                  micro_conversions: 0 // Will be calculated if available
-                }
-              }
-            })
-          });
-
-          if (generateResponse.ok) {
-            const generateData = await generateResponse.json();
-            if (generateData.summary) {
-              executiveSummary = generateData.summary;
-              console.log('✅ Generated new AI Executive Summary');
-            }
-          } else {
-            console.log('⚠️ Failed to generate AI Executive Summary');
-          }
-        }
+      const cacheService = ExecutiveSummaryCacheService.getInstance();
+      
+      // Check if summary exists in cache
+      const cachedSummary = await cacheService.getCachedSummary(clientId, dateRange);
+      
+      if (cachedSummary) {
+        executiveSummary = cachedSummary.content;
+        console.log('✅ Using cached AI Executive Summary');
       } else {
-        console.log('⚠️ Failed to fetch existing AI Executive Summary');
+        console.log('⚠️ No cached AI Executive Summary found, generating new one...');
+        
+        // Generate new AI summary
+        const generateResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/generate-executive-summary`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange,
+            reportData: {
+              account_summary: {
+                total_spend: calculatedTotals.spend,
+                total_impressions: calculatedTotals.impressions,
+                total_clicks: calculatedTotals.clicks,
+                total_conversions: calculatedTotals.conversions,
+                average_ctr: calculatedTotals.ctr,
+                average_cpc: calculatedTotals.cpc,
+                average_cpa: calculatedTotals.conversions > 0 ? calculatedTotals.spend / calculatedTotals.conversions : 0,
+                total_conversion_value: 0, // Will be calculated if available
+                roas: 0, // Will be calculated if available
+                micro_conversions: 0 // Will be calculated if available
+              }
+            }
+          })
+        });
+
+        if (generateResponse.ok) {
+          const generateData = await generateResponse.json();
+          if (generateData.summary) {
+            executiveSummary = generateData.summary;
+            console.log('✅ Generated new AI Executive Summary');
+            
+            // Save to cache if within retention period (12 months)
+            if (cacheService.isWithinRetentionPeriod(dateRange)) {
+              await cacheService.saveSummary(clientId, dateRange, generateData.summary);
+              console.log('💾 Saved AI Executive Summary to cache');
+            } else {
+              console.log('⚠️ Summary not saved to cache (outside 12-month retention period)');
+            }
+          }
+        } else {
+          console.log('⚠️ Failed to generate AI Executive Summary');
+        }
       }
     } catch (error) {
       console.log('⚠️ Error fetching/generating AI Executive Summary:', error);

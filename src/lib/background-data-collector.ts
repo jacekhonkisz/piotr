@@ -413,7 +413,15 @@ export class BackgroundDataCollector {
     try {
       const smartLoader = SmartDataLoader.getInstance();
       await smartLoader.cleanupOldData();
-      console.log('✅ Cleanup completed');
+      console.log('✅ Campaign summaries cleanup completed');
+      
+      // Also cleanup executive summaries
+      const { ExecutiveSummaryCacheService } = await import('./executive-summary-cache');
+      const executiveCacheService = ExecutiveSummaryCacheService.getInstance();
+      await executiveCacheService.cleanupOldSummaries();
+      console.log('✅ Executive summaries cleanup completed');
+      
+      console.log('✅ All cleanup completed');
     } catch (error) {
       console.error('❌ Error during cleanup:', error);
     }

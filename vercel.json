@@ -11,6 +11,10 @@
     {
       "path": "/api/background/cleanup-old-data",
       "schedule": "0 2 * * 6"
+    },
+    {
+      "path": "/api/background/cleanup-executive-summaries",
+      "schedule": "0 3 * * 6"
     }
   ]
 } 

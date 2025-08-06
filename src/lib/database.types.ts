@@ -92,6 +92,50 @@ export type Database = {
           },
         ]
       }
+      executive_summaries: {
+        Row: {
+          id: string
+          client_id: string
+          date_range_start: string
+          date_range_end: string
+          content: string
+          is_ai_generated: boolean
+          generated_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          date_range_start: string
+          date_range_end: string
+          content: string
+          is_ai_generated?: boolean
+          generated_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          date_range_start?: string
+          date_range_end?: string
+          content?: string
+          is_ai_generated?: boolean
+          generated_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "executive_summaries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaigns: {
         Row: {
           campaign_id: string
