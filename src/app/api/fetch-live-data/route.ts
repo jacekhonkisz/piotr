@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     
     // Parse request body
     const requestBody = await request.json();
-    const { dateRange, clientId } = requestBody;
+    const { dateRange, clientId, clearCache, forceFresh } = requestBody;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -137,6 +137,13 @@ export async function POST(request: NextRequest) {
 
     // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);
+    
+    // Check for cache clearing parameter
+    const shouldClearCache = clearCache === 'true' || clearCache === true || forceFresh;
+    if (shouldClearCache) {
+      console.log('🗑️ Cache clearing requested');
+      metaService.clearCache();
+    }
     
     // Validate token first
     console.log('🔐 Validating Meta API token...');
@@ -266,6 +273,18 @@ export async function POST(request: NextRequest) {
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
+    // Calculate conversion tracking totals
+    const totalClickToCall = campaignInsights.reduce((sum, campaign) => sum + (campaign.click_to_call || 0), 0);
+    const totalEmailContacts = campaignInsights.reduce((sum, campaign) => sum + (campaign.email_contacts || 0), 0);
+    const totalBookingStep1 = campaignInsights.reduce((sum, campaign) => sum + (campaign.booking_step_1 || 0), 0);
+    const totalReservations = campaignInsights.reduce((sum, campaign) => sum + (campaign.reservations || 0), 0);
+    const totalReservationValue = campaignInsights.reduce((sum, campaign) => sum + (campaign.reservation_value || 0), 0);
+    const totalBookingStep2 = campaignInsights.reduce((sum, campaign) => sum + (campaign.booking_step_2 || 0), 0);
+    
+    // Calculate overall ROAS and cost per reservation
+    const overallRoas = totalSpend > 0 && totalReservationValue > 0 ? totalReservationValue / totalSpend : 0;
+    const overallCostPerReservation = totalReservations > 0 ? totalSpend / totalReservations : 0;
+
     const responseTime = Date.now() - startTime;
     performanceMonitor.recordAPICall('fetch-live-data', responseTime);
     
@@ -302,6 +321,16 @@ export async function POST(request: NextRequest) {
           totalConversions,
           averageCtr,
           averageCpc
+        },
+        conversionMetrics: {
+          click_to_call: totalClickToCall,
+          email_contacts: totalEmailContacts,
+          booking_step_1: totalBookingStep1,
+          reservations: totalReservations,
+          reservation_value: totalReservationValue,
+          roas: overallRoas,
+          cost_per_reservation: overallCostPerReservation,
+          booking_step_2: totalBookingStep2
         },
         dateRange: {
           start: startDate,

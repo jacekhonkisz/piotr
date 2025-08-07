@@ -38,16 +38,16 @@ interface CampaignInsights {
   date_stop: string;
   status?: string;
   cpm?: number;
-  // Conversion tracking fields
+  
+  // Conversion tracking metrics
   click_to_call?: number;
-  lead?: number;
-  purchase?: number;
-  purchase_value?: number;
+  email_contacts?: number;
   booking_step_1?: number;
-  booking_step_2?: number;
-  booking_step_3?: number;
+  reservations?: number;
+  reservation_value?: number;
   roas?: number;
   cost_per_reservation?: number;
+  booking_step_2?: number;
 }
 
 interface AdAccount {
@@ -126,6 +126,11 @@ export class MetaAPIService {
       data,
       timestamp: Date.now()
     });
+  }
+
+  public clearCache(): void {
+    apiCache.clear();
+    console.log('🗑️ Meta API cache cleared');
   }
 
   /**
@@ -528,14 +533,8 @@ export class MetaAPIService {
     timeIncrement: number = 0
   ): Promise<CampaignInsights[]> {
     try {
-      // Check cache first
-      const endpoint = `${adAccountId}/insights`;
-      const cacheKey = this.getCacheKey(endpoint, `dateStart=${dateStart}&dateEnd=${dateEnd}&timeIncrement=${timeIncrement}`);
-      const cached = this.getCachedResponse(cacheKey);
-      if (cached) {
-        console.log('📦 Using cached campaign insights data');
-        return cached;
-      }
+      // DISABLED CACHING for live conversion metrics - always fetch fresh data
+      console.log('🔄 LIVE FETCH: Always fetching fresh campaign insights (no cache)');
 
       const fields = [
         'campaign_id',
@@ -629,94 +628,107 @@ export class MetaAPIService {
         const insights = data.data.map(insight => {
           // Parse conversion tracking data from actions
           let click_to_call = 0;
-          let lead = 0;
-          let purchase = 0;
-          let purchase_value = 0;
+          let email_contacts = 0;
           let booking_step_1 = 0;
+          let reservations = 0;
+          let reservation_value = 0;
           let booking_step_2 = 0;
-          let booking_step_3 = 0;
 
           // Extract action data if available
           if (insight.actions && Array.isArray(insight.actions)) {
+            console.log(`🔍 RAW ACTIONS for campaign ${insight.campaign_name}:`, insight.actions);
             insight.actions.forEach((action: any) => {
               const actionType = action.action_type;
               const value = parseInt(action.value || '0');
+              console.log(`   📊 Action: ${actionType} = ${value}`);
               
-              // Improved parsing logic using includes() instead of exact matches
-              if (actionType.includes('click_to_call')) {
+              // 1. Potencjalne kontakty telefoniczne - Include call confirmation events
+              if (actionType.includes('click_to_call') || actionType.includes('call_confirm')) {
                 click_to_call += value;
               }
-              if (actionType.includes('lead')) {
-                lead += value;
+              
+              // 2. Potencjalne kontakty email
+              if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
+                email_contacts += value;
               }
-              if (actionType === 'purchase' || actionType.includes('purchase')) {
-                purchase += value;
-              }
-              if (actionType.includes('booking_step_1') || actionType.includes('initiate_checkout')) {
+              
+              // 3. Kroki rezerwacji – Etap 1 procesu rezerwacji - Use checkout initiation as proxy
+              if (actionType.includes('booking_step_1') || 
+                  actionType === 'initiate_checkout' || 
+                  actionType === 'offsite_conversion.fb_pixel_initiate_checkout') {
                 booking_step_1 += value;
               }
+              
+              // 4. Rezerwacje (zakończone rezerwacje) - Use primary purchase event only to avoid duplication
+              if (actionType === 'purchase' || actionType === 'offsite_conversion.fb_pixel_purchase') {
+                reservations += value;
+              }
+              
+              // 8. Etap 2 rezerwacji
               if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
                 booking_step_2 += value;
               }
-              if (actionType.includes('booking_step_3') || actionType.includes('purchase')) {
-                booking_step_3 += value;
-              }
             });
           }
 
-          // Extract purchase value from action_values
+          // 5. Wartość rezerwacji - Extract from action_values (use primary purchase event only)
           if (insight.action_values && Array.isArray(insight.action_values)) {
+            console.log(`🔍 RAW ACTION_VALUES for campaign ${insight.campaign_name}:`, insight.action_values);
             insight.action_values.forEach((actionValue: any) => {
-              if (actionValue.action_type === 'purchase') {
-                purchase_value = parseFloat(actionValue.value || '0');
+              console.log(`   💰 Action Value: ${actionValue.action_type} = ${actionValue.value}`);
+              if (actionValue.action_type === 'purchase' || actionValue.action_type === 'offsite_conversion.fb_pixel_purchase') {
+                reservation_value += parseFloat(actionValue.value || '0');
+                console.log(`   ✅ USED for reservation_value: ${actionValue.value}`);
               }
             });
           }
 
-          // Calculate ROAS and cost per reservation
-          const roas = purchase_value > 0 && parseFloat(insight.spend || '0') > 0 
-            ? purchase_value / parseFloat(insight.spend || '0') 
-            : 0;
-          const cost_per_reservation = purchase > 0 && parseFloat(insight.spend || '0') > 0 
-            ? parseFloat(insight.spend || '0') / purchase 
-            : 0;
+          // 6. ROAS (Return on Ad Spend) - Calculate
+          const spend = parseFloat(insight.spend || '0');
+          const roas = spend > 0 && reservation_value > 0 ? reservation_value / spend : 0;
+
+          // 7. Koszt per rezerwacja (średni koszt za rezerwację) - Calculate
+          const cost_per_reservation = reservations > 0 ? spend / reservations : 0;
+
+          // DEBUG: Log final calculations
+          console.log(`📊 FINAL CALCULATIONS for ${insight.campaign_name}:`);
+          console.log(`   💰 Spend: ${spend} zł`);
+          console.log(`   ✅ Reservations: ${reservations}`);
+          console.log(`   💵 Reservation Value: ${reservation_value} zł`);
+          console.log(`   📈 ROAS: ${roas.toFixed(2)}x`);
+          console.log(`   💲 Cost per Reservation: ${cost_per_reservation.toFixed(2)} zł`);
 
           return {
             campaign_id: insight.campaign_id || 'unknown',
             campaign_name: insight.campaign_name || 'Unknown Campaign',
             impressions: parseInt(insight.impressions || '0'),
             clicks: parseInt(insight.clicks || '0'),
-            spend: parseFloat(insight.spend || '0'),
+            spend: spend,
             conversions: parseInt(insight.conversions?.[0]?.value || '0'),
             ctr: parseFloat(insight.ctr || '0'),
             cpc: parseFloat(insight.cpc || '0'),
             ...(insight.cpp && { cpp: parseFloat(insight.cpp) }),
             ...(insight.frequency && { frequency: parseFloat(insight.frequency) }),
             ...(insight.reach && { reach: parseInt(insight.reach) }),
-
             ...(insight.cpm && { cpm: parseFloat(insight.cpm) }),
             date_start: insight.date_start || dateStart,
             date_stop: insight.date_stop || dateEnd,
-            // Conversion tracking data
+            
+            // Conversion tracking metrics
             click_to_call,
-            lead,
-            purchase,
-            purchase_value,
+            email_contacts,
             booking_step_1,
-            booking_step_2,
-            booking_step_3,
+            reservations,
+            reservation_value,
             roas,
             cost_per_reservation,
+            booking_step_2,
           } as CampaignInsights;
         });
 
         console.log('✅ Parsed campaign insights:', insights.length, 'campaigns');
         
-        // Cache the result
-        const endpoint = `${adAccountId}/insights`;
-        const cacheKey = this.getCacheKey(endpoint, `dateStart=${dateStart}&dateEnd=${dateEnd}&timeIncrement=${timeIncrement}`);
-        this.setCachedResponse(cacheKey, insights);
-        
+        // CACHING DISABLED - always return fresh data for live conversion metrics
         return insights;
       }
 

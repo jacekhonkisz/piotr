@@ -12,12 +12,12 @@ import {
   AlertCircle,
   Clock,
   BarChart3,
-  TrendingUp,
   Database as DatabaseIcon
 } from 'lucide-react';
 import WeeklyReportView from '../../components/WeeklyReportView';
 import InteractivePDFButton from '../../components/InteractivePDFButton';
 import MetaAdsTables from '../../components/MetaAdsTables';
+import ClientSelector from '../../components/ClientSelector';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
@@ -42,14 +42,14 @@ interface Campaign {
   landing_page_view?: number;
   ad_type?: string;
   objective?: string;
-  // Conversion tracking fields
+  
+  // Conversion tracking metrics
   click_to_call?: number;
-  lead?: number;
-  purchase?: number;
-  purchase_value?: number;
+  email_contacts?: number;
   booking_step_1?: number;
+  reservations?: number;
+  reservation_value?: number;
   booking_step_2?: number;
-  booking_step_3?: number;
 }
 
 interface MonthlyReport {
@@ -110,6 +110,7 @@ function ReportsPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<Client | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [reports, setReports] = useState<{ [key: string]: MonthlyReport | WeeklyReport }>({});
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
@@ -133,6 +134,21 @@ function ReportsPageContent() {
   const clientLoadingRef = useRef(false);
   const mountedRef = useRef(false);
   const initialClientLoadRef = useRef(false);
+
+  // Handle client change for admin users
+  const handleClientChange = async (newClient: Client) => {
+    console.log('🔄 Client changed in reports:', newClient.name);
+    setSelectedClient(newClient);
+    
+    // Clear existing reports for the new client
+    setReports({});
+    
+    // Reload data for the current period with the new client
+    if (selectedPeriod) {
+      console.log('📊 Reloading data for new client:', newClient.name);
+      await loadPeriodDataWithClient(selectedPeriod, newClient);
+    }
+  };
 
   // Get current user and profile
   const getCurrentUser = async () => {
@@ -204,18 +220,18 @@ function ReportsPageContent() {
   const loadAllTimeData = async () => {
     console.log('🚀 loadAllTimeData function called!');
     
-    if (!client) {
-      console.log('⚠️ Client not loaded yet, cannot load all-time data');
+    if (!selectedClient) {
+      console.log('⚠️ Selected client not loaded yet, cannot load all-time data');
       return;
     }
 
     console.log('📊 Loading all-time data for client:', {
-      id: client.id,
-      name: client.name,
-      email: client.email,
-      adAccountId: client.ad_account_id,
-      hasMetaToken: !!client.meta_access_token,
-      tokenLength: client.meta_access_token?.length || 0
+      id: selectedClient.id,
+      name: selectedClient.name,
+      email: selectedClient.email,
+      adAccountId: selectedClient.ad_account_id,
+      hasMetaToken: !!selectedClient.meta_access_token,
+      tokenLength: selectedClient.meta_access_token?.length || 0
     });
     
     // Prevent duplicate calls (but allow all-time to override)
@@ -243,16 +259,16 @@ function ReportsPageContent() {
       // First, get campaign creation dates to find the earliest campaign
       console.log('🔍 Getting campaign creation dates to determine effective start date...');
       
-      const adAccountId = client.ad_account_id.startsWith('act_') 
-        ? client.ad_account_id.substring(4)
-        : client.ad_account_id;
+      const adAccountId = selectedClient.ad_account_id.startsWith('act_') 
+        ? selectedClient.ad_account_id.substring(4)
+        : selectedClient.ad_account_id;
       
       // Get campaigns to find earliest creation date with better error handling
       let earliestCampaignDate = null;
       let campaignsData = null;
       
       try {
-        const campaignsResponse = await fetch(`https://graph.facebook.com/v18.0/act_${adAccountId}/campaigns?access_token=${client.meta_access_token}&fields=id,name,created_time,status`, {
+        const campaignsResponse = await fetch(`https://graph.facebook.com/v18.0/act_${adAccountId}/campaigns?access_token=${selectedClient.meta_access_token}&fields=id,name,created_time,status`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -292,7 +308,7 @@ function ReportsPageContent() {
       maxPastDate.setMonth(maxPastDate.getMonth() - 37); // Meta API limit: 37 months
       
       // Get client's business start date (when they were created in the system)
-      const clientStartDate = new Date(client.created_at);
+      const clientStartDate = new Date(selectedClient.created_at);
       console.log(`📅 Client business start date: ${clientStartDate.toISOString().split('T')[0]}`);
       console.log(`📅 Meta API limit date: ${maxPastDate.toISOString().split('T')[0]}`);
       
@@ -331,7 +347,7 @@ function ReportsPageContent() {
           start: startDate,
           end: endDate
         },
-        clientId: client.id
+        clientId: selectedClient.id
       };
       
       console.log(`📡 Making OPTIMIZED single API call for entire date range:`, requestBody);
@@ -369,44 +385,49 @@ function ReportsPageContent() {
         const transformedCampaigns: Campaign[] = allCampaigns.map((campaign: any, index: number) => {
           // Parse conversion tracking data from actions array
           let click_to_call = 0;
-          let lead = 0;
-          let purchase = 0;
-          let purchase_value = 0;
+          let email_contacts = 0;
+          let reservations = 0;
+          let reservation_value = 0;
           let booking_step_1 = 0;
           let booking_step_2 = 0;
-          let booking_step_3 = 0;
 
           if (campaign.actions && Array.isArray(campaign.actions)) {
             campaign.actions.forEach((action: any) => {
               const actionType = action.action_type;
               const value = parseInt(action.value || '0');
               
+              // 1. Potencjalne kontakty telefoniczne
               if (actionType.includes('click_to_call')) {
                 click_to_call += value;
               }
-              if (actionType.includes('lead')) {
-                lead += value;
+              
+              // 2. Potencjalne kontakty email
+              if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
+                email_contacts += value;
               }
-              if (actionType === 'purchase' || actionType.includes('purchase')) {
-                purchase += value;
-              }
+              
+              // 3. Kroki rezerwacji – Etap 1
               if (actionType.includes('booking_step_1') || actionType.includes('initiate_checkout')) {
                 booking_step_1 += value;
               }
+              
+              // 4. Rezerwacje (zakończone rezerwacje)
+              if (actionType === 'purchase' || actionType.includes('purchase') || actionType.includes('reservation')) {
+                reservations += value;
+              }
+              
+              // 8. Etap 2 rezerwacji
               if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
                 booking_step_2 += value;
-              }
-              if (actionType.includes('booking_step_3') || actionType.includes('purchase')) {
-                booking_step_3 += value;
               }
             });
           }
 
-          // Extract purchase value from action_values
+          // 5. Wartość rezerwacji - Extract from action_values
           if (campaign.action_values && Array.isArray(campaign.action_values)) {
             campaign.action_values.forEach((actionValue: any) => {
-              if (actionValue.action_type === 'purchase') {
-                purchase_value = parseFloat(actionValue.value || '0');
+              if (actionValue.action_type === 'purchase' || actionValue.action_type.includes('purchase')) {
+                reservation_value = parseFloat(actionValue.value || '0');
               }
             });
           }
@@ -430,12 +451,11 @@ function ReportsPageContent() {
             objective: campaign.objective || undefined,
             // Conversion tracking fields (parsed from actions)
             click_to_call,
-            lead,
-            purchase,
-            purchase_value,
+            email_contacts,
+            reservations,
+            reservation_value,
             booking_step_1,
-            booking_step_2,
-            booking_step_3
+            booking_step_2
           };
         });
         
@@ -608,12 +628,11 @@ function ReportsPageContent() {
         // Use already-parsed conversion tracking data from API response
         // The Meta API service already processes the actions and action_values
         const click_to_call = campaign.click_to_call || 0;
-        const lead = campaign.lead || 0;
-        const purchase = campaign.purchase || 0;
-        const purchase_value = campaign.purchase_value || 0;
+        const email_contacts = campaign.email_contacts || 0;
+        const reservations = campaign.reservations || 0;
+        const reservation_value = campaign.reservation_value || 0;
         const booking_step_1 = campaign.booking_step_1 || 0;
         const booking_step_2 = campaign.booking_step_2 || 0;
-        const booking_step_3 = campaign.booking_step_3 || 0;
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,
@@ -634,12 +653,11 @@ function ReportsPageContent() {
           objective: campaign.objective || undefined,
           // Conversion tracking fields (parsed from actions)
           click_to_call,
-          lead,
-          purchase,
-          purchase_value,
+          email_contacts,
+          reservations,
+          reservation_value,
           booking_step_1,
-          booking_step_2,
-          booking_step_3
+          booking_step_2
         };
       });
       
@@ -738,8 +756,8 @@ function ReportsPageContent() {
   };
 
   // Load data for a specific period with explicit client data
-  const loadPeriodDataWithClient = async (periodId: string, clientData: Client) => {
-    console.log(`📊 Loading ${viewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id });
+  const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false) => {
+    console.log(`📊 Loading ${viewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
     
     // Prevent duplicate calls
     if (loadingRef.current || apiCallInProgress) {
@@ -938,7 +956,8 @@ function ReportsPageContent() {
           start: periodStartDate,
           end: periodEndDate
         },
-        clientId: clientData.id // Always send the client ID for real clients
+        clientId: clientData.id, // Always send the client ID for real clients
+        ...(forceClearCache && { forceFresh: true }) // Add cache clearing if requested
       };
       console.log('📡 Making API call with request body:', requestBody);
       
@@ -1041,12 +1060,11 @@ function ReportsPageContent() {
         // Use already-parsed conversion tracking data from API response
         // The Meta API service already processes the actions and action_values
         const click_to_call = campaign.click_to_call || 0;
-        const lead = campaign.lead || 0;
-        const purchase = campaign.purchase || 0;
-        const purchase_value = campaign.purchase_value || 0;
+        const email_contacts = campaign.email_contacts || 0;
+        const reservations = campaign.reservations || 0;
+        const reservation_value = campaign.reservation_value || 0;
         const booking_step_1 = campaign.booking_step_1 || 0;
         const booking_step_2 = campaign.booking_step_2 || 0;
-        const booking_step_3 = campaign.booking_step_3 || 0;
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,
@@ -1067,12 +1085,11 @@ function ReportsPageContent() {
           objective: campaign.objective || undefined,
           // Conversion tracking fields (parsed from actions)
           click_to_call,
-          lead,
-          purchase,
-          purchase_value,
+          email_contacts,
+          reservations,
+          reservation_value,
           booking_step_1,
-          booking_step_2,
-          booking_step_3
+          booking_step_2
         };
       });
       
@@ -1180,16 +1197,30 @@ function ReportsPageContent() {
 
   // Load data for a specific period
   const loadPeriodData = async (periodId: string) => {
-    console.log(`📊 Loading ${viewType} data for period: ${periodId}`, { periodId, client: client?.id });
+    console.log(`📊 Loading ${viewType} data for period: ${periodId}`, { periodId, client: selectedClient?.id });
     
-    // Guard: Ensure client is loaded before making API calls
-    if (!client || !client.id) {
-      console.warn('⚠️ Client not loaded yet, skipping API call');
+    // Guard: Ensure selectedClient is loaded before making API calls
+    if (!selectedClient || !selectedClient.id) {
+      console.warn('⚠️ Selected client not loaded yet, skipping API call');
       return;
     }
 
     // Use the explicit client function to avoid race conditions
-    await loadPeriodDataWithClient(periodId, client);
+    await loadPeriodDataWithClient(periodId, selectedClient);
+  };
+
+  // Load data for a specific period with cache clearing
+  const loadPeriodDataWithCacheClear = async (periodId: string) => {
+    console.log(`🗑️ Loading ${viewType} data for period with cache clearing: ${periodId}`, { periodId, client: selectedClient?.id });
+    
+    // Guard: Ensure selectedClient is loaded before making API calls
+    if (!selectedClient || !selectedClient.id) {
+      console.warn('⚠️ Selected client not loaded yet, skipping API call');
+      return;
+    }
+
+    // Use the explicit client function with cache clearing flag
+    await loadPeriodDataWithClient(periodId, selectedClient, true);
   };
 
   // Handle period change
@@ -1198,14 +1229,14 @@ function ReportsPageContent() {
     console.log('📅 Period changed to:', newPeriod);
     setSelectedPeriod(newPeriod);
     
-    // Only load data if we don't already have it and client is loaded
-    if (newPeriod && !reports[newPeriod] && client) {
+    // Only load data if we don't already have it and selectedClient is loaded
+    if (newPeriod && !reports[newPeriod] && selectedClient) {
       console.log('📊 Loading data for new period:', newPeriod);
       loadPeriodData(newPeriod);
     } else if (newPeriod && reports[newPeriod]) {
       console.log('✅ Data already available for period:', newPeriod);
-    } else if (newPeriod && !client) {
-      console.log('⚠️ Client not loaded yet, cannot load period data');
+    } else if (newPeriod && !selectedClient) {
+      console.log('⚠️ Selected client not loaded yet, cannot load period data');
     }
   };
 
@@ -1220,12 +1251,12 @@ function ReportsPageContent() {
       setAvailablePeriods([]);
       setSelectedPeriod('');
       
-      if (newViewType === 'all-time' && client) {
+      if (newViewType === 'all-time' && selectedClient) {
         console.log('🚀 Calling loadAllTimeData from handleViewTypeChange');
         // Load all-time data immediately
         loadAllTimeData();
-      } else if (newViewType === 'all-time' && !client) {
-        console.log('⚠️ Cannot load all-time data: client not loaded');
+      } else if (newViewType === 'all-time' && !selectedClient) {
+        console.log('⚠️ Cannot load all-time data: selected client not loaded');
       }
     } else {
       // For monthly and weekly, use period-based approach
@@ -1244,8 +1275,8 @@ function ReportsPageContent() {
 
   // Handle refresh
   const handleRefresh = () => {
-    if (!client) {
-      console.log('⚠️ Cannot refresh: client not loaded');
+    if (!selectedClient) {
+      console.log('⚠️ Cannot refresh: selected client not loaded');
       return;
     }
     
@@ -1395,6 +1426,7 @@ function ReportsPageContent() {
         // Get client data
         const clientData = await getClientData(currentUser, profileData);
         setClient(clientData);
+        setSelectedClient(clientData); // Set selected client for admin switching
         console.log('✅ Client loaded successfully:', {
           id: clientData.id,
           name: clientData.name,
@@ -1498,7 +1530,7 @@ function ReportsPageContent() {
         }
       }
     }
-  }, [viewType, client, loading]);
+  }, [viewType, selectedClient, loading]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -1532,12 +1564,23 @@ function ReportsPageContent() {
                 }
               </h1>
               <div className="flex items-center space-x-4 text-sm text-gray-600">
-                <span>{client?.name} - Premium Analytics Dashboard</span>
+                <span>{selectedClient?.name} - Premium Analytics Dashboard</span>
                 <div className="flex items-center space-x-1">
                   <Clock className="w-3 h-3" />
                   <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
                 </div>
               </div>
+              
+              {/* Client Selector for Admin Users */}
+              {profile?.role === 'admin' && (
+                <div className="mt-2">
+                  <ClientSelector
+                    currentClient={selectedClient}
+                    onClientChange={handleClientChange}
+                    userRole={profile.role}
+                  />
+                </div>
+              )}
             </div>
             
             <div className="flex items-center space-x-3">
@@ -2198,7 +2241,7 @@ function ReportsPageContent() {
             const currentDate = new Date();
             const currentMonthId = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
             
-            console.log('🔄 Force refreshing current month:', currentMonthId);
+            console.log('🔄 Force refreshing current month with cache clearing:', currentMonthId);
             
             // Clear current month data
             setReports(prev => {
@@ -2211,9 +2254,9 @@ function ReportsPageContent() {
             setViewType('monthly');
             setSelectedPeriod(currentMonthId);
             
-            // Force reload
+            // Force reload with cache clearing
             setTimeout(() => {
-              loadPeriodData(currentMonthId);
+              loadPeriodDataWithCacheClear(currentMonthId);
             }, 100);
             
             alert(`Force refreshing current month: ${currentMonthId}`);

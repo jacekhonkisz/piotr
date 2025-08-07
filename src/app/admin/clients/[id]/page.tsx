@@ -154,22 +154,36 @@ export default function ClientDetailPage() {
 
     setGeneratingReport(true);
     try {
-      // This would integrate with your report generation logic
       console.log('Generating report for client:', client.name);
       
-      // For now, just create a placeholder report
-      const { error: reportError } = await supabase
-        .from('reports')
-        .insert({
-          client_id: client.id,
-          date_range_start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          date_range_end: new Date().toISOString().split('T')[0],
-          generated_at: new Date().toISOString(),
-          generation_time_ms: 0,
-          email_sent: false
-        } as Database['public']['Tables']['reports']['Insert']);
+      // Use the generate-report API endpoint which includes conversion tracking
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No access token available');
+      }
 
-      if (reportError) throw reportError;
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          dateRange: {
+            start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            end: new Date().toISOString().split('T')[0]
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate report');
+      }
+
+      const reportData = await response.json();
+      console.log('Report generated successfully:', reportData);
 
       await fetchClientData();
     } catch (error) {

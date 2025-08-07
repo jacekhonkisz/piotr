@@ -52,6 +52,11 @@ export class SmartDataLoader {
     return SmartDataLoader.instance;
   }
 
+  clearCache(): void {
+    this.cache.clear();
+    console.log('🗑️ SmartDataLoader cache cleared');
+  }
+
   /**
    * Main method to load data with smart storage strategy
    */

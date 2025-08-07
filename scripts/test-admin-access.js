@@ -7,75 +7,91 @@ const supabase = createClient(
 );
 
 async function testAdminAccess() {
-  console.log('🔍 Testing Admin Access...\n');
+  console.log('🔍 Testing Admin Access to Clients...\n');
 
   try {
-    // Test admin login
-    console.log('📋 Testing admin login...');
-    const { data: adminAuth, error: adminError } = await supabase.auth.signInWithPassword({
+    // Get admin user profile
+    const { data: adminProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', 'admin@example.com')
+      .single();
+
+    if (profileError || !adminProfile) {
+      console.error('❌ Admin profile not found:', profileError);
+      return;
+    }
+
+    console.log('👤 Admin Profile:');
+    console.log(`   ID: ${adminProfile.id}`);
+    console.log(`   Email: ${adminProfile.email}`);
+    console.log(`   Role: ${adminProfile.role}`);
+    console.log(`   Created: ${adminProfile.created_at}`);
+
+    // Get all clients for this admin
+    const { data: clients, error: clientsError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('admin_id', adminProfile.id);
+
+    if (clientsError) {
+      console.error('❌ Error fetching clients:', clientsError);
+      return;
+    }
+
+    console.log(`\n📋 Found ${clients.length} clients for admin:`);
+    clients.forEach((client, index) => {
+      console.log(`   ${index + 1}. ${client.name} (${client.email})`);
+      console.log(`      ID: ${client.id}`);
+      console.log(`      Ad Account: ${client.ad_account_id}`);
+    });
+
+    // Test authentication with admin credentials
+    const { data: { session }, error: sessionError } = await supabase.auth.signInWithPassword({
       email: 'admin@example.com',
       password: 'password123'
     });
 
-    if (adminError) {
-      console.error('❌ Admin login failed:', adminError);
+    if (sessionError || !session) {
+      console.error('❌ Failed to get admin session:', sessionError);
       return;
     }
 
-    console.log('✅ Admin login successful');
-    console.log('   User ID:', adminAuth.user.id);
-    console.log('   Email:', adminAuth.user.email);
+    console.log('\n🔐 Admin session obtained successfully');
+    console.log(`   Access Token: ${session.access_token ? 'Present' : 'Missing'}`);
 
-    // Get admin profile
-    const { data: adminProfile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', adminAuth.user.id)
-      .single();
+    // Test access to each client
+    for (const client of clients) {
+      console.log(`\n🧪 Testing access to ${client.name}...`);
+      
+      const response = await fetch('http://localhost:3000/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          dateRange: {
+            start: '2025-08-01',
+            end: '2025-08-07'
+          }
+        })
+      });
 
-    if (profileError) {
-      console.error('❌ Admin profile fetch failed:', profileError);
-      return;
+      console.log(`   Response Status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`   ✅ Success - Campaigns: ${data.data?.campaigns?.length || 0}`);
+        console.log(`   ✅ Total Spend: ${data.data?.stats?.totalSpend || 0}`);
+      } else {
+        const errorText = await response.text();
+        console.log(`   ❌ Error: ${errorText}`);
+      }
     }
 
-    console.log('✅ Admin profile:');
-    console.log('   Role:', adminProfile.role);
-
-    // Test admin access to clients
-    console.log('\n📋 Testing admin access to clients...');
-    const { data: adminClients, error: clientsError } = await supabase
-      .from('clients')
-      .select('*');
-
-    if (clientsError) {
-      console.error('❌ Admin clients fetch failed:', clientsError);
-      return;
-    }
-
-    console.log('✅ Admin clients access successful:');
-    console.log('   Total clients:', adminClients.length);
-    adminClients.forEach((client, index) => {
-      console.log(`   ${index + 1}. ${client.name} (${client.email})`);
-    });
-
-    // Test admin access to reports
-    console.log('\n📋 Testing admin access to reports...');
-    const { data: adminReports, error: reportsError } = await supabase
-      .from('reports')
-      .select('*');
-
-    if (reportsError) {
-      console.error('❌ Admin reports fetch failed:', reportsError);
-      return;
-    }
-
-    console.log('✅ Admin reports access successful:');
-    console.log('   Total reports:', adminReports.length);
-
-    console.log('\n🎯 Admin Access Test Summary:');
-    console.log('   ✅ Admin can access all clients');
-    console.log('   ✅ Admin can access all reports');
-    console.log('   ✅ RLS policies working correctly for admin');
+    console.log('\n✅ Admin access test completed');
 
   } catch (error) {
     console.error('❌ Test failed:', error);

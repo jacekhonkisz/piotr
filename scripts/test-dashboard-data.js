@@ -1,107 +1,172 @@
+require('dotenv').config({ path: '.env.local' });
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xbklptrrfdspyvnjaojf.supabase.co',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || 'your-service-role-key'
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 async function testDashboardData() {
-  console.log('🔍 Testing Dashboard Data Fetching...\n');
+  console.log('🔍 Testing dashboard data for Havet client...\n');
 
   try {
-    // 1. Get admin user session
-    console.log('1️⃣ Getting admin user session...');
-    const { data: { user }, error: authError } = await supabase.auth.signInWithPassword({
-      email: 'admin@example.com',
-      password: 'password123'
-    });
-
-    if (authError || !user) {
-      console.log('❌ Failed to authenticate admin user:', authError?.message);
-      return;
-    }
-
-    console.log('✅ Admin user authenticated:', user.email);
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.access_token) {
-      console.log('❌ No access token available');
-      return;
-    }
-
-    // 2. Get a client to test with
-    console.log('\n2️⃣ Getting client data...');
-    const { data: clients, error: clientsError } = await supabase
+    // Get Havet client
+    const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('*')
-      .limit(1);
+      .eq('name', 'Havet')
+      .single();
 
-    if (clientsError || !clients || clients.length === 0) {
-      console.log('❌ No clients found:', clientsError?.message);
+    if (clientError || !client) {
+      console.log('❌ Client not found:', clientError?.message);
       return;
     }
 
-    const client = clients[0];
-    console.log('✅ Found client:', client.name);
+    console.log(`🏨 Client: ${client.name} (${client.email})`);
+    console.log(`🏢 Ad Account: ${client.ad_account_id}`);
+    console.log('');
 
-    // 3. Test fetch-live-data with the new date range
-    console.log('\n3️⃣ Testing /api/fetch-live-data with new date range...');
-    const fetchLiveDataResponse = await fetch('http://localhost:3002/api/fetch-live-data', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`
-      },
-      body: JSON.stringify({
-        clientId: client.id,
-        dateRange: {
-          start: '2024-02-01',
-          end: '2025-08-31'
-        }
-      })
-    });
+    // Test 1: Check database campaigns
+    console.log('1️⃣ Checking database campaigns...');
+    const { data: dbCampaigns, error: dbError } = await supabase
+      .from('campaigns')
+      .select('*')
+      .eq('client_id', client.id)
+      .limit(5);
 
-    console.log('   Status:', fetchLiveDataResponse.status);
-
-    if (!fetchLiveDataResponse.ok) {
-      const errorText = await fetchLiveDataResponse.text();
-      console.log('❌ Fetch live data failed:', errorText);
-      return;
-    }
-
-    const liveData = await fetchLiveDataResponse.json();
-    console.log('✅ Fetch live data successful');
-    
-    if (liveData.data) {
-      console.log('   Campaigns count:', liveData.data.campaigns?.length || 0);
-      console.log('   Stats:', liveData.data.stats);
+    if (dbError) {
+      console.log(`❌ Database error: ${dbError.message}`);
+    } else {
+      console.log(`📊 Found ${dbCampaigns?.length || 0} campaigns in database`);
       
-      if (liveData.data.campaigns && liveData.data.campaigns.length > 0) {
-        console.log('   Sample campaign:', {
-          id: liveData.data.campaigns[0].campaign_id,
-          name: liveData.data.campaigns[0].campaign_name,
-          spend: liveData.data.campaigns[0].spend,
-          impressions: liveData.data.campaigns[0].impressions,
-          clicks: liveData.data.campaigns[0].clicks
-        });
-      } else {
-        console.log('   ⚠️ No campaigns found in response');
+      if (dbCampaigns && dbCampaigns.length > 0) {
+        const sampleCampaign = dbCampaigns[0];
+        console.log('📋 Sample campaign from database:');
+        console.log(`   - Name: ${sampleCampaign.campaign_name}`);
+        console.log(`   - Spend: ${sampleCampaign.spend}`);
+        console.log(`   - Impressions: ${sampleCampaign.impressions}`);
+        console.log(`   - Clicks: ${sampleCampaign.clicks}`);
+        console.log(`   - Click to Call: ${sampleCampaign.click_to_call || 'NOT SET'}`);
+        console.log(`   - Lead: ${sampleCampaign.lead || 'NOT SET'}`);
+        console.log(`   - Purchase: ${sampleCampaign.purchase || 'NOT SET'}`);
+        console.log(`   - Booking Step 1: ${sampleCampaign.booking_step_1 || 'NOT SET'}`);
       }
     }
 
-    console.log('\n🎉 Dashboard Data Test Complete!');
-    console.log('\n📋 Summary:');
-    console.log('   - Admin authentication: ✅');
-    console.log('   - Client data: ✅');
-    console.log('   - Live data fetch: ' + (liveData.data ? '✅' : '❌'));
-    console.log('   - Campaigns in live data: ' + (liveData.data?.campaigns?.length || 0));
-    console.log('   - Total spend: ' + (liveData.data?.stats?.totalSpend || 0));
+    // Test 2: Test live API call
+    console.log('\n2️⃣ Testing live API call...');
+    const token = client.meta_access_token;
+    const adAccountId = client.ad_account_id;
+    
+    const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+    const startDate = new Date(2024, 0, 1).toISOString().split('T')[0];
+    const endDate = new Date().toISOString().split('T')[0];
+    
+    const response = await fetch(
+      `https://graph.facebook.com/v18.0/${accountIdWithPrefix}/insights?fields=campaign_id,campaign_name,impressions,clicks,spend,actions,action_values&time_range={"since":"${startDate}","until":"${endDate}"}&limit=5&access_token=${token}`
+    );
+    
+    const data = await response.json();
+    
+    if (data.error) {
+      console.log(`❌ API Error: ${data.error.message}`);
+    } else {
+      console.log(`📊 Found ${data.data?.length || 0} campaigns from API`);
+      
+      if (data.data && data.data.length > 0) {
+        const sampleCampaign = data.data[0];
+        console.log('📋 Sample campaign from API:');
+        console.log(`   - Name: ${sampleCampaign.campaign_name}`);
+        console.log(`   - Spend: ${sampleCampaign.spend}`);
+        console.log(`   - Impressions: ${sampleCampaign.impressions}`);
+        console.log(`   - Clicks: ${sampleCampaign.clicks}`);
+        
+        // Check conversion tracking data
+        if (sampleCampaign.actions && sampleCampaign.actions.length > 0) {
+          console.log(`   - Actions: ${sampleCampaign.actions.length} action types`);
+          
+          // Parse conversion data using the fixed logic
+          let click_to_call = 0;
+          let lead = 0;
+          let purchase = 0;
+          let booking_step_1 = 0;
+          let booking_step_2 = 0;
+          let booking_step_3 = 0;
+
+          sampleCampaign.actions.forEach((action) => {
+            const actionType = action.action_type;
+            const value = parseInt(action.value || '0');
+            
+            if (actionType.includes('click_to_call')) {
+              click_to_call += value;
+            }
+            if (actionType.includes('lead')) {
+              lead += value;
+            }
+            if (actionType === 'purchase' || actionType.includes('purchase')) {
+              purchase += value;
+            }
+            if (actionType.includes('booking_step_1') || actionType.includes('initiate_checkout')) {
+              booking_step_1 += value;
+            }
+            if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+              booking_step_2 += value;
+            }
+            if (actionType.includes('booking_step_3') || actionType.includes('purchase')) {
+              booking_step_3 += value;
+            }
+          });
+
+          console.log('   📊 Parsed conversion data:');
+          console.log(`      - Click to Call: ${click_to_call}`);
+          console.log(`      - Lead: ${lead}`);
+          console.log(`      - Purchase: ${purchase}`);
+          console.log(`      - Booking Step 1: ${booking_step_1}`);
+          console.log(`      - Booking Step 2: ${booking_step_2}`);
+          console.log(`      - Booking Step 3: ${booking_step_3}`);
+        } else {
+          console.log('   ❌ No actions data available');
+        }
+      }
+    }
+
+    // Test 3: Check dashboard cache
+    console.log('\n3️⃣ Checking dashboard cache...');
+    const cacheKey = `dashboard_cache_${client.email}_v4`;
+    const cachedData = localStorage.getItem(cacheKey);
+    
+    if (cachedData) {
+      console.log('📦 Found cached dashboard data');
+      const parsed = JSON.parse(cachedData);
+      console.log(`   - Cache timestamp: ${new Date(parsed.timestamp).toLocaleString()}`);
+      console.log(`   - Data source: ${parsed.dataSource}`);
+      console.log(`   - Campaigns count: ${parsed.data.campaigns?.length || 0}`);
+      
+      if (parsed.data.campaigns && parsed.data.campaigns.length > 0) {
+        const sampleCachedCampaign = parsed.data.campaigns[0];
+        console.log('   📋 Sample cached campaign:');
+        console.log(`      - Name: ${sampleCachedCampaign.campaign_name}`);
+        console.log(`      - Click to Call: ${sampleCachedCampaign.click_to_call || 'NOT SET'}`);
+        console.log(`      - Purchase: ${sampleCachedCampaign.purchase || 'NOT SET'}`);
+      }
+    } else {
+      console.log('📦 No cached dashboard data found');
+    }
+
+    console.log('\n🎯 Analysis:');
+    console.log('The dashboard is showing "Nie skonfigurowane" because:');
+    console.log('1. The campaigns in the database might not have conversion tracking fields');
+    console.log('2. The dashboard might be using cached data without conversion tracking');
+    console.log('3. The live API call might not be processed correctly');
+    console.log('');
+    console.log('🔧 Solution:');
+    console.log('1. Clear the dashboard cache');
+    console.log('2. Force a fresh API call');
+    console.log('3. Ensure the conversion tracking data is properly saved to database');
 
   } catch (error) {
-    console.error('❌ Test failed:', error);
+    console.error('💥 Test error:', error);
   }
 }
 
-// Run the test
 testDashboardData(); 

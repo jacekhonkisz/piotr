@@ -19,7 +19,8 @@ import {
   Users,
   Calendar,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -27,7 +28,9 @@ import { getClientDashboardData } from '../../lib/database';
 import type { Database } from '../../lib/database.types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import PerformanceMetricsCharts from '../../components/PerformanceMetricsCharts';
-import DashboardConversionCards from '../../components/DashboardConversionCards';
+import ConversionMetricsCards from '../../components/ConversionMetricsCards';
+
+import ClientSelector from '../../components/ClientSelector';
 
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -45,16 +48,16 @@ interface ClientDashboardData {
     totalConversions: number;
     averageCtr: number;
     averageCpc: number;
-    // Conversion tracking metrics
-    totalClickToCall?: number;
-    totalLead?: number;
-    totalPurchase?: number;
-    totalPurchaseValue?: number;
-    totalBookingStep1?: number;
-    totalBookingStep2?: number;
-    totalBookingStep3?: number;
-    roas?: number;
-    costPerReservation?: number;
+  };
+  conversionMetrics?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    roas: number;
+    cost_per_reservation: number;
+    booking_step_2: number;
   };
 }
 
@@ -70,6 +73,7 @@ export default function DashboardPage() {
   const [refreshingData, setRefreshingData] = useState(false);
   const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
   const [dashboardInitialized, setDashboardInitialized] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   const { user, profile, authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -94,28 +98,7 @@ export default function DashboardPage() {
     monthlyChartData: []
   });
 
-  // Conversion tracking data for performance metrics
-  const [conversionData, setConversionData] = useState<{
-    click_to_call: number;
-    lead: number;
-    purchase: number;
-    purchase_value: number;
-    booking_step_1: number;
-    booking_step_2: number;
-    booking_step_3: number;
-    roas: number;
-    cost_per_reservation: number;
-  }>({
-    click_to_call: 0,
-    lead: 0,
-    purchase: 0,
-    purchase_value: 0,
-    booking_step_1: 0,
-    booking_step_2: 0,
-    booking_step_3: 0,
-    roas: 0,
-    cost_per_reservation: 0
-  });
+
 
   // Debug: Log when monthlyChartData changes
   useEffect(() => {
@@ -133,7 +116,47 @@ export default function DashboardPage() {
     }
   };
 
-  const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}_v4`;
+  const handleClientChange = async (client: Client) => {
+    setSelectedClient(client);
+    setLoading(true);
+    
+    // Clear cache for the new client to ensure fresh data
+    clearCache();
+    
+    try {
+      // Load data for the new client
+      const mainDashboardData = await loadMainDashboardData(client);
+      
+      const { data: reports } = await supabase
+        .from('reports')
+        .select('*')
+        .eq('client_id', client.id)
+        .order('generated_at', { ascending: false })
+        .limit(10);
+
+      const dashboardData = {
+        client: client,
+        reports: reports || [],
+        campaigns: mainDashboardData.campaigns,
+        stats: mainDashboardData.stats,
+        conversionMetrics: mainDashboardData.conversionMetrics
+      };
+
+      setClientData(dashboardData);
+      setDataSource('live');
+      saveToCache(dashboardData, 'live');
+      
+      // Process real data for visualizations
+      processVisualizationData(dashboardData.campaigns, dashboardData.stats);
+      processMonthlySummaryData(dashboardData.campaigns, dashboardData.stats);
+    } catch (error) {
+      console.error('Error loading client data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}_${selectedClient?.id || 'default'}_v4`;
 
   const saveToCache = (data: ClientDashboardData, source: 'live' | 'database') => {
     try {
@@ -173,6 +196,18 @@ export default function DashboardPage() {
         // If we can't parse the cache, clear it to be safe
         localStorage.removeItem(cacheKey);
       }
+    }
+  };
+
+  const clearAllClientCaches = () => {
+    // Clear all client-specific caches for the current user
+    if (user?.email) {
+      const keys = Object.keys(localStorage);
+      const userCacheKeys = keys.filter(key => key.startsWith(`dashboard_cache_${user.email}_`));
+      userCacheKeys.forEach(key => {
+        localStorage.removeItem(key);
+        console.log(`🗑️ Cleared cache: ${key}`);
+      });
     }
   };
 
@@ -257,7 +292,7 @@ export default function DashboardPage() {
       let currentClient;
       
       if (user!.role === 'admin') {
-        // For admin users, get all clients and use the first one (or one with conversion data)
+        // For admin users, get all clients and use the selected client or first one
         const { data: clients, error: error } = await supabase
           .from('clients')
           .select('*')
@@ -267,12 +302,8 @@ export default function DashboardPage() {
           return;
         }
         
-        // Try to find a client with conversion data first
-        const clientWithData = clients.find(client => {
-          return client.email === 'havet@magialubczyku.pl'; // Havet has conversion data
-        });
-        
-        currentClient = clientWithData || clients[0]; // Use Havet if found, otherwise first client
+        // Use selected client or first client
+        currentClient = selectedClient || clients[0];
       } else {
         // For regular users, get their specific client
         const { data, error } = await supabase
@@ -331,7 +362,7 @@ export default function DashboardPage() {
       let clientError;
       
       if (user!.role === 'admin') {
-        // For admin users, get all clients and use the first one (or one with conversion data)
+        // For admin users, get all clients and use the selected client or first one
         const { data: clients, error: error } = await supabase
           .from('clients')
           .select('*')
@@ -340,13 +371,8 @@ export default function DashboardPage() {
         clientError = error;
         
         if (clients && clients.length > 0) {
-          // Try to find a client with conversion data first
-          const clientWithData = clients.find(client => {
-            // This is a simple check - in a real app you'd want to check the actual data
-            return client.email === 'havet@magialubczyku.pl'; // Havet has conversion data
-          });
-          
-          clientData = clientWithData || clients[0]; // Use Havet if found, otherwise first client
+          // Use selected client or first client
+          clientData = selectedClient || clients[0];
         }
       } else {
         // For regular users, get their specific client
@@ -491,6 +517,16 @@ export default function DashboardPage() {
             totalConversions: 0,
             averageCtr: 0,
             averageCpc: 0
+          },
+          conversionMetrics: {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            roas: 0,
+            cost_per_reservation: 0,
+            booking_step_2: 0
           }
         };
       }
@@ -531,6 +567,16 @@ export default function DashboardPage() {
             totalConversions: 0,
             averageCtr: 0,
             averageCpc: 0
+          },
+          conversionMetrics: {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            roas: 0,
+            cost_per_reservation: 0,
+            booking_step_2: 0
           }
         };
       }
@@ -564,14 +610,13 @@ export default function DashboardPage() {
           cpc: campaign.cpc || 0,
           date_range_start: dateRange.start,
           date_range_end: dateRange.end,
-          // Conversion tracking data
+          // Conversion tracking data - use correct field names
           click_to_call: campaign.click_to_call || 0,
-          lead: campaign.lead || 0,
-          purchase: campaign.purchase || 0,
-          purchase_value: campaign.purchase_value || 0,
+          email_contacts: campaign.email_contacts || 0,
+          reservations: campaign.reservations || 0,
+          reservation_value: campaign.reservation_value || 0,
           booking_step_1: campaign.booking_step_1 || 0,
           booking_step_2: campaign.booking_step_2 || 0,
-          booking_step_3: campaign.booking_step_3 || 0,
           roas: campaign.roas || 0,
           cost_per_reservation: campaign.cost_per_reservation || 0
         }));
@@ -581,31 +626,22 @@ export default function DashboardPage() {
         const totalClicks = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
         const totalConversions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0);
         
-        // Calculate conversion tracking totals
-        const totalClickToCall = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.click_to_call || 0), 0);
-        const totalLead = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.lead || 0), 0);
-        const totalPurchase = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.purchase || 0), 0);
-        const totalPurchaseValue = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.purchase_value || 0), 0);
-        const totalBookingStep1 = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.booking_step_1 || 0), 0);
-        const totalBookingStep2 = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.booking_step_2 || 0), 0);
-        const totalBookingStep3 = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.booking_step_3 || 0), 0);
-        
         const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
         const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-        const roas = totalPurchaseValue > 0 && totalSpend > 0 ? totalPurchaseValue / totalSpend : 0;
-        const costPerReservation = totalPurchase > 0 && totalSpend > 0 ? totalSpend / totalPurchase : 0;
         
-        console.log('📊 Calculated conversion metrics:', {
-          clickToCall: totalClickToCall,
-          lead: totalLead,
-          purchase: totalPurchase,
-          purchaseValue: totalPurchaseValue,
-          bookingStep1: totalBookingStep1,
-          bookingStep2: totalBookingStep2,
-          bookingStep3: totalBookingStep3,
-          roas,
-          costPerReservation
-        });
+        console.log('📊 API conversion metrics:', monthData.data?.conversionMetrics);
+        
+        // Use conversion metrics from API response - this is the correct source
+        const conversionMetrics = monthData.data?.conversionMetrics || {
+          click_to_call: 0,
+          email_contacts: 0,
+          booking_step_1: 0,
+          reservations: 0,
+          reservation_value: 0,
+          roas: 0,
+          cost_per_reservation: 0,
+          booking_step_2: 0
+        };
 
         return {
           campaigns,
@@ -615,18 +651,9 @@ export default function DashboardPage() {
             totalClicks,
             totalConversions,
             averageCtr,
-            averageCpc,
-            // Add conversion tracking metrics
-            totalClickToCall,
-            totalLead,
-            totalPurchase,
-            totalPurchaseValue,
-            totalBookingStep1,
-            totalBookingStep2,
-            totalBookingStep3,
-            roas,
-            costPerReservation
-          }
+            averageCpc
+          },
+          conversionMetrics
         };
       } else {
         return {
@@ -638,6 +665,16 @@ export default function DashboardPage() {
             totalConversions: 0,
             averageCtr: 0,
             averageCpc: 0
+          },
+          conversionMetrics: {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            roas: 0,
+            cost_per_reservation: 0,
+            booking_step_2: 0
           }
         };
       }
@@ -652,6 +689,16 @@ export default function DashboardPage() {
           totalConversions: 0,
           averageCtr: 0,
           averageCpc: 0
+        },
+        conversionMetrics: {
+          click_to_call: 0,
+          email_contacts: 0,
+          booking_step_1: 0,
+          reservations: 0,
+          reservation_value: 0,
+          roas: 0,
+          cost_per_reservation: 0,
+          booking_step_2: 0
         }
       };
     }
@@ -670,32 +717,7 @@ export default function DashboardPage() {
       ]);
     }
 
-    // Use conversion tracking data from stats (already calculated correctly)
-    if (stats) {
-      setConversionData({
-        click_to_call: stats.totalClickToCall || 0,
-        lead: stats.totalLead || 0,
-        purchase: stats.totalPurchase || 0,
-        purchase_value: stats.totalPurchaseValue || 0,
-        booking_step_1: stats.totalBookingStep1 || 0,
-        booking_step_2: stats.totalBookingStep2 || 0,
-        booking_step_3: stats.totalBookingStep3 || 0,
-        roas: stats.roas || 0,
-        cost_per_reservation: stats.costPerReservation || 0
-      });
-      
-      console.log('🎯 Updated conversion data from stats:', {
-        click_to_call: stats.totalClickToCall || 0,
-        lead: stats.totalLead || 0,
-        purchase: stats.totalPurchase || 0,
-        purchase_value: stats.totalPurchaseValue || 0,
-        booking_step_1: stats.totalBookingStep1 || 0,
-        booking_step_2: stats.totalBookingStep2 || 0,
-        booking_step_3: stats.totalBookingStep3 || 0,
-        roas: stats.roas || 0,
-        cost_per_reservation: stats.costPerReservation || 0
-      });
-    }
+
   };
 
   // Process monthly summary data for new dashboard section
@@ -837,6 +859,17 @@ export default function DashboardPage() {
                 <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
                 <p className="text-sm text-slate-600">Meta Ads Analytics</p>
               </div>
+              
+              {/* Client Selector for Admin Users */}
+              {user?.role === 'admin' && (
+                <div className="ml-6">
+                  <ClientSelector
+                    currentClient={clientData?.client || null}
+                    onClientChange={handleClientChange}
+                    userRole={user.role}
+                  />
+                </div>
+              )}
             </div>
             
             <div className="flex items-center space-x-4">
@@ -857,6 +890,17 @@ export default function DashboardPage() {
               >
                 <RefreshCw className={`h-5 w-5 ${refreshingData ? 'animate-spin' : ''}`} />
               </button>
+
+              {/* Debug: Clear All Caches Button (Admin Only) */}
+              {user?.role === 'admin' && (
+                <button
+                  onClick={clearAllClientCaches}
+                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-all duration-200"
+                  title="Wyczyść wszystkie cache"
+                >
+                  <Trash2 className="h-5 w-5" />
+                </button>
+              )}
 
               {/* User Menu */}
               <div className="flex items-center space-x-3">
@@ -972,6 +1016,17 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Conversion Metrics Cards */}
+        {clientData.conversionMetrics && (
+          <div className="mb-8">
+            <ConversionMetricsCards 
+              conversionMetrics={clientData.conversionMetrics}
+              currency="PLN"
+              isLoading={loading}
+            />
+          </div>
+        )}
+
         {/* Performance Metrics with Comparison */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-slate-200/50 mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -1007,28 +1062,10 @@ export default function DashboardPage() {
             </div>
           </div>
           
-          <PerformanceMetricsCharts
-            conversionData={conversionData}
-            impressions={clientData?.stats?.totalImpressions || 0}
-            clicks={clientData?.stats?.totalClicks || 0}
-            previousPeriodData={{
-              click_to_call: 38,
-              lead: 19,
-              purchase: 10,
-              purchase_value: 21500,
-              booking_step_1: 15,
-              booking_step_2: 12,
-              booking_step_3: 10,
-              roas: 2.1,
-              cost_per_reservation: 72.30
-            }}
-          />
+
         </div>
 
-        {/* Conversion Tracking Cards */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-slate-200/50 mb-8">
-          <DashboardConversionCards conversionData={conversionData} />
-        </div>
+
 
         {/* Population Pyramid Chart - Wartość Rezerwacji */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-slate-200/50 mb-8">
