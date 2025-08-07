@@ -528,6 +528,15 @@ export class MetaAPIService {
     timeIncrement: number = 0
   ): Promise<CampaignInsights[]> {
     try {
+      // Check cache first
+      const endpoint = `${adAccountId}/insights`;
+      const cacheKey = this.getCacheKey(endpoint, `dateStart=${dateStart}&dateEnd=${dateEnd}&timeIncrement=${timeIncrement}`);
+      const cached = this.getCachedResponse(cacheKey);
+      if (cached) {
+        console.log('📦 Using cached campaign insights data');
+        return cached;
+      }
+
       const fields = [
         'campaign_id',
         'campaign_name',
@@ -570,6 +579,7 @@ export class MetaAPIService {
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      console.log('📅 Date Range for API call:', { dateStart, dateEnd, timeIncrement });
 
       console.log('⏱️ Starting Meta API fetch with timeout...');
       
@@ -632,25 +642,24 @@ export class MetaAPIService {
               const actionType = action.action_type;
               const value = parseInt(action.value || '0');
               
-              switch (actionType) {
-                case 'click_to_call':
-                  click_to_call = value;
-                  break;
-                case 'lead':
-                  lead = value;
-                  break;
-                case 'purchase':
-                  purchase = value;
-                  break;
-                case 'booking_step_1':
-                  booking_step_1 = value;
-                  break;
-                case 'booking_step_2':
-                  booking_step_2 = value;
-                  break;
-                case 'booking_step_3':
-                  booking_step_3 = value;
-                  break;
+              // Improved parsing logic using includes() instead of exact matches
+              if (actionType.includes('click_to_call')) {
+                click_to_call += value;
+              }
+              if (actionType.includes('lead')) {
+                lead += value;
+              }
+              if (actionType === 'purchase' || actionType.includes('purchase')) {
+                purchase += value;
+              }
+              if (actionType.includes('booking_step_1') || actionType.includes('initiate_checkout')) {
+                booking_step_1 += value;
+              }
+              if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+                booking_step_2 += value;
+              }
+              if (actionType.includes('booking_step_3') || actionType.includes('purchase')) {
+                booking_step_3 += value;
               }
             });
           }
@@ -702,6 +711,12 @@ export class MetaAPIService {
         });
 
         console.log('✅ Parsed campaign insights:', insights.length, 'campaigns');
+        
+        // Cache the result
+        const endpoint = `${adAccountId}/insights`;
+        const cacheKey = this.getCacheKey(endpoint, `dateStart=${dateStart}&dateEnd=${dateEnd}&timeIncrement=${timeIncrement}`);
+        this.setCachedResponse(cacheKey, insights);
+        
         return insights;
       }
 

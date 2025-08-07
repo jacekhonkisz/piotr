@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   ArrowUpRight,
   ArrowDownRight,
   HelpCircle,
   Calendar,
-  Clock
+  Clock,
+  Zap
 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
-import ConversionTrackingSetup from './ConversionTrackingSetup';
+
 
 
 interface Campaign {
@@ -143,29 +145,23 @@ const MetricCard = ({
   title, 
   value, 
   subtitle, 
-  tooltip,
-  isDisabled = false,
-  showYearOverYear = false,
-  yearOverYearChange = 0
+  tooltip
 }: {
   title: string;
   value: string | number;
   subtitle?: string;
   tooltip?: string;
-  isDisabled?: boolean;
-  showYearOverYear?: boolean;
-  yearOverYearChange?: number;
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const card = (
     <div 
-      className={`relative p-5 transition-all duration-200 ${isDisabled ? 'opacity-50' : ''}`}
+      className="relative p-5 transition-all duration-200"
       style={{
         backgroundColor: '#FFFFFF',
         border: '1px solid #F0F0F0',
         borderRadius: '8px',
-        boxShadow: isHovered && !isDisabled ? '0 2px 8px rgba(36, 69, 131, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.02)'
+        boxShadow: isHovered ? '0 2px 8px rgba(36, 69, 131, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.02)'
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -180,43 +176,303 @@ const MetricCard = ({
       </div>
       
       <div className="mb-2">
-        <p className={`text-xl ${isDisabled ? 'text-gray-400' : 'text-gray-900'}`} style={{ fontWeight: 600 }}>
-          {isDisabled ? '—' : value}
+        <p className="text-xl text-gray-900" style={{ fontWeight: 600 }}>
+          {value}
         </p>
         {subtitle && (
           <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
         )}
       </div>
-      
-      {showYearOverYear && !isDisabled && (
-        <div className="flex items-center">
-          {yearOverYearChange > 0 ? (
-            <ArrowUpRight className="w-3 h-3 text-green-500 mr-1" />
-          ) : yearOverYearChange < 0 ? (
-            <ArrowDownRight className="w-3 h-3 text-red-500 mr-1" />
-          ) : null}
-          <span className={`text-xs ${
-            yearOverYearChange > 0 ? 'text-green-600' : 
-            yearOverYearChange < 0 ? 'text-red-600' : 'text-gray-500'
-          }`}>
-            {yearOverYearChange > 0 ? '+' : ''}{yearOverYearChange.toFixed(1)}% vs rok temu
-          </span>
-        </div>
-      )}
-      
-      {isDisabled && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(250, 250, 250, 0.8)' }}>
-          <span className="text-xs text-gray-500">Nie skonfigurowane</span>
-        </div>
-      )}
     </div>
   );
 
   return tooltip ? <Tooltip content={tooltip}>{card}</Tooltip> : card;
 };
 
+// NEW: Live Conversion Tracking Component
+const LiveConversionTracking = ({ 
+  campaigns, 
+  reportId, 
+  viewType, 
+  dateRange 
+}: { 
+  campaigns: Campaign[]; 
+  reportId: string; 
+  viewType: string; 
+  dateRange: { start: string; end: string }; 
+}) => {
+  const [liveData, setLiveData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Check if this is current month
+  const isCurrentMonth = (() => {
+    if (viewType === 'monthly') {
+      const [year, month] = reportId.split('-').map(Number);
+      const currentDate = new Date();
+      return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+    }
+    return false;
+  })();
+
+  // Fetch live data for current month
+  useEffect(() => {
+    if (isCurrentMonth) {
+      fetchLiveData();
+    }
+  }, [isCurrentMonth, dateRange]);
+
+  const fetchLiveData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Get the current session token for authentication
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch('/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          dateRange: {
+            start: dateRange.start,
+            end: dateRange.end
+          },
+          clientId: '93d46876-addc-4b99-b1e1-437428dd54f1' // Havet client ID
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('🎯 Live API data received for Reports page:', data);
+      setLiveData(data);
+    } catch (err) {
+      console.error('❌ Live API error:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate conversion totals from live data or campaigns
+  const getConversionTotals = () => {
+    if (isCurrentMonth && liveData?.data?.campaigns && !error) {
+      // Use live API data for current month (only if no error)
+      const liveCampaigns = liveData.data.campaigns;
+      return liveCampaigns.reduce((acc: any, campaign: any) => ({
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        lead: acc.lead + (campaign.lead || 0),
+        purchase: acc.purchase + (campaign.purchase || 0),
+        purchase_value: acc.purchase_value + (campaign.purchase_value || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+        booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+      }), { 
+        click_to_call: 0, 
+        lead: 0, 
+        purchase: 0, 
+        purchase_value: 0,
+        booking_step_1: 0,
+        booking_step_2: 0,
+        booking_step_3: 0
+      });
+    } else {
+      // Use campaigns data for previous months or if live API fails
+      return campaigns.reduce((acc, campaign) => ({
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        lead: acc.lead + (campaign.lead || 0),
+        purchase: acc.purchase + (campaign.purchase || 0),
+        purchase_value: acc.purchase_value + (campaign.purchase_value || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+        booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+      }), { 
+        click_to_call: 0, 
+        lead: 0, 
+        purchase: 0, 
+        purchase_value: 0,
+        booking_step_1: 0,
+        booking_step_2: 0,
+        booking_step_3: 0
+      });
+    }
+  };
+
+  const conversionTotals = getConversionTotals();
+  
+  // Calculate metrics
+  const totalSpend = campaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
+  const roas = totalSpend > 0 ? conversionTotals.purchase_value / totalSpend : 0;
+  const costPerReservation = conversionTotals.purchase > 0 ? totalSpend / conversionTotals.purchase : 0;
+
+  return (
+    <section>
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>
+              Konwersje i Etapy Rezerwacji
+              {isCurrentMonth && (
+                <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  <Zap className="w-3 h-3 mr-1" />
+                  Live API
+                </span>
+              )}
+            </h2>
+            <p className="text-sm text-gray-600">
+              {isCurrentMonth 
+                ? 'Szczegółowe śledzenie konwersji z danych na żywo' 
+                : 'Szczegółowe śledzenie konwersji i kroków rezerwacji'
+              }
+            </p>
+          </div>
+          
+          {isCurrentMonth && (
+            <button
+              onClick={fetchLiveData}
+              disabled={loading}
+              className="flex items-center space-x-2 bg-blue-600 text-white px-3 py-1 rounded-lg text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              <Zap className="w-4 h-4" />
+              <span>{loading ? 'Odświeżanie...' : 'Odśwież'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading && (
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600"></div>
+            <span className="text-sm text-blue-700">Ładowanie danych na żywo...</span>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 rounded-lg">
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-red-700">Błąd: {error}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          title="Potencjalne Kontakty Telefoniczne"
+          value={formatNumber(conversionTotals.click_to_call)}
+          subtitle="Kliknięcia w numer telefonu"
+          tooltip="Liczba kliknięć w numer telefonu"
+        />
+        
+        <MetricCard
+          title="Potencjalne Kontakty Email"
+          value={formatNumber(conversionTotals.lead)}
+          subtitle="Formularze i kontakty email"
+          tooltip="Liczba wypełnionych formularzy i kontaktów email"
+        />
+        
+        <MetricCard
+          title="Kroki Rezerwacji"
+          value={formatNumber(conversionTotals.booking_step_1)}
+          subtitle="Etap 1 procesu rezerwacji"
+          tooltip="Liczba rozpoczętych procesów rezerwacji"
+        />
+        
+        <MetricCard
+          title="Rezerwacje"
+          value={formatNumber(conversionTotals.purchase)}
+          subtitle="Zakończone rezerwacje"
+          tooltip="Liczba zakończonych rezerwacji"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+        <MetricCard
+          title="Wartość Rezerwacji"
+          value={formatCurrency(conversionTotals.purchase_value)}
+          subtitle="Łączna wartość rezerwacji"
+          tooltip="Całkowita wartość zakończonych rezerwacji"
+        />
+        
+        <MetricCard
+          title="ROAS"
+          value={`${roas.toFixed(2)}x`}
+          subtitle="Return on ad spend"
+          tooltip="Zwrot z wydatków na reklamy (wartość rezerwacji / wydatki)"
+        />
+        
+        <MetricCard
+          title="Koszt per Rezerwacja"
+          value={formatCurrency(costPerReservation)}
+          subtitle="Średni koszt za rezerwację"
+          tooltip="Średni koszt pozyskania jednej rezerwacji"
+        />
+        
+        <MetricCard
+          title="Etap 2 Rezerwacji"
+          value={formatNumber(conversionTotals.booking_step_2)}
+          subtitle="Etap 2 procesu rezerwacji"
+          tooltip="Liczba użytkowników w etapie 2 rezerwacji"
+        />
+      </div>
+
+      {/* Data source indicator */}
+      <div className="mt-6 p-5 rounded-lg" style={{ backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-blue-900">
+              {isCurrentMonth && !error ? 'Dane na Żywo z Meta API' : 
+               isCurrentMonth && error ? 'Dane z Bazy (Live API niedostępne)' : 
+               'Dane Historyczne'}
+            </h3>
+            <p className="text-xs text-blue-700 mt-1">
+              {isCurrentMonth && !error 
+                ? 'Dane są pobierane bezpośrednio z Meta API w czasie rzeczywistym'
+                : isCurrentMonth && error
+                ? 'Live API niedostępne - wyświetlane dane z bazy danych'
+                : 'Dane historyczne z bazy danych'
+              }
+            </p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              isCurrentMonth && !error ? 'bg-green-500' : 
+              isCurrentMonth && error ? 'bg-yellow-500' : 
+              'bg-blue-500'
+            }`}></div>
+            <span className={`text-xs font-medium ${
+              isCurrentMonth && !error ? 'text-green-700' : 
+              isCurrentMonth && error ? 'text-yellow-700' : 
+              'text-blue-700'
+            }`}>
+              {isCurrentMonth && !error ? 'Live API' : 
+               isCurrentMonth && error ? 'Fallback' : 
+               'Database'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 export default function WeeklyReportView({ reports, viewType = 'weekly' }: WeeklyReportViewProps) {
-  const [showSetupModal, setShowSetupModal] = useState(false);
   const reportIds = Object.keys(reports);
   
   if (reportIds.length === 0) {
@@ -278,9 +534,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         // Calculate conversion metrics
         const roas = campaignTotals.spend > 0 ? conversionTotals.purchase_value / campaignTotals.spend : 0;
         const costPerReservation = conversionTotals.purchase > 0 ? campaignTotals.spend / conversionTotals.purchase : 0;
-
-        // Mock year-over-year data
-        const yearOverYearChange = 12.5;
 
         const startDate = new Date(report.date_range_start);
         const weekNumber = getWeekNumber(startDate);
@@ -391,135 +644,16 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
               </div>
             </section>
 
-            {/* Conversions & Lead Steps Section */}
-            <section>
-              <div className="mb-8">
-                <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Konwersje i Etapy Rezerwacji</h2>
-                <p className="text-sm text-gray-600">Szczegółowe śledzenie konwersji i kroków rezerwacji</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricCard
-                  title="Potencjalne Kontakty Telefoniczne"
-                  value={conversionTotals.click_to_call > 0 ? formatNumber(conversionTotals.click_to_call) : '—'}
-                  subtitle="Kliknięcia w numer telefonu"
-                  tooltip="Liczba kliknięć w numer telefonu (wymaga konfiguracji Pixel)"
-                  isDisabled={conversionTotals.click_to_call === 0}
-                />
-                
-                <MetricCard
-                  title="Potencjalne Kontakty Email"
-                  value={conversionTotals.lead > 0 ? formatNumber(conversionTotals.lead) : '—'}
-                  subtitle="Formularze i kontakty email"
-                  tooltip="Liczba wypełnionych formularzy i kontaktów email (wymaga konfiguracji Pixel)"
-                  isDisabled={conversionTotals.lead === 0}
-                />
-                
-                <MetricCard
-                  title="Kroki Rezerwacji"
-                  value={conversionTotals.booking_step_1 > 0 ? formatNumber(conversionTotals.booking_step_1) : '—'}
-                  subtitle="Etap 1 procesu rezerwacji"
-                  tooltip="Liczba rozpoczętych procesów rezerwacji (wymaga konfiguracji Pixel)"
-                  isDisabled={conversionTotals.booking_step_1 === 0}
-                />
-                
-                <MetricCard
-                  title="Rezerwacje"
-                  value={conversionTotals.purchase > 0 ? formatNumber(conversionTotals.purchase) : '—'}
-                  subtitle="Zakończone rezerwacje"
-                  tooltip="Liczba zakończonych rezerwacji"
-                  isDisabled={conversionTotals.purchase === 0}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-                <MetricCard
-                  title="Wartość Rezerwacji"
-                  value={conversionTotals.purchase_value > 0 ? formatCurrency(conversionTotals.purchase_value) : '—'}
-                  subtitle="Łączna wartość rezerwacji"
-                  tooltip="Całkowita wartość zakończonych rezerwacji"
-                  isDisabled={conversionTotals.purchase_value === 0}
-                  showYearOverYear={conversionTotals.purchase_value > 0}
-                  yearOverYearChange={yearOverYearChange}
-                />
-                
-                <MetricCard
-                  title="ROAS"
-                  value={roas > 0 ? `${roas.toFixed(2)}x` : '—'}
-                  subtitle="Return on ad spend"
-                  tooltip="Zwrot z wydatków na reklamy (wartość rezerwacji / wydatki)"
-                  isDisabled={roas === 0}
-                />
-                
-                <MetricCard
-                  title="Koszt per Rezerwacja"
-                  value={costPerReservation > 0 ? formatCurrency(costPerReservation) : '—'}
-                  subtitle="Średni koszt za rezerwację"
-                  tooltip="Średni koszt pozyskania jednej rezerwacji"
-                  isDisabled={costPerReservation === 0}
-                />
-                
-                <MetricCard
-                  title="Etap 2 Rezerwacji"
-                  value={conversionTotals.booking_step_2 > 0 ? formatNumber(conversionTotals.booking_step_2) : '—'}
-                  subtitle="Etap 2 procesu rezerwacji"
-                  tooltip="Liczba użytkowników w etapie 2 rezerwacji (wymaga konfiguracji Pixel)"
-                  isDisabled={conversionTotals.booking_step_2 === 0}
-                />
-              </div>
-
-              {/* Year-over-Year Comparison */}
-              {conversionTotals.purchase_value > 0 && (
-                <div className="mt-6 p-5 rounded-lg" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E9ECEF' }}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-900">Porównanie Rok do Roku</h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Wartość rezerwacji jest {yearOverYearChange > 0 ? 'wyższa' : 'niższa'} o {Math.abs(yearOverYearChange).toFixed(1)}% 
-                          w porównaniu do tego samego miesiąca ubiegłego roku
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-lg ${
-                        yearOverYearChange > 0 ? 'text-green-600' : 'text-red-600'
-                      }`} style={{ fontWeight: 600 }}>
-                        {yearOverYearChange > 0 ? '+' : ''}{yearOverYearChange.toFixed(1)}%
-                      </div>
-                      <div className="text-xs text-gray-500">vs rok temu</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Setup CTA for missing tracking */}
-              {(conversionTotals.click_to_call === 0 || conversionTotals.lead === 0 || conversionTotals.booking_step_1 === 0) && (
-                <div className="mt-6 p-5 rounded-lg" style={{ backgroundColor: '#F8F9FA', border: '1px solid #E9ECEF' }}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-900">Skonfiguruj Śledzenie Konwersji</h3>
-                      <p className="text-xs text-gray-600 mt-1">
-                        Skonfiguruj Pixel i Lead Ads, aby uzyskać pełne dane o konwersjach i rezerwacjach
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => setShowSetupModal(true)}
-                      className="px-4 py-2 text-white text-sm rounded-lg transition-all duration-200 hover:shadow-sm"
-                      style={{ backgroundColor: '#F8992B' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#e67e1a';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = '#F8992B';
-                      }}
-                    >
-                      Skonfiguruj
-                    </button>
-                  </div>
-                </div>
-              )}
-            </section>
+            {/* NEW: Live API Conversion Tracking Section */}
+            <LiveConversionTracking 
+              campaigns={campaigns}
+              reportId={reportId}
+              viewType={viewType}
+              dateRange={{
+                start: report.date_range_start,
+                end: report.date_range_end
+              }}
+            />
 
                           {/* Campaigns Table */}
               {campaigns.length > 0 && (
@@ -637,10 +771,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         );
       })}
 
-      {/* Conversion Tracking Setup Modal */}
-      {showSetupModal && (
-        <ConversionTrackingSetup onClose={() => setShowSetupModal(false)} />
-      )}
+
     </div>
   );
 } 

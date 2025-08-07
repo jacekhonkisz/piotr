@@ -42,6 +42,14 @@ interface Campaign {
   landing_page_view?: number;
   ad_type?: string;
   objective?: string;
+  // Conversion tracking fields
+  click_to_call?: number;
+  lead?: number;
+  purchase?: number;
+  purchase_value?: number;
+  booking_step_1?: number;
+  booking_step_2?: number;
+  booking_step_3?: number;
 }
 
 interface MonthlyReport {
@@ -358,24 +366,78 @@ function ReportsPageContent() {
         console.log(`📊 All-time data collection complete. Total campaigns found: ${allCampaigns.length}`);
         
         // Transform campaigns to match expected format
-        const transformedCampaigns: Campaign[] = allCampaigns.map((campaign: any, index: number) => ({
-          id: campaign.campaign_id || `campaign-${index}`,
-          campaign_id: campaign.campaign_id || '',
-          campaign_name: campaign.campaign_name || 'Unknown Campaign',
-          spend: parseFloat(campaign.spend || '0'),
-          impressions: parseInt(campaign.impressions || '0'),
-          clicks: parseInt(campaign.clicks || '0'),
-          conversions: parseInt(campaign.conversions || '0'),
-          ctr: parseFloat(campaign.ctr || '0'),
-          cpc: parseFloat(campaign.cpc || '0'),
-          cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
-          frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
-          reach: campaign.reach ? parseInt(campaign.reach) : undefined,
-          relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
-          landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
-          ad_type: campaign.ad_type || undefined,
-          objective: campaign.objective || undefined
-        }));
+        const transformedCampaigns: Campaign[] = allCampaigns.map((campaign: any, index: number) => {
+          // Parse conversion tracking data from actions array
+          let click_to_call = 0;
+          let lead = 0;
+          let purchase = 0;
+          let purchase_value = 0;
+          let booking_step_1 = 0;
+          let booking_step_2 = 0;
+          let booking_step_3 = 0;
+
+          if (campaign.actions && Array.isArray(campaign.actions)) {
+            campaign.actions.forEach((action: any) => {
+              const actionType = action.action_type;
+              const value = parseInt(action.value || '0');
+              
+              if (actionType.includes('click_to_call')) {
+                click_to_call += value;
+              }
+              if (actionType.includes('lead')) {
+                lead += value;
+              }
+              if (actionType === 'purchase' || actionType.includes('purchase')) {
+                purchase += value;
+              }
+              if (actionType.includes('booking_step_1') || actionType.includes('initiate_checkout')) {
+                booking_step_1 += value;
+              }
+              if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+                booking_step_2 += value;
+              }
+              if (actionType.includes('booking_step_3') || actionType.includes('purchase')) {
+                booking_step_3 += value;
+              }
+            });
+          }
+
+          // Extract purchase value from action_values
+          if (campaign.action_values && Array.isArray(campaign.action_values)) {
+            campaign.action_values.forEach((actionValue: any) => {
+              if (actionValue.action_type === 'purchase') {
+                purchase_value = parseFloat(actionValue.value || '0');
+              }
+            });
+          }
+
+          return {
+            id: campaign.campaign_id || `campaign-${index}`,
+            campaign_id: campaign.campaign_id || '',
+            campaign_name: campaign.campaign_name || 'Unknown Campaign',
+            spend: parseFloat(campaign.spend || '0'),
+            impressions: parseInt(campaign.impressions || '0'),
+            clicks: parseInt(campaign.clicks || '0'),
+            conversions: parseInt(campaign.conversions || '0'),
+            ctr: parseFloat(campaign.ctr || '0'),
+            cpc: parseFloat(campaign.cpc || '0'),
+            cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+            frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+            reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+            relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+            landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+            ad_type: campaign.ad_type || undefined,
+            objective: campaign.objective || undefined,
+            // Conversion tracking fields (parsed from actions)
+            click_to_call,
+            lead,
+            purchase,
+            purchase_value,
+            booking_step_1,
+            booking_step_2,
+            booking_step_3
+          };
+        });
         
         console.log(`📊 Transformed ${transformedCampaigns.length} campaigns for all-time view`);
         
@@ -542,24 +604,44 @@ function ReportsPageContent() {
       const data = await response.json();
       const rawCampaigns = data.data?.campaigns || data.campaigns || [];
       
-      const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => ({
-        id: campaign.campaign_id || `campaign-${index}`,
-        campaign_id: campaign.campaign_id || '',
-        campaign_name: campaign.campaign_name || 'Unknown Campaign',
-        spend: parseFloat(campaign.spend || '0'),
-        impressions: parseInt(campaign.impressions || '0'),
-        clicks: parseInt(campaign.clicks || '0'),
-        conversions: parseInt(campaign.conversions || '0'),
-        ctr: parseFloat(campaign.ctr || '0'),
-        cpc: parseFloat(campaign.cpc || '0'),
-        cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
-        frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
-        reach: campaign.reach ? parseInt(campaign.reach) : undefined,
-        relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
-        landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
-        ad_type: campaign.ad_type || undefined,
-        objective: campaign.objective || undefined
-      }));
+      const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
+        // Use already-parsed conversion tracking data from API response
+        // The Meta API service already processes the actions and action_values
+        const click_to_call = campaign.click_to_call || 0;
+        const lead = campaign.lead || 0;
+        const purchase = campaign.purchase || 0;
+        const purchase_value = campaign.purchase_value || 0;
+        const booking_step_1 = campaign.booking_step_1 || 0;
+        const booking_step_2 = campaign.booking_step_2 || 0;
+        const booking_step_3 = campaign.booking_step_3 || 0;
+
+        return {
+          id: campaign.campaign_id || `campaign-${index}`,
+          campaign_id: campaign.campaign_id || '',
+          campaign_name: campaign.campaign_name || 'Unknown Campaign',
+          spend: parseFloat(campaign.spend || '0'),
+          impressions: parseInt(campaign.impressions || '0'),
+          clicks: parseInt(campaign.clicks || '0'),
+          conversions: parseInt(campaign.conversions || '0'),
+          ctr: parseFloat(campaign.ctr || '0'),
+          cpc: parseFloat(campaign.cpc || '0'),
+          cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+          frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+          reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+          relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+          landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+          ad_type: campaign.ad_type || undefined,
+          objective: campaign.objective || undefined,
+          // Conversion tracking fields (parsed from actions)
+          click_to_call,
+          lead,
+          purchase,
+          purchase_value,
+          booking_step_1,
+          booking_step_2,
+          booking_step_3
+        };
+      });
       
       const report: MonthlyReport | WeeklyReport = {
         id: 'custom',
@@ -665,10 +747,33 @@ function ReportsPageContent() {
       return;
     }
 
-    // Check if we already have this data
-    if (reports[periodId]) {
-      console.log('✅ Data already loaded for this period, skipping API call');
+    // Check if this is the current month
+    const isCurrentMonth = (() => {
+      if (viewType === 'monthly') {
+        const [year, month] = periodId.split('-').map(Number);
+        const currentDate = new Date();
+        return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+      }
+      return false; // For weekly, always treat as current
+    })();
+
+    // For current month, always fetch fresh data (no caching)
+    // For previous months, check if we already have this data
+    if (!isCurrentMonth && reports[periodId]) {
+      console.log('✅ Data already loaded for previous period, skipping API call');
       return;
+    }
+
+    if (isCurrentMonth) {
+      console.log('🔄 Current month detected - always fetching fresh live data from API');
+      // Force clear any cached data for current month to ensure fresh API call
+      setReports(prev => {
+        const newReports = { ...prev };
+        delete newReports[periodId];
+        return newReports;
+      });
+    } else {
+      console.log('📚 Previous month detected - will use stored data if available');
     }
 
     // Check if this period is in the future (which won't have data)
@@ -699,6 +804,7 @@ function ReportsPageContent() {
       setLoadingPeriod(periodId);
       console.log(`📡 Loading data for ${viewType} period: ${periodId}`);
       console.log(`👤 Using explicit client:`, clientData);
+      console.log(`🎯 Data source: ${isCurrentMonth ? 'LIVE API (current month)' : 'API (previous month)'}`);
       
       // Get session for API calls
       const { data: { session } } = await supabase.auth.getSession();
@@ -763,8 +869,8 @@ function ReportsPageContent() {
       
       console.log(`📅 Generated date range for ${periodId}: ${periodStartDate} to ${periodEndDate}`);
       
-      // ALWAYS fetch fresh data from Meta API (no database caching)
-      console.log(`📡 ALWAYS fetching fresh data from Meta API...`);
+      // Fetch data from Meta API (current month always fresh, previous months may be cached)
+      console.log(`📡 Fetching data from Meta API...`);
     
       // Skip API call for demo clients
       console.log(`🔍 Client ID check: ${clientData?.id} (demo-client-id: ${clientData?.id === 'demo-client-id'})`);
@@ -895,14 +1001,15 @@ function ReportsPageContent() {
       let data;
       try {
         data = await response.json();
-        console.log(`✅ API call successful for ${periodId}:`, data);
-        console.log(`📊 Raw API response structure:`, {
-          hasSuccess: !!data.success,
-          hasData: !!data.data,
-          dataKeys: data.data ? Object.keys(data.data) : [],
-          campaignsInData: data.data?.campaigns?.length || 0,
-          campaignsDirect: data.campaigns?.length || 0
-        });
+              console.log(`✅ API call successful for ${periodId}:`, data);
+      console.log(`🎯 ${isCurrentMonth ? 'LIVE API DATA' : 'API DATA'} received for ${periodId}`);
+      console.log(`📊 Raw API response structure:`, {
+        hasSuccess: !!data.success,
+        hasData: !!data.data,
+        dataKeys: data.data ? Object.keys(data.data) : [],
+        campaignsInData: data.data?.campaigns?.length || 0,
+        campaignsDirect: data.campaigns?.length || 0
+      });
       } catch (error) {
         console.error('❌ Failed to parse API response:', error);
         const responseText = await response.text();
@@ -930,24 +1037,44 @@ function ReportsPageContent() {
       });
       
       // Transform campaigns to match frontend interface
-      const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => ({
-        id: campaign.campaign_id || `campaign-${index}`,
-        campaign_id: campaign.campaign_id || '',
-        campaign_name: campaign.campaign_name || 'Unknown Campaign',
-        spend: parseFloat(campaign.spend || '0'),
-        impressions: parseInt(campaign.impressions || '0'),
-        clicks: parseInt(campaign.clicks || '0'),
-        conversions: parseInt(campaign.conversions || '0'),
-        ctr: parseFloat(campaign.ctr || '0'),
-        cpc: parseFloat(campaign.cpc || '0'),
-        cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
-        frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
-        reach: campaign.reach ? parseInt(campaign.reach) : undefined,
-        relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
-        landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
-        ad_type: campaign.ad_type || undefined,
-        objective: campaign.objective || undefined
-      }));
+      const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
+        // Use already-parsed conversion tracking data from API response
+        // The Meta API service already processes the actions and action_values
+        const click_to_call = campaign.click_to_call || 0;
+        const lead = campaign.lead || 0;
+        const purchase = campaign.purchase || 0;
+        const purchase_value = campaign.purchase_value || 0;
+        const booking_step_1 = campaign.booking_step_1 || 0;
+        const booking_step_2 = campaign.booking_step_2 || 0;
+        const booking_step_3 = campaign.booking_step_3 || 0;
+
+        return {
+          id: campaign.campaign_id || `campaign-${index}`,
+          campaign_id: campaign.campaign_id || '',
+          campaign_name: campaign.campaign_name || 'Unknown Campaign',
+          spend: parseFloat(campaign.spend || '0'),
+          impressions: parseInt(campaign.impressions || '0'),
+          clicks: parseInt(campaign.clicks || '0'),
+          conversions: parseInt(campaign.conversions || '0'),
+          ctr: parseFloat(campaign.ctr || '0'),
+          cpc: parseFloat(campaign.cpc || '0'),
+          cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+          frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+          reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+          relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+          landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+          ad_type: campaign.ad_type || undefined,
+          objective: campaign.objective || undefined,
+          // Conversion tracking fields (parsed from actions)
+          click_to_call,
+          lead,
+          purchase,
+          purchase_value,
+          booking_step_1,
+          booking_step_2,
+          booking_step_3
+        };
+      });
       
       console.log(`📊 Transformed campaigns:`, campaigns.length, 'campaigns');
       if (campaigns.length > 0) {
@@ -963,12 +1090,14 @@ function ReportsPageContent() {
       };
 
       console.log(`💾 Setting successful report for ${periodId}:`, report);
+      console.log(`🎯 ${isCurrentMonth ? 'LIVE API DATA' : 'API DATA'} set for ${periodId} with ${campaigns.length} campaigns`);
       setReports(prev => {
         const newState = { ...prev, [periodId]: report };
         console.log('💾 Updated reports state:', {
           periodId,
           totalReports: Object.keys(newState).length,
-          allPeriods: Object.keys(newState)
+          allPeriods: Object.keys(newState),
+          dataSource: isCurrentMonth ? 'LIVE API' : 'API'
         });
         return newState;
       });
@@ -976,45 +1105,72 @@ function ReportsPageContent() {
     } catch (error) {
       console.error(`❌ Error loading ${viewType} data for ${periodId}:`, error);
       
+      // Check if this is current month
+      const isCurrentMonth = (() => {
+        if (viewType === 'monthly') {
+          const [year, month] = periodId.split('-').map(Number);
+          const currentDate = new Date();
+          return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+        }
+        return false;
+      })();
+      
       // Check if it's a timeout error
       if (error instanceof Error && error.message.includes('timeout')) {
         setError(`API request timed out for ${periodId}. This might be due to Meta API being slow or the date range having no data. Please try again or select a different period.`);
       }
       
-      // Show fallback data if API fails
-      console.log('🔄 Showing fallback data due to API error');
-      const fallbackCampaigns: Campaign[] = [
-        {
-          id: `fallback-1-${periodId}`,
-          campaign_id: 'fallback-1',
-          campaign_name: 'Fallback Campaign (API Error)',
-          spend: 1000.00,
-          impressions: 50000,
-          clicks: 1000,
-          conversions: 50,
-          ctr: 2.0,
-          cpc: 1.0,
-          cpa: 20.0,
-          frequency: 1.5,
-          reach: 33333,
-          landing_page_view: 800,
-          ad_type: 'IMAGE',
-          objective: 'CONVERSIONS'
-        }
-      ];
+      if (isCurrentMonth) {
+        // For current month, don't show fallback data - show empty state instead
+        console.log('🔄 Current month API failed - showing empty state instead of fallback data');
+        const emptyReport: MonthlyReport | WeeklyReport = {
+          id: periodId,
+          date_range_start: periodStartDate || '',
+          date_range_end: periodEndDate || '',
+          generated_at: new Date().toISOString(),
+          campaigns: []
+        };
 
-      const fallbackReport: MonthlyReport | WeeklyReport = {
-        id: periodId,
-        date_range_start: periodStartDate || '',
-        date_range_end: periodEndDate || '',
-        generated_at: new Date().toISOString(),
-        campaigns: fallbackCampaigns
-      };
+        console.log('💾 Setting empty report for current month API failure:', emptyReport);
+        setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+        
+        setError(`API Error for current month: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`);
+      } else {
+        // For previous months, show fallback data if API fails
+        console.log('🔄 Previous month API failed - showing fallback data');
+        const fallbackCampaigns: Campaign[] = [
+          {
+            id: `fallback-1-${periodId}`,
+            campaign_id: 'fallback-1',
+            campaign_name: 'Fallback Campaign (API Error)',
+            spend: 1000.00,
+            impressions: 50000,
+            clicks: 1000,
+            conversions: 50,
+            ctr: 2.0,
+            cpc: 1.0,
+            cpa: 20.0,
+            frequency: 1.5,
+            reach: 33333,
+            landing_page_view: 800,
+            ad_type: 'IMAGE',
+            objective: 'CONVERSIONS'
+          }
+        ];
 
-      console.log('💾 Setting fallback report:', fallbackReport);
-      setReports(prev => ({ ...prev, [periodId]: fallbackReport }));
-      
-      setError(`API Error: ${error instanceof Error ? error.message : 'Unknown error'}. Showing fallback data.`);
+        const fallbackReport: MonthlyReport | WeeklyReport = {
+          id: periodId,
+          date_range_start: periodStartDate || '',
+          date_range_end: periodEndDate || '',
+          generated_at: new Date().toISOString(),
+          campaigns: fallbackCampaigns
+        };
+
+        console.log('💾 Setting fallback report for previous month:', fallbackReport);
+        setReports(prev => ({ ...prev, [periodId]: fallbackReport }));
+        
+        setError(`API Error: ${error instanceof Error ? error.message : 'Unknown error'}. Showing fallback data.`);
+      }
     } finally {
       loadingRef.current = false;
       setApiCallInProgress(false);
@@ -1670,6 +1826,27 @@ function ReportsPageContent() {
                 </select>
                 
                 {/* Minimalist dropdown arrow - only one, subtle */}
+                
+                {/* Live Data Indicator for Current Month */}
+                {(() => {
+                  if (viewType === 'monthly' && selectedPeriod) {
+                    const [year, month] = selectedPeriod.split('-').map(Number);
+                    const currentDate = new Date();
+                    const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+                    
+                    if (isCurrentMonth) {
+                      return (
+                        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
+                          <div className="flex items-center space-x-2 bg-green-100 border border-green-200 rounded-full px-3 py-1">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <span className="text-xs font-medium text-green-700">Dane na żywo</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                  }
+                  return null;
+                })()}
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
                   <ChevronDown className="w-4 h-4 text-gray-400" />
                 </div>
@@ -2008,6 +2185,42 @@ function ReportsPageContent() {
           className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
         >
           Show API Limits
+        </button>
+        
+        <button
+          onClick={() => {
+            if (!client) {
+              alert('Client not loaded');
+              return;
+            }
+            
+            // Force refresh current month
+            const currentDate = new Date();
+            const currentMonthId = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            console.log('🔄 Force refreshing current month:', currentMonthId);
+            
+            // Clear current month data
+            setReports(prev => {
+              const newReports = { ...prev };
+              delete newReports[currentMonthId];
+              return newReports;
+            });
+            
+            // Set view type to monthly and select current month
+            setViewType('monthly');
+            setSelectedPeriod(currentMonthId);
+            
+            // Force reload
+            setTimeout(() => {
+              loadPeriodData(currentMonthId);
+            }, 100);
+            
+            alert(`Force refreshing current month: ${currentMonthId}`);
+          }}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
+        >
+          Force Refresh Current Month
         </button>
       </div>
     </div>
