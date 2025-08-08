@@ -70,6 +70,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
   const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks'>('impressions');
   const [showDetailedTable, setShowDetailedTable] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
     fetchMetaTablesData();
@@ -217,6 +218,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     );
   };
 
+  const toggleSectionExpansion = (sectionKey: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -327,7 +335,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-1">Top Placement Performance</h3>
-                <p className="text-sm text-gray-600">Skuteczność reklam według placementów</p>
+                <p className="text-sm text-gray-600">
+                  Skuteczność reklam według placementów
+                  {placementData.length > 5 && !expandedSections['placement'] && ` • Pokazano top 5`}
+                </p>
               </div>
               <button
                 onClick={() => exportToCSV(placementData, 'placement-performance')}
@@ -340,83 +351,101 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             </div>
             
             {placementData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Placement
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Spend
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Impressions
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Clicks
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        CTR
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        CPC
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        CPA (CPP)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {placementData
-                      .sort((a, b) => b.spend - a.spend)
-                      .map((placement, index) => (
-                        <tr 
-                          key={index} 
-                          className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
-                          style={{ borderColor: '#E7EAF3', height: '56px' }}
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center">
-                              <RankingBadge rank={index + 1} index={index} />
-                              <span className="text-sm font-medium text-gray-900">{placement.placement}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm font-semibold text-gray-900">{formatCurrency(placement.spend)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">{formatNumber(placement.impressions)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">{formatNumber(placement.clicks)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">{formatPercentage(placement.ctr)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">{formatCurrency(placement.cpc)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">
-                              {placement.cpp ? formatCurrency(placement.cpp) : '–'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Placement
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Spend
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Impressions
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Clicks
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          CTR
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          CPC
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          CPA (CPP)
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white">
+                      {placementData
+                        .sort((a, b) => b.spend - a.spend)
+                        .slice(0, expandedSections['placement'] ? undefined : 5)
+                        .map((placement, index) => (
+                          <tr 
+                            key={index} 
+                            className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                            style={{ borderColor: '#E7EAF3', height: '56px' }}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                <RankingBadge rank={index + 1} index={index} />
+                                <span className="text-sm font-medium text-gray-900">{placement.placement}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm font-semibold text-gray-900">{formatCurrency(placement.spend)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{formatNumber(placement.impressions)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{formatNumber(placement.clicks)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{formatPercentage(placement.ctr)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{formatCurrency(placement.cpc)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{placement.cpp ? formatCurrency(placement.cpp) : 'N/A'}</span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* See More/Less Button for Placement */}
+                {placementData.length > 5 && (
+                  <div className="flex justify-center py-4 border-t border-gray-100">
+                    <button
+                      onClick={() => toggleSectionExpansion('placement')}
+                      className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
+                    >
+                      {expandedSections['placement'] ? (
+                        <>
+                          <ChevronUp className="w-4 h-4" />
+                          <span>Pokaż mniej</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-4 h-4" />
+                          <span>Zobacz więcej ({placementData.length - 5} więcej)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <BarChart3 className="h-8 w-8 text-gray-400" />
-                </div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-2">Brak danych o placementach</h4>
-                <p className="text-gray-600 mb-3">Nie znaleziono danych dla tego okresu</p>
-                <div className="bg-gray-50 rounded-2xl p-3 max-w-sm mx-auto" style={{ border: '1px solid #E7EAF3' }}>
-                  <p className="text-sm text-gray-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
-                </div>
+                <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych o placementach</h3>
+                <p className="text-gray-600">Nie znaleziono danych o placementach dla wybranego okresu.</p>
               </div>
             )}
           </div>
@@ -427,7 +456,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-1">Demographic Performance</h3>
-                <p className="text-sm text-gray-600">Skuteczność reklam według wieku i płci</p>
+                <p className="text-sm text-gray-600">
+                  Skuteczność reklam według demografii
+                  {demographicData.length > 5 && !expandedSections['demographic'] && ` • Pokazano top 5`}
+                </p>
               </div>
               <div className="flex items-center space-x-4">
                 {/* Metric Selector */}
@@ -473,124 +505,114 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             </div>
             
             {demographicData.length > 0 ? (
-              <div className="p-6">
-                {/* Pie Charts Section */}
-                <DemographicPieCharts data={demographicData} metric={demographicMetric} />
-                
-                {/* Detailed Table Toggle */}
-                <div className="mt-8 text-center">
-                  <button
-                    onClick={() => setShowDetailedTable(!showDetailedTable)}
-                    className="flex items-center space-x-2 mx-auto bg-gray-50 hover:bg-gray-100 text-gray-700 px-6 py-3 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md"
-                    style={{ border: '1px solid #E7EAF3', borderRadius: '16px' }}
-                  >
-                    {showDetailedTable ? (
-                      <>
-                        <ChevronUp className="h-5 w-5" />
-                        <span className="font-medium">Ukryj szczegóły</span>
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown className="h-5 w-5" />
-                        <span className="font-medium">Zobacz szczegóły</span>
-                      </>
-                    )}
-                  </button>
-                  <p className="text-sm text-gray-500 mt-2">Wszystkie szczegółowe dane w tabeli poniżej</p>
+              <div>
+                {/* Demographic Charts Section */}
+                <div className="p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
+                  <DemographicPieCharts data={demographicData} metric={demographicMetric} />
                 </div>
 
-                {/* Detailed Table */}
-                {showDetailedTable && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="mt-8 overflow-hidden"
-                  >
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              Age Group
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              Gender
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              Spend
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              Impressions
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              Clicks
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              CTR
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              CPC
-                            </th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                              CPA (CPP)
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white">
-                          {demographicData
-                            .sort((a, b) => (a.cpp || 0) - (b.cpp || 0))
-                            .map((demo, index) => (
-                              <tr 
-                                key={index} 
-                                className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
-                                style={{ borderColor: '#E7EAF3', height: '56px' }}
-                              >
-                                <td className="px-6 py-4">
-                                  <span className="text-sm font-medium text-gray-900">{demo.age}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm font-medium text-gray-900">{demo.gender}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm font-semibold text-gray-900">{formatCurrency(demo.spend)}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm text-gray-900">{formatNumber(demo.impressions)}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm text-gray-900">{formatNumber(demo.clicks)}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm text-gray-900">{formatPercentage(demo.ctr)}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm text-gray-900">{formatCurrency(demo.cpc)}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className="text-sm text-gray-900">
-                                    {demo.cpp ? formatCurrency(demo.cpp) : '–'}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
+                {/* Detailed Table Section */}
+                <div className="p-6">
+                  <div className="mb-6">
+                    <h4 className="text-lg font-bold text-gray-900 mb-2">Szczegółowe Dane Demograficzne</h4>
+                    <p className="text-sm text-gray-600">Tabela z wszystkimi danymi demograficznymi</p>
+                  </div>
+                  
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Wiek
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Płeć
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Spend
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Impressions
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Clicks
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            CTR
+                          </th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            CPC
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white">
+                        {demographicData
+                          .sort((a, b) => b[demographicMetric] - a[demographicMetric])
+                          .slice(0, expandedSections['demographic'] ? undefined : 5)
+                          .map((demographic, index) => (
+                            <tr 
+                              key={index} 
+                              className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                              style={{ borderColor: '#E7EAF3', height: '56px' }}
+                            >
+                              <td className="px-6 py-4">
+                                <div className="flex items-center">
+                                  <RankingBadge rank={index + 1} index={index} />
+                                  <span className="text-sm font-medium text-gray-900">{demographic.age}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-900">{demographic.gender}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm font-semibold text-gray-900">{formatCurrency(demographic.spend)}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-900">{formatNumber(demographic.impressions)}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-900">{formatNumber(demographic.clicks)}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-900">{formatPercentage(demographic.ctr)}</span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="text-sm text-gray-900">{formatCurrency(demographic.cpc)}</span>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* See More/Less Button for Demographic */}
+                  {demographicData.length > 5 && (
+                    <div className="flex justify-center py-4 border-t border-gray-100 mt-6">
+                      <button
+                        onClick={() => toggleSectionExpansion('demographic')}
+                        className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
+                      >
+                        {expandedSections['demographic'] ? (
+                          <>
+                            <ChevronUp className="w-4 h-4" />
+                            <span>Pokaż mniej</span>
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-4 h-4" />
+                            <span>Zobacz więcej ({demographicData.length - 5} więcej)</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-                  </motion.div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Users className="h-8 w-8 text-gray-400" />
-                </div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-2">Brak danych demograficznych</h4>
-                <p className="text-gray-600 mb-3">Nie znaleziono danych dla tego okresu</p>
-                <div className="bg-gray-50 rounded-2xl p-3 max-w-sm mx-auto" style={{ border: '1px solid #E7EAF3' }}>
-                  <p className="text-sm text-gray-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
-                </div>
+                <Users className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych demograficznych</h3>
+                <p className="text-gray-600">Nie znaleziono danych demograficznych dla wybranego okresu.</p>
               </div>
             )}
           </div>
@@ -601,7 +623,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
               <div>
                 <h3 className="text-xl font-bold text-gray-900 mb-1">Ad Relevance & Results</h3>
-                <p className="text-sm text-gray-600">Jakość reklam i wyniki według Meta</p>
+                <p className="text-sm text-gray-600">
+                  Skuteczność reklam według relevance
+                  {adRelevanceData.length > 5 && !expandedSections['adRelevance'] && ` • Pokazano top 5`}
+                </p>
               </div>
               <button
                 onClick={() => exportToCSV(adRelevanceData, 'ad-relevance-results')}
@@ -614,71 +639,89 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             </div>
             
             {adRelevanceData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Ad Name
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Spend
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Impressions
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Clicks
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        CPA (CPP)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {adRelevanceData
-                      .sort((a, b) => b.spend - a.spend)
-                      .map((ad, index) => (
-                        <tr 
-                          key={index} 
-                          className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
-                          style={{ borderColor: '#E7EAF3', height: '56px' }}
-                        >
-                          <td className="px-6 py-4">
-                            <div className="flex items-center">
-                              <RankingBadge rank={index + 1} index={index} />
-                              <span className="text-sm font-medium text-gray-900">{ad.ad_name}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm font-semibold text-gray-900">{formatCurrency(ad.spend)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">{formatNumber(ad.impressions)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">{formatNumber(ad.clicks)}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-sm text-gray-900">
-                              {ad.cpp ? formatCurrency(ad.cpp) : '–'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+              <div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Nazwa Reklamy
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Spend
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Impressions
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Clicks
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          CPP
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white">
+                      {adRelevanceData
+                        .sort((a, b) => b.spend - a.spend)
+                        .slice(0, expandedSections['adRelevance'] ? undefined : 5)
+                        .map((ad, index) => (
+                          <tr 
+                            key={index} 
+                            className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                            style={{ borderColor: '#E7EAF3', height: '56px' }}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="flex items-center">
+                                <RankingBadge rank={index + 1} index={index} />
+                                <span className="text-sm font-medium text-gray-900">{ad.ad_name}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm font-semibold text-gray-900">{formatCurrency(ad.spend)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{formatNumber(ad.impressions)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{formatNumber(ad.clicks)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-gray-900">{ad.cpp ? formatCurrency(ad.cpp) : 'N/A'}</span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* See More/Less Button for Ad Relevance */}
+                {adRelevanceData.length > 5 && (
+                  <div className="flex justify-center py-4 border-t border-gray-100">
+                    <button
+                      onClick={() => toggleSectionExpansion('adRelevance')}
+                      className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
+                    >
+                      {expandedSections['adRelevance'] ? (
+                        <>
+                          <ChevronUp className="w-4 h-4" />
+                          <span>Pokaż mniej</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-4 h-4" />
+                          <span>Zobacz więcej ({adRelevanceData.length - 5} więcej)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Award className="h-8 w-8 text-gray-400" />
-                </div>
-                <h4 className="text-lg font-semibold text-gray-900 mb-2">Brak danych o jakości reklam</h4>
-                <p className="text-gray-600 mb-3">Nie znaleziono danych dla tego okresu</p>
-                <div className="bg-gray-50 rounded-2xl p-3 max-w-sm mx-auto" style={{ border: '1px solid #E7EAF3' }}>
-                  <p className="text-sm text-gray-700">💡 Spróbuj wybrać inny miesiąc z aktywnymi kampaniami</p>
-                </div>
+                <Award className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych o relevance</h3>
+                <p className="text-gray-600">Nie znaleziono danych o relevance reklam dla wybranego okresu.</p>
               </div>
             )}
           </div>

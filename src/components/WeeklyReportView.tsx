@@ -5,7 +5,9 @@ import {
   BarChart3, 
   HelpCircle,
   Calendar,
-  Clock
+  Clock,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import ConversionMetricsCards from './ConversionMetricsCards';
 
@@ -191,6 +193,8 @@ const MetricCard = ({
 
 
 export default function WeeklyReportView({ reports, viewType = 'weekly' }: WeeklyReportViewProps) {
+  const [expandedCampaigns, setExpandedCampaigns] = useState<{ [key: string]: boolean }>({});
+
   const reportIds = Object.keys(reports);
   
   if (reportIds.length === 0) {
@@ -202,6 +206,13 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
       </div>
     );
   }
+
+  const toggleCampaignExpansion = (reportId: string) => {
+    setExpandedCampaigns(prev => ({
+      ...prev,
+      [reportId]: !prev[reportId]
+    }));
+  };
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-10">
@@ -246,6 +257,11 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         } else {
           reportTitle = `Raport - ${getWeekDateRange(startDate.getFullYear(), weekNumber)}`;
         }
+
+        // Determine how many campaigns to show
+        const isExpanded = expandedCampaigns[reportId] || false;
+        const campaignsToShow = isExpanded ? campaigns : campaigns.slice(0, 5);
+        const hasMoreCampaigns = campaigns.length > 5;
 
         return (
           <div key={reportId} className="space-y-10">
@@ -390,19 +406,23 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                     conversionMetrics={conversionMetrics}
                     currency="PLN"
                     isLoading={false}
+                    showInfoPanel={false}
                   />
                 </section>
               );
             })()}
 
             {/* Campaigns Table */}
-              {campaigns.length > 0 && (
-                <section>
-                  <div className="mb-8">
-                    <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Szczegóły Kampanii</h2>
-                    <p className="text-sm text-gray-600">Top kampanie według wydajności • {campaigns.length} aktywnych kampanii</p>
-                  </div>
-                
+            {campaigns.length > 0 && (
+              <section>
+                <div className="mb-8">
+                  <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Szczegóły Kampanii</h2>
+                  <p className="text-sm text-gray-600">
+                    Top kampanie według wydajności • {campaigns.length} aktywnych kampanii
+                    {hasMoreCampaigns && !isExpanded && ` • Pokazano top 5`}
+                  </p>
+                </div>
+              
                 <div className="overflow-x-auto" style={{ backgroundColor: '#FFFFFF', border: '1px solid #F0F0F0', borderRadius: '8px' }}>
                   <table className="w-full">
                     <thead style={{ backgroundColor: '#FAFBFC' }} className="sticky top-0">
@@ -428,7 +448,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                       </tr>
                     </thead>
                     <tbody style={{ backgroundColor: '#FFFFFF' }}>
-                      {campaigns.slice(0, 10).map((campaign, index) => {
+                      {campaignsToShow.map((campaign, index) => {
                         const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
                         const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
                         
@@ -493,6 +513,28 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                     </tbody>
                   </table>
                 </div>
+
+                {/* See More/Less Button */}
+                {hasMoreCampaigns && (
+                  <div className="flex justify-center mt-6">
+                    <button
+                      onClick={() => toggleCampaignExpansion(reportId)}
+                      className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <ChevronUp className="w-4 h-4" />
+                          <span>Pokaż mniej</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-4 h-4" />
+                          <span>Zobacz więcej ({campaigns.length - 5} więcej)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 
