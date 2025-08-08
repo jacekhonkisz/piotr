@@ -10,8 +10,9 @@ import {
 } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 import { motion } from 'framer-motion';
-import { Users, Eye, MousePointer, DollarSign } from 'lucide-react';
+import { Eye, MousePointer, Users } from 'lucide-react';
 
+// Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
 interface DemographicPerformance {
@@ -31,26 +32,14 @@ interface DemographicPieChartsProps {
 }
 
 export default function DemographicPieCharts({ data, metric }: DemographicPieChartsProps) {
-  const [isVisible, setIsVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry && entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, []);
+  // Add debugging logs
+  console.log('🔍 DemographicPieCharts render:', {
+    dataLength: data?.length || 0,
+    metric,
+    sampleData: data?.slice(0, 2)
+  });
 
   // Process data for gender distribution
   const processGenderData = () => {
@@ -64,12 +53,15 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
 
     const total = Array.from(genderMap.values()).reduce((sum, value) => sum + value, 0);
     
-    return {
+    const result = {
       labels: Array.from(genderMap.keys()),
       data: Array.from(genderMap.values()),
       total,
       percentages: Array.from(genderMap.values()).map(value => ((value / total) * 100).toFixed(1))
     };
+
+    console.log('🔍 Processed gender data:', result);
+    return result;
   };
 
   // Process data for age group distribution
@@ -84,12 +76,15 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
 
     const total = Array.from(ageMap.values()).reduce((sum, value) => sum + value, 0);
     
-    return {
+    const result = {
       labels: Array.from(ageMap.keys()),
       data: Array.from(ageMap.values()),
       total,
       percentages: Array.from(ageMap.values()).map(value => ((value / total) * 100).toFixed(1))
     };
+
+    console.log('🔍 Processed age data:', result);
+    return result;
   };
 
   const genderData = processGenderData();
@@ -158,15 +153,18 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
 
   const MetricIcon = getMetricIcon();
 
+  // Add debugging for chart rendering
+  console.log('🔍 Rendering charts with:', {
+    genderDataLabels: genderData.labels,
+    genderDataValues: genderData.data,
+    ageDataLabels: ageData.labels,
+    ageDataValues: ageData.data,
+  });
+
   return (
     <div ref={containerRef} className="space-y-8">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={isVisible ? { opacity: 1, y: 0 } : {}}
-        transition={{ duration: 0.6 }}
-        className="text-center"
-      >
+      <div className="text-center">
         <div className="inline-flex items-center space-x-3 bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-3 rounded-2xl border border-purple-100">
           <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
             <MetricIcon className="h-5 w-5 text-white" />
@@ -176,46 +174,50 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
           </h3>
         </div>
         <p className="text-gray-600 mt-2">Analiza skuteczności reklam według płci i grup wiekowych</p>
-      </motion.div>
+      </div>
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Gender Distribution Chart */}
-        <motion.div
-          initial={{ opacity: 0, x: -30 }}
-          animate={isVisible ? { opacity: 1, x: 0 } : {}}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300"
-        >
+        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300">
           <div className="text-center mb-6">
             <h4 className="text-lg font-bold text-gray-900 mb-2">Podział według Płci</h4>
             <p className="text-sm text-gray-600">Udział {getMetricLabel().toLowerCase()} według płci</p>
           </div>
           
           <div className="h-64 mb-6">
-            <Pie
-              data={{
-                labels: genderData.labels,
-                datasets: [{
-                  data: genderData.data,
-                  backgroundColor: genderColors,
-                  borderColor: genderColors.map(color => color + '80'),
-                  borderWidth: 2,
-                  hoverBorderWidth: 3,
-                }]
-              }}
-              options={chartOptions}
-            />
+            {genderData.data.length > 0 ? (
+              <Pie
+                data={{
+                  labels: genderData.labels,
+                  datasets: [{
+                    data: genderData.data,
+                    backgroundColor: genderColors,
+                    borderColor: genderColors.map(color => color + '80'),
+                    borderWidth: 2,
+                    hoverBorderWidth: 3,
+                  }]
+                }}
+                options={chartOptions}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+                <div className="text-center">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Users className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mb-1">Brak danych demograficznych</p>
+                  <p className="text-xs text-gray-500">Meta API nie zwróciło danych o demografii</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Legend with values */}
           <div className="space-y-3">
             {genderData.labels.map((label, index) => (
-              <motion.div
+              <div
                 key={label}
-                initial={{ opacity: 0, x: -20 }}
-                animate={isVisible ? { opacity: 1, x: 0 } : {}}
-                transition={{ delay: 0.4 + index * 0.1, duration: 0.5 }}
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center space-x-3">
@@ -233,47 +235,51 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
                     {genderData.percentages[index]}%
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
-        </motion.div>
+        </div>
 
         {/* Age Group Distribution Chart */}
-        <motion.div
-          initial={{ opacity: 0, x: 30 }}
-          animate={isVisible ? { opacity: 1, x: 0 } : {}}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300"
-        >
+        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300">
           <div className="text-center mb-6">
             <h4 className="text-lg font-bold text-gray-900 mb-2">Podział według Grup Wiekowych</h4>
             <p className="text-sm text-gray-600">Udział {getMetricLabel().toLowerCase()} według wieku</p>
           </div>
           
           <div className="h-64 mb-6">
-            <Pie
-              data={{
-                labels: ageData.labels,
-                datasets: [{
-                  data: ageData.data,
-                  backgroundColor: ageColors,
-                  borderColor: ageColors.map(color => color + '80'),
-                  borderWidth: 2,
-                  hoverBorderWidth: 3,
-                }]
-              }}
-              options={chartOptions}
-            />
+            {ageData.data.length > 0 ? (
+              <Pie
+                data={{
+                  labels: ageData.labels,
+                  datasets: [{
+                    data: ageData.data,
+                    backgroundColor: ageColors,
+                    borderColor: ageColors.map(color => color + '80'),
+                    borderWidth: 2,
+                    hoverBorderWidth: 3,
+                  }]
+                }}
+                options={chartOptions}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+                <div className="text-center">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                    <Users className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 mb-1">Brak danych demograficznych</p>
+                  <p className="text-xs text-gray-500">Meta API nie zwróciło danych o demografii</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Legend with values */}
           <div className="space-y-3">
             {ageData.labels.map((label, index) => (
-              <motion.div
+              <div
                 key={label}
-                initial={{ opacity: 0, x: -20 }}
-                animate={isVisible ? { opacity: 1, x: 0 } : {}}
-                transition={{ delay: 0.6 + index * 0.1, duration: 0.5 }}
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 <div className="flex items-center space-x-3">
@@ -291,19 +297,14 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
                     {ageData.percentages[index]}%
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Summary Stats */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={isVisible ? { opacity: 1, y: 0 } : {}}
-        transition={{ duration: 0.6, delay: 0.8 }}
-        className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100"
-      >
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
           <div>
             <div className="text-2xl font-bold text-purple-600">
@@ -324,7 +325,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
             <div className="text-sm text-gray-600">Grupy wiekowe</div>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 } 

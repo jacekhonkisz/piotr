@@ -8,12 +8,8 @@ import {
   BarChart3,
   RefreshCw,
   FileSpreadsheet,
-  TrendingUp,
   MousePointer,
   Eye,
-  DollarSign,
-  Target,
-  Zap,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -69,7 +65,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
   const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks'>('impressions');
-  const [showDetailedTable, setShowDetailedTable] = useState(false);
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
@@ -104,9 +99,22 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
       const result = await response.json();
       
       if (result.success) {
+        console.log('🔍 MetaAdsTables received data:', {
+          placementDataLength: result.data.placementPerformance?.length || 0,
+          demographicDataLength: result.data.demographicPerformance?.length || 0,
+          adRelevanceDataLength: result.data.adRelevanceResults?.length || 0,
+          sampleDemographicData: result.data.demographicPerformance?.slice(0, 2),
+          fullDemographicData: result.data.demographicPerformance
+        });
+
         setPlacementData(result.data.placementPerformance || []);
         setDemographicData(result.data.demographicPerformance || []);
         setAdRelevanceData(result.data.adRelevanceResults || []);
+        
+        // Log if demographic data is missing
+        if (!result.data.demographicPerformance || result.data.demographicPerformance.length === 0) {
+          console.log('⚠️ No demographic data received from Meta API');
+        }
         
         // Call the callback with the loaded data
         if (onDataLoaded) {
@@ -460,6 +468,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                   Skuteczność reklam według demografii
                   {demographicData.length > 5 && !expandedSections['demographic'] && ` • Pokazano top 5`}
                 </p>
+
               </div>
               <div className="flex items-center space-x-4">
                 {/* Metric Selector */}
@@ -508,6 +517,14 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
               <div>
                 {/* Demographic Charts Section */}
                 <div className="p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
+                  {(() => {
+                    console.log('🔍 Rendering DemographicPieCharts with:', {
+                      dataLength: demographicData.length,
+                      metric: demographicMetric,
+                      sampleData: demographicData.slice(0, 2)
+                    });
+                    return null;
+                  })()}
                   <DemographicPieCharts data={demographicData} metric={demographicMetric} />
                 </div>
 

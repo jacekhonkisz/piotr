@@ -2,24 +2,23 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { BarChart3, Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { signIn } from '../../../lib/auth';
-import { useAuth } from '../../../components/AuthProvider';
-import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useAuth } from '@/components/AuthProvider';
+import { signIn } from '@/lib/auth';
+import { BarChart3 } from 'lucide-react';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
   const { user, profile, authLoading } = useAuth();
-  const redirectedRef = useRef(false);
+  const router = useRouter();
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const redirectedRef = useRef(false);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-focus on email input
+  // Focus email input on mount
   useEffect(() => {
     if (emailInputRef.current) {
       emailInputRef.current.focus();
@@ -29,6 +28,11 @@ export default function LoginPage() {
   // Handle authentication redirects - prevent multiple redirects
   useEffect(() => {
     console.log('Login page useEffect - authLoading:', authLoading, 'user:', user?.email, 'profile:', profile?.role, 'redirected:', redirectedRef.current);
+    
+    // Clear any existing timeout
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+    }
     
     // Only redirect if auth is not loading, user is authenticated, and we haven't redirected yet
     if (!authLoading && user && profile && !redirectedRef.current) {
@@ -47,9 +51,25 @@ export default function LoginPage() {
       redirectedRef.current = false; // Reset redirect flag if no user
     } else if (!authLoading && user && !profile) {
       console.log('User authenticated but no profile loaded yet, waiting...');
+      // Set a timeout to prevent infinite loading
+      loadingTimeoutRef.current = setTimeout(() => {
+        console.warn('Profile loading timed out, redirecting anyway');
+        if (user && !redirectedRef.current) {
+          redirectedRef.current = true;
+          // Redirect to dashboard as fallback
+          router.replace('/dashboard');
+        }
+      }, 8000); // 8 second timeout
     } else if (authLoading) {
       console.log('Auth still loading...');
     }
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
   }, [user, profile, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,7 +113,7 @@ export default function LoginPage() {
     );
   }
 
-  // If user is authenticated but no profile, show different message
+  // If user is authenticated but no profile, show different message with timeout
   if (user && !profile && !authLoading) {
     return (
       <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -105,6 +125,9 @@ export default function LoginPage() {
             </h1>
           </div>
           <LoadingSpinner text="Ładowanie profilu..." />
+          <div className="text-center mt-4 text-sm text-gray-500">
+            Jeśli ładowanie trwa zbyt długo, strona zostanie przekierowana automatycznie
+          </div>
         </div>
       </div>
     );
@@ -122,126 +145,78 @@ export default function LoginPage() {
         </div>
         
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">
-            Zaloguj się do swojego panelu
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900">Zaloguj się</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Wprowadź swoje dane logowania
+          </p>
         </div>
-      </div>
 
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200/50 p-8">
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-              <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
-                <p className="ml-3 text-sm text-red-800">{error}</p>
-              </div>
-            </div>
-          )}
-
+        <div className="bg-white py-8 px-6 shadow sm:rounded-lg sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
-            {/* Email Field */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                {error}
+              </div>
+            )}
+            
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Adres e-mail
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Adres email
               </label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <div className="mt-1">
                 <input
-                  ref={emailInputRef}
                   id="email"
                   name="email"
                   type="email"
                   autoComplete="email"
                   required
+                  ref={emailInputRef}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200"
-                  placeholder="Wprowadź swój e-mail"
-                  disabled={loading}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="twoj@email.com"
                 />
               </div>
             </div>
 
-            {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Hasło
               </label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <div className="mt-1">
                 <input
                   id="password"
                   name="password"
-                  type={showPassword ? "text" : "password"}
+                  type="password"
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  className="w-full pl-12 pr-12 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200"
-                  placeholder="Wprowadź swoje hasło"
-                  disabled={loading}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="••••••••"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200"
-                  disabled={loading}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
-                </button>
               </div>
             </div>
 
-            {/* Remember Me Checkbox */}
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                disabled={loading}
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                Zapamiętaj mnie
-              </label>
-            </div>
-
-            {/* Submit Button */}
             <div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Logowanie...
+                  </div>
                 ) : (
-                  <>
-                    Zaloguj się
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </>
+                  'Zaloguj się'
                 )}
               </button>
             </div>
           </form>
-        </div>
-
-        {/* Demo Credentials */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-          <h3 className="text-xs font-medium text-gray-900 mb-2">Demo logowanie</h3>
-          <div className="text-xs text-gray-600 space-y-1">
-            <p><strong>Admin:</strong> admin@example.com / password123</p>
-            <p><strong>Client:</strong> client@example.com / password123</p>
-          </div>
         </div>
       </div>
     </div>

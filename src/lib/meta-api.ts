@@ -634,54 +634,48 @@ export class MetaAPIService {
           let reservation_value = 0;
           let booking_step_2 = 0;
 
-          // Extract action data if available
-          if (insight.actions && Array.isArray(insight.actions)) {
-            console.log(`🔍 RAW ACTIONS for campaign ${insight.campaign_name}:`, insight.actions);
-            insight.actions.forEach((action: any) => {
-              const actionType = action.action_type;
-              const value = parseInt(action.value || '0');
-              console.log(`   📊 Action: ${actionType} = ${value}`);
-              
+          // Extract action data if available (support both nested insights and fields payloads)
+          const actionsArray = (insight.actions && Array.isArray(insight.actions))
+            ? insight.actions
+            : (insight.action_types && Array.isArray(insight.action_types) ? insight.action_types : []);
+
+          if (actionsArray.length > 0) {
+            actionsArray.forEach((action: any) => {
+              const actionType = String(action.action_type || action.type || '').toLowerCase();
+              const valueNum = Number(action.value ?? action.count ?? 0);
+
               // 1. Potencjalne kontakty telefoniczne - Include call confirmation events
               if (actionType.includes('click_to_call') || actionType.includes('call_confirm')) {
-                click_to_call += value;
+                click_to_call += valueNum;
               }
-              
               // 2. Potencjalne kontakty email
               if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
-                email_contacts += value;
+                email_contacts += valueNum;
               }
-              
-              // 3. Kroki rezerwacji – Etap 1 procesu rezerwacji - Use checkout initiation as proxy
-              if (actionType.includes('booking_step_1') || 
-                  actionType === 'initiate_checkout' || 
-                  actionType === 'offsite_conversion.fb_pixel_initiate_checkout') {
-                booking_step_1 += value;
+              // 3. Kroki rezerwacji – Etap 1 (initiate_checkout proxy)
+              if (actionType.includes('booking_step_1') || actionType === 'initiate_checkout' || actionType.includes('initiate_checkout')) {
+                booking_step_1 += valueNum;
               }
-              
-              // 4. Rezerwacje (zakończone rezerwacje) - Use primary purchase event only to avoid duplication
-              if (actionType === 'purchase' || actionType === 'offsite_conversion.fb_pixel_purchase') {
-                reservations += value;
+              // 4. Rezerwacje (purchase)
+              if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+                reservations += valueNum;
               }
-              
-              // 8. Etap 2 rezerwacji
+              // 8. Etap 2 rezerwacji (add_to_cart proxy)
               if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
-                booking_step_2 += value;
+                booking_step_2 += valueNum;
               }
             });
           }
 
-          // 5. Wartość rezerwacji - Extract from action_values (use primary purchase event only)
-          if (insight.action_values && Array.isArray(insight.action_values)) {
-            console.log(`🔍 RAW ACTION_VALUES for campaign ${insight.campaign_name}:`, insight.action_values);
-            insight.action_values.forEach((actionValue: any) => {
-              console.log(`   💰 Action Value: ${actionValue.action_type} = ${actionValue.value}`);
-              if (actionValue.action_type === 'purchase' || actionValue.action_type === 'offsite_conversion.fb_pixel_purchase') {
-                reservation_value += parseFloat(actionValue.value || '0');
-                console.log(`   ✅ USED for reservation_value: ${actionValue.value}`);
-              }
-            });
-          }
+          // 5. Wartość rezerwacji - handle both action_values and value fields
+          const actionValuesArray = (insight.action_values && Array.isArray(insight.action_values)) ? insight.action_values : [];
+          actionValuesArray.forEach((actionValue: any) => {
+            const t = String(actionValue.action_type || '').toLowerCase();
+            const v = Number(actionValue.value || 0);
+            if (t === 'purchase' || t.includes('fb_pixel_purchase')) {
+              reservation_value += v;
+            }
+          });
 
           // 6. ROAS (Return on Ad Spend) - Calculate
           const spend = parseFloat(insight.spend || '0');

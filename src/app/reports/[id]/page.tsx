@@ -6,7 +6,6 @@ import {
   BarChart3, 
   FileText,
   Download,
-  Calendar,
   TrendingUp,
   DollarSign,
   Target,
@@ -14,10 +13,7 @@ import {
   Activity,
   RefreshCw,
   ArrowLeft,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
@@ -209,27 +205,9 @@ export default function IndividualReportPage() {
     return new Intl.NumberFormat('en-US').format(num);
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status?.toUpperCase()) {
-      case 'ACTIVE':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'PAUSED':
-        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      default:
-        return <XCircle className="h-4 w-4 text-red-500" />;
-    }
-  };
 
-  const getStatusColor = (status: string) => {
-    switch (status?.toUpperCase()) {
-      case 'ACTIVE':
-        return 'bg-green-100 text-green-800';
-      case 'PAUSED':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-red-100 text-red-800';
-    }
-  };
+
+
 
   if (loading) {
     return (

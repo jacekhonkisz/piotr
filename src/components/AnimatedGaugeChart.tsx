@@ -42,8 +42,9 @@ export default function AnimatedGaugeChart({
 
   useEffect(() => {
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
+      (entries) => {
+        const entry = entries[0];
+        if (entry && entry.isIntersecting) {
           setIsVisible(true);
           controls.start({ 
             scale: 1,

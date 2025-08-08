@@ -4,15 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Target,
-  TrendingUp,
   DollarSign,
   Eye,
-  Filter,
   Search,
   RefreshCw,
-  Calendar,
   Activity,
-  BarChart3,
   Download,
   SortAsc,
   SortDesc

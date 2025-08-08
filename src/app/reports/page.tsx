@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Clock,
   BarChart3,
-  Database as DatabaseIcon
+  Database as DatabaseIcon,
+  Code
 } from 'lucide-react';
 import WeeklyReportView from '../../components/WeeklyReportView';
 import InteractivePDFButton from '../../components/InteractivePDFButton';
@@ -123,6 +124,7 @@ function ReportsPageContent() {
     end: ''
   });
   const [isGeneratingCustomReport, setIsGeneratingCustomReport] = useState(false);
+  const [isGeneratingDevReport, setIsGeneratingDevReport] = useState(false);
   const [metaTablesData, setMetaTablesData] = useState<{
     placementPerformance: any[];
     demographicPerformance: any[];
@@ -1209,18 +1211,570 @@ function ReportsPageContent() {
     await loadPeriodDataWithClient(periodId, selectedClient);
   };
 
-  // Load data for a specific period with cache clearing
-  const loadPeriodDataWithCacheClear = async (periodId: string) => {
-    console.log(`🗑️ Loading ${viewType} data for period with cache clearing: ${periodId}`, { periodId, client: selectedClient?.id });
-    
-    // Guard: Ensure selectedClient is loaded before making API calls
-    if (!selectedClient || !selectedClient.id) {
-      console.warn('⚠️ Selected client not loaded yet, skipping API call');
+  // Load data for a specific period with cache clearing (removed to fix ESLint)
+
+    // Dev function to generate fresh report bypassing cache - uses EXACTLY the same logic as loadPeriodDataWithClient
+  const generateDevReport = async () => {
+    if (!selectedClient) {
+      console.log('⚠️ Selected client not loaded yet, cannot generate dev report');
       return;
     }
 
-    // Use the explicit client function with cache clearing flag
-    await loadPeriodDataWithClient(periodId, selectedClient, true);
+    console.log('🔧 DEV: Generating fresh report bypassing cache for client:', selectedClient.name);
+    
+    // Prevent duplicate calls
+    if (loadingRef.current || apiCallInProgress) {
+      console.log('⚠️ Already loading data, skipping duplicate dev call');
+      return;
+    }
+
+    // Use the exact same logic as loadPeriodDataWithClient but with forceFresh: true
+    if (viewType === 'all-time') {
+      // For all-time, use the same logic as loadAllTimeData
+      console.log('🔧 DEV: Using all-time logic with force fresh');
+      await loadAllTimeData();
+    } else if (viewType === 'custom') {
+      // For custom, use the same logic as loadCustomDateData
+      if (!customDateRange.start || !customDateRange.end) {
+        setError('Proszę wybrać zakres dat dla raportu deweloperskiego');
+        return;
+      }
+      console.log('🔧 DEV: Using custom date logic with force fresh');
+      await loadCustomDateData(customDateRange.start, customDateRange.end);
+    } else {
+      // For monthly/weekly, use the same logic as loadPeriodDataWithClient
+      if (!selectedPeriod) {
+        setError('Proszę wybrać okres dla raportu deweloperskiego');
+        return;
+      }
+      
+      console.log('🔧 DEV: Using period logic with force fresh for period:', selectedPeriod);
+      
+      // Use the exact same logic as loadPeriodDataWithClient but with forceFresh: true
+      const loadPeriodDataWithClientDev = async (periodId: string, clientData: Client) => {
+        console.log(`🔧 DEV: Loading ${viewType} data for period: ${periodId} with force fresh`, { periodId, clientId: clientData.id });
+        
+        // Prevent duplicate calls
+        if (loadingRef.current || apiCallInProgress) {
+          console.log('⚠️ Already loading data, skipping duplicate dev call');
+          return;
+        }
+
+        // Check if this is the current month (same logic as original)
+        const isCurrentMonth = (() => {
+          if (viewType === 'monthly') {
+            const [year, month] = periodId.split('-').map(Number);
+            const currentDate = new Date();
+            return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+          }
+          return false; // For weekly, always treat as current
+        })();
+
+        // Check if this period is in the future (same logic as original)
+        const [year, month] = periodId.split('-').map(Number);
+        const periodDate = new Date(year || new Date().getFullYear(), (month || 1) - 1, 1);
+        const currentDate = new Date();
+        
+        if (periodDate > currentDate) {
+          console.log('⚠️ Period is in the future, showing empty data');
+          const emptyReport: MonthlyReport | WeeklyReport = {
+            id: periodId,
+            date_range_start: periodDate.toISOString().split('T')[0] || '',
+            date_range_end: new Date(year || new Date().getFullYear(), month || 1, 0).toISOString().split('T')[0] || '',
+            generated_at: new Date().toISOString(),
+            campaigns: []
+          };
+          setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+          return;
+        }
+
+        // Declare date variables at function level (same as original)
+        let periodStartDate = '';
+        let periodEndDate = '';
+
+        try {
+          loadingRef.current = true;
+          setApiCallInProgress(true);
+          setIsGeneratingDevReport(true);
+          setError(null);
+          setLoadingPeriod(periodId);
+          console.log(`🔧 DEV: Loading data for ${viewType} period: ${periodId}`);
+          console.log(`👤 Using explicit client:`, clientData);
+          console.log(`🎯 Data source: DEV FRESH API (bypassing cache)`);
+          
+          // Get session for API calls
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.access_token) {
+            throw new Error('No access token available');
+          }
+
+          let dateRange: { start: string; end: string };
+
+          if (viewType === 'monthly') {
+            // Parse month ID to get start and end dates (EXACTLY same logic as original)
+            const [year, month] = periodId.split('-').map(Number);
+            
+            // Check if this is the current month (same logic as original)
+            const currentDate = new Date();
+            const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+            
+            if (isCurrentMonth) {
+              // For current month, use today as the end date (same logic as original)
+              const startDate = new Date(Date.UTC(year, month - 1, 1));
+              const endDate = new Date(); // Today
+              
+              dateRange = {
+                start: startDate.toISOString().split('T')[0] || '',
+                end: endDate.toISOString().split('T')[0] || ''
+              };
+              
+              console.log(`🔧 DEV: Current month date parsing:`, {
+                periodId,
+                year,
+                month,
+                startDate: dateRange.start,
+                endDate: dateRange.end,
+                isCurrentMonth: true
+              });
+            } else {
+              // For past months, use the full month (same logic as original)
+              dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
+              
+              console.log(`🔧 DEV: Past month date parsing:`, {
+                periodId,
+                year,
+                month,
+                startDate: dateRange.start,
+                endDate: dateRange.end,
+                isCurrentMonth: false
+              });
+            }
+          } else {
+            // Parse week ID to get start and end dates using standardized utility (same logic as original)
+            const [year, weekStr] = periodId.split('-W');
+            const week = parseInt(weekStr || '1');
+            const firstDayOfYear = new Date(parseInt(year || new Date().getFullYear().toString()), 0, 1);
+            const days = (week - 1) * 7;
+            const weekStartDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
+            dateRange = getWeekBoundaries(weekStartDate);
+          }
+          
+          // Use standardized date formatting (same logic as original)
+          periodStartDate = dateRange.start;
+          periodEndDate = dateRange.end;
+          
+          console.log(`🔧 DEV: Generated date range for ${periodId}: ${periodStartDate} to ${periodEndDate}`);
+          
+          // Fetch data from Meta API with force fresh (same logic as original but with forceFresh: true)
+          console.log(`🔧 DEV: Fetching fresh data from Meta API (bypassing cache)...`);
+        
+          // Skip API call for demo clients (same logic as original)
+          console.log(`🔍 Client ID check: ${clientData?.id} (demo-client-id: ${clientData?.id === 'demo-client-id'})`);
+          if (clientData?.id === 'demo-client-id') {
+            console.log(`🎭 Demo client, skipping API call and showing demo data`);
+            
+            // Show demo data for demo client (same logic as original)
+            const demoCampaigns: Campaign[] = [
+              {
+                id: `demo-campaign-1-${periodId}`,
+                campaign_id: 'demo-campaign-1',
+                campaign_name: 'Summer Sale Campaign',
+                spend: 2450.75,
+                impressions: 125000,
+                clicks: 3125,
+                conversions: 156,
+                ctr: 2.5,
+                cpc: 0.78,
+                cpa: 15.71,
+                frequency: 2.34,
+                reach: 53420,
+                landing_page_view: 2845,
+                ad_type: 'IMAGE',
+                objective: 'CONVERSIONS'
+              },
+              {
+                id: `demo-campaign-2-${periodId}`,
+                campaign_id: 'demo-campaign-2',
+                campaign_name: 'Brand Awareness Drive',
+                spend: 1875.50,
+                impressions: 98750,
+                clicks: 2468,
+                conversions: 89,
+                ctr: 2.1,
+                cpc: 0.76,
+                cpa: 21.07,
+                frequency: 1.89,
+                reach: 52230,
+                landing_page_view: 2156,
+                ad_type: 'VIDEO',
+                objective: 'LEAD_GENERATION'
+              }
+            ];
+
+            const demoReport: MonthlyReport | WeeklyReport = {
+              id: periodId,
+              date_range_start: periodStartDate,
+              date_range_end: periodEndDate,
+              generated_at: new Date().toISOString(),
+              campaigns: demoCampaigns
+            };
+
+            console.log('💾 Setting demo report in state:', demoReport);
+            setReports(prev => {
+              const newState = { ...prev, [periodId]: demoReport };
+              console.log('💾 New reports state:', newState);
+              return newState;
+            });
+            return;
+          }
+        
+          // Make API call for the specific period with force fresh (same logic as original but with forceFresh: true)
+          const requestBody = {
+            dateRange: {
+              start: periodStartDate,
+              end: periodEndDate
+            },
+            clientId: clientData.id, // Always send the client ID for real clients
+            forceFresh: true // This is the only difference - bypass cache
+          };
+          console.log('🔧 DEV: Making API call with force fresh flag:', requestBody);
+          
+          // Create a timeout promise (same logic as original)
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('API call timeout after 20 seconds')), 20000);
+          });
+          
+          console.log('⏱️ Starting API call with timeout...');
+          
+          // Race between the fetch and timeout (same logic as original)
+          const response = await Promise.race([
+            fetch('/api/fetch-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify(requestBody)
+            }),
+            timeoutPromise
+          ]) as Response;
+          
+          console.log('📡 API call completed, processing response...');
+
+          console.log('📡 API response received:', {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries())
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            console.error(`❌ API call failed for ${periodId}:`, errorData);
+            
+            // Show specific error messages for permission issues (same logic as original)
+            if (errorData.error?.includes('permission') || errorData.error?.includes('ads_management')) {
+              setError(`Meta API Permission Error: Your access token doesn't have the required permissions (ads_management or ads_read). Please contact support to update your token.`);
+            } else if (errorData.error?.includes('Invalid Meta Ads token')) {
+              setError(`Invalid Meta API Token: Your access token is invalid or expired. Please contact support to refresh your token.`);
+            } else {
+              setError(`Failed to load data for ${periodId}: ${errorData.error || 'Unknown error'}`);
+            }
+            
+            // Add empty period if API fails (same logic as original)
+            const emptyReport: MonthlyReport | WeeklyReport = {
+              id: periodId,
+              date_range_start: periodStartDate,
+              date_range_end: periodEndDate,
+              generated_at: new Date().toISOString(),
+              campaigns: []
+            };
+
+            console.log(`💾 Setting empty report for failed ${periodId}:`, emptyReport);
+            setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+            return;
+          }
+
+          let data;
+          try {
+            data = await response.json();
+            console.log(`✅ API call successful for ${periodId}:`, data);
+            console.log(`🎯 DEV FRESH API DATA received for ${periodId}`);
+            console.log(`📊 Raw API response structure:`, {
+              hasSuccess: !!data.success,
+              hasData: !!data.data,
+              dataKeys: data.data ? Object.keys(data.data) : [],
+              campaignsInData: data.data?.campaigns?.length || 0,
+              campaignsDirect: data.campaigns?.length || 0
+            });
+          } catch (error) {
+            console.error('❌ Failed to parse API response:', error);
+            const responseText = await response.text();
+            console.log('📄 Raw response text:', responseText);
+            throw new Error('Failed to parse API response');
+          }
+          console.log(`📊 Campaigns count: ${data.campaigns?.length || 0}`);
+          console.log(`📊 Data structure:`, {
+            hasData: !!data,
+            hasCampaigns: !!data.campaigns,
+            campaignsLength: data.campaigns?.length || 0,
+            dataKeys: Object.keys(data || {})
+          });
+
+          // Transform API response to our report format (same logic as original)
+          const rawCampaigns = data.data?.campaigns || data.campaigns || [];
+          
+          console.log(`📊 Processing campaigns:`, {
+            hasData: !!data,
+            hasDataProperty: !!data.data,
+            campaignsFromData: data.data?.campaigns?.length || 0,
+            campaignsDirect: data.campaigns?.length || 0,
+            rawCampaigns: rawCampaigns.length
+          });
+          
+          // Transform campaigns to match frontend interface (same logic as original)
+          const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
+            // Use already-parsed conversion tracking data from API response
+            const click_to_call = campaign.click_to_call || 0;
+            const email_contacts = campaign.email_contacts || 0;
+            const reservations = campaign.reservations || 0;
+            const reservation_value = campaign.reservation_value || 0;
+            const booking_step_1 = campaign.booking_step_1 || 0;
+            const booking_step_2 = campaign.booking_step_2 || 0;
+
+            return {
+              id: campaign.campaign_id || `campaign-${index}`,
+              campaign_id: campaign.campaign_id || '',
+              campaign_name: campaign.campaign_name || 'Unknown Campaign',
+              spend: parseFloat(campaign.spend || '0'),
+              impressions: parseInt(campaign.impressions || '0'),
+              clicks: parseInt(campaign.clicks || '0'),
+              conversions: parseInt(campaign.conversions || '0'),
+              ctr: parseFloat(campaign.ctr || '0'),
+              cpc: parseFloat(campaign.cpc || '0'),
+              cpa: campaign.cpa ? parseFloat(campaign.cpa) : undefined,
+              frequency: campaign.frequency ? parseFloat(campaign.frequency) : undefined,
+              reach: campaign.reach ? parseInt(campaign.reach) : undefined,
+              relevance_score: campaign.relevance_score ? parseFloat(campaign.relevance_score) : undefined,
+              landing_page_view: campaign.landing_page_view ? parseInt(campaign.landing_page_view) : undefined,
+              ad_type: campaign.ad_type || undefined,
+              objective: campaign.objective || undefined,
+              // Conversion tracking fields (parsed from actions)
+              click_to_call,
+              email_contacts,
+              reservations,
+              reservation_value,
+              booking_step_1,
+              booking_step_2
+            };
+          });
+          
+          console.log(`📊 Transformed campaigns:`, campaigns.length, 'campaigns');
+          if (campaigns.length > 0) {
+            console.log(`📊 Sample campaign:`, campaigns[0]);
+          }
+          
+          const report: MonthlyReport | WeeklyReport = {
+            id: periodId,
+            date_range_start: periodStartDate,
+            date_range_end: periodEndDate,
+            generated_at: new Date().toISOString(),
+            campaigns: campaigns
+          };
+
+          console.log(`💾 Setting successful dev report for ${periodId}:`, report);
+          console.log(`🎯 DEV FRESH API DATA set for ${periodId} with ${campaigns.length} campaigns`);
+          setReports(prev => {
+            const newState = { ...prev, [periodId]: report };
+            console.log('💾 Updated reports state:', {
+              periodId,
+              totalReports: Object.keys(newState).length,
+              allPeriods: Object.keys(newState),
+              dataSource: 'DEV FRESH API'
+            });
+            return newState;
+          });
+
+          // Generate PDF with fresh data (same logic as InteractivePDFButton)
+          console.log('🔧 DEV: Generating PDF with fresh data...');
+          try {
+            const totals = campaigns.reduce((acc, campaign) => ({
+              spend: acc.spend + (campaign.spend || 0),
+              impressions: acc.impressions + (campaign.impressions || 0),
+              clicks: acc.clicks + (campaign.clicks || 0),
+              conversions: acc.conversions + (campaign.conversions || 0)
+            }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+
+            // Calculate derived metrics
+            const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+            const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+            const cpa = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
+            const calculatedTotals = { ...totals, ctr, cpc, cpa };
+
+            // Fetch Meta tables data for PDF generation
+            console.log('🔧 DEV: Fetching Meta tables data for PDF...');
+            let metaTablesData = null;
+            try {
+              const metaTablesResponse = await fetch('/api/fetch-meta-tables', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                  dateStart: periodStartDate,
+                  dateEnd: periodEndDate,
+                  clientId: clientData.id
+                })
+              });
+
+              if (metaTablesResponse.ok) {
+                const metaTablesResult = await metaTablesResponse.json();
+                if (metaTablesResult.success) {
+                  metaTablesData = metaTablesResult.data;
+                  console.log('✅ DEV: Meta tables data fetched for PDF:', {
+                    placementCount: metaTablesData.placementPerformance?.length || 0,
+                    demographicCount: metaTablesData.demographicPerformance?.length || 0,
+                    adRelevanceCount: metaTablesData.adRelevanceResults?.length || 0
+                  });
+                }
+              }
+            } catch (metaError) {
+              console.error('⚠️ DEV: Failed to fetch Meta tables for PDF:', metaError);
+            }
+
+            const pdfRequestBody = {
+              clientId: clientData.id,
+              dateRange: {
+                start: periodStartDate,
+                end: periodEndDate
+              },
+              campaigns,
+              totals: calculatedTotals,
+              client: clientData,
+              metaTables: metaTablesData // Include actual Meta tables data
+            };
+
+            console.log('🔧 DEV: Making PDF generation request:', pdfRequestBody);
+
+            const pdfResponse = await fetch('/api/generate-pdf', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify(pdfRequestBody)
+            });
+
+            if (!pdfResponse.ok) {
+              const errorData = await pdfResponse.json().catch(() => ({}));
+              console.error('❌ PDF generation failed:', errorData);
+              throw new Error(errorData.error || `PDF generation failed: ${pdfResponse.status}`);
+            }
+
+            // Get the PDF blob
+            const pdfBlob = await pdfResponse.blob();
+            
+            // Create download link
+            const url = window.URL.createObjectURL(pdfBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `dev-raport-meta-ads-${periodStartDate}-${periodEndDate}.pdf`;
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Clean up
+            window.URL.revokeObjectURL(url);
+
+            console.log('✅ DEV: PDF generated and downloaded successfully!');
+          } catch (pdfError) {
+            console.error('❌ Error generating PDF in dev mode:', pdfError);
+            // Don't throw error, just log it - the data refresh was successful
+          }
+
+        } catch (error) {
+          console.error(`❌ Error loading ${viewType} data for ${periodId}:`, error);
+          
+          // Check if this is current month (same logic as original)
+          const isCurrentMonth = (() => {
+            if (viewType === 'monthly') {
+              const [year, month] = periodId.split('-').map(Number);
+              const currentDate = new Date();
+              return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+            }
+            return false;
+          })();
+          
+          // Check if it's a timeout error (same logic as original)
+          if (error instanceof Error && error.message.includes('timeout')) {
+            setError(`API request timed out for ${periodId}. This might be due to Meta API being slow or the date range having no data. Please try again or select a different period.`);
+          }
+          
+          if (isCurrentMonth) {
+            // For current month, don't show fallback data - show empty state instead (same logic as original)
+            console.log('🔄 Current month API failed - showing empty state instead of fallback data');
+            const emptyReport: MonthlyReport | WeeklyReport = {
+              id: periodId,
+              date_range_start: periodStartDate || '',
+              date_range_end: periodEndDate || '',
+              generated_at: new Date().toISOString(),
+              campaigns: []
+            };
+
+            console.log('💾 Setting empty report for current month API failure:', emptyReport);
+            setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+            
+            setError(`API Error for current month: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`);
+          } else {
+            // For previous months, show fallback data if API fails (same logic as original)
+            console.log('🔄 Previous month API failed - showing fallback data');
+            const fallbackCampaigns: Campaign[] = [
+              {
+                id: `fallback-1-${periodId}`,
+                campaign_id: 'fallback-1',
+                campaign_name: 'Fallback Campaign (API Error)',
+                spend: 1000.00,
+                impressions: 50000,
+                clicks: 1000,
+                conversions: 50,
+                ctr: 2.0,
+                cpc: 1.0,
+                cpa: 20.0,
+                frequency: 1.5,
+                reach: 33333,
+                landing_page_view: 800,
+                ad_type: 'IMAGE',
+                objective: 'CONVERSIONS'
+              }
+            ];
+
+            const fallbackReport: MonthlyReport | WeeklyReport = {
+              id: periodId,
+              date_range_start: periodStartDate || '',
+              date_range_end: periodEndDate || '',
+              generated_at: new Date().toISOString(),
+              campaigns: fallbackCampaigns
+            };
+
+            console.log('💾 Setting fallback report for previous month:', fallbackReport);
+            setReports(prev => ({ ...prev, [periodId]: fallbackReport }));
+            
+            setError(`API Error: ${error instanceof Error ? error.message : 'Unknown error'}. Showing fallback data.`);
+          }
+        } finally {
+          loadingRef.current = false;
+          setApiCallInProgress(false);
+          setLoadingPeriod(null);
+          setIsGeneratingDevReport(false);
+        }
+      };
+      
+      // Call the dev version of the function
+      await loadPeriodDataWithClientDev(selectedPeriod, selectedClient);
+    }
   };
 
   // Handle period change
@@ -1537,7 +2091,7 @@ function ReportsPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50" style={{ backgroundColor: '#F7F8FA' }}>
+    <div className="min-h-screen bg-gray-50">
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
           <div className="flex">
@@ -1569,6 +2123,12 @@ function ReportsPageContent() {
                   <Clock className="w-3 h-3" />
                   <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
                 </div>
+                {process.env.NODE_ENV === 'development' && (
+                  <div className="flex items-center space-x-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md border border-orange-200">
+                    <Code className="w-3 h-3" />
+                    <span className="text-xs font-medium">DEV MODE</span>
+                  </div>
+                )}
               </div>
               
               {/* Client Selector for Admin Users */}
@@ -1586,18 +2146,7 @@ function ReportsPageContent() {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
-                className="text-sm px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-sm"
-                style={{ 
-                  backgroundColor: '#244583', 
-                  color: 'white',
-                  borderRadius: '8px'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#1a3660';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#244583';
-                }}
+                className="text-sm px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-sm bg-blue-800 hover:bg-blue-900 text-white"
               >
                 {profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}
               </button>
@@ -1794,6 +2343,19 @@ function ReportsPageContent() {
                 <span>Odśwież</span>
               </button>
               
+              {/* Dev Button - Only show in development */}
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={generateDevReport}
+                  disabled={loadingPeriod !== null || apiCallInProgress}
+                  className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 text-sm border-2 border-orange-500"
+                  title="Generate fresh report and PDF bypassing cache (Dev only)"
+                >
+                  <Code className={`w-4 h-4 ${isGeneratingDevReport ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingDevReport ? 'DEV: Generating...' : 'DEV: Fresh Report + PDF'}</span>
+                </button>
+              )}
+              
               {selectedReport && selectedReport.campaigns.length > 0 && (
                 <InteractivePDFButton
                   clientId={client?.id || ''}
@@ -1842,7 +2404,6 @@ function ReportsPageContent() {
                   onChange={handlePeriodChange}
                   disabled={loadingPeriod !== null}
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 cursor-pointer appearance-none bg-white [&::-ms-expand]:hidden"
-                  style={{ backgroundImage: 'none' }}
                 >
                   {availablePeriods.map((periodId) => {
                     if (viewType === 'monthly') {
@@ -2050,221 +2611,6 @@ function ReportsPageContent() {
             </div>
           </div>
         )}
-      </div>
-      {/* Debug Button */}
-      <div className="fixed bottom-4 right-4 z-50 space-y-2">
-        <button
-          onClick={async () => {
-            if (!client) {
-              alert('Client not loaded');
-              return;
-            }
-            
-            console.log('🔍 Debug: Testing API directly...');
-            console.log('🔍 Client:', client);
-            
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session?.access_token) {
-                alert('No session token');
-                return;
-              }
-              
-              const response = await fetch('/api/debug-meta', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${session.access_token}`
-                },
-                body: JSON.stringify({
-                  clientId: client.id
-                })
-              });
-              
-              console.log('🔍 Debug response status:', response.status);
-              
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error('🔍 Debug API error:', errorText);
-                alert(`API Error: ${response.status} - ${errorText}`);
-                return;
-              }
-              
-              const data = await response.json();
-              console.log('🔍 Debug API response:', data);
-              alert(`Debug complete! Check console for details.\nSteps: ${Object.keys(data.steps || {}).length}`);
-              
-            } catch (error) {
-              console.error('🔍 Debug error:', error);
-              alert(`Debug error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
-          }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
-        >
-          Debug API
-        </button>
-        
-        <button
-          onClick={async () => {
-            console.log('🔍 Testing Meta API connectivity...');
-            
-            try {
-              const response = await fetch('/api/test-meta-simple');
-              console.log('🔍 Connectivity test response status:', response.status);
-              
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error('🔍 Connectivity test error:', errorText);
-                alert(`Connectivity Error: ${response.status} - ${errorText}`);
-                return;
-              }
-              
-              const data = await response.json();
-              console.log('🔍 Connectivity test response:', data);
-              alert(`Connectivity test complete!\nResponse time: ${data.tests?.responseTime || 'unknown'}\nStatus: ${data.tests?.status || 'unknown'}`);
-              
-            } catch (error) {
-              console.error('🔍 Connectivity test error:', error);
-              alert(`Connectivity error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
-          }}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
-        >
-          Test Connectivity
-        </button>
-        
-        <button
-          onClick={async () => {
-            if (!client) {
-              alert('Client not loaded');
-              return;
-            }
-            
-            console.log('🔍 Testing client Meta API access...');
-            
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session?.access_token) {
-                alert('No session token');
-                return;
-              }
-              
-              // Test with a recent month first
-              const testRequestBody = {
-                dateRange: {
-                  start: '2024-01-01',
-                  end: '2024-01-31'
-                },
-                clientId: client.id
-              };
-              
-              console.log('🔍 Testing with recent data:', testRequestBody);
-              
-              const response = await fetch('/api/fetch-live-data', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${session.access_token}`
-                },
-                body: JSON.stringify(testRequestBody)
-              });
-              
-              console.log('🔍 Test response status:', response.status);
-              
-              if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                console.error('🔍 Test API error:', errorData);
-                alert(`Test API Error: ${response.status} - ${JSON.stringify(errorData)}`);
-                return;
-              }
-              
-              const data = await response.json();
-              console.log('🔍 Test API response:', data);
-              alert(`Test complete!\nCampaigns found: ${data.data?.campaigns?.length || 0}\nStatus: ${response.status}`);
-              
-            } catch (error) {
-              console.error('🔍 Test error:', error);
-              alert(`Test error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            }
-          }}
-          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
-        >
-          Test Recent Data
-        </button>
-        
-        <button
-          onClick={async () => {
-            if (!client) {
-              alert('Client not loaded');
-              return;
-            }
-            
-            console.log('🔍 Testing all-time function directly...');
-            loadAllTimeData();
-          }}
-          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
-        >
-          Test All-Time
-        </button>
-        
-        <button
-          onClick={() => {
-            const realisticCurrentDate = new Date('2024-12-01');
-            const maxPastDate = new Date(realisticCurrentDate);
-            maxPastDate.setMonth(maxPastDate.getMonth() - 37);
-            
-            console.log('📅 Realistic current date:', realisticCurrentDate.toISOString().split('T')[0]);
-            console.log('📅 37 months ago:', maxPastDate.toISOString().split('T')[0]);
-            console.log('📅 Meta API limit info:', {
-              currentDate: realisticCurrentDate.toISOString().split('T')[0],
-              maxPastDate: maxPastDate.toISOString().split('T')[0],
-              monthsBack: 37,
-              year: maxPastDate.getFullYear(),
-              month: maxPastDate.getMonth() + 1
-            });
-            
-            alert(`Meta API Limit:\nCurrent: ${realisticCurrentDate.toISOString().split('T')[0]}\n37 months ago: ${maxPastDate.toISOString().split('T')[0]}`);
-          }}
-          className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
-        >
-          Show API Limits
-        </button>
-        
-        <button
-          onClick={() => {
-            if (!client) {
-              alert('Client not loaded');
-              return;
-            }
-            
-            // Force refresh current month
-            const currentDate = new Date();
-            const currentMonthId = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-            
-            console.log('🔄 Force refreshing current month with cache clearing:', currentMonthId);
-            
-            // Clear current month data
-            setReports(prev => {
-              const newReports = { ...prev };
-              delete newReports[currentMonthId];
-              return newReports;
-            });
-            
-            // Set view type to monthly and select current month
-            setViewType('monthly');
-            setSelectedPeriod(currentMonthId);
-            
-            // Force reload with cache clearing
-            setTimeout(() => {
-              loadPeriodDataWithCacheClear(currentMonthId);
-            }, 100);
-            
-            alert(`Force refreshing current month: ${currentMonthId}`);
-          }}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow-lg block w-full"
-        >
-          Force Refresh Current Month
-        </button>
       </div>
     </div>
   );

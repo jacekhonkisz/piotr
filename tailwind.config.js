@@ -49,6 +49,20 @@ module.exports = {
           600: '#dc2626',
           700: '#b91c1c',
         },
+        brand: {
+          blue: '#1E3A8A',
+          blue50: '#EAF0FF',
+          orange: '#FF7A00',
+        },
+        ui: {
+          bg: '#F6F7FB',
+          card: '#FFFFFF',
+          cardAlt: '#F2F4F7',
+          border: '#E5E7EB',
+          text: '#0F172A',
+          textSub: '#475569',
+          tick: '#CBD5E1',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

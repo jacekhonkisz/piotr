@@ -227,4 +227,29 @@ export class ExecutiveSummaryCacheService {
       return false;
     }
   }
+
+  /**
+   * Usuń wszystkie executive summaries (tylko dla development/testing)
+   */
+  async clearAllSummaries(): Promise<boolean> {
+    try {
+      console.log('🧹 Clearing all executive summaries (development mode)...');
+      
+      const { error } = await supabase
+        .from('executive_summaries')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+
+      if (error) {
+        console.error('❌ Error clearing all executive summaries:', error);
+        return false;
+      }
+
+      console.log('✅ All executive summaries cleared');
+      return true;
+    } catch (error) {
+      console.error('❌ Error clearing all executive summaries:', error);
+      return false;
+    }
+  }
 } 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
+import { motion, useMotionValue, animate } from 'framer-motion';
 
 interface AnimatedCounterProps {
   value: number;
@@ -20,7 +20,6 @@ export default function AnimatedCounter({
 }: AnimatedCounterProps) {
   const [displayValue, setDisplayValue] = useState(0);
   const count = useMotionValue(0);
-  const rounded = useTransform(count, (latest) => Math.round(latest));
 
   useEffect(() => {
     const controls = animate(count, value, {

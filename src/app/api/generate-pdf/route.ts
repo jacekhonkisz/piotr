@@ -47,30 +47,182 @@ function generatePDFHTML(reportData: ReportData): string {
     });
   };
 
+  // Polish number formatting
   const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null || isNaN(value)) return '0.00 zł';
-    return `${value.toFixed(2)} zł`;
-  };
-  const formatNumber = (value: number | undefined | null) => {
-    if (value === undefined || value === null || isNaN(value)) return '0';
-    return value.toLocaleString();
-  };
-  const formatPercentage = (value: number | undefined | null) => {
-    if (value === undefined || value === null || isNaN(value)) return '0.00%';
-    return `${value.toFixed(2)}%`;
+    if (value === undefined || value === null || isNaN(value)) return '0,00 zł';
+    return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`;
   };
 
-  // Calculate additional metrics with safety checks
+  const formatNumber = (value: number | undefined | null) => {
+    if (value === undefined || value === null || isNaN(value)) return '0';
+    return value.toLocaleString('pl-PL');
+  };
+
+  const formatNumberShort = (value: number | undefined | null) => {
+    if (value === undefined || value === null || isNaN(value)) return '0';
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+    return value.toLocaleString('pl-PL');
+  };
+
+  const formatPercentage = (value: number | undefined | null) => {
+    if (value === undefined || value === null || isNaN(value)) return '0,00%';
+    return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+  };
+
+  // Calculate metrics with safety checks
   const totalSpend = reportData.totals.spend || 0;
   const totalImpressions = reportData.totals.impressions || 0;
   const totalClicks = reportData.totals.clicks || 0;
   const totalConversions = reportData.totals.conversions || 0;
   const ctr = reportData.totals.ctr || 0;
   const cpc = reportData.totals.cpc || 0;
-  const cpm = reportData.totals.cpm || 0;
-  const reach = totalImpressions > 0 ? Math.round(totalImpressions / 1.5) : 0; // Estimate reach
-  const frequency = reach > 0 ? totalImpressions / reach : 0;
-  const campaignCount = reportData.campaigns.length;
+  const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
+  const reach = totalImpressions > 0 ? Math.round(totalImpressions / 1.5) : 0;
+
+  // Calculate conversion metrics from campaigns
+  const conversionMetrics = reportData.campaigns.reduce((acc, campaign) => {
+    return {
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0)
+    };
+  }, {
+    click_to_call: 0,
+    email_contacts: 0,
+    booking_step_1: 0,
+    reservations: 0,
+    reservation_value: 0,
+    booking_step_2: 0
+  });
+
+  // Calculate derived conversion metrics
+  const roas = totalSpend > 0 && conversionMetrics.reservation_value > 0 
+    ? conversionMetrics.reservation_value / totalSpend 
+    : 0;
+  const cost_per_reservation = conversionMetrics.reservations > 0 
+    ? totalSpend / conversionMetrics.reservations 
+    : 0;
+
+  // Process meta data for placement performance (aggregated and cleaned)
+  const processPlacementData = () => {
+    if (!reportData.metaTables?.placementPerformance) return [];
+    
+    const placementMap = new Map();
+    
+    reportData.metaTables.placementPerformance.forEach(item => {
+      const placement = item.placement || item.publisher_platform || 'Inne';
+      
+      // Clean up placement names
+      let cleanPlacement = placement;
+      if (placement.toLowerCase().includes('facebook')) cleanPlacement = 'Facebook Feed';
+      else if (placement.toLowerCase().includes('instagram')) cleanPlacement = 'Instagram Feed';
+      else if (placement.toLowerCase().includes('story') || placement.toLowerCase().includes('stories')) cleanPlacement = 'Instagram Stories';
+      else if (placement.toLowerCase().includes('reels')) cleanPlacement = 'Instagram Reels';
+      else if (placement.toLowerCase().includes('audience')) cleanPlacement = 'Audience Network';
+      else if (placement.toLowerCase().includes('messenger')) cleanPlacement = 'Messenger';
+      else if (placement === 'Unknown' || !placement) cleanPlacement = 'Inne';
+      
+      if (placementMap.has(cleanPlacement)) {
+        const existing = placementMap.get(cleanPlacement);
+        existing.spend += (item.spend || 0);
+        existing.impressions += (item.impressions || 0);
+        existing.clicks += (item.clicks || 0);
+      } else {
+        placementMap.set(cleanPlacement, {
+          placement: cleanPlacement,
+          spend: item.spend || 0,
+          impressions: item.impressions || 0,
+          clicks: item.clicks || 0
+        });
+      }
+    });
+    
+    // Calculate derived metrics and sort by spend
+    const placements = Array.from(placementMap.values()).map(item => ({
+      ...item,
+      ctr: item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0,
+      cpc: item.clicks > 0 ? item.spend / item.clicks : 0,
+      cpa: totalConversions > 0 ? item.spend / totalConversions : 0
+    })).sort((a, b) => b.spend - a.spend).slice(0, 10);
+    
+    return placements;
+  };
+
+  // Process demographic data for charts
+  const processDemographicData = () => {
+    console.log('🔍 PDF: Processing demographic data:', {
+      hasMetaTables: !!reportData.metaTables,
+      hasDemographicData: !!reportData.metaTables?.demographicPerformance,
+      demographicCount: reportData.metaTables?.demographicPerformance?.length || 0,
+      sampleData: reportData.metaTables?.demographicPerformance?.slice(0, 2)
+    });
+    
+    if (!reportData.metaTables?.demographicPerformance) {
+      console.log('⚠️ PDF: No demographic data available for PDF generation');
+      return { gender: [], age: [] };
+    }
+    
+    const genderMap = new Map();
+    const ageMap = new Map();
+    
+    reportData.metaTables.demographicPerformance.forEach(item => {
+      // Gender aggregation
+      const gender = item.gender === 'male' ? 'Mężczyźni' : 
+                    item.gender === 'female' ? 'Kobiety' : 'Nieznana';
+      
+      if (genderMap.has(gender)) {
+        const existing = genderMap.get(gender);
+        existing.impressions += (item.impressions || 0);
+        existing.clicks += (item.clicks || 0);
+      } else {
+        genderMap.set(gender, {
+          gender,
+          impressions: item.impressions || 0,
+          clicks: item.clicks || 0
+        });
+      }
+      
+      // Age aggregation
+      const age = item.age || 'Nieznany';
+      if (ageMap.has(age)) {
+        const existing = ageMap.get(age);
+        existing.impressions += (item.impressions || 0);
+        existing.clicks += (item.clicks || 0);
+      } else {
+        ageMap.set(age, {
+          age,
+          impressions: item.impressions || 0,
+          clicks: item.clicks || 0
+        });
+      }
+    });
+    
+    const result = {
+      gender: Array.from(genderMap.values()),
+      age: Array.from(ageMap.values()).sort((a, b) => {
+        const ageA = parseInt(a.age.split('-')[0]) || 999;
+        const ageB = parseInt(b.age.split('-')[0]) || 999;
+        return ageA - ageB;
+      })
+    };
+    
+    console.log('✅ PDF: Processed demographic data result:', {
+      genderCount: result.gender.length,
+      ageCount: result.age.length,
+      genderData: result.gender,
+      ageData: result.age
+    });
+    
+    return result;
+  };
+
+  const placementData = processPlacementData();
+  const demographicData = processDemographicData();
+  const topAds = reportData.metaTables?.adRelevanceResults?.slice(0, 10) || [];
 
   return `
     <!DOCTYPE html>
@@ -78,8 +230,10 @@ function generatePDFHTML(reportData: ReportData): string {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Meta Ads Report - ${reportData.client.name}</title>
+        <title>Raport Meta Ads — ${reportData.client.name}</title>
         <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            
             * {
                 margin: 0;
                 padding: 0;
@@ -87,359 +241,779 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                line-height: 1.6;
-                color: #000;
-                background: #fff;
-                font-size: 14px;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+                line-height: 1.5;
+                color: #0B1324;
+                background: #F6F8FB;
+                font-size: 16px;
+                -webkit-font-smoothing: antialiased;
             }
             
             .container {
-                max-width: 800px;
+                max-width: 900px;
                 margin: 0 auto;
-                padding: 40px 20px;
+                padding: 48px 56px;
             }
             
+            /* Header */
             .header {
-                text-align: center;
-                margin-bottom: 40px;
+                background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+                color: white;
+                padding: 40px 48px;
+                border-radius: 20px;
+                margin-bottom: 64px;
+                position: relative;
+                overflow: hidden;
+            }
+            
+            .header::before {
+                content: '';
+                position: absolute;
+                top: -50%;
+                right: -20%;
+                width: 400px;
+                height: 400px;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 50%;
+                z-index: 1;
+            }
+            
+            .header-content {
+                position: relative;
+                z-index: 2;
             }
             
             .header h1 {
-                font-size: 32px;
-                font-weight: bold;
-                color: #000;
-                margin-bottom: 10px;
+                font-size: 36px;
+                font-weight: 700;
+                margin-bottom: 12px;
+                letter-spacing: -0.02em;
             }
             
             .header .client-name {
-                font-size: 18px;
-                color: #333;
-                margin-bottom: 5px;
+                font-size: 24px;
+                font-weight: 600;
+                margin-bottom: 8px;
+                opacity: 0.95;
             }
             
             .header .date-range {
-                font-size: 16px;
-                color: #666;
+                font-size: 18px;
+                opacity: 0.8;
+                margin-bottom: 24px;
             }
             
+            .header .meta-info {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 14px;
+                opacity: 0.7;
+                border-top: 1px solid rgba(255, 255, 255, 0.2);
+                padding-top: 24px;
+            }
+            
+            /* Section Styles */
             .section {
-                margin-bottom: 40px;
+                margin-bottom: 64px;
             }
             
             .section-title {
                 font-size: 24px;
-                font-weight: bold;
-                color: #000;
-                margin-bottom: 20px;
+                font-weight: 600;
+                color: #0B1324;
+                margin-bottom: 32px;
+                letter-spacing: -0.01em;
             }
             
-            .section-subtitle {
-                font-size: 16px;
-                color: #666;
-                margin-bottom: 20px;
+            /* Card Styles */
+            .card {
+                background: white;
+                border-radius: 20px;
+                padding: 28px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                border: 1px solid #E6E9EF;
             }
             
+            /* KPI Grid */
+            .kpi-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 24px;
+                margin-bottom: 16px;
+            }
+            
+            .kpi-grid-row2 {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 24px;
+            }
+            
+            .kpi-card {
+                background: white;
+                border-radius: 16px;
+                padding: 24px;
+                text-align: center;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                border: 1px solid #E6E9EF;
+                position: relative;
+            }
+            
+            .kpi-icon {
+                position: absolute;
+                top: 16px;
+                left: 16px;
+                width: 20px;
+                height: 20px;
+                background: #1e40af;
+                border-radius: 4px;
+                opacity: 0.8;
+            }
+            
+            .kpi-value {
+                font-size: 48px;
+                font-weight: 700;
+                color: #0B1324;
+                margin-bottom: 8px;
+                letter-spacing: -0.02em;
+            }
+            
+            .kpi-label {
+                font-size: 14px;
+                color: #3A4556;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            
+            /* Conversion Cards */
+            .conversion-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
+                margin-bottom: 16px;
+            }
+            
+                         .conversion-grid-row2 {
+                 display: grid;
+                 grid-template-columns: repeat(3, 1fr);
+                 gap: 24px;
+             }
+             
+             .conversion-grid-row3 {
+                 display: grid;
+                 grid-template-columns: repeat(3, 1fr);
+                 gap: 24px;
+             }
+            
+            .conversion-card {
+                background: white;
+                border-radius: 16px;
+                padding: 24px;
+                text-align: center;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                border: 1px solid #E6E9EF;
+            }
+            
+            .conversion-value {
+                font-size: 40px;
+                font-weight: 700;
+                color: #0B1324;
+                margin-bottom: 8px;
+            }
+            
+            .conversion-label {
+                font-size: 14px;
+                color: #3A4556;
+                font-weight: 500;
+            }
+            
+            .conversion-cta {
+                margin-top: 32px;
+                text-align: center;
+            }
+            
+            .cta-button {
+                background: #FF7A00;
+                color: white;
+                padding: 12px 24px;
+                border-radius: 12px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 14px;
+            }
+            
+            /* Tables */
+            .table-container {
+                background: white;
+                border-radius: 20px;
+                overflow: hidden;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                border: 1px solid #E6E9EF;
+            }
+            
+            .data-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            
+            .data-table th {
+                background: #F6F8FB;
+                color: #0B1324;
+                padding: 16px 20px;
+                text-align: left;
+                font-weight: 600;
+                font-size: 14px;
+                letter-spacing: 0.02em;
+                border-bottom: 1px solid #E6E9EF;
+            }
+            
+            .data-table td {
+                padding: 16px 20px;
+                border-bottom: 1px solid #F6F8FB;
+                font-size: 14px;
+                color: #3A4556;
+            }
+            
+            .data-table tr:hover {
+                background: #FAFBFC;
+            }
+            
+            .data-table tr:last-child td {
+                border-bottom: none;
+            }
+            
+            /* Demographics Charts Placeholder */
+            .chart-placeholder {
+                background: #F6F8FB;
+                border-radius: 16px;
+                padding: 48px;
+                text-align: center;
+                margin-bottom: 24px;
+                border: 2px dashed #E6E9EF;
+            }
+            
+            .chart-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #0B1324;
+                margin-bottom: 8px;
+            }
+            
+            .chart-subtitle {
+                font-size: 14px;
+                color: #3A4556;
+            }
+            
+            /* Footer */
+            .footer {
+                text-align: center;
+                padding: 32px 0;
+                border-top: 1px solid #E6E9EF;
+                color: #3A4556;
+                font-size: 12px;
+                margin-top: 64px;
+            }
+            
+            /* Executive Summary */
             .executive-summary {
-                background: #f9f9f9;
-                padding: 25px;
-                border-radius: 8px;
-                margin-bottom: 30px;
+                background: white;
+                border-radius: 20px;
+                padding: 32px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+                border: 1px solid #E6E9EF;
+                margin-bottom: 48px;
             }
             
             .executive-summary p {
                 font-size: 16px;
-                line-height: 1.8;
-                color: #333;
-                margin-bottom: 15px;
+                line-height: 1.7;
+                color: #3A4556;
+                margin-bottom: 16px;
             }
             
-            .metrics-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-                flex-wrap: wrap;
+            /* Methodology */
+            .methodology {
+                background: #F6F8FB;
+                border-radius: 20px;
+                padding: 32px;
+                border: 1px solid #E6E9EF;
             }
             
-            .metric {
-                text-align: center;
-                flex: 1;
-                min-width: 150px;
-                margin: 10px;
+            .methodology h3 {
+                font-size: 18px;
+                font-weight: 600;
+                color: #0B1324;
+                margin-bottom: 16px;
             }
             
-            .metric-value {
-                font-size: 28px;
-                font-weight: bold;
-                color: #000;
-                margin-bottom: 5px;
-            }
-            
-            .metric-label {
+            .methodology p {
                 font-size: 14px;
-                color: #666;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            
-            .campaigns-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            
-            .campaigns-table th {
-                background: #f5f5f5;
-                color: #000;
-                padding: 12px 15px;
-                text-align: left;
-                font-weight: bold;
-                font-size: 14px;
-                border-bottom: 2px solid #ddd;
-            }
-            
-            .campaigns-table td {
-                padding: 12px 15px;
-                border-bottom: 1px solid #eee;
-                font-size: 14px;
-            }
-            
-            .campaigns-table tr:nth-child(even) {
-                background: #fafafa;
-            }
-            
-            .status-active {
-                color: #28a745;
-                font-weight: bold;
-            }
-            
-            .status-paused {
-                color: #dc3545;
-                font-weight: bold;
-            }
-            
-            .footer {
-                text-align: center;
-                padding: 30px 0;
-                border-top: 1px solid #eee;
-                color: #666;
-                font-size: 12px;
-                margin-top: 40px;
+                color: #3A4556;
+                margin-bottom: 12px;
+                line-height: 1.6;
             }
             
             @media print {
-                body {
-                    background: white;
-                }
+                body { background: white; }
+                .container { padding: 0; }
+                .header::before { display: none; }
                 
-                .container {
-                    padding: 0;
-                }
+                /* Page breaks */
+                .section { break-inside: avoid; }
+                .kpi-card, .conversion-card { break-inside: avoid; }
+                .table-container { break-inside: avoid; }
                 
-                .metric {
-                    break-inside: avoid;
-                }
-                
-                .campaigns-table {
-                    break-inside: avoid;
-                }
+                /* Ensure headers repeat on new pages */
+                .data-table thead { display: table-header-group; }
             }
         </style>
     </head>
     <body>
         <div class="container">
+            <!-- Header Section -->
             <div class="header">
-                <h1>Meta Ads Report</h1>
-                <div class="client-name">${reportData.client.name}</div>
-                <div class="date-range">${formatDate(reportData.dateRange.start)} - ${formatDate(reportData.dateRange.end)}</div>
+                <div class="header-content">
+                    <h1>Raport Meta Ads</h1>
+                    <div class="client-name">${reportData.client.name}</div>
+                    <div class="date-range">${formatDate(reportData.dateRange.start)} – ${formatDate(reportData.dateRange.end)}</div>
+                    <div class="meta-info">
+                        <span>Wygenerowano ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}</span>
+                        <span>Źródło: Meta API</span>
+                    </div>
+                </div>
             </div>
-            
+
+            <!-- Executive Summary -->
+            ${reportData.executiveSummary ? `
             <div class="section">
                 <div class="section-title">Podsumowanie wykonawcze</div>
                 <div class="executive-summary">
-                    ${reportData.executiveSummary ? `
-                        <div style="line-height: 1.6; text-align: left;">
-                            ${reportData.executiveSummary.trim()}
-                        </div>
-                    ` : `
-                        <p>
-                            W analizowanym okresie wydano ${formatCurrency(totalSpend)}, osiągając ${formatNumber(totalImpressions)} wyświetleń i ${formatNumber(totalClicks)} kliknięć. 
-                            CTR wyniósł ${formatPercentage(ctr)}, co stanowi dobry wynik. Średni koszt kliknięcia (CPC) to ${formatCurrency(cpc)}, co jest wartością normalną. 
-                            Nie odnotowano konwersji, co sugeruje potrzebę optymalizacji ścieżki konwersji. Kampanie dotarły do ${formatNumber(reach)} unikalnych użytkowników 
-                            z częstotliwością ${frequency.toFixed(1)} wyświetleń na użytkownika. Koszt za 1000 wyświetleń (CPM) wyniósł ${formatCurrency(cpm)}. 
-                            W analizowanym okresie aktywnych było ${campaignCount} kampanii.
-                        </p>
-                    `}
+                    ${reportData.executiveSummary.trim()}
                 </div>
             </div>
-            
+            ` : ''}
+
+            <!-- KPI Section -->
             <div class="section">
-                <div class="section-title">Key Performance Indicators</div>
-                <div class="section-subtitle">Overview of campaign performance metrics</div>
-                
-                <div class="metrics-row">
-                    <div class="metric">
-                        <div class="metric-value">${formatCurrency(totalSpend)}</div>
-                        <div class="metric-label">Total Spend</div>
+                <div class="section-title">Wydajność kampanii</div>
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatCurrency(totalSpend)}</div>
+                        <div class="kpi-label">Całkowite wydatki</div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value">${formatNumber(totalImpressions)}</div>
-                        <div class="metric-label">Impressions</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatNumberShort(totalImpressions)}</div>
+                        <div class="kpi-label">Wyświetlenia</div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value">${formatNumber(totalClicks)}</div>
-                        <div class="metric-label">Clicks</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatNumberShort(totalClicks)}</div>
+                        <div class="kpi-label">Kliknięcia</div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value">${formatNumber(totalConversions)}</div>
-                        <div class="metric-label">Conversions</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatPercentage(ctr)}</div>
+                        <div class="kpi-label">CTR</div>
                     </div>
                 </div>
-                
-                <div class="metrics-row">
-                    <div class="metric">
-                        <div class="metric-value">${formatPercentage(ctr)}</div>
-                        <div class="metric-label">CTR</div>
+                <div class="kpi-grid-row2">
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatCurrency(cpc)}</div>
+                        <div class="kpi-label">CPC</div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value">${formatCurrency(cpc)}</div>
-                        <div class="metric-label">CPC</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatNumberShort(reach)}</div>
+                        <div class="kpi-label">Zasięg</div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value">${formatCurrency(cpm)}</div>
-                        <div class="metric-label">CPM</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatCurrency(cpm)}</div>
+                        <div class="kpi-label">CPM</div>
                     </div>
-                    <div class="metric">
-                        <div class="metric-value">${formatNumber(reach)}</div>
-                        <div class="metric-label">Reach</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon"></div>
+                        <div class="kpi-value">${formatNumber(totalConversions)}</div>
+                        <div class="kpi-label">Konwersje</div>
                     </div>
                 </div>
             </div>
-            
+
+            <!-- Conversion Statistics -->
             <div class="section">
-                <div class="section-title">Campaign Details</div>
-                <table class="campaigns-table">
-                    <thead>
-                        <tr>
-                            <th>Campaign Name</th>
-                            <th>Spend</th>
-                            <th>Impressions</th>
-                            <th>Clicks</th>
-                            <th>CTR</th>
-                            <th>CPC</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reportData.campaigns.map(campaign => `
-                            <tr>
-                                <td>${campaign.campaign_name || 'Unknown Campaign'}</td>
-                                <td>${formatCurrency(campaign.spend)}</td>
-                                <td>${formatNumber(campaign.impressions)}</td>
-                                <td>${formatNumber(campaign.clicks)}</td>
-                                <td>${formatPercentage(campaign.ctr)}</td>
-                                <td>${formatCurrency(campaign.cpc)}</td>
-                            </tr>
+                <div class="section-title">Statystyki konwersji</div>
+                <div class="conversion-grid">
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatNumber(conversionMetrics.click_to_call)}</div>
+                        <div class="conversion-label">Potencjalne kontakty – telefon</div>
+                    </div>
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatNumber(conversionMetrics.email_contacts)}</div>
+                        <div class="conversion-label">Potencjalne kontakty – e-mail</div>
+                    </div>
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatNumber(conversionMetrics.booking_step_1)}</div>
+                        <div class="conversion-label">Kroki rezerwacji – Etap 1</div>
+                    </div>
+                </div>
+                <div class="conversion-grid-row2">
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatNumber(conversionMetrics.reservations)}</div>
+                        <div class="conversion-label">Rezerwacje (zakończone)</div>
+                    </div>
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatCurrency(conversionMetrics.reservation_value)}</div>
+                        <div class="conversion-label">Wartość rezerwacji</div>
+                    </div>
+                    <div class="conversion-card">
+                        <div class="conversion-value">${roas > 0 ? roas.toFixed(2) + 'x' : '0x'}</div>
+                        <div class="conversion-label">ROAS</div>
+                    </div>
+                </div>
+                <div class="conversion-grid-row3">
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatCurrency(cost_per_reservation)}</div>
+                        <div class="conversion-label">Koszt per rezerwacja</div>
+                    </div>
+                    <div class="conversion-card">
+                        <div class="conversion-value">${formatNumber(conversionMetrics.booking_step_2)}</div>
+                        <div class="conversion-label">Etap 2 rezerwacji</div>
+                    </div>
+                    <div class="conversion-card">
+                        <div class="conversion-value">-</div>
+                        <div class="conversion-label">-</div>
+                    </div>
+                </div>
+                ${(conversionMetrics.click_to_call === 0 && conversionMetrics.email_contacts === 0 && conversionMetrics.booking_step_1 === 0) ? `
+                <div class="conversion-cta">
+                    <a href="#" class="cta-button">Skonfiguruj śledzenie konwersji</a>
+                </div>
+                ` : ''}
+            </div>
+
+            <!-- Demographics -->
+            <div class="section">
+                <div class="section-title">Demografia – Wyświetlenia</div>
+                <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+                    <div style="flex: 1;">
+                        <div class="chart-title">Podział według płci</div>
+                        <canvas id="genderImpressionsChart" width="250" height="250"></canvas>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="chart-title">Podział według grup wieku</div>
+                        <canvas id="ageImpressionsChart" width="250" height="250"></canvas>
+                    </div>
+                </div>
+                
+                <!-- Gender Impressions Data Table -->
+                <div style="margin-bottom: 20px;">
+                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Płci</h4>
+                    <div style="display: flex; gap: 20px;">
+                        ${demographicData.gender.map(item => `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${item.gender === 'Kobiety' || item.gender === 'female' ? '#8B5CF6' : item.gender === 'Mężczyźni' || item.gender === 'male' ? '#3B82F6' : '#6B7280'};"></div>
+                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.gender === 'female' ? 'Female' : item.gender === 'male' ? 'Male' : item.gender === 'unknown' ? 'Unknown' : item.gender}</span>
+                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.impressions)}</span>
+                                <span style="font-size: 12px; color: #6B7280;">(${((item.impressions / demographicData.gender.reduce((sum, g) => sum + g.impressions, 0)) * 100).toFixed(1)}%)</span>
+                            </div>
                         `).join('')}
-                    </tbody>
-                </table>
+                    </div>
+                </div>
+
+                <!-- Age Impressions Data Table -->
+                <div style="margin-bottom: 20px;">
+                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Grup Wiekowych</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                        ${demographicData.age.map((item, index) => `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316'][index % 7]};"></div>
+                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.age}</span>
+                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.impressions)}</span>
+                                <span style="font-size: 12px; color: #6B7280;">(${((item.impressions / demographicData.age.reduce((sum, a) => sum + a.impressions, 0)) * 100).toFixed(1)}%)</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
             </div>
-            
-            ${reportData.metaTables ? `
-            <!-- Meta Ads Tables Section -->
-            ${reportData.metaTables.placementPerformance && reportData.metaTables.placementPerformance.length > 0 ? `
+
+            <!-- Demographics Clicks -->
+            <div class="section">
+                <div class="section-title">Demografia – Kliknięcia</div>
+                <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+                    <div style="flex: 1;">
+                        <div class="chart-title">Podział według płci</div>
+                        <canvas id="genderClicksChart" width="250" height="250"></canvas>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="chart-title">Podział według grup wieku</div>
+                        <canvas id="ageClicksChart" width="250" height="250"></canvas>
+                    </div>
+                </div>
+
+                <!-- Gender Clicks Data Table -->
+                <div style="margin-bottom: 20px;">
+                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Płci</h4>
+                    <div style="display: flex; gap: 20px;">
+                        ${demographicData.gender.map(item => `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${item.gender === 'Kobiety' || item.gender === 'female' ? '#8B5CF6' : item.gender === 'Mężczyźni' || item.gender === 'male' ? '#3B82F6' : '#6B7280'};"></div>
+                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.gender === 'female' ? 'Female' : item.gender === 'male' ? 'Male' : item.gender === 'unknown' ? 'Unknown' : item.gender}</span>
+                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.clicks)}</span>
+                                <span style="font-size: 12px; color: #6B7280;">(${((item.clicks / demographicData.gender.reduce((sum, g) => sum + g.clicks, 0)) * 100).toFixed(1)}%)</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Age Clicks Data Table -->
+                <div style="margin-bottom: 20px;">
+                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Grup Wiekowych</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                        ${demographicData.age.map((item, index) => `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316'][index % 7]};"></div>
+                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.age}</span>
+                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.clicks)}</span>
+                                <span style="font-size: 12px; color: #6B7280;">(${((item.clicks / demographicData.age.reduce((sum, a) => sum + a.clicks, 0)) * 100).toFixed(1)}%)</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Placement Performance -->
+            ${placementData.length > 0 ? `
             <div class="section">
                 <div class="section-title">Top Placement Performance</div>
-                <table class="campaigns-table">
-                    <thead>
-                        <tr>
-                            <th>Placement</th>
-                            <th>Spend</th>
-                            <th>Impressions</th>
-                            <th>Clicks</th>
-                            <th>CTR</th>
-                            <th>CPC</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reportData.metaTables.placementPerformance.slice(0, 10).map(placement => `
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td>${placement.publisher_platform || 'Unknown'}</td>
-                                <td>${formatCurrency(placement.spend)}</td>
-                                <td>${formatNumber(placement.impressions)}</td>
-                                <td>${formatNumber(placement.clicks)}</td>
-                                <td>${formatPercentage(placement.ctr)}</td>
-                                <td>${formatCurrency(placement.cpc)}</td>
+                                <th>Placement</th>
+                                <th>Wydatki</th>
+                                <th>Wyświetlenia</th>
+                                <th>Kliknięcia</th>
+                                <th>CTR</th>
+                                <th>CPC</th>
+                                <th>CPA</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${placementData.map(placement => `
+                                <tr>
+                                    <td>${placement.placement}</td>
+                                    <td>${formatCurrency(placement.spend)}</td>
+                                    <td>${formatNumber(placement.impressions)}</td>
+                                    <td>${formatNumber(placement.clicks)}</td>
+                                    <td>${formatPercentage(placement.ctr)}</td>
+                                    <td>${formatCurrency(placement.cpc)}</td>
+                                    <td>${formatCurrency(placement.cpa)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             ` : ''}
-            
-            ${reportData.metaTables.demographicPerformance && reportData.metaTables.demographicPerformance.length > 0 ? `
-            <div class="section">
-                <div class="section-title">Demographic Performance</div>
-                <table class="campaigns-table">
-                    <thead>
-                        <tr>
-                            <th>Age Group</th>
-                            <th>Gender</th>
-                            <th>Spend</th>
-                            <th>Impressions</th>
-                            <th>Clicks</th>
-                            <th>CTR</th>
-                            <th>CPC</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reportData.metaTables.demographicPerformance.slice(0, 10).map(demo => `
-                            <tr>
-                                <td>${demo.age || 'Unknown'}</td>
-                                <td>${demo.gender || 'Unknown'}</td>
-                                <td>${formatCurrency(demo.spend)}</td>
-                                <td>${formatNumber(demo.impressions)}</td>
-                                <td>${formatNumber(demo.clicks)}</td>
-                                <td>${formatPercentage(demo.ctr)}</td>
-                                <td>${formatCurrency(demo.cpc)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            ` : ''}
-            
-            ${reportData.metaTables.adRelevanceResults && reportData.metaTables.adRelevanceResults.length > 0 ? `
+
+            <!-- Ad Relevance & Results -->
+            ${topAds.length > 0 ? `
             <div class="section">
                 <div class="section-title">Ad Relevance & Results</div>
-                <table class="campaigns-table">
-                    <thead>
-                        <tr>
-                            <th>Ad Name</th>
-                            
-                            <th>Spend</th>
-                            <th>Impressions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${reportData.metaTables.adRelevanceResults.slice(0, 10).map(ad => `
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td>${ad.ad_name || 'Unknown'}</td>
-                                <td>${formatCurrency(ad.spend)}</td>
-                                <td>${formatNumber(ad.impressions)}</td>
+                                <th>Nazwa reklamy</th>
+                                <th>Wydatki</th>
+                                <th>Wyświetlenia</th>
+                                <th>Kliknięcia</th>
+                                <th>CPP/CPA</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${topAds.map(ad => `
+                                <tr>
+                                    <td>${(ad.ad_name || 'Nieznana reklama').substring(0, 50)}${(ad.ad_name || '').length > 50 ? '...' : ''}</td>
+                                    <td>${formatCurrency(ad.spend)}</td>
+                                    <td>${formatNumber(ad.impressions)}</td>
+                                    <td>${formatNumber(ad.clicks)}</td>
+                                    <td>${ad.cpp ? formatCurrency(ad.cpp) : 'Brak danych'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             ` : ''}
-            ` : ''}
-            
+
+            <!-- Campaign Details -->
+            <div class="section">
+                <div class="section-title">Szczegóły kampanii</div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Nazwa kampanii</th>
+                                <th>Wydatki</th>
+                                <th>Wyświetlenia</th>
+                                <th>Kliknięcia</th>
+                                <th>CTR</th>
+                                <th>CPC</th>
+                                <th>Konwersje</th>
+                                <th>CPA</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${reportData.campaigns.map(campaign => {
+                              const campaignCPA = campaign.conversions > 0 ? campaign.spend / campaign.conversions : 0;
+                              return `
+                                <tr>
+                                    <td>${campaign.campaign_name || 'Nieznana kampania'}</td>
+                                    <td>${formatCurrency(campaign.spend)}</td>
+                                    <td>${formatNumber(campaign.impressions)}</td>
+                                    <td>${formatNumber(campaign.clicks)}</td>
+                                    <td>${formatPercentage(campaign.ctr)}</td>
+                                    <td>${formatCurrency(campaign.cpc)}</td>
+                                    <td>${formatNumber(campaign.conversions)}</td>
+                                    <td>${formatCurrency(campaignCPA)}</td>
+                                </tr>
+                              `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Methodology -->
+            <div class="section">
+                <div class="methodology">
+                    <h3>Metodologia i przypisy</h3>
+                    <p><strong>Źródło:</strong> Meta Ads API, czas pobrania danych: ${new Date().toISOString()} (UTC)</p>
+                    <p><strong>Definicje metryk:</strong></p>
+                    <p>• Wydatki: Całkowita kwota wydana na kampanie reklamowe</p>
+                    <p>• CTR: Stosunek kliknięć do wyświetleń (Click-Through Rate)</p>
+                    <p>• CPC: Średni koszt kliknięcia (Cost Per Click)</p>
+                    <p>• CPM: Koszt za 1000 wyświetleń (Cost Per Mille)</p>
+                    <p>• CPA: Koszt pozyskania klienta (Cost Per Acquisition)</p>
+                    <p><strong>Zakres analizy:</strong> ${formatDate(reportData.dateRange.start)} – ${formatDate(reportData.dateRange.end)}</p>
+                </div>
+            </div>
+
+            <!-- Footer -->
             <div class="footer">
-                <p>Report generated automatically • ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}</p>
+                <p>Raport wygenerowany automatycznie • ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}</p>
             </div>
         </div>
-    </body>
+            
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+        // Demographic data from server
+        const demographicData = ${JSON.stringify(demographicData)};
+        
+        // Color schemes
+        const genderColors = ['#8B5CF6', '#3B82F6', '#6B7280']; // Purple, Blue, Gray
+        const ageColors = ['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316']; // Orange, Green, Blue, Purple, Red, Gray, Orange
+        
+        // Chart configuration
+        const chartOptions = {
+            responsive: false,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        padding: 10,
+                        usePointStyle: true,
+                        font: {
+                            size: 10
+                        }
+                    }
+                },
+                tooltip: {
+                    enabled: false // Disable tooltips for PDF
+                }
+            }
+        };
+        
+        // Gender Impressions Chart
+        if (demographicData.gender && demographicData.gender.length > 0) {
+            const ctx1 = document.getElementById('genderImpressionsChart').getContext('2d');
+            new Chart(ctx1, {
+                type: 'pie',
+                data: {
+                    labels: demographicData.gender.map(g => g.gender),
+                    datasets: [{
+                        data: demographicData.gender.map(g => g.impressions),
+                        backgroundColor: genderColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: chartOptions
+            });
+        }
+        
+        // Age Impressions Chart
+        if (demographicData.age && demographicData.age.length > 0) {
+            const ctx2 = document.getElementById('ageImpressionsChart').getContext('2d');
+            new Chart(ctx2, {
+                type: 'pie',
+                data: {
+                    labels: demographicData.age.map(a => a.age),
+                    datasets: [{
+                        data: demographicData.age.map(a => a.impressions),
+                        backgroundColor: ageColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: chartOptions
+            });
+        }
+        
+        // Gender Clicks Chart
+        if (demographicData.gender && demographicData.gender.length > 0) {
+            const ctx3 = document.getElementById('genderClicksChart').getContext('2d');
+            new Chart(ctx3, {
+                type: 'pie',
+                data: {
+                    labels: demographicData.gender.map(g => g.gender),
+                    datasets: [{
+                        data: demographicData.gender.map(g => g.clicks),
+                        backgroundColor: genderColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: chartOptions
+            });
+        }
+        
+        // Age Clicks Chart
+        if (demographicData.age && demographicData.age.length > 0) {
+            const ctx4 = document.getElementById('ageClicksChart').getContext('2d');
+            new Chart(ctx4, {
+                type: 'pie',
+                data: {
+                    labels: demographicData.age.map(a => a.age),
+                    datasets: [{
+                        data: demographicData.age.map(a => a.clicks),
+                        backgroundColor: ageColors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: chartOptions
+            });
+        }
+        </script>
+        </body>
     </html>
   `;
 }
@@ -672,7 +1246,19 @@ export async function POST(request: NextRequest) {
     });
 
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    
+    // Wait for charts to render
+    console.log('⏳ Waiting for charts to render...');
+    await new Promise(resolve => setTimeout(resolve, 3000)); // Give Chart.js time to render
+    
+    // Check if charts were rendered by looking for canvas elements
+    const chartsRendered = await page.evaluate(() => {
+      const canvases = document.querySelectorAll('canvas');
+      return canvases.length > 0;
+    });
+    
+    console.log('📊 Charts rendered status:', chartsRendered);
     
     const pdfBuffer = await page.pdf({
       format: 'A4',

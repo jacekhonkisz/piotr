@@ -27,12 +27,14 @@ interface ConversionMetricsCardsProps {
   conversionMetrics: ConversionMetrics;
   currency?: string;
   isLoading?: boolean;
+  showInfoPanel?: boolean;
 }
 
 export default function ConversionMetricsCards({ 
   conversionMetrics, 
   currency = 'PLN',
-  isLoading = false 
+  isLoading = false,
+  showInfoPanel = true
 }: ConversionMetricsCardsProps) {
   
   const formatCurrency = (amount: number) => {
@@ -208,38 +210,40 @@ export default function ConversionMetricsCards({
         })}
       </div>
       
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start">
-          <div className="flex-shrink-0">
-            <AlertCircle className="h-5 w-5 text-blue-400" />
-          </div>
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-blue-800">
-              Informacje o metrykach konwersji
-            </h3>
-            <div className="mt-2 text-sm text-blue-700">
-              <p className="mb-2">
-                <strong>Potencjalne kontakty telefoniczne:</strong> Zaciągane z Meta API - actions → click_to_call
-              </p>
-              <p className="mb-2">
-                <strong>Potencjalne kontakty email:</strong> Zaciągane z Meta API - actions → link_click (mailto:)
-              </p>
-              <p className="mb-2">
-                <strong>Kroki rezerwacji:</strong> Zaciągane z Meta API - actions → booking_step_1, booking_step_2
-              </p>
-              <p className="mb-2">
-                <strong>Rezerwacje:</strong> Zaciągane z Meta API - actions → purchase/reservation
-              </p>
-              <p className="mb-2">
-                <strong>Wartość rezerwacji:</strong> Zaciągane z Meta API - action_values → purchase value
-              </p>
-              <p>
-                <strong>ROAS & Koszt per rezerwacja:</strong> Obliczane automatycznie na podstawie wydatków i wartości
-              </p>
+      {showInfoPanel && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <AlertCircle className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-blue-800">
+                Informacje o metrykach konwersji
+              </h3>
+              <div className="mt-2 text-sm text-blue-700">
+                <p className="mb-2">
+                  <strong>Potencjalne kontakty telefoniczne:</strong> Zaciągane z Meta API - actions → click_to_call
+                </p>
+                <p className="mb-2">
+                  <strong>Potencjalne kontakty email:</strong> Zaciągane z Meta API - actions → link_click (mailto:)
+                </p>
+                <p className="mb-2">
+                  <strong>Kroki rezerwacji:</strong> Zaciągane z Meta API - actions → booking_step_1, booking_step_2
+                </p>
+                <p className="mb-2">
+                  <strong>Rezerwacje:</strong> Zaciągane z Meta API - actions → purchase/reservation
+                </p>
+                <p className="mb-2">
+                  <strong>Wartość rezerwacji:</strong> Zaciągane z Meta API - action_values → purchase value
+                </p>
+                <p>
+                  <strong>ROAS & Koszt per rezerwacja:</strong> Obliczane automatycznie na podstawie wydatków i wartości
+                </p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 } 

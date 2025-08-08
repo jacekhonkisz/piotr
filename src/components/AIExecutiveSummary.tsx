@@ -11,7 +11,7 @@ import {
   AlertCircle,
   CheckCircle
 } from 'lucide-react';
-import { useAuth } from './AuthProvider';
+
 import { supabase } from '../lib/supabase';
 
 interface AIExecutiveSummaryProps {
@@ -37,7 +37,7 @@ export default function AIExecutiveSummary({
   reportData, 
   onSummaryGenerated 
 }: AIExecutiveSummaryProps) {
-  const { user } = useAuth();
+
   const [summary, setSummary] = useState<ExecutiveSummary | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);

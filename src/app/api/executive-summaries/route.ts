@@ -7,13 +7,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-interface ExecutiveSummary {
-  id?: string;
-  content: string;
-  generated_at: string;
-  is_ai_generated: boolean;
-}
-
 export async function POST(request: NextRequest) {
   try {
     // Extract the authorization header

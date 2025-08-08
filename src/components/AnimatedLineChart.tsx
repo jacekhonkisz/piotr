@@ -37,7 +37,7 @@ export default function AnimatedLineChart({
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry && entry.isIntersecting) {
           setIsVisible(true);
           controls.start({ 
             opacity: 1,

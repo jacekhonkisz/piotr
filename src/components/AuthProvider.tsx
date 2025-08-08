@@ -29,91 +29,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const profileCacheRef = useRef<{ [key: string]: Profile | null }>({});
   const lastAuthEventRef = useRef<string>('');
   const authStateHandlerRef = useRef<any>(null);
+  const profileRequestQueueRef = useRef<Promise<Profile | null> | null>(null);
+  const initializationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastEventTimeRef = useRef<number>(0);
 
   const refreshProfile = useCallback(async (userToRefresh?: User) => {
     const currentUser = userToRefresh || user;
     if (!currentUser) {
-      return;
+      return null;
     }
 
-    // Prevent concurrent profile loads
-    if (profileLoadingRef.current) {
-      console.log('Profile already loading, skipping duplicate request');
-      return;
+    // Prevent concurrent profile loads by reusing existing request
+    if (profileRequestQueueRef.current) {
+      console.log('Profile request already in progress, waiting for completion');
+      return profileRequestQueueRef.current;
     }
 
-    // Check cache first (30 second cache)
+    // Check cache first (10 minute cache - aligned with auth.ts)
     const cacheKey = currentUser.id;
     const cached = profileCacheRef.current[cacheKey];
     const cacheTime = performance.now();
     
-    if (cached && (cacheTime - (cached as any)._cacheTime) < 30000) {
+    if (cached && (cacheTime - (cached as any)._cacheTime) < 600000) { // 10 minutes
       console.log('Using cached profile - setting loading to false');
       if (mountedRef.current) {
         setProfile(cached);
-        setLoading(false); // Ensure loading is set to false when using cache
-        setInitialized(true); // Ensure initialized is set to true
-        console.log('✅ Auth state updated: loading=false, initialized=true, profile=loaded');
+        setLoading(false);
+        setInitialized(true);
+        console.log('✅ Auth state updated: loading=false, initialized=true, profile=loaded (cached)');
       }
-      profileLoadingRef.current = false; // Important: Reset profile loading flag
-      return cached; // Return the cached profile
+      return cached;
     }
 
-    profileLoadingRef.current = true;
-    console.log('Loading profile for user:', currentUser.email);
+    // Create a single profile request that can be shared
+    const profileRequest = (async () => {
+      profileLoadingRef.current = true;
+      console.log('Loading profile for user:', currentUser.email);
+      
+      try {
+        const profile = await getCurrentProfile();
+        
+        if (profile) {
+          // Cache the profile with timestamp
+          (profile as any)._cacheTime = performance.now();
+          profileCacheRef.current[cacheKey] = profile;
+        }
+        
+        if (mountedRef.current) {
+          setProfile(profile);
+          setLoading(false);
+          setInitialized(true);
+          console.log('Profile loaded successfully');
+        }
+        
+        return profile;
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        
+        if (mountedRef.current) {
+          setProfile(null);
+          setLoading(false);
+          setInitialized(true);
+        }
+        return null;
+      } finally {
+        profileLoadingRef.current = false;
+        profileRequestQueueRef.current = null;
+      }
+    })();
+
+    // Store the request for potential reuse
+    profileRequestQueueRef.current = profileRequest;
     
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-      console.warn('Profile loading timed out after 3 seconds');
-    }, 3000); // Reduced to 3 seconds
-
-    try {
-      const profile = await Promise.race([
-        getCurrentProfile(),
-        new Promise<null>((_, reject) => {
-          controller.signal.addEventListener('abort', () => {
-            reject(new Error('Profile loading timeout'));
-          });
-        })
-      ]);
-      
-      clearTimeout(timeoutId);
-      
-      if (profile) {
-        // Cache the profile with timestamp
-        (profile as any)._cacheTime = performance.now();
-        profileCacheRef.current[cacheKey] = profile;
-      }
-      
-      if (mountedRef.current) {
-        setProfile(profile);
-        setLoading(false); // Ensure loading is set to false when profile is loaded
-        setInitialized(true); // Ensure initialized is set to true
-        console.log('Profile loaded successfully');
-      }
-      profileLoadingRef.current = false; // Reset profile loading flag
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('Error loading profile:', error);
-      
-      // On timeout or error, still set loading to false to prevent infinite loading
-      if (mountedRef.current) {
-        setProfile(null);
-        setLoading(false); // Ensure loading is set to false on error
-        setInitialized(true); // Ensure initialized is set to true
-      }
-      profileLoadingRef.current = false; // Reset profile loading flag
-    } finally {
-      profileLoadingRef.current = false;
-    }
+    return profileRequest;
   }, [user]);
 
   const signOut = async () => {
     try {
       // Clear cache and local state
       profileCacheRef.current = {};
+      profileRequestQueueRef.current = null;
+      if (initializationTimeoutRef.current) {
+        clearTimeout(initializationTimeoutRef.current);
+      }
       setUser(null);
       setProfile(null);
       setLoading(false);
@@ -150,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Get initial session with timeout
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Session timeout')), 2000);
+          setTimeout(() => reject(new Error('Session timeout')), 3000); // Increased to 3 seconds
         });
 
         const { data: { session }, error: sessionError } = await Promise.race([
@@ -173,8 +171,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           if (sessionUser) {
             console.log('User found:', sessionUser.email);
-            // Load profile but don't wait for it to complete initialization
-            refreshProfile(sessionUser).finally(() => {
+            // Load profile with timeout to prevent infinite loading
+            const profilePromise = refreshProfile(sessionUser);
+            
+            // Set a timeout to ensure we don't wait forever
+            initializationTimeoutRef.current = setTimeout(() => {
+              // Use ref flags rather than stale state in closures
+              if (mountedRef.current && profileLoadingRef.current) {
+                console.warn('Profile loading timed out, setting initialized anyway');
+                setLoading(false);
+                setInitialized(true);
+              }
+            }, 5000); // 5 second timeout
+            
+            profilePromise.finally(() => {
+              if (initializationTimeoutRef.current) {
+                clearTimeout(initializationTimeoutRef.current);
+                initializationTimeoutRef.current = null;
+              }
               if (mountedRef.current) {
                 setLoading(false);
                 setInitialized(true);
@@ -200,9 +214,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Set up auth state change listener with debouncing
+    // Set up auth state change listener with improved debouncing
     const handleAuthStateChange = async (event: string, session: any) => {
-      const currentTime = Date.now();
       const eventKey = `${event}_${session?.user?.id || 'null'}`;
       
       // Prevent duplicate rapid-fire events (common with hot reload)
@@ -212,13 +225,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       
-      // Skip duplicate SIGNED_IN events within 2 seconds
-      if (lastAuthEventRef.current === eventKey) {
+      // Skip duplicate events within 1 second
+      const nowTs = Date.now();
+      if (lastAuthEventRef.current === eventKey && (nowTs - lastEventTimeRef.current) < 1000) {
         console.log('Skipping duplicate auth event:', event);
         return;
       }
       
       lastAuthEventRef.current = eventKey;
+      lastEventTimeRef.current = nowTs;
       console.log('Auth state changed:', event, 'user:', !!session?.user);
       
       if (!mountedRef.current) return;
@@ -230,10 +245,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Only refresh profile on true sign-in events, not token refreshes
         if (event === 'SIGNED_IN') {
           console.log('Processing SIGNED_IN event');
+          
           // Always call refreshProfile - it will handle cache internally and set loading states
           refreshProfile(sessionUser).then((loadedProfile) => {
             console.log('Profile refresh completed, profile loaded:', !!loadedProfile);
-            // refreshProfile handles loading state internally, don't override here
           }).catch((error) => {
             console.error('Profile refresh failed:', error);
             if (mountedRef.current) {
@@ -243,11 +258,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         } else {
           console.log('Non-SIGNED_IN event, maintaining current state');
-          // For other events, don't change loading state
         }
       } else {
         setProfile(null);
         profileCacheRef.current = {}; // Clear cache on logout
+        profileRequestQueueRef.current = null; // Clear pending requests
         if (mountedRef.current) {
           setLoading(false);
           setInitialized(true);
@@ -268,6 +283,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mountedRef.current = false;
       initializingRef.current = false;
       profileLoadingRef.current = false;
+      profileRequestQueueRef.current = null;
+      if (initializationTimeoutRef.current) {
+        clearTimeout(initializationTimeoutRef.current);
+      }
       
       if (authSubscription) {
         authSubscription.unsubscribe();

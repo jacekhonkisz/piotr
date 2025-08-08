@@ -72,106 +72,172 @@ export async function signOut() {
   }
 }
 
-/**
- * Get current user profile with caching and timeout protection
- */
+// Enhanced caching with localStorage persistence
 let profileCache: { [key: string]: { profile: Profile | null; timestamp: number } } = {};
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const PROFILE_FETCH_TIMEOUT = 5000; // 5 seconds (reduced from 10)
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const PROFILE_FETCH_TIMEOUT = 3000; // tighter timeout to avoid long waits
+const MAX_RETRIES = 1; // reduce retries to speed up failures
 
+// Load cache from localStorage on module load
+if (typeof window !== 'undefined') {
+  try {
+    const cached = localStorage.getItem('profile_cache');
+    if (cached) {
+      profileCache = JSON.parse(cached);
+      // Clean expired entries
+      const now = Date.now();
+      Object.keys(profileCache).forEach(key => {
+        const entry = profileCache[key];
+        if (entry && (now - entry.timestamp) > CACHE_DURATION) {
+          delete profileCache[key];
+        }
+      });
+    }
+  } catch (error) {
+    console.warn('Failed to load profile cache from localStorage:', error);
+  }
+}
+
+// Save cache to localStorage
+function saveCacheToStorage() {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('profile_cache', JSON.stringify(profileCache));
+    } catch (error) {
+      console.warn('Failed to save profile cache to localStorage:', error);
+    }
+  }
+}
+
+/**
+ * Get current user profile with enhanced caching and performance optimizations
+ */
 export async function getCurrentProfile(): Promise<Profile | null> {
-  const timeoutController = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log('Profile fetch timeout - aborting request');
-    timeoutController.abort();
-  }, PROFILE_FETCH_TIMEOUT);
+  const startTime = performance.now();
+  console.log('getCurrentProfile: Starting profile fetch...');
   
   try {
-    console.log('getCurrentProfile: Starting profile fetch...');
-    
-    // Get the current session first
+    // Get the current session first (this is usually fast)
+    const sessionStart = performance.now();
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const sessionTime = performance.now() - sessionStart;
     
     if (sessionError) {
       console.error('Session error:', sessionError);
-      clearTimeout(timeoutId);
       return null;
     }
     
     if (!session?.user) {
       console.log('getCurrentProfile: No session or user found');
-      clearTimeout(timeoutId);
       return null;
     }
 
     const user = session.user;
+    console.log(`getCurrentProfile: Session retrieved in ${sessionTime.toFixed(2)}ms`);
     console.log('getCurrentProfile: User found:', user.email, 'ID:', user.id);
 
-    // Check cache first
+    // Check cache first (enhanced caching)
     const cacheKey = user.id;
     const cached = profileCache[cacheKey];
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    const now = Date.now();
+    
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
       console.log('getCurrentProfile: Returning cached profile');
-      clearTimeout(timeoutId);
-      return cached.profile;
+      const totalTime = performance.now() - startTime;
+      console.log(`getCurrentProfile: Total time (cached): ${totalTime.toFixed(2)}ms`);
+      return cached.profile || null;
     }
 
-    console.log('getCurrentProfile: Fetching profile from database for user ID:', user.id);
+    console.log('getCurrentProfile: Cache miss, fetching from database for user ID:', user.id);
     
-    // Use Promise.race to ensure timeout works
-    const profilePromise = supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    // Implement retry mechanism with exponential backoff
+    let lastError: any = null;
+    
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const queryStart = performance.now();
+        
+        // Use Promise.race with timeout for each attempt
+        const profilePromise = supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
 
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_FETCH_TIMEOUT);
-    });
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_FETCH_TIMEOUT);
+        });
 
-    const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+        const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+        const queryTime = performance.now() - queryStart;
 
-    clearTimeout(timeoutId);
+        if (error) {
+          console.error(`Attempt ${attempt + 1} failed:`, error);
+          lastError = error;
+          
+          // Don't retry on certain errors
+          if (error.code === 'PGRST116' || error.message.includes('not found')) {
+            break;
+          }
+          
+          // Wait before retry (exponential backoff)
+          if (attempt < MAX_RETRIES) {
+            const delay = Math.pow(2, attempt) * 500; // faster backoff: 0.5s, 1s
+            console.log(`Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+          continue;
+        }
 
-    if (error) {
-      console.error('Error fetching profile:', error);
-      console.error('Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-      
-      // Cache null result to prevent repeated failed requests
-      profileCache[cacheKey] = {
-        profile: null,
-        timestamp: Date.now()
-      };
-      
-      return null;
+        console.log(`getCurrentProfile: Profile fetched successfully in ${queryTime.toFixed(2)}ms`);
+        console.log('getCurrentProfile: Profile data:', profile);
+
+        // Cache the result
+        profileCache[cacheKey] = {
+          profile,
+          timestamp: now
+        };
+        
+        // Save to localStorage
+        saveCacheToStorage();
+
+        const totalTime = performance.now() - startTime;
+        console.log(`getCurrentProfile: Total time: ${totalTime.toFixed(2)}ms`);
+        
+        return profile;
+        
+      } catch (error: any) {
+        console.error(`Attempt ${attempt + 1} failed with exception:`, error);
+        lastError = error;
+        
+        if (attempt < MAX_RETRIES) {
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
 
-    console.log('getCurrentProfile: Profile fetched successfully:', profile);
-
-    // Cache the result
+    // All retries failed
+    console.error('getCurrentProfile: All retry attempts failed');
+    console.error('Last error:', lastError);
+    
+    // Cache null result to prevent repeated failed requests (with shorter duration)
     profileCache[cacheKey] = {
-      profile,
-      timestamp: Date.now()
+      profile: null,
+      timestamp: now
     };
-
-    return profile;
+    saveCacheToStorage();
+    
+    const totalTime = performance.now() - startTime;
+    console.log(`getCurrentProfile: Total time (failed): ${totalTime.toFixed(2)}ms`);
+    
+    return null;
+    
   } catch (error: any) {
-    clearTimeout(timeoutId);
-    
-    if (error.message === 'Profile fetch timeout') {
-      console.error('Profile fetch timeout - operation took too long');
-    } else if (error.name === 'AbortError') {
-      console.error('Profile fetch aborted - operation took too long');
-    } else {
-      console.error('Unexpected error in getCurrentProfile:', error);
-    }
-    
-    // Return null instead of throwing to prevent app hanging
+    console.error('Unexpected error in getCurrentProfile:', error);
+    const totalTime = performance.now() - startTime;
+    console.log(`getCurrentProfile: Total time (error): ${totalTime.toFixed(2)}ms`);
     return null;
   }
 }
@@ -184,6 +250,22 @@ export function clearProfileCache(userId?: string) {
     delete profileCache[userId];
   } else {
     profileCache = {};
+  }
+  saveCacheToStorage();
+}
+
+/**
+ * Warm up profile cache for a user
+ */
+export async function warmProfileCache(userId: string): Promise<void> {
+  try {
+    console.log('Warming profile cache for user:', userId);
+    const profile = await getCurrentProfile();
+    if (profile) {
+      console.log('Profile cache warmed successfully');
+    }
+  } catch (error) {
+    console.warn('Failed to warm profile cache:', error);
   }
 }
 
@@ -207,6 +289,13 @@ export async function updateProfile(updates: Partial<Profile>) {
   if (error) {
     throw error;
   }
+
+  // Update cache with new data
+  profileCache[user.id] = {
+    profile: data,
+    timestamp: Date.now()
+  };
+  saveCacheToStorage();
 
   return data;
 }
