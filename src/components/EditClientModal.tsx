@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield, Upload, Trash2, Image } from 'lucide-react';
 import { MetaAPIService } from '../lib/meta-api';
+import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/database.types';
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -13,6 +14,11 @@ interface EditClientModalProps {
   onUpdate: (clientId: string, updates: Partial<Client>) => Promise<void>;
   client: Client | null;
 }
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function EditClientModal({ isOpen, onClose, onUpdate, client }: EditClientModalProps) {
   const [formData, setFormData] = useState({
@@ -36,6 +42,13 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   const [submitError, setSubmitError] = useState<string>('');
   const [showTokenFields, setShowTokenFields] = useState(false);
   const [adAccountIdError, setAdAccountIdError] = useState<string>('');
+  
+  // Logo upload states
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string>('');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize form data when client changes
   useEffect(() => {
@@ -47,7 +60,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       console.log('Initializing client form:', {
         mainEmail: client.email,
         allContactEmails: contactEmails,
-        additionalEmails: additionalEmails
+        additionalEmails: additionalEmails,
+        logoUrl: client.logo_url
       });
       
       setFormData({
@@ -62,12 +76,144 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
         notes: client.notes || '',
         contact_emails: additionalEmails
       });
+      
+      // Set logo preview if client has a logo
+      setLogoPreview(client.logo_url || '');
+      setLogoFile(null);
+      setLogoError('');
+      
       setValidationStatus({ status: 'idle', message: '' });
       setSubmitError('');
       setShowTokenFields(false);
       setAdAccountIdError('');
     }
   }, [client]);
+
+  // Logo upload functions
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) {
+      setLogoError('Nieprawidłowy typ pliku. Proszę przesłać obraz JPEG, PNG, WebP lub SVG.');
+      return;
+    }
+
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      setLogoError('Plik jest za duży. Maksymalny rozmiar to 5MB.');
+      return;
+    }
+
+    setLogoError('');
+    setLogoFile(file);
+
+    // Create preview URL
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setLogoPreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoUpload = async () => {
+    if (!logoFile || !client) return;
+
+    setLogoUploading(true);
+    setLogoError('');
+
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Brak ważnej sesji');
+      }
+
+      // Create form data
+      const formData = new FormData();
+      formData.append('logo', logoFile);
+
+      // Upload logo
+      const response = await fetch(`/api/clients/${client.id}/upload-logo`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Nie udało się przesłać logo');
+      }
+
+      const result = await response.json();
+      console.log('Logo uploaded successfully:', result);
+
+      // Update the preview with the new URL
+      setLogoPreview(result.logo_url);
+      setLogoFile(null);
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      setLogoError(error instanceof Error ? error.message : 'Nie udało się przesłać logo');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    if (!client) return;
+
+    setLogoUploading(true);
+    setLogoError('');
+
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Brak ważnej sesji');
+      }
+
+      // Delete logo
+      const response = await fetch(`/api/clients/${client.id}/upload-logo`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Nie udało się usunąć logo');
+      }
+
+      console.log('Logo deleted successfully');
+
+      // Clear preview and file
+      setLogoPreview('');
+      setLogoFile(null);
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+    } catch (error) {
+      console.error('Error deleting logo:', error);
+      setLogoError(error instanceof Error ? error.message : 'Nie udało się usunąć logo');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   // Validate Ad Account ID format in real-time
   const validateAdAccountIdFormat = (accountId: string) => {
@@ -390,6 +536,93 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="Wprowadź nazwę firmy"
             />
+          </div>
+          
+          {/* Logo Upload Section */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Logo klienta
+            </label>
+            <div className="space-y-3">
+              {/* Logo Preview */}
+              {logoPreview && (
+                <div className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                  <div className="text-center">
+                    <img 
+                      src={logoPreview} 
+                      alt="Logo preview" 
+                      className="max-h-24 max-w-full object-contain mx-auto"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Upload Area */}
+              <div className="flex items-center space-x-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoSelect}
+                  className="hidden"
+                  id="logo-upload"
+                />
+                <label
+                  htmlFor="logo-upload"
+                  className={`flex-1 flex items-center justify-center px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                    logoError ? 'border-red-300 bg-red-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
+                  }`}
+                >
+                  <div className="text-center">
+                    <Image className="mx-auto h-6 w-6 text-gray-400" />
+                    <span className="mt-1 block text-sm text-gray-600">
+                      {logoFile ? logoFile.name : 'Wybierz logo'}
+                    </span>
+                  </div>
+                </label>
+                
+                {logoFile && (
+                  <button
+                    type="button"
+                    onClick={handleLogoUpload}
+                    disabled={logoUploading}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                  >
+                    {logoUploading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span>{logoUploading ? 'Przesyłanie...' : 'Prześlij'}</span>
+                  </button>
+                )}
+                
+                {logoPreview && !logoFile && (
+                  <button
+                    type="button"
+                    onClick={handleLogoDelete}
+                    disabled={logoUploading}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                  >
+                    {logoUploading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    <span>{logoUploading ? 'Usuwanie...' : 'Usuń'}</span>
+                  </button>
+                )}
+              </div>
+              
+              {logoError && (
+                <p className="text-xs text-red-600">{logoError}</p>
+              )}
+              
+              <p className="text-xs text-gray-500">
+                Obsługiwane formaty: JPEG, PNG, WebP, SVG. Maksymalny rozmiar: 5MB.
+                Logo będzie wyświetlane w dashboardzie, raportach i PDF-ach.
+              </p>
+            </div>
           </div>
           
           <div>

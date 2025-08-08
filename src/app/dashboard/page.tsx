@@ -858,11 +858,23 @@ export default function DashboardPage() {
         {/* Welcome Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-bold text-slate-900 mb-2">
-                Witaj, {clientData.client.name} 👋
-              </h2>
-              <p className="text-slate-600">Oto podsumowanie Twoich kampanii Meta Ads</p>
+            <div className="flex items-center space-x-4">
+              {/* Client Logo */}
+              {clientData.client.logo_url && (
+                <div className="flex-shrink-0">
+                  <img 
+                    src={clientData.client.logo_url} 
+                    alt={`${clientData.client.name} logo`}
+                    className="h-16 w-16 object-contain rounded-lg border border-slate-200 bg-white p-2"
+                  />
+                </div>
+              )}
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">
+                  Witaj, {clientData.client.name} 👋
+                </h2>
+                <p className="text-slate-600">Oto podsumowanie Twoich kampanii Meta Ads</p>
+              </div>
             </div>
             <div className="flex items-center space-x-3">
               <button 

@@ -14,6 +14,7 @@ interface ReportData {
     name: string;
     email: string;
     ad_account_id: string;
+    logo_url?: string;
   };
   dateRange: {
     start: string;
@@ -50,24 +51,24 @@ function generatePDFHTML(reportData: ReportData): string {
   // Polish number formatting
   const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null || isNaN(value)) return '0,00 zł';
-    return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`;
+    return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, '\u00A0')} zł`;
   };
 
   const formatNumber = (value: number | undefined | null) => {
     if (value === undefined || value === null || isNaN(value)) return '0';
-    return value.toLocaleString('pl-PL');
+    return value.toLocaleString('pl-PL').replace(/\s/g, '\u00A0');
   };
 
   const formatNumberShort = (value: number | undefined | null) => {
     if (value === undefined || value === null || isNaN(value)) return '0';
-    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-    return value.toLocaleString('pl-PL');
+    if (value >= 1000000) return `${(value / 1000000).toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/\s/g, '\u00A0')}M`;
+    if (value >= 1000) return `${(value / 1000).toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/\s/g, '\u00A0')}k`;
+    return value.toLocaleString('pl-PL').replace(/\s/g, '\u00A0');
   };
 
   const formatPercentage = (value: number | undefined | null) => {
     if (value === undefined || value === null || isNaN(value)) return '0,00%';
-    return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+    return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, '\u00A0')}%`;
   };
 
   // Calculate metrics with safety checks
@@ -107,49 +108,105 @@ function generatePDFHTML(reportData: ReportData): string {
     ? totalSpend / conversionMetrics.reservations 
     : 0;
 
+  // Helper function for grouping and top N processing
+  const groupAndTopN = (rows: any[], config: any) => {
+    if (!rows || rows.length === 0) return [];
+    
+    const { groupBy, sum, derive, limit } = config;
+    const groupMap = new Map();
+    
+    rows.forEach((item: any) => {
+      const key = item[groupBy] || 'Inne';
+      
+      // Clean up placement names
+      let cleanKey = key;
+      if (groupBy === 'placement') {
+        if (key.toLowerCase().includes('facebook')) cleanKey = 'Facebook Feed';
+        else if (key.toLowerCase().includes('instagram') && !key.toLowerCase().includes('story') && !key.toLowerCase().includes('reels')) cleanKey = 'Instagram Feed';
+        else if (key.toLowerCase().includes('story') || key.toLowerCase().includes('stories')) cleanKey = 'Instagram Stories';
+        else if (key.toLowerCase().includes('reels')) cleanKey = 'Instagram Reels';
+        else if (key.toLowerCase().includes('audience')) cleanKey = 'Audience Network';
+        else if (key.toLowerCase().includes('messenger')) cleanKey = 'Messenger';
+        else if (key === 'Unknown' || !key) cleanKey = 'Inne';
+      }
+      
+      if (groupMap.has(cleanKey)) {
+        const existing = groupMap.get(cleanKey);
+        sum.forEach((field: string) => {
+          existing[field] = (existing[field] || 0) + (item[field] || 0);
+        });
+      } else {
+        const newEntry: any = { [groupBy]: cleanKey };
+        sum.forEach((field: string) => {
+          newEntry[field] = item[field] || 0;
+        });
+        groupMap.set(cleanKey, newEntry);
+      }
+    });
+    
+    // Calculate derived metrics
+    let result = Array.from(groupMap.values()).map((item: any) => {
+      const enhanced = { ...item };
+      if (derive) {
+        Object.entries(derive).forEach(([field, formula]) => {
+          if (formula === 'clicks/impressions') {
+            enhanced[field] = item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0;
+          } else if (formula === 'spend/clicks') {
+            enhanced[field] = item.clicks > 0 ? item.spend / item.clicks : 0;
+          } else if (formula === 'spend/conversions') {
+            enhanced[field] = totalConversions > 0 ? item.spend / totalConversions : 0;
+          }
+        });
+      }
+      return enhanced;
+    });
+    
+    // Sort by spend and limit
+    result = result.sort((a: any, b: any) => (b.spend || 0) - (a.spend || 0));
+    
+    if (limit && result.length > limit) {
+      const topN = result.slice(0, limit);
+      const remaining = result.slice(limit);
+      
+      if (remaining.length > 0) {
+        const totalRemaining = remaining.reduce((acc: any, item: any) => ({
+          [groupBy]: `Pozostałe ${remaining.length} pozycji`,
+          spend: acc.spend + (item.spend || 0),
+          impressions: acc.impressions + (item.impressions || 0),
+          clicks: acc.clicks + (item.clicks || 0),
+          ctr: 0, // Will be recalculated
+          cpc: 0, // Will be recalculated
+          cpa: 0  // Will be recalculated
+        }), { spend: 0, impressions: 0, clicks: 0 });
+        
+        // Recalculate derived metrics for the aggregate
+        totalRemaining.ctr = totalRemaining.impressions > 0 ? (totalRemaining.clicks / totalRemaining.impressions) * 100 : 0;
+        totalRemaining.cpc = totalRemaining.clicks > 0 ? totalRemaining.spend / totalRemaining.clicks : 0;
+        totalRemaining.cpa = totalConversions > 0 ? totalRemaining.spend / totalConversions : 0;
+        
+        topN.push(totalRemaining);
+      }
+      
+      return topN;
+    }
+    
+    return result;
+  };
+
   // Process meta data for placement performance (aggregated and cleaned)
   const processPlacementData = () => {
     if (!reportData.metaTables?.placementPerformance) return [];
     
-    const placementMap = new Map();
-    
-    reportData.metaTables.placementPerformance.forEach(item => {
-      const placement = item.placement || item.publisher_platform || 'Inne';
-      
-      // Clean up placement names
-      let cleanPlacement = placement;
-      if (placement.toLowerCase().includes('facebook')) cleanPlacement = 'Facebook Feed';
-      else if (placement.toLowerCase().includes('instagram')) cleanPlacement = 'Instagram Feed';
-      else if (placement.toLowerCase().includes('story') || placement.toLowerCase().includes('stories')) cleanPlacement = 'Instagram Stories';
-      else if (placement.toLowerCase().includes('reels')) cleanPlacement = 'Instagram Reels';
-      else if (placement.toLowerCase().includes('audience')) cleanPlacement = 'Audience Network';
-      else if (placement.toLowerCase().includes('messenger')) cleanPlacement = 'Messenger';
-      else if (placement === 'Unknown' || !placement) cleanPlacement = 'Inne';
-      
-      if (placementMap.has(cleanPlacement)) {
-        const existing = placementMap.get(cleanPlacement);
-        existing.spend += (item.spend || 0);
-        existing.impressions += (item.impressions || 0);
-        existing.clicks += (item.clicks || 0);
-      } else {
-        placementMap.set(cleanPlacement, {
-          placement: cleanPlacement,
-          spend: item.spend || 0,
-          impressions: item.impressions || 0,
-          clicks: item.clicks || 0
-        });
-      }
+    return groupAndTopN(reportData.metaTables.placementPerformance, {
+      groupBy: 'placement',
+      sum: ['spend', 'impressions', 'clicks'],
+      derive: {
+        ctr: 'clicks/impressions',
+        cpc: 'spend/clicks', 
+        cpa: 'spend/conversions'
+      },
+      limit: 10
     });
-    
-    // Calculate derived metrics and sort by spend
-    const placements = Array.from(placementMap.values()).map(item => ({
-      ...item,
-      ctr: item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0,
-      cpc: item.clicks > 0 ? item.spend / item.clicks : 0,
-      cpa: totalConversions > 0 ? item.spend / totalConversions : 0
-    })).sort((a, b) => b.spend - a.spend).slice(0, 10);
-    
-    return placements;
   };
 
   // Process demographic data for charts
@@ -234,6 +291,16 @@ function generatePDFHTML(reportData: ReportData): string {
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
             
+            :root {
+                --bg-page: #F7F8FB;
+                --bg-panel: #FFFFFF;
+                --text-strong: #0B1324;
+                --text-muted: #6B7280;
+                --brand-primary: #3B82F6;
+                --brand-accent: #FF7A00;
+                --border-soft: #E6E9EF;
+            }
+            
             * {
                 margin: 0;
                 padding: 0;
@@ -241,10 +308,10 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             body {
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
                 line-height: 1.5;
-                color: #0B1324;
-                background: #F6F8FB;
+                color: var(--text-strong);
+                background: var(--bg-page);
                 font-size: 16px;
                 -webkit-font-smoothing: antialiased;
             }
@@ -252,205 +319,234 @@ function generatePDFHTML(reportData: ReportData): string {
             .container {
                 max-width: 900px;
                 margin: 0 auto;
-                padding: 48px 56px;
+                padding: 32px;
             }
             
-            /* Header */
-            .header {
-                background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-                color: white;
-                padding: 40px 48px;
-                border-radius: 20px;
-                margin-bottom: 64px;
+            /* Page 1 - Premium Cover */
+            .cover-page {
+                background: var(--bg-panel);
+                border-radius: 16px;
+                padding: 64px 48px;
+                text-align: center;
+                margin-bottom: 48px;
+                min-height: 70vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
                 position: relative;
-                overflow: hidden;
             }
             
-            .header::before {
-                content: '';
+            .logo-slot {
                 position: absolute;
-                top: -50%;
-                right: -20%;
-                width: 400px;
-                height: 400px;
-                background: rgba(255, 255, 255, 0.1);
-                border-radius: 50%;
-                z-index: 1;
+                top: 32px;
+                left: 32px;
+                width: 96px;
+                height: 96px;
+                border: 2px dashed var(--border-soft);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                color: var(--text-muted);
             }
             
-            .header-content {
-                position: relative;
-                z-index: 2;
+            .logo-image {
+                position: absolute;
+                top: 32px;
+                left: 32px;
+                width: 96px;
+                height: 96px;
+                object-fit: contain;
+                border-radius: 8px;
+                background: white;
+                padding: 4px;
+                border: 1px solid var(--border-soft);
             }
             
-            .header h1 {
+            .cover-title {
+                margin-bottom: 48px;
+            }
+            
+            .cover-title h1 {
                 font-size: 36px;
                 font-weight: 700;
-                margin-bottom: 12px;
-                letter-spacing: -0.02em;
-            }
-            
-            .header .client-name {
-                font-size: 24px;
-                font-weight: 600;
-                margin-bottom: 8px;
-                opacity: 0.95;
-            }
-            
-            .header .date-range {
-                font-size: 18px;
-                opacity: 0.8;
-                margin-bottom: 24px;
-            }
-            
-            .header .meta-info {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 14px;
-                opacity: 0.7;
-                border-top: 1px solid rgba(255, 255, 255, 0.2);
-                padding-top: 24px;
-            }
-            
-            /* Section Styles */
-            .section {
-                margin-bottom: 64px;
-            }
-            
-            .section-title {
-                font-size: 24px;
-                font-weight: 600;
-                color: #0B1324;
-                margin-bottom: 32px;
-                letter-spacing: -0.01em;
-            }
-            
-            /* Card Styles */
-            .card {
-                background: white;
-                border-radius: 20px;
-                padding: 28px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-                border: 1px solid #E6E9EF;
-            }
-            
-            /* KPI Grid */
-            .kpi-grid {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 24px;
+                color: var(--text-strong);
                 margin-bottom: 16px;
-            }
-            
-            .kpi-grid-row2 {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 24px;
-            }
-            
-            .kpi-card {
-                background: white;
-                border-radius: 16px;
-                padding: 24px;
-                text-align: center;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-                border: 1px solid #E6E9EF;
-                position: relative;
-            }
-            
-            .kpi-icon {
-                position: absolute;
-                top: 16px;
-                left: 16px;
-                width: 20px;
-                height: 20px;
-                background: #1e40af;
-                border-radius: 4px;
-                opacity: 0.8;
-            }
-            
-            .kpi-value {
-                font-size: 48px;
-                font-weight: 700;
-                color: #0B1324;
-                margin-bottom: 8px;
                 letter-spacing: -0.02em;
             }
             
-            .kpi-label {
+            .cover-title h2 {
+                font-size: 24px;
+                font-weight: 600;
+                color: var(--text-muted);
+                margin-bottom: 8px;
+            }
+            
+            .cover-meta {
                 font-size: 14px;
-                color: #3A4556;
+                color: var(--text-muted);
+                margin-bottom: 48px;
+            }
+            
+            /* KPI Row for Cover */
+            .cover-kpi-row {
+                display: flex;
+                justify-content: center;
+                gap: 32px;
+                flex-wrap: wrap;
+            }
+            
+            .cover-kpi {
+                text-align: center;
+                min-width: 120px;
+            }
+            
+            .cover-kpi-value {
+                font-size: 28px;
+                font-weight: 700;
+                color: var(--text-strong);
+                display: block;
+                margin-bottom: 4px;
+            }
+            
+            .cover-kpi-label {
+                font-size: 12px;
+                color: var(--text-muted);
                 font-weight: 500;
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
             }
             
-            /* Conversion Cards */
-            .conversion-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 24px;
+            /* Executive Summary on Cover */
+            .cover-summary {
+                margin-top: 48px;
+                text-align: left;
+            }
+            
+            .cover-summary h3 {
+                font-size: 20px;
+                font-weight: 600;
+                color: var(--text-strong);
+                margin-bottom: 24px;
+            }
+            
+            .summary-content {
+                font-size: 16px;
+                line-height: 1.7;
+                color: var(--text-muted);
+                max-width: 700px;
+                margin: 0 auto;
+            }
+            
+            .summary-content p {
                 margin-bottom: 16px;
             }
             
-                         .conversion-grid-row2 {
-                 display: grid;
-                 grid-template-columns: repeat(3, 1fr);
-                 gap: 24px;
-             }
-             
-             .conversion-grid-row3 {
-                 display: grid;
-                 grid-template-columns: repeat(3, 1fr);
-                 gap: 24px;
-             }
-            
-            .conversion-card {
-                background: white;
+            /* KPI Overview Section */
+            .kpi-overview {
+                background: var(--bg-panel);
                 border-radius: 16px;
-                padding: 24px;
-                text-align: center;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-                border: 1px solid #E6E9EF;
+                padding: 32px;
+                margin-bottom: 24px;
             }
             
-            .conversion-value {
-                font-size: 40px;
-                font-weight: 700;
-                color: #0B1324;
-                margin-bottom: 8px;
+            /* Section Styles */
+            .section {
+                margin-bottom: 32px;
             }
             
-            .conversion-label {
+            .section-title {
+                font-size: 20px;
+                font-weight: 600;
+                color: var(--text-strong);
+                margin-bottom: 16px;
+                letter-spacing: -0.01em;
+            }
+            
+            /* Page 2 - Metrics Layout */
+            .metrics-page {
+                background: var(--bg-panel);
+                border-radius: 16px;
+                padding: 32px;
+                margin-bottom: 48px;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 48px;
+            }
+            
+            .metrics-column {
+                display: flex;
+                flex-direction: column;
+            }
+            
+            .metrics-column h3 {
+                font-size: 18px;
+                font-weight: 600;
+                color: var(--text-strong);
+                margin-bottom: 24px;
+            }
+            
+            /* Stat List Component */
+            .stat-list {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+            
+            .stat-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 12px 0;
+                border-bottom: 1px solid var(--border-soft);
+            }
+            
+            .stat-item:last-child {
+                border-bottom: none;
+            }
+            
+            .stat-label {
                 font-size: 14px;
-                color: #3A4556;
+                color: var(--text-muted);
                 font-weight: 500;
             }
             
-            .conversion-cta {
-                margin-top: 32px;
-                text-align: center;
+            .stat-value {
+                font-size: 16px;
+                font-weight: 600;
+                color: var(--text-strong);
+                text-align: right;
             }
             
-            .cta-button {
-                background: #FF7A00;
+            .stat-not-configured {
+                color: var(--text-muted);
+                font-style: italic;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            
+            .stat-tooltip {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background: var(--text-muted);
                 color: white;
-                padding: 12px 24px;
-                border-radius: 12px;
-                font-weight: 600;
-                text-decoration: none;
-                display: inline-block;
-                font-size: 14px;
+                font-size: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
             }
             
             /* Tables */
             .table-container {
-                background: white;
-                border-radius: 20px;
+                background: var(--bg-panel);
+                border-radius: 16px;
                 overflow: hidden;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-                border: 1px solid #E6E9EF;
+                margin-bottom: 16px;
+                page-break-inside: auto;
             }
             
             .data-table {
@@ -459,24 +555,25 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .data-table th {
-                background: #F6F8FB;
-                color: #0B1324;
+                background: var(--bg-page);
+                color: var(--text-strong);
                 padding: 16px 20px;
                 text-align: left;
                 font-weight: 600;
-                font-size: 14px;
-                letter-spacing: 0.02em;
-                border-bottom: 1px solid #E6E9EF;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                border-bottom: 1px solid var(--border-soft);
             }
             
             .data-table td {
                 padding: 16px 20px;
-                border-bottom: 1px solid #F6F8FB;
+                border-bottom: 1px solid var(--border-soft);
                 font-size: 14px;
-                color: #3A4556;
+                color: var(--text-strong);
             }
             
-            .data-table tr:hover {
+            .data-table tr:nth-child(even) {
                 background: #FAFBFC;
             }
             
@@ -484,304 +581,284 @@ function generatePDFHTML(reportData: ReportData): string {
                 border-bottom: none;
             }
             
-            /* Demographics Charts Placeholder */
-            .chart-placeholder {
-                background: #F6F8FB;
+            /* Demographics Charts */
+            .chart-container {
+                background: var(--bg-panel);
                 border-radius: 16px;
-                padding: 48px;
-                text-align: center;
-                margin-bottom: 24px;
-                border: 2px dashed #E6E9EF;
+                padding: 32px;
+                margin-bottom: 32px;
             }
             
             .chart-title {
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: 600;
-                color: #0B1324;
-                margin-bottom: 8px;
+                color: var(--text-strong);
+                margin-bottom: 24px;
             }
             
-            .chart-subtitle {
+            .charts-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 32px;
+                margin-bottom: 24px;
+            }
+            
+            .chart-section {
+                text-align: center;
+            }
+            
+            .chart-section h4 {
                 font-size: 14px;
-                color: #3A4556;
+                font-weight: 500;
+                color: var(--text-muted);
+                margin-bottom: 16px;
             }
             
             /* Footer */
             .footer {
                 text-align: center;
-                padding: 32px 0;
-                border-top: 1px solid #E6E9EF;
-                color: #3A4556;
+                padding: 24px 0;
+                border-top: 1px solid var(--border-soft);
+                color: var(--text-muted);
                 font-size: 12px;
-                margin-top: 64px;
-            }
-            
-            /* Executive Summary */
-            .executive-summary {
-                background: white;
-                border-radius: 20px;
-                padding: 32px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-                border: 1px solid #E6E9EF;
-                margin-bottom: 48px;
-            }
-            
-            .executive-summary p {
-                font-size: 16px;
-                line-height: 1.7;
-                color: #3A4556;
-                margin-bottom: 16px;
+                margin-top: 48px;
             }
             
             /* Methodology */
             .methodology {
-                background: #F6F8FB;
-                border-radius: 20px;
-                padding: 32px;
-                border: 1px solid #E6E9EF;
+                background: var(--bg-page);
+                border-radius: 16px;
+                padding: 24px;
+                border: 1px solid var(--border-soft);
             }
             
             .methodology h3 {
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: 600;
-                color: #0B1324;
+                color: var(--text-strong);
                 margin-bottom: 16px;
             }
             
             .methodology p {
                 font-size: 14px;
-                color: #3A4556;
-                margin-bottom: 12px;
+                color: var(--text-muted);
+                margin-bottom: 8px;
                 line-height: 1.6;
             }
             
+            /* Page breaks and print optimization */
             @media print {
                 body { background: white; }
                 .container { padding: 0; }
-                .header::before { display: none; }
                 
-                /* Page breaks */
-                .section { break-inside: avoid; }
-                .kpi-card, .conversion-card { break-inside: avoid; }
-                .table-container { break-inside: avoid; }
+                /* Allow sections to break but keep titles with content */
+                .section-title { page-break-after: avoid; }
+                .table-container { page-break-inside: auto; }
+                .data-table thead { 
+                    display: table-header-group; 
+                    page-break-after: avoid;
+                }
                 
-                /* Ensure headers repeat on new pages */
-                .data-table thead { display: table-header-group; }
+                /* Keep table headers with at least some rows */
+                .data-table thead tr { page-break-inside: avoid; page-break-after: avoid; }
+                .data-table tbody tr { page-break-inside: avoid; }
+                
+                /* Prevent orphaned headers */
+                .data-table thead { break-after: avoid; }
+            }
+            
+            @page {
+                size: A4;
+                margin: 2cm;
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <!-- Header Section -->
-            <div class="header">
-                <div class="header-content">
-                    <h1>Raport Meta Ads</h1>
-                    <div class="client-name">${reportData.client.name}</div>
-                    <div class="date-range">${formatDate(reportData.dateRange.start)} – ${formatDate(reportData.dateRange.end)}</div>
-                    <div class="meta-info">
-                        <span>Wygenerowano ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}</span>
-                        <span>Źródło: Meta API</span>
-                    </div>
+            <!-- Page 1 - Premium Cover -->
+            <div class="cover-page">
+                ${reportData.client.logo_url 
+                  ? `<img src="${reportData.client.logo_url}" alt="${reportData.client.name} logo" class="logo-image" />`
+                  : '<div class="logo-slot">Logo</div>'
+                }
+                
+                <div class="cover-title">
+                    <h1>Raport Meta Ads — ${reportData.client.name}</h1>
+                    <h2>${formatDate(reportData.dateRange.start)} – ${formatDate(reportData.dateRange.end)}</h2>
                 </div>
-            </div>
-
-            <!-- Executive Summary -->
-            ${reportData.executiveSummary ? `
-            <div class="section">
-                <div class="section-title">Podsumowanie wykonawcze</div>
-                <div class="executive-summary">
-                    ${reportData.executiveSummary.trim()}
+                
+                <div class="cover-meta">
+                    Źródło: Meta Ads API • Wygenerowano: ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}
                 </div>
-            </div>
-            ` : ''}
-
-            <!-- KPI Section -->
-            <div class="section">
-                <div class="section-title">Wydajność kampanii</div>
-                <div class="kpi-grid">
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatCurrency(totalSpend)}</div>
-                        <div class="kpi-label">Całkowite wydatki</div>
+                
+                <!-- Executive Summary -->
+                ${reportData.executiveSummary ? `
+                <div class="cover-summary">
+                    <h3>Podsumowanie</h3>
+                    <div class="summary-content">
+                        ${reportData.executiveSummary.trim()}
                     </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatNumberShort(totalImpressions)}</div>
-                        <div class="kpi-label">Wyświetlenia</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatNumberShort(totalClicks)}</div>
-                        <div class="kpi-label">Kliknięcia</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatPercentage(ctr)}</div>
-                        <div class="kpi-label">CTR</div>
-                    </div>
-                </div>
-                <div class="kpi-grid-row2">
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatCurrency(cpc)}</div>
-                        <div class="kpi-label">CPC</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatNumberShort(reach)}</div>
-                        <div class="kpi-label">Zasięg</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatCurrency(cpm)}</div>
-                        <div class="kpi-label">CPM</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-icon"></div>
-                        <div class="kpi-value">${formatNumber(totalConversions)}</div>
-                        <div class="kpi-label">Konwersje</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Conversion Statistics -->
-            <div class="section">
-                <div class="section-title">Statystyki konwersji</div>
-                <div class="conversion-grid">
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatNumber(conversionMetrics.click_to_call)}</div>
-                        <div class="conversion-label">Potencjalne kontakty – telefon</div>
-                    </div>
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatNumber(conversionMetrics.email_contacts)}</div>
-                        <div class="conversion-label">Potencjalne kontakty – e-mail</div>
-                    </div>
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatNumber(conversionMetrics.booking_step_1)}</div>
-                        <div class="conversion-label">Kroki rezerwacji – Etap 1</div>
-                    </div>
-                </div>
-                <div class="conversion-grid-row2">
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatNumber(conversionMetrics.reservations)}</div>
-                        <div class="conversion-label">Rezerwacje (zakończone)</div>
-                    </div>
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatCurrency(conversionMetrics.reservation_value)}</div>
-                        <div class="conversion-label">Wartość rezerwacji</div>
-                    </div>
-                    <div class="conversion-card">
-                        <div class="conversion-value">${roas > 0 ? roas.toFixed(2) + 'x' : '0x'}</div>
-                        <div class="conversion-label">ROAS</div>
-                    </div>
-                </div>
-                <div class="conversion-grid-row3">
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatCurrency(cost_per_reservation)}</div>
-                        <div class="conversion-label">Koszt per rezerwacja</div>
-                    </div>
-                    <div class="conversion-card">
-                        <div class="conversion-value">${formatNumber(conversionMetrics.booking_step_2)}</div>
-                        <div class="conversion-label">Etap 2 rezerwacji</div>
-                    </div>
-                    <div class="conversion-card">
-                        <div class="conversion-value">-</div>
-                        <div class="conversion-label">-</div>
-                    </div>
-                </div>
-                ${(conversionMetrics.click_to_call === 0 && conversionMetrics.email_contacts === 0 && conversionMetrics.booking_step_1 === 0) ? `
-                <div class="conversion-cta">
-                    <a href="#" class="cta-button">Skonfiguruj śledzenie konwersji</a>
                 </div>
                 ` : ''}
             </div>
 
-            <!-- Demographics -->
+            <!-- KPI Overview -->
             <div class="section">
-                <div class="section-title">Demografia – Wyświetlenia</div>
-                <div style="display: flex; gap: 20px; margin-bottom: 30px;">
-                    <div style="flex: 1;">
-                        <div class="chart-title">Podział według płci</div>
-                        <canvas id="genderImpressionsChart" width="250" height="250"></canvas>
-                    </div>
-                    <div style="flex: 1;">
-                        <div class="chart-title">Podział według grup wieku</div>
-                        <canvas id="ageImpressionsChart" width="250" height="250"></canvas>
-                    </div>
-                </div>
-                
-                <!-- Gender Impressions Data Table -->
-                <div style="margin-bottom: 20px;">
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Płci</h4>
-                    <div style="display: flex; gap: 20px;">
-                        ${demographicData.gender.map(item => `
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${item.gender === 'Kobiety' || item.gender === 'female' ? '#8B5CF6' : item.gender === 'Mężczyźni' || item.gender === 'male' ? '#3B82F6' : '#6B7280'};"></div>
-                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.gender === 'female' ? 'Female' : item.gender === 'male' ? 'Male' : item.gender === 'unknown' ? 'Unknown' : item.gender}</span>
-                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.impressions)}</span>
-                                <span style="font-size: 12px; color: #6B7280;">(${((item.impressions / demographicData.gender.reduce((sum, g) => sum + g.impressions, 0)) * 100).toFixed(1)}%)</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-
-                <!-- Age Impressions Data Table -->
-                <div style="margin-bottom: 20px;">
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Grup Wiekowych</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-                        ${demographicData.age.map((item, index) => `
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316'][index % 7]};"></div>
-                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.age}</span>
-                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.impressions)}</span>
-                                <span style="font-size: 12px; color: #6B7280;">(${((item.impressions / demographicData.age.reduce((sum, a) => sum + a.impressions, 0)) * 100).toFixed(1)}%)</span>
-                            </div>
-                        `).join('')}
+                <div class="kpi-overview">
+                    <div class="cover-kpi-row">
+                        <div class="cover-kpi">
+                            <span class="cover-kpi-value">${formatCurrency(totalSpend)}</span>
+                            <div class="cover-kpi-label">Wydatki</div>
+                        </div>
+                        <div class="cover-kpi">
+                            <span class="cover-kpi-value">${formatNumberShort(totalImpressions)}</span>
+                            <div class="cover-kpi-label">Wyświetlenia</div>
+                        </div>
+                        <div class="cover-kpi">
+                            <span class="cover-kpi-value">${formatNumberShort(totalClicks)}</span>
+                            <div class="cover-kpi-label">Kliknięcia</div>
+                        </div>
+                        <div class="cover-kpi">
+                            <span class="cover-kpi-value">${formatPercentage(ctr)}</span>
+                            <div class="cover-kpi-label">CTR</div>
+                        </div>
+                        <div class="cover-kpi">
+                            <span class="cover-kpi-value">${formatCurrency(cpc)}</span>
+                            <div class="cover-kpi-label">CPC</div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Demographics Clicks -->
+            <!-- Page 2 - Performance & Conversion Metrics -->
+            <div class="metrics-page">
+                <div class="metrics-column">
+                    <h3>Wydajność kampanii</h3>
+                    <div class="stat-list">
+                        <div class="stat-item">
+                            <span class="stat-label">Wydatki łączne</span>
+                            <span class="stat-value">${formatCurrency(totalSpend)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Wyświetlenia</span>
+                            <span class="stat-value">${formatNumber(totalImpressions)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Kliknięcia</span>
+                            <span class="stat-value">${formatNumber(totalClicks)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Zasięg</span>
+                            <span class="stat-value">${formatNumber(reach)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">CTR</span>
+                            <span class="stat-value">${formatPercentage(ctr)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">CPC</span>
+                            <span class="stat-value">${formatCurrency(cpc)}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">CPM</span>
+                            <span class="stat-value">${formatCurrency(cpm)}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="metrics-column">
+                    <h3>Statystyki konwersji</h3>
+                    <div class="stat-list">
+                        <div class="stat-item">
+                            <span class="stat-label">Potencjalne kontakty – telefon</span>
+                            ${conversionMetrics.click_to_call > 0 ? 
+                                `<span class="stat-value">${formatNumber(conversionMetrics.click_to_call)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Potencjalne kontakty – e-mail</span>
+                            ${conversionMetrics.email_contacts > 0 ? 
+                                `<span class="stat-value">${formatNumber(conversionMetrics.email_contacts)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Kroki rezerwacji – Etap 1</span>
+                            ${conversionMetrics.booking_step_1 > 0 ? 
+                                `<span class="stat-value">${formatNumber(conversionMetrics.booking_step_1)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Rezerwacje (zakończone)</span>
+                            ${conversionMetrics.reservations > 0 ? 
+                                `<span class="stat-value">${formatNumber(conversionMetrics.reservations)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Wartość rezerwacji (zł)</span>
+                            ${conversionMetrics.reservation_value > 0 ? 
+                                `<span class="stat-value">${formatCurrency(conversionMetrics.reservation_value)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">ROAS (x)</span>
+                            ${roas > 0 ? 
+                                `<span class="stat-value">${roas.toFixed(2)}x</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Koszt per rezerwacja (zł)</span>
+                            ${cost_per_reservation > 0 ? 
+                                `<span class="stat-value">${formatCurrency(cost_per_reservation)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Etap 2 rezerwacji</span>
+                            ${conversionMetrics.booking_step_2 > 0 ? 
+                                `<span class="stat-value">${formatNumber(conversionMetrics.booking_step_2)}</span>` :
+                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page 3 - Demographics (Impressions) -->
             <div class="section">
-                <div class="section-title">Demografia – Kliknięcia</div>
-                <div style="display: flex; gap: 20px; margin-bottom: 30px;">
-                    <div style="flex: 1;">
-                        <div class="chart-title">Podział według płci</div>
-                        <canvas id="genderClicksChart" width="250" height="250"></canvas>
-                    </div>
-                    <div style="flex: 1;">
-                        <div class="chart-title">Podział według grup wieku</div>
-                        <canvas id="ageClicksChart" width="250" height="250"></canvas>
-                    </div>
-                </div>
-
-                <!-- Gender Clicks Data Table -->
-                <div style="margin-bottom: 20px;">
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Płci</h4>
-                    <div style="display: flex; gap: 20px;">
-                        ${demographicData.gender.map(item => `
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${item.gender === 'Kobiety' || item.gender === 'female' ? '#8B5CF6' : item.gender === 'Mężczyźni' || item.gender === 'male' ? '#3B82F6' : '#6B7280'};"></div>
-                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.gender === 'female' ? 'Female' : item.gender === 'male' ? 'Male' : item.gender === 'unknown' ? 'Unknown' : item.gender}</span>
-                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.clicks)}</span>
-                                <span style="font-size: 12px; color: #6B7280;">(${((item.clicks / demographicData.gender.reduce((sum, g) => sum + g.clicks, 0)) * 100).toFixed(1)}%)</span>
-                            </div>
-                        `).join('')}
+                <div class="chart-container">
+                    <div class="chart-title">Demografia – Wyświetlenia</div>
+                    <div class="charts-grid">
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <canvas id="genderImpressionsChart" width="250" height="250"></canvas>
+                        </div>
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <canvas id="ageImpressionsChart" width="250" height="250"></canvas>
+                        </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- Age Clicks Data Table -->
-                <div style="margin-bottom: 20px;">
-                    <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Podział według Grup Wiekowych</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-                        ${demographicData.age.map((item, index) => `
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: ${['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316'][index % 7]};"></div>
-                                <span style="font-size: 12px; color: #374151; font-weight: 500;">${item.age}</span>
-                                <span style="font-size: 12px; color: #6B7280;">${formatNumberShort(item.clicks)}</span>
-                                <span style="font-size: 12px; color: #6B7280;">(${((item.clicks / demographicData.age.reduce((sum, a) => sum + a.clicks, 0)) * 100).toFixed(1)}%)</span>
-                            </div>
-                        `).join('')}
+            <!-- Page 4 - Demographics (Clicks) -->
+            <div class="section">
+                <div class="chart-container">
+                    <div class="chart-title">Demografia – Kliknięcia</div>
+                    <div class="charts-grid">
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <canvas id="genderClicksChart" width="250" height="250"></canvas>
+                        </div>
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <canvas id="ageClicksChart" width="250" height="250"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -794,17 +871,17 @@ function generatePDFHTML(reportData: ReportData): string {
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Placement</th>
-                                <th>Wydatki</th>
-                                <th>Wyświetlenia</th>
-                                <th>Kliknięcia</th>
+                                <th>PLACEMENT</th>
+                                <th>WYDATKI</th>
+                                <th>WYŚWIETLENIA</th>
+                                <th>KLIKNIĘCIA</th>
                                 <th>CTR</th>
                                 <th>CPC</th>
                                 <th>CPA</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${placementData.map(placement => `
+                            ${placementData.map((placement: any) => `
                                 <tr>
                                     <td>${placement.placement}</td>
                                     <td>${formatCurrency(placement.spend)}</td>
@@ -818,6 +895,11 @@ function generatePDFHTML(reportData: ReportData): string {
                         </tbody>
                     </table>
                 </div>
+                ${placementData.some((p: any) => p.placement?.includes('Pozostałe')) ? `
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 16px; text-align: center;">
+                    Pozycje zduplikowane wynikają z różnych zestawów reklam.
+                </p>
+                ` : ''}
             </div>
             ` : ''}
 
@@ -829,15 +911,15 @@ function generatePDFHTML(reportData: ReportData): string {
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Nazwa reklamy</th>
-                                <th>Wydatki</th>
-                                <th>Wyświetlenia</th>
-                                <th>Kliknięcia</th>
+                                <th>NAZWA REKLAMY</th>
+                                <th>WYDATKI</th>
+                                <th>WYŚWIETLENIA</th>
+                                <th>KLIKNIĘCIA</th>
                                 <th>CPP/CPA</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${topAds.map(ad => `
+                            ${topAds.map((ad: any) => `
                                 <tr>
                                     <td>${(ad.ad_name || 'Nieznana reklama').substring(0, 50)}${(ad.ad_name || '').length > 50 ? '...' : ''}</td>
                                     <td>${formatCurrency(ad.spend)}</td>
@@ -849,6 +931,11 @@ function generatePDFHTML(reportData: ReportData): string {
                         </tbody>
                     </table>
                 </div>
+                ${topAds.length === 10 ? `
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 16px; text-align: center;">
+                    Pokazano top 10 reklam według wydatków.
+                </p>
+                ` : ''}
             </div>
             ` : ''}
 
@@ -859,18 +946,18 @@ function generatePDFHTML(reportData: ReportData): string {
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>Nazwa kampanii</th>
-                                <th>Wydatki</th>
-                                <th>Wyświetlenia</th>
-                                <th>Kliknięcia</th>
+                                <th>NAZWA KAMPANII</th>
+                                <th>WYDATKI</th>
+                                <th>WYŚWIETLENIA</th>
+                                <th>KLIKNIĘCIA</th>
                                 <th>CTR</th>
                                 <th>CPC</th>
-                                <th>Konwersje</th>
+                                <th>KONWERSJE</th>
                                 <th>CPA</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${reportData.campaigns.map(campaign => {
+                            ${reportData.campaigns.map((campaign: any) => {
                               const campaignCPA = campaign.conversions > 0 ? campaign.spend / campaign.conversions : 0;
                               return `
                                 <tr>
@@ -901,6 +988,7 @@ function generatePDFHTML(reportData: ReportData): string {
                     <p>• CPC: Średni koszt kliknięcia (Cost Per Click)</p>
                     <p>• CPM: Koszt za 1000 wyświetleń (Cost Per Mille)</p>
                     <p>• CPA: Koszt pozyskania klienta (Cost Per Acquisition)</p>
+                    <p>• ROAS: Zwrot z wydatków reklamowych (Return on Ad Spend)</p>
                     <p><strong>Zakres analizy:</strong> ${formatDate(reportData.dateRange.start)} – ${formatDate(reportData.dateRange.end)}</p>
                 </div>
             </div>

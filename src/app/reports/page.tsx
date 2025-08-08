@@ -2108,39 +2108,51 @@ function ReportsPageContent() {
                 {/* Header */}
         <div className="border-b border-gray-200 pb-6 mb-8">
           <div className="flex flex-col lg:flex-row items-center justify-between space-y-4 lg:space-y-0">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900 mb-1">
-                Raporty {
-                  viewType === 'monthly' ? 'Miesięczne' :
-                  viewType === 'weekly' ? 'Tygodniowe' :
-                  viewType === 'all-time' ? 'Całego Okresu' :
-                  'Własnego Zakresu'
-                }
-              </h1>
-              <div className="flex items-center space-x-4 text-sm text-gray-600">
-                <span>{selectedClient?.name} - Premium Analytics Dashboard</span>
-                <div className="flex items-center space-x-1">
-                  <Clock className="w-3 h-3" />
-                  <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
-                </div>
-                {process.env.NODE_ENV === 'development' && (
-                  <div className="flex items-center space-x-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md border border-orange-200">
-                    <Code className="w-3 h-3" />
-                    <span className="text-xs font-medium">DEV MODE</span>
-                  </div>
-                )}
-              </div>
-              
-              {/* Client Selector for Admin Users */}
-              {profile?.role === 'admin' && (
-                <div className="mt-2">
-                  <ClientSelector
-                    currentClient={selectedClient}
-                    onClientChange={handleClientChange}
-                    userRole={profile.role}
+            <div className="flex items-center space-x-4">
+              {/* Client Logo */}
+              {selectedClient?.logo_url && (
+                <div className="flex-shrink-0">
+                  <img 
+                    src={selectedClient.logo_url} 
+                    alt={`${selectedClient?.name} logo`}
+                    className="h-12 w-12 object-contain rounded-lg border border-gray-200 bg-white p-1"
                   />
                 </div>
               )}
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-1">
+                  Raporty {
+                    viewType === 'monthly' ? 'Miesięczne' :
+                    viewType === 'weekly' ? 'Tygodniowe' :
+                    viewType === 'all-time' ? 'Całego Okresu' :
+                    'Własnego Zakresu'
+                  }
+                </h1>
+                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                    <span>{selectedClient?.name} - Premium Analytics Dashboard</span>
+                    <div className="flex items-center space-x-1">
+                      <Clock className="w-3 h-3" />
+                      <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
+                    </div>
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="flex items-center space-x-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md border border-orange-200">
+                        <Code className="w-3 h-3" />
+                        <span className="text-xs font-medium">DEV MODE</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Client Selector for Admin Users */}
+                  {profile?.role === 'admin' && (
+                    <div className="mt-2">
+                      <ClientSelector
+                        currentClient={selectedClient}
+                        onClientChange={handleClientChange}
+                        userRole={profile.role}
+                      />
+                    </div>
+                  )}
+                </div>
             </div>
             
             <div className="flex items-center space-x-3">

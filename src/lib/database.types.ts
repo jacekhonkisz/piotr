@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.12 (cd3cf9e)"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          operationName?: string
+          query?: string
+          variables?: Json
+          extensions?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       campaign_summaries: {
@@ -92,57 +117,18 @@ export type Database = {
           },
         ]
       }
-      executive_summaries: {
-        Row: {
-          id: string
-          client_id: string
-          date_range_start: string
-          date_range_end: string
-          content: string
-          is_ai_generated: boolean
-          generated_at: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          client_id: string
-          date_range_start: string
-          date_range_end: string
-          content: string
-          is_ai_generated?: boolean
-          generated_at?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          client_id?: string
-          date_range_start?: string
-          date_range_end?: string
-          content?: string
-          is_ai_generated?: boolean
-          generated_at?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "executive_summaries_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       campaigns: {
         Row: {
+          booking_step_1: number | null
+          booking_step_2: number | null
+          booking_step_3: number | null
           campaign_id: string
           campaign_name: string
+          click_to_call: number | null
           clicks: number
           client_id: string
           conversions: number
+          cost_per_reservation: number | null
           cpc: number
           cpp: number | null
           created_at: string
@@ -153,17 +139,26 @@ export type Database = {
           frequency: number | null
           id: string
           impressions: number
+          lead: number | null
+          purchase: number | null
+          purchase_value: number | null
           reach: number | null
+          roas: number | null
           spend: number
           status: string
           updated_at: string
         }
         Insert: {
+          booking_step_1?: number | null
+          booking_step_2?: number | null
+          booking_step_3?: number | null
           campaign_id: string
           campaign_name: string
+          click_to_call?: number | null
           clicks?: number
           client_id: string
           conversions?: number
+          cost_per_reservation?: number | null
           cpc?: number
           cpp?: number | null
           created_at?: string
@@ -174,17 +169,26 @@ export type Database = {
           frequency?: number | null
           id?: string
           impressions?: number
+          lead?: number | null
+          purchase?: number | null
+          purchase_value?: number | null
           reach?: number | null
+          roas?: number | null
           spend?: number
           status: string
           updated_at?: string
         }
         Update: {
+          booking_step_1?: number | null
+          booking_step_2?: number | null
+          booking_step_3?: number | null
           campaign_id?: string
           campaign_name?: string
+          click_to_call?: number | null
           clicks?: number
           client_id?: string
           conversions?: number
+          cost_per_reservation?: number | null
           cpc?: number
           cpp?: number | null
           created_at?: string
@@ -195,7 +199,11 @@ export type Database = {
           frequency?: number | null
           id?: string
           impressions?: number
+          lead?: number | null
+          purchase?: number | null
+          purchase_value?: number | null
           reach?: number | null
+          roas?: number | null
           spend?: number
           status?: string
           updated_at?: string
@@ -278,23 +286,24 @@ export type Database = {
           admin_id: string
           api_status: Database["public"]["Enums"]["api_status"]
           company: string | null
-          contact_emails: string[]
+          contact_emails: string[] | null
           created_at: string
           credentials_generated_at: string | null
           email: string
-          email_send_count: number
+          email_send_count: number | null
           generated_password: string | null
           generated_username: string | null
           id: string
           last_report_date: string | null
           last_report_sent_at: string | null
           last_token_validation: string | null
+          logo_url: string | null
           meta_access_token: string | null
           name: string
           next_report_scheduled_at: string | null
           notes: string | null
           reporting_frequency: Database["public"]["Enums"]["reporting_frequency"]
-          send_day: number
+          send_day: number | null
           system_user_token: string | null
           token_expires_at: string | null
           token_health_status: string | null
@@ -306,23 +315,24 @@ export type Database = {
           admin_id: string
           api_status?: Database["public"]["Enums"]["api_status"]
           company?: string | null
-          contact_emails?: string[]
+          contact_emails?: string[] | null
           created_at?: string
           credentials_generated_at?: string | null
           email: string
-          email_send_count?: number
+          email_send_count?: number | null
           generated_password?: string | null
           generated_username?: string | null
           id?: string
           last_report_date?: string | null
           last_report_sent_at?: string | null
           last_token_validation?: string | null
+          logo_url?: string | null
           meta_access_token?: string | null
           name: string
           next_report_scheduled_at?: string | null
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
-          send_day?: number
+          send_day?: number | null
           system_user_token?: string | null
           token_expires_at?: string | null
           token_health_status?: string | null
@@ -334,23 +344,24 @@ export type Database = {
           admin_id?: string
           api_status?: Database["public"]["Enums"]["api_status"]
           company?: string | null
-          contact_emails?: string[]
+          contact_emails?: string[] | null
           created_at?: string
           credentials_generated_at?: string | null
           email?: string
-          email_send_count?: number
+          email_send_count?: number | null
           generated_password?: string | null
           generated_username?: string | null
           id?: string
           last_report_date?: string | null
           last_report_sent_at?: string | null
           last_token_validation?: string | null
+          logo_url?: string | null
           meta_access_token?: string | null
           name?: string
           next_report_scheduled_at?: string | null
           notes?: string | null
           reporting_frequency?: Database["public"]["Enums"]["reporting_frequency"]
-          send_day?: number
+          send_day?: number | null
           system_user_token?: string | null
           token_expires_at?: string | null
           token_health_status?: string | null
@@ -460,6 +471,130 @@ export type Database = {
             columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_scheduler_logs: {
+        Row: {
+          admin_id: string | null
+          client_id: string | null
+          created_at: string
+          email_sent: boolean
+          email_sent_at: string | null
+          error_message: string | null
+          frequency: string
+          id: string
+          operation_type: string
+          report_period_end: string
+          report_period_start: string
+          retry_count: number | null
+          send_day: number | null
+          updated_at: string
+        }
+        Insert: {
+          admin_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          email_sent?: boolean
+          email_sent_at?: string | null
+          error_message?: string | null
+          frequency: string
+          id?: string
+          operation_type: string
+          report_period_end: string
+          report_period_start: string
+          retry_count?: number | null
+          send_day?: number | null
+          updated_at?: string
+        }
+        Update: {
+          admin_id?: string | null
+          client_id?: string | null
+          created_at?: string
+          email_sent?: boolean
+          email_sent_at?: string | null
+          error_message?: string | null
+          frequency?: string
+          id?: string
+          operation_type?: string
+          report_period_end?: string
+          report_period_start?: string
+          retry_count?: number | null
+          send_day?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_scheduler_logs_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_scheduler_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_scheduler_logs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      executive_summaries: {
+        Row: {
+          client_id: string
+          content: string
+          created_at: string | null
+          date_range_end: string
+          date_range_start: string
+          generated_at: string | null
+          id: string
+          is_ai_generated: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          client_id: string
+          content: string
+          created_at?: string | null
+          date_range_end: string
+          date_range_start: string
+          generated_at?: string | null
+          id?: string
+          is_ai_generated?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          client_id?: string
+          content?: string
+          created_at?: string | null
+          date_range_end?: string
+          date_range_start?: string
+          generated_at?: string | null
+          id?: string
+          is_ai_generated?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "executive_summaries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "executive_summaries_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
             referencedColumns: ["id"]
           },
         ]
@@ -849,6 +984,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       api_status: ["valid", "invalid", "expired", "pending"],
