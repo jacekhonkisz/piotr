@@ -13,9 +13,112 @@ import {
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+  );
 
-export async function POST(request: NextRequest) {
+// Helper function to check if date range is current month
+function isCurrentMonth(startDate: string, endDate: string): boolean {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  
+  const start = new Date(startDate + 'T00:00:00.000Z');
+  const end = new Date(endDate + 'T23:59:59.999Z');
+  
+  const startYear = start.getFullYear();
+  const startMonth = start.getMonth() + 1;
+  const endYear = end.getFullYear();
+  const endMonth = end.getMonth() + 1;
+  
+  console.log('🔍 CURRENT MONTH DETECTION:', {
+    now: now.toISOString(),
+    currentYear,
+    currentMonth,
+    startDate,
+    endDate,
+    startYear,
+    startMonth,
+    endYear,
+    endMonth,
+    isStartCurrentMonth: startYear === currentYear && startMonth === currentMonth,
+    isEndCurrentMonth: endYear === currentYear && endMonth === currentMonth,
+    bothInCurrentMonth: startYear === currentYear && startMonth === currentMonth && endYear === currentYear && endMonth === currentMonth
+  });
+  
+  // Check if the range covers the current month
+  const result = startYear === currentYear && 
+         startMonth === currentMonth &&
+         endYear === currentYear && 
+         endMonth === currentMonth;
+         
+  console.log('🎯 IS CURRENT MONTH RESULT:', result);
+  return result;
+}
+
+// Helper function to load data from database for previous months
+async function loadFromDatabase(clientId: string, startDate: string, endDate: string) {
+  console.log(`📊 Loading data from database for ${clientId} (${startDate} to ${endDate})`);
+  
+  const { data: storedSummary, error } = await supabase
+    .from('campaign_summaries')
+    .select('*')
+    .eq('client_id', clientId)
+    .eq('summary_date', startDate)
+    .eq('summary_type', 'monthly')
+    .single();
+
+  if (error || !storedSummary) {
+    console.log('⚠️ No stored data found, falling back to live fetch');
+    return null;
+  }
+
+  console.log('✅ Found stored data in database');
+  
+  // Extract data from stored summary
+  const campaigns = storedSummary.campaign_data || [];
+  const totals = {
+    totalSpend: storedSummary.total_spend || 0,
+    totalImpressions: storedSummary.total_impressions || 0,
+    totalClicks: storedSummary.total_clicks || 0,
+    totalConversions: storedSummary.total_conversions || 0,
+    averageCtr: storedSummary.average_ctr || 0,
+    averageCpc: storedSummary.average_cpc || 0
+  };
+
+  // Extract conversion metrics from campaign data
+  const conversionMetrics = {
+    click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
+    email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+    booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+    reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
+    reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
+    booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+    roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
+    cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
+      totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
+  };
+
+  return {
+    client: {
+      id: clientId,
+      currency: 'PLN'
+    },
+    campaigns,
+    stats: totals,
+    conversionMetrics,
+    dateRange: {
+      start: startDate,
+      end: endDate
+    },
+    accountInfo: {
+      currency: 'PLN',
+      timezone: 'Europe/Warsaw',
+      status: 'ACTIVE'
+    },
+    fromDatabase: true
+  };
+}
+  
+  export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
@@ -133,9 +236,94 @@ export async function POST(request: NextRequest) {
       apiMethod = selectMetaAPIMethod({ start: startDate, end: endDate });
     }
 
-    console.log('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
+          console.log('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
 
-    // Initialize Meta API service
+      // SMART ROUTING: Current month vs Previous months
+      const isCurrentMonthRequest = isCurrentMonth(startDate, endDate);
+      console.log(`📊 DETAILED ROUTING ANALYSIS:`, {
+        startDate,
+        endDate,
+        currentSystemDate: new Date().toISOString(),
+        currentYear: new Date().getFullYear(),
+        currentMonth: new Date().getMonth() + 1,
+        isCurrentMonthRequest,
+        forceFresh,
+        routingDecision: isCurrentMonthRequest ? 'SMART CACHE' : 'DATABASE FIRST'
+      });
+      
+      if (!forceFresh && !isCurrentMonthRequest) {
+        // Previous months: Use database lookup (data doesn't change)
+        console.log('📊 Checking database for previous month data...');
+        const databaseResult = await loadFromDatabase(clientId, startDate, endDate);
+        
+        if (databaseResult) {
+          const responseTime = Date.now() - startTime;
+          console.log(`🚀 Database lookup completed in ${responseTime}ms`);
+          
+          return NextResponse.json({
+            success: true,
+            data: databaseResult,
+            debug: {
+              source: 'database',
+              responseTime,
+              authenticatedUser: user.email,
+              currency: 'PLN'
+            }
+          });
+        }
+      } else if (isCurrentMonthRequest && !forceFresh) {
+        // Current month: Use smart cache (3-hour refresh) BUT fetch live and store
+        console.log('📊 🔴 CURRENT MONTH DETECTED - CHECKING SMART CACHE...');
+        
+        try {
+          // Use the shared smart cache helper
+          const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
+          
+          console.log('📊 🔍 Calling getSmartCacheData for clientId:', clientId);
+          const cacheResult = await getSmartCacheData(clientId, false);
+          
+          console.log('📊 💾 Cache result received:', {
+            success: cacheResult.success,
+            hasData: !!cacheResult.data,
+            hasCampaigns: cacheResult.data?.campaigns !== undefined,
+            campaignCount: cacheResult.data?.campaigns?.length || 'N/A',
+            source: cacheResult.source,
+            fromCache: cacheResult.data?.fromCache
+          });
+          
+          if (cacheResult.success && cacheResult.data.campaigns !== undefined) {
+            const responseTime = Date.now() - startTime;
+            console.log(`🚀 ✅ SMART CACHE HIT! Completed in ${responseTime}ms - campaigns: ${cacheResult.data.campaigns.length}`);
+            
+            return NextResponse.json({
+              success: true,
+              data: cacheResult.data,
+              debug: {
+                source: cacheResult.source,
+                responseTime,
+                cacheAge: cacheResult.data.cacheAge,
+                authenticatedUser: user.email,
+                currency: cacheResult.data.client?.currency || 'PLN'
+              }
+            });
+          } else {
+            console.log('⚠️ ❌ SMART CACHE MISS - Reason:', {
+              success: cacheResult.success,
+              hasData: !!cacheResult.data,
+              hasCampaigns: cacheResult.data?.campaigns !== undefined,
+              error: cacheResult.error || 'No error'
+            });
+            console.log('📊 🔄 Falling back to live Meta API fetch and will cache result...');
+          }
+        } catch (cacheError) {
+          console.log('⚠️ ❌ Smart cache error, fetching live data:', cacheError);
+        }
+      }
+
+      // If database lookup failed OR this is current month (live fetch + cache), proceed with Meta API
+      console.log(`🔄 Proceeding with live Meta API fetch${isCurrentMonthRequest ? ' (will cache for 3 hours)' : ''}...`);
+
+      // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);
     
     // Check for cache clearing parameter
@@ -306,42 +494,80 @@ export async function POST(request: NextRequest) {
       currency: accountInfo?.currency || 'USD'
     });
 
+    // Prepare response data
+    const responseData = {
+      client: {
+        ...client,
+        currency: accountInfo?.currency || 'USD'
+      },
+      campaigns: campaignInsights,
+      stats: {
+        totalSpend,
+        totalImpressions,
+        totalClicks,
+        totalConversions,
+        averageCtr,
+        averageCpc
+      },
+      conversionMetrics: {
+        click_to_call: totalClickToCall,
+        email_contacts: totalEmailContacts,
+        booking_step_1: totalBookingStep1,
+        reservations: totalReservations,
+        reservation_value: totalReservationValue,
+        roas: overallRoas,
+        cost_per_reservation: overallCostPerReservation,
+        booking_step_2: totalBookingStep2
+      },
+      dateRange: {
+        start: startDate,
+        end: endDate
+      },
+      accountInfo: accountInfo ? {
+        currency: accountInfo.currency,
+        timezone: accountInfo.timezone_name,
+        status: accountInfo.account_status
+      } : null,
+      fromCache: false,
+      lastUpdated: new Date().toISOString()
+    };
+
+    // SMART CACHE: Store current month data for 3-hour reuse
+    // (isCurrentMonthRequest already declared above)
+    if (isCurrentMonthRequest) {
+      console.log('💾 🔴 CURRENT MONTH DATA - STORING IN SMART CACHE...', {
+        clientId,
+        campaignCount: campaignInsights.length,
+        willCache: true
+      });
+      
+      try {
+        const currentMonth = {
+          year: new Date().getFullYear(),
+          month: new Date().getMonth() + 1,
+          periodId: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+        };
+
+        // Store in cache table
+        await supabase
+          .from('current_month_cache')
+          .upsert({
+            client_id: clientId,
+            cache_data: responseData,
+            last_updated: new Date().toISOString(),
+            period_id: currentMonth.periodId
+          });
+
+        console.log('✅ Current month data cached successfully');
+      } catch (cacheError) {
+        console.log('⚠️ Failed to cache current month data:', cacheError);
+        // Don't fail the request if caching fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      data: {
-        client: {
-          ...client,
-          currency: accountInfo?.currency || 'USD'
-        },
-        campaigns: campaignInsights,
-        stats: {
-          totalSpend,
-          totalImpressions,
-          totalClicks,
-          totalConversions,
-          averageCtr,
-          averageCpc
-        },
-        conversionMetrics: {
-          click_to_call: totalClickToCall,
-          email_contacts: totalEmailContacts,
-          booking_step_1: totalBookingStep1,
-          reservations: totalReservations,
-          reservation_value: totalReservationValue,
-          roas: overallRoas,
-          cost_per_reservation: overallCostPerReservation,
-          booking_step_2: totalBookingStep2
-        },
-        dateRange: {
-          start: startDate,
-          end: endDate
-        },
-        accountInfo: accountInfo ? {
-          currency: accountInfo.currency,
-          timezone: accountInfo.timezone_name,
-          status: accountInfo.account_status
-        } : null
-      },
+      data: responseData,
       debug: {
         tokenValid: tokenValidation.valid,
         campaignInsightsCount: campaignInsights.length,
@@ -349,7 +575,9 @@ export async function POST(request: NextRequest) {
         metaApiError: metaApiError,
         hasMetaApiError: !!metaApiError,
         authenticatedUser: user.email,
-        currency: accountInfo?.currency || 'USD'
+        currency: accountInfo?.currency || 'USD',
+        source: isCurrentMonthRequest ? 'live-api-cached' : 'live-api',
+        responseTime
       }
     });
 

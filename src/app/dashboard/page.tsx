@@ -41,7 +41,7 @@ interface ClientDashboardData {
     averageCtr: number;
     averageCpc: number;
   };
-  conversionMetrics?: {
+  conversionMetrics: {
     click_to_call: number;
     email_contacts: number;
     booking_step_1: number;
@@ -51,6 +51,8 @@ interface ClientDashboardData {
     cost_per_reservation: number;
     booking_step_2: number;
   };
+  debug?: any;
+  lastUpdated?: string;
 }
 
 interface CachedData {
@@ -117,12 +119,15 @@ export default function DashboardPage() {
         reports: reports || [],
         campaigns: mainDashboardData.campaigns,
         stats: mainDashboardData.stats,
-        conversionMetrics: mainDashboardData.conversionMetrics
+        conversionMetrics: mainDashboardData.conversionMetrics,
+        // Add debug info for components
+        debug: mainDashboardData.debug,
+        lastUpdated: new Date().toISOString()
       };
 
       setClientData(dashboardData);
-      setDataSource('live');
-      saveToCache(dashboardData, 'live');
+      setDataSource(mainDashboardData.debug?.source === 'cache' || mainDashboardData.debug?.source === 'stale-cache' ? 'database' : 'live');
+      saveToCache(dashboardData, mainDashboardData.debug?.source === 'cache' || mainDashboardData.debug?.source === 'stale-cache' ? 'database' : 'live');
       
       setLoadingProgress(100);
       setLoadingMessage('Gotowe!');
@@ -554,23 +559,20 @@ export default function DashboardPage() {
         controller.abort();
       }, 15000); // Reduced from 30000
       
+      // Use fetch-live-data for consistent data with reports page
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
-          'Cache-Control': 'max-age=300', // 5 minute cache instead of no-cache
+          'Cache-Control': 'max-age=300', // 5 minute cache
           'Pragma': 'cache',
           'Expires': new Date(Date.now() + 300000).toUTCString() // 5 minutes
         },
         body: JSON.stringify({
           clientId: currentClient.id,
-          dateRange: {
-            start: dateRange.start,
-            end: dateRange.end
-          },
-          _t: Date.now(),
-          forceRefresh: false // Changed from true to false to use caching
+          dateRange: dateRange,
+          forceRefresh: false
         }),
         signal: controller.signal
       });
@@ -598,7 +600,8 @@ export default function DashboardPage() {
             roas: 0,
             cost_per_reservation: 0,
             booking_step_2: 0
-          }
+          },
+          debug: {}
         };
       }
 
@@ -674,7 +677,8 @@ export default function DashboardPage() {
             averageCtr,
             averageCpc
           },
-          conversionMetrics
+          conversionMetrics,
+          debug: monthData.debug || {}
         };
       } else {
         console.warn('⚠️ API response missing campaigns data:', monthData);
@@ -697,7 +701,8 @@ export default function DashboardPage() {
             roas: 0,
             cost_per_reservation: 0,
             booking_step_2: 0
-          }
+          },
+          debug: {}
         };
       }
     } catch (error) {
@@ -721,7 +726,8 @@ export default function DashboardPage() {
           roas: 0,
           cost_per_reservation: 0,
           booking_step_2: 0
-        }
+        },
+        debug: {}
       };
     }
   };
@@ -890,9 +896,15 @@ export default function DashboardPage() {
 
         {/* Modern Bar Chart - Main Metrics */}
         <div className="mb-8">
-                     <MetaPerformanceLive
-             clientId={clientData.client.id}
-           />
+          <MetaPerformanceLive
+            clientId={clientData.client.id}
+            sharedData={{
+              stats: clientData.stats,
+              conversionMetrics: clientData.conversionMetrics,
+              debug: clientData.debug,
+              lastUpdated: clientData.lastUpdated || new Date().toISOString()
+            }}
+          />
         </div>
 
         {/* Performance Metrics - 3 Animated Cards */}
