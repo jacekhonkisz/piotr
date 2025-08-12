@@ -148,16 +148,22 @@ export class BackgroundDataCollector {
       try {
         console.log(`📅 Collecting ${monthData.year}-${monthData.month.toString().padStart(2, '0')} for ${client.name}`);
 
-        // Fetch monthly campaign insights
+        // Fetch COMPLETE campaign insights using improved method with pagination
         // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-        const campaignInsights = await metaService.getMonthlyCampaignInsights(
+        const campaignInsights = await metaService.getCompleteCampaignInsights(
           processedAdAccountId,
-          monthData.year,
-          monthData.month
+          monthData.startDate,
+          monthData.endDate
         );
 
-        // Calculate totals
+        console.log(`📊 Retrieved ${campaignInsights.length} campaigns with complete data`);
+
+        // Calculate totals from complete campaign data
         const totals = this.calculateTotals(campaignInsights);
+
+        // Count active campaigns (all returned campaigns are considered active)
+        const activeCampaignCount = campaignInsights.length;
+        console.log(`📈 Active campaigns for ${monthData.year}-${monthData.month}: ${activeCampaignCount}`);
 
         // Fetch meta tables
         let metaTables = null;
@@ -183,7 +189,8 @@ export class BackgroundDataCollector {
           summary_date: monthData.startDate,
           campaigns: campaignInsights,
           totals,
-          metaTables
+          metaTables,
+          activeCampaignCount
         });
 
         console.log(`✅ Stored monthly summary for ${client.name} ${monthData.year}-${monthData.month}`);
@@ -246,15 +253,20 @@ export class BackgroundDataCollector {
       try {
         console.log(`📅 Collecting week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
 
-        // Fetch weekly campaign insights
-        const campaignInsights = await metaService.getCampaignInsights(
+        // Fetch COMPLETE weekly campaign insights using improved method with pagination
+        const campaignInsights = await metaService.getCompleteCampaignInsights(
           processedAdAccountId,
           weekData.startDate,
           weekData.endDate
         );
 
-        // Calculate totals
+        console.log(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
+
+        // Calculate totals from complete campaign data
         const totals = this.calculateTotals(campaignInsights);
+
+        // Count active campaigns (all returned campaigns are considered active)
+        const activeCampaignCount = campaignInsights.length;
 
         // Fetch meta tables
         let metaTables = null;
@@ -280,7 +292,8 @@ export class BackgroundDataCollector {
           summary_date: weekData.startDate,
           campaigns: campaignInsights,
           totals,
-          metaTables
+          metaTables,
+          activeCampaignCount
         });
 
         console.log(`✅ Stored weekly summary for ${client.name} week ${weekData.weekNumber}`);
@@ -309,7 +322,7 @@ export class BackgroundDataCollector {
       average_ctr: data.totals.ctr || 0,
       average_cpc: data.totals.cpc || 0,
       average_cpa: data.totals.cpa || 0,
-      active_campaigns: data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
+      active_campaigns: data.activeCampaignCount || data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
       total_campaigns: data.campaigns.length,
       campaign_data: data.campaigns,
       meta_tables: data.metaTables,
@@ -343,7 +356,7 @@ export class BackgroundDataCollector {
       average_ctr: data.totals.ctr || 0,
       average_cpc: data.totals.cpc || 0,
       average_cpa: data.totals.cpa || 0,
-      active_campaigns: data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
+      active_campaigns: data.activeCampaignCount || data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
       total_campaigns: data.campaigns.length,
       campaign_data: data.campaigns,
       meta_tables: data.metaTables,

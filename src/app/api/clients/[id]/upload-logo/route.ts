@@ -100,7 +100,7 @@ export async function POST(
     }
 
     // Upload file to Supabase storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('client-logos')
       .upload(fileName, file, {
         cacheControl: '3600',

@@ -88,7 +88,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ dateStart, dateEnd, clientId })
+        body: JSON.stringify({ 
+          dateRange: {
+            start: dateStart,
+            end: dateEnd
+          }, 
+          clientId 
+        })
       });
 
       if (!response.ok) {
@@ -100,28 +106,51 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
       
       if (result.success) {
         console.log('🔍 MetaAdsTables received data:', {
-          placementDataLength: result.data.placementPerformance?.length || 0,
-          demographicDataLength: result.data.demographicPerformance?.length || 0,
-          adRelevanceDataLength: result.data.adRelevanceResults?.length || 0,
-          sampleDemographicData: result.data.demographicPerformance?.slice(0, 2),
-          fullDemographicData: result.data.demographicPerformance
+          placementDataLength: result.data.metaTables?.placementPerformance?.length || 0,
+          demographicDataLength: result.data.metaTables?.demographicPerformance?.length || 0,
+          adRelevanceDataLength: result.data.metaTables?.adRelevanceResults?.length || 0,
+          sampleDemographicData: result.data.metaTables?.demographicPerformance?.slice(0, 2),
+          fullDemographicData: result.data.metaTables?.demographicPerformance
         });
+        
+        console.log('🔍 MetaAdsTables FULL RESULT:', result);
+        console.log('🔍 MetaAdsTables result.data:', result.data);
+        console.log('🔍 MetaAdsTables result.data.metaTables:', result.data?.metaTables);
+        console.log('🔍 MetaAdsTables result.data keys:', Object.keys(result.data || {}));
+        console.log('🔍 MetaAdsTables placement data type:', typeof result.data.metaTables?.placementPerformance, Array.isArray(result.data.metaTables?.placementPerformance));
+        console.log('🔍 MetaAdsTables demographic data type:', typeof result.data.metaTables?.demographicPerformance, Array.isArray(result.data.metaTables?.demographicPerformance));
+        console.log('🔍 MetaAdsTables ad relevance data type:', typeof result.data.metaTables?.adRelevanceResults, Array.isArray(result.data.metaTables?.adRelevanceResults));
 
-        setPlacementData(result.data.placementPerformance || []);
-        setDemographicData(result.data.demographicPerformance || []);
-        setAdRelevanceData(result.data.adRelevanceResults || []);
+        const placementArray = result.data.metaTables?.placementPerformance || [];
+        const demographicArray = result.data.metaTables?.demographicPerformance || [];
+        const adRelevanceArray = result.data.metaTables?.adRelevanceResults || [];
+        
+        console.log('🔍 MetaAdsTables BEFORE setState:', {
+          placementArray: placementArray.length,
+          demographicArray: demographicArray.length, 
+          adRelevanceArray: adRelevanceArray.length,
+          placementSample: placementArray.slice(0, 2),
+          demographicSample: demographicArray.slice(0, 2),
+          adRelevanceSample: adRelevanceArray.slice(0, 2)
+        });
+        
+        setPlacementData(placementArray);
+        setDemographicData(demographicArray);
+        setAdRelevanceData(adRelevanceArray);
+        
+        console.log('🔍 MetaAdsTables AFTER setState - checking for empty state condition');
         
         // Log if demographic data is missing
-        if (!result.data.demographicPerformance || result.data.demographicPerformance.length === 0) {
+        if (!result.data.metaTables?.demographicPerformance || result.data.metaTables.demographicPerformance.length === 0) {
           console.log('⚠️ No demographic data received from Meta API');
         }
         
         // Call the callback with the loaded data
         if (onDataLoaded) {
           onDataLoaded({
-            placementPerformance: result.data.placementPerformance || [],
-            demographicPerformance: result.data.demographicPerformance || [],
-            adRelevanceResults: result.data.adRelevanceResults || []
+            placementPerformance: result.data.metaTables?.placementPerformance || [],
+            demographicPerformance: result.data.metaTables?.demographicPerformance || [],
+            adRelevanceResults: result.data.metaTables?.adRelevanceResults || []
           });
         }
       } else {

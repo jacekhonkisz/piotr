@@ -30,6 +30,23 @@ interface ReportData {
     cpc: number;
     cpm: number;
   };
+  previousMonthTotals?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+  };
+  previousMonthConversions?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    booking_step_2: number;
+  };
   metaTables?: {
     placementPerformance: any[];
     demographicPerformance: any[];
@@ -48,6 +65,42 @@ function generatePDFHTML(reportData: ReportData): string {
     });
   };
 
+  const calculatePercentageChange = (current: number, previous: number): number => {
+    if (previous === 0) return 0;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const formatPercentageChange = (change: number): string => {
+    const sign = change > 0 ? '+' : '';
+    const className = change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral';
+    const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+    return `<span class="stat-comparison ${className}">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+  };
+
+  const formatStatValue = (current: any, previous?: number, formatter?: (val: number) => string): string => {
+    const formattedCurrent = formatter ? formatter(current) : current.toString();
+    
+    if (previous !== undefined && reportData.previousMonthTotals) {
+      const change = calculatePercentageChange(current, previous);
+      return `
+        <div class="stat-value">
+          <span class="stat-main-value">${formattedCurrent}</span>
+          ${formatPercentageChange(change)}
+        </div>
+      `;
+    }
+    
+    return `<span class="stat-value">${formattedCurrent}</span>`;
+  };
+
+  const formatConversionValue = (current: number, previous?: number, formatter?: (val: number) => string): string => {
+    if (current > 0) {
+      return formatStatValue(current, previous, formatter);
+    } else {
+      return `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`;
+    }
+  };
+
   // Polish number formatting
   const formatCurrency = (value: number | undefined | null) => {
     if (value === undefined || value === null || isNaN(value)) return '0,00 zł';
@@ -59,12 +112,7 @@ function generatePDFHTML(reportData: ReportData): string {
     return value.toLocaleString('pl-PL').replace(/\s/g, '\u00A0');
   };
 
-  const formatNumberShort = (value: number | undefined | null) => {
-    if (value === undefined || value === null || isNaN(value)) return '0';
-    if (value >= 1000000) return `${(value / 1000000).toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/\s/g, '\u00A0')}M`;
-    if (value >= 1000) return `${(value / 1000).toLocaleString('pl-PL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/\s/g, '\u00A0')}k`;
-    return value.toLocaleString('pl-PL').replace(/\s/g, '\u00A0');
-  };
+
 
   const formatPercentage = (value: number | undefined | null) => {
     if (value === undefined || value === null || isNaN(value)) return '0,00%';
@@ -334,6 +382,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 flex-direction: column;
                 justify-content: center;
                 position: relative;
+                padding-top: 140px; /* Extra padding to avoid logo overlap */
             }
             
             .logo-slot {
@@ -362,6 +411,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 background: white;
                 padding: 4px;
                 border: 1px solid var(--border-soft);
+                z-index: 10;
             }
             
             .cover-title {
@@ -517,6 +567,36 @@ function generatePDFHTML(reportData: ReportData): string {
                 font-weight: 600;
                 color: var(--text-strong);
                 text-align: right;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 2px;
+            }
+            
+            .stat-main-value {
+                font-size: 16px;
+                font-weight: 600;
+                color: var(--text-strong);
+            }
+            
+            .stat-comparison {
+                font-size: 12px;
+                font-weight: 500;
+                display: flex;
+                align-items: center;
+                gap: 2px;
+            }
+            
+            .stat-comparison.positive {
+                color: #10B981; /* Green */
+            }
+            
+            .stat-comparison.negative {
+                color: #EF4444; /* Red */
+            }
+            
+            .stat-comparison.neutral {
+                color: var(--text-muted);
             }
             
             .stat-not-configured {
@@ -646,6 +726,15 @@ function generatePDFHTML(reportData: ReportData): string {
                 line-height: 1.6;
             }
             
+            /* Page break utilities */
+            .page-break-before {
+                page-break-before: always;
+            }
+            
+            .page-break-after {
+                page-break-after: always;
+            }
+            
             /* Page breaks and print optimization */
             @media print {
                 body { background: white; }
@@ -702,66 +791,40 @@ function generatePDFHTML(reportData: ReportData): string {
                 ` : ''}
             </div>
 
-            <!-- KPI Overview -->
-            <div class="section">
-                <div class="kpi-overview">
-                    <div class="cover-kpi-row">
-                        <div class="cover-kpi">
-                            <span class="cover-kpi-value">${formatCurrency(totalSpend)}</span>
-                            <div class="cover-kpi-label">Wydatki</div>
-                        </div>
-                        <div class="cover-kpi">
-                            <span class="cover-kpi-value">${formatNumberShort(totalImpressions)}</span>
-                            <div class="cover-kpi-label">Wyświetlenia</div>
-                        </div>
-                        <div class="cover-kpi">
-                            <span class="cover-kpi-value">${formatNumberShort(totalClicks)}</span>
-                            <div class="cover-kpi-label">Kliknięcia</div>
-                        </div>
-                        <div class="cover-kpi">
-                            <span class="cover-kpi-value">${formatPercentage(ctr)}</span>
-                            <div class="cover-kpi-label">CTR</div>
-                        </div>
-                        <div class="cover-kpi">
-                            <span class="cover-kpi-value">${formatCurrency(cpc)}</span>
-                            <div class="cover-kpi-label">CPC</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+
 
             <!-- Page 2 - Performance & Conversion Metrics -->
-            <div class="metrics-page">
+            <div class="metrics-page page-break-before">
                 <div class="metrics-column">
                     <h3>Wydajność kampanii</h3>
                     <div class="stat-list">
                         <div class="stat-item">
                             <span class="stat-label">Wydatki łączne</span>
-                            <span class="stat-value">${formatCurrency(totalSpend)}</span>
+                            ${formatStatValue(totalSpend, reportData.previousMonthTotals?.spend, formatCurrency)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Wyświetlenia</span>
-                            <span class="stat-value">${formatNumber(totalImpressions)}</span>
+                            ${formatStatValue(totalImpressions, reportData.previousMonthTotals?.impressions, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Kliknięcia</span>
-                            <span class="stat-value">${formatNumber(totalClicks)}</span>
+                            ${formatStatValue(totalClicks, reportData.previousMonthTotals?.clicks, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Zasięg</span>
-                            <span class="stat-value">${formatNumber(reach)}</span>
+                            ${formatStatValue(reach, undefined, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">CTR</span>
-                            <span class="stat-value">${formatPercentage(ctr)}</span>
+                            ${formatStatValue(ctr, reportData.previousMonthTotals?.ctr, (val) => formatPercentage(val))}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">CPC</span>
-                            <span class="stat-value">${formatCurrency(cpc)}</span>
+                            ${formatStatValue(cpc, reportData.previousMonthTotals?.cpc, formatCurrency)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">CPM</span>
-                            <span class="stat-value">${formatCurrency(cpm)}</span>
+                            ${formatStatValue(cpm, reportData.previousMonthTotals?.cpm, formatCurrency)}
                         </div>
                     </div>
                 </div>
@@ -771,66 +834,56 @@ function generatePDFHTML(reportData: ReportData): string {
                     <div class="stat-list">
                         <div class="stat-item">
                             <span class="stat-label">Potencjalne kontakty – telefon</span>
-                            ${conversionMetrics.click_to_call > 0 ? 
-                                `<span class="stat-value">${formatNumber(conversionMetrics.click_to_call)}</span>` :
-                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                            ${formatConversionValue(conversionMetrics.click_to_call, reportData.previousMonthConversions?.click_to_call, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Potencjalne kontakty – e-mail</span>
-                            ${conversionMetrics.email_contacts > 0 ? 
-                                `<span class="stat-value">${formatNumber(conversionMetrics.email_contacts)}</span>` :
-                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                            ${formatConversionValue(conversionMetrics.email_contacts, reportData.previousMonthConversions?.email_contacts, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Kroki rezerwacji – Etap 1</span>
-                            ${conversionMetrics.booking_step_1 > 0 ? 
-                                `<span class="stat-value">${formatNumber(conversionMetrics.booking_step_1)}</span>` :
-                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                            ${formatConversionValue(conversionMetrics.booking_step_1, reportData.previousMonthConversions?.booking_step_1, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Rezerwacje (zakończone)</span>
-                            ${conversionMetrics.reservations > 0 ? 
-                                `<span class="stat-value">${formatNumber(conversionMetrics.reservations)}</span>` :
-                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                            ${formatConversionValue(conversionMetrics.reservations, reportData.previousMonthConversions?.reservations, formatNumber)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Wartość rezerwacji (zł)</span>
-                            ${conversionMetrics.reservation_value > 0 ? 
-                                `<span class="stat-value">${formatCurrency(conversionMetrics.reservation_value)}</span>` :
-                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                            ${formatConversionValue(conversionMetrics.reservation_value, reportData.previousMonthConversions?.reservation_value, formatCurrency)}
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">ROAS (x)</span>
                             ${roas > 0 ? 
-                                `<span class="stat-value">${roas.toFixed(2)}x</span>` :
+                                formatStatValue(roas, 
+                                  reportData.previousMonthConversions?.reservation_value && reportData.previousMonthTotals?.spend 
+                                    ? reportData.previousMonthConversions.reservation_value / reportData.previousMonthTotals.spend 
+                                    : undefined, 
+                                  (val) => `${val.toFixed(2)}x`) :
                                 `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
                             }
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Koszt per rezerwacja (zł)</span>
                             ${cost_per_reservation > 0 ? 
-                                `<span class="stat-value">${formatCurrency(cost_per_reservation)}</span>` :
+                                formatStatValue(cost_per_reservation, 
+                                  reportData.previousMonthConversions?.reservations && reportData.previousMonthTotals?.spend 
+                                    ? reportData.previousMonthTotals.spend / reportData.previousMonthConversions.reservations 
+                                    : undefined, 
+                                  formatCurrency) :
                                 `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
                             }
                         </div>
                         <div class="stat-item">
                             <span class="stat-label">Etap 2 rezerwacji</span>
-                            ${conversionMetrics.booking_step_2 > 0 ? 
-                                `<span class="stat-value">${formatNumber(conversionMetrics.booking_step_2)}</span>` :
-                                `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                            ${formatConversionValue(conversionMetrics.booking_step_2, reportData.previousMonthConversions?.booking_step_2, formatNumber)}
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Page 3 - Demographics (Impressions) -->
-            <div class="section">
+            <div class="section page-break-before">
                 <div class="chart-container">
                     <div class="chart-title">Demografia – Wyświetlenia</div>
                     <div class="charts-grid">
@@ -865,7 +918,7 @@ function generatePDFHTML(reportData: ReportData): string {
 
             <!-- Top Placement Performance -->
             ${placementData.length > 0 ? `
-            <div class="section">
+            <div class="section page-break-before">
                 <div class="section-title">Top Placement Performance</div>
                 <div class="table-container">
                     <table class="data-table">
@@ -1106,6 +1159,100 @@ function generatePDFHTML(reportData: ReportData): string {
   `;
 }
 
+// Helper function to get previous month date range
+function getPreviousMonthDateRange(dateRange: { start: string; end: string }) {
+  const currentStart = new Date(dateRange.start);
+  const previousStart = new Date(currentStart.getFullYear(), currentStart.getMonth() - 1, 1);
+  const previousEnd = new Date(currentStart.getFullYear(), currentStart.getMonth(), 0);
+  
+  return {
+    start: previousStart.toISOString().split('T')[0],
+    end: previousEnd.toISOString().split('T')[0]
+  };
+}
+
+// Helper function to fetch previous month data from database (fast lookup)
+async function fetchPreviousMonthDataFromDB(dateRange: { start: string; end: string }, clientId: string) {
+  try {
+    console.log('📊 Fetching previous month data from database (fast lookup)...');
+    const previousDateRange = getPreviousMonthDateRange(dateRange);
+    console.log('   Previous month range:', previousDateRange);
+
+    // Query campaign_summaries table for stored monthly data
+    const { data: storedSummary, error } = await supabase
+      .from('campaign_summaries')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('summary_type', 'monthly')
+      .eq('summary_date', previousDateRange.start)
+      .single();
+
+    if (error) {
+      console.log('⚠️ No stored summary found for previous month:', error.message);
+      return null;
+    }
+
+    if (storedSummary) {
+      console.log(`✅ Found stored summary for ${previousDateRange.start}`);
+      
+      // Extract campaign data for conversion calculations
+      const previousCampaigns = storedSummary.campaign_data || [];
+      console.log(`   Previous month campaigns: ${previousCampaigns.length}`);
+
+      // Calculate conversion metrics from stored campaign data
+      const previousTotals = previousCampaigns.reduce((acc: any, campaign: any) => ({
+        spend: acc.spend + (campaign.spend || 0),
+        impressions: acc.impressions + (campaign.impressions || 0),
+        clicks: acc.clicks + (campaign.clicks || 0),
+        conversions: acc.conversions + (campaign.conversions || 0),
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        reservations: acc.reservations + (campaign.reservations || 0),
+        reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      }), { 
+        spend: 0, impressions: 0, clicks: 0, conversions: 0,
+        click_to_call: 0, email_contacts: 0, booking_step_1: 0,
+        reservations: 0, reservation_value: 0, booking_step_2: 0
+      });
+
+      const previousMonthTotals = {
+        spend: storedSummary.total_spend,
+        impressions: storedSummary.total_impressions,
+        clicks: storedSummary.total_clicks,
+        conversions: storedSummary.total_conversions,
+        ctr: storedSummary.average_ctr,
+        cpc: storedSummary.average_cpc,
+        cpm: storedSummary.total_impressions > 0 ? (storedSummary.total_spend / storedSummary.total_impressions) * 1000 : 0
+      };
+
+      const previousMonthConversions = {
+        click_to_call: previousTotals.click_to_call,
+        email_contacts: previousTotals.email_contacts,
+        booking_step_1: previousTotals.booking_step_1,
+        reservations: previousTotals.reservations,
+        reservation_value: previousTotals.reservation_value,
+        booking_step_2: previousTotals.booking_step_2,
+      };
+
+      console.log('✅ Previous month data loaded from database:', {
+        spend: previousMonthTotals.spend,
+        conversions: previousMonthTotals.conversions,
+        source: 'database'
+      });
+
+      return { previousMonthTotals, previousMonthConversions };
+    }
+    
+    console.log('⚠️ No previous month data found in database');
+    return null;
+  } catch (error) {
+    console.log('⚠️ Database lookup failed:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   console.log('📄 PDF Generation Request Started');
 
@@ -1143,6 +1290,13 @@ export async function POST(request: NextRequest) {
     let campaigns: any[] = [];
     let calculatedTotals: any = null;
     let metaTablesData: any = null;
+    
+    // Start previous month fetch early (in parallel) if using direct data
+    let previousMonthPromise: Promise<any> = Promise.resolve(null);
+    if (directCampaigns && directTotals) {
+      console.log('🚀 Using direct data - starting previous month database lookup in parallel');
+      previousMonthPromise = fetchPreviousMonthDataFromDB(dateRange, clientId);
+    }
 
     // If we have direct data, use it (much faster)
     if (directCampaigns && directTotals) {
@@ -1220,6 +1374,27 @@ export async function POST(request: NextRequest) {
         cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
         cpm: totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0
       };
+    }
+
+        // Get previous month data (either from parallel fetch or sequential fetch)
+    let previousMonthTotals: any = null;
+    let previousMonthConversions: any = null;
+
+    if (directCampaigns) {
+      // Wait for parallel previous month fetch to complete
+      console.log('⏳ Waiting for parallel previous month fetch...');
+      const previousMonthData = await previousMonthPromise;
+      if (previousMonthData) {
+        previousMonthTotals = previousMonthData.previousMonthTotals;
+        previousMonthConversions = previousMonthData.previousMonthConversions;
+      }
+    } else {
+      // Sequential database lookup for non-direct data path
+      const previousMonthData = await fetchPreviousMonthDataFromDB(dateRange, clientId);
+      if (previousMonthData) {
+        previousMonthTotals = previousMonthData.previousMonthTotals;
+        previousMonthConversions = previousMonthData.previousMonthConversions;
+      }
     }
 
     // Use Meta Ads tables data if provided directly, otherwise skip (avoid 401 error)
@@ -1304,6 +1479,8 @@ export async function POST(request: NextRequest) {
       dateRange,
       campaigns,
       totals: calculatedTotals,
+      previousMonthTotals,
+      previousMonthConversions,
       metaTables: metaTablesData,
       executiveSummary
     };
@@ -1316,7 +1493,8 @@ export async function POST(request: NextRequest) {
       impressions: (reportData.totals.impressions || 0).toLocaleString(),
       clicks: (reportData.totals.clicks || 0).toLocaleString(),
       hasMetaTables: !!reportData.metaTables,
-      hasExecutiveSummary: !!reportData.executiveSummary
+      hasExecutiveSummary: !!reportData.executiveSummary,
+      hasPreviousMonthData: !!reportData.previousMonthTotals
     });
 
     // Generate PDF HTML

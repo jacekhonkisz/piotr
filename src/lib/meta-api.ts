@@ -582,9 +582,9 @@ export class MetaAPIService {
 
       console.log('⏱️ Starting Meta API fetch with timeout...');
       
-      // Create a timeout promise
+      // Create a timeout promise (increased for better reliability)
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Meta API call timeout after 15 seconds')), 15000);
+        setTimeout(() => reject(new Error('Meta API call timeout after 25 seconds')), 25000);
       });
       
       // Race between the fetch and timeout
@@ -639,10 +639,21 @@ export class MetaAPIService {
             ? insight.actions
             : (insight.action_types && Array.isArray(insight.action_types) ? insight.action_types : []);
 
+          console.log('🔍 MetaAPI: Campaign', insight.campaign_name, 'has', actionsArray.length, 'total actions');
+          if (actionsArray.length === 0) {
+            console.log('🔍 MetaAPI: No actions found for campaign', insight.campaign_name);
+            console.log('🔍 MetaAPI: Available insight keys:', Object.keys(insight));
+          }
+
           if (actionsArray.length > 0) {
+            console.log('🔍 MetaAPI: Found actions array for campaign', insight.campaign_name, 'with', actionsArray.length, 'actions');
+            console.log('🔍 MetaAPI: Action types found:', actionsArray.map((a: any) => a.action_type || a.type));
+            
             actionsArray.forEach((action: any) => {
               const actionType = String(action.action_type || action.type || '').toLowerCase();
               const valueNum = Number(action.value ?? action.count ?? 0);
+              
+              console.log('🔍 MetaAPI: Processing action:', { actionType, valueNum });
 
               // 1. Potencjalne kontakty telefoniczne - Include call confirmation events
               if (actionType.includes('click_to_call') || actionType.includes('call_confirm')) {
@@ -692,13 +703,16 @@ export class MetaAPIService {
           console.log(`   📈 ROAS: ${roas.toFixed(2)}x`);
           console.log(`   💲 Cost per Reservation: ${cost_per_reservation.toFixed(2)} zł`);
 
+          // Calculate total conversions from all tracked conversion types
+          const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2;
+          
           return {
             campaign_id: insight.campaign_id || 'unknown',
             campaign_name: insight.campaign_name || 'Unknown Campaign',
             impressions: parseInt(insight.impressions || '0'),
             clicks: parseInt(insight.clicks || '0'),
             spend: spend,
-            conversions: parseInt(insight.conversions?.[0]?.value || '0'),
+            conversions: totalConversions || parseInt(insight.conversions?.[0]?.value || '0'),
             ctr: parseFloat(insight.ctr || '0'),
             cpc: parseFloat(insight.cpc || '0'),
             ...(insight.cpp && { cpp: parseFloat(insight.cpp) }),
@@ -737,6 +751,179 @@ export class MetaAPIService {
         dateRange: { dateStart, dateEnd }
       });
       throw error; // Re-throw the error instead of returning empty array
+    }
+  }
+
+  /**
+   * Get COMPLETE campaign insights with pagination to fetch ALL campaigns
+   * This is the improved method that ensures no data is missed
+   */
+  async getCompleteCampaignInsights(
+    adAccountId: string,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<CampaignInsights[]> {
+    try {
+      console.log('🔄 COMPLETE FETCH: Fetching ALL campaigns with pagination');
+
+      const fields = [
+        'campaign_id',
+        'campaign_name',
+        'impressions',
+        'clicks',
+        'spend',
+        'actions',
+        'cost_per_action_type',
+        'action_values'
+      ].join(',');
+
+      // Ensure we have the act_ prefix for the API call
+      const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
+      
+      let allCampaigns: any[] = [];
+      let nextUrl: string | null = `${this.baseUrl}/${accountIdWithPrefix}/insights`;
+      
+      const baseParams = new URLSearchParams({
+        access_token: this.accessToken,
+        fields: fields,
+        time_range: JSON.stringify({
+          since: dateStart,
+          until: dateEnd,
+        }),
+        level: 'campaign',
+        limit: '200' // Increased limit to reduce API calls
+      });
+
+      // Handle pagination to get ALL campaigns
+      while (nextUrl) {
+        const url = nextUrl.includes('?') ? nextUrl : `${nextUrl}?${baseParams.toString()}`;
+        
+        console.log('📡 Fetching campaigns page:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+        
+        const response = await fetch(url);
+        const data: MetaAPIResponse = await response.json();
+
+        if (data.error) {
+          throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
+        }
+
+        const campaigns = data.data || [];
+        allCampaigns = allCampaigns.concat(campaigns);
+        
+        // Check for pagination
+        nextUrl = data.paging && data.paging.next ? data.paging.next : null;
+        
+        console.log(`📈 Fetched ${campaigns.length} campaigns (total: ${allCampaigns.length})`);
+        
+        // Add delay between paginated requests to respect rate limits
+        if (nextUrl) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+
+      console.log(`✅ COMPLETE: Fetched total of ${allCampaigns.length} campaigns`);
+
+      // Process all campaigns using the same logic as getCampaignInsights
+      const insights = allCampaigns.map(insight => {
+        // Parse conversion tracking data from actions
+        let click_to_call = 0;
+        let email_contacts = 0;
+        let booking_step_1 = 0;
+        let reservations = 0;
+        let reservation_value = 0;
+        let booking_step_2 = 0;
+
+        // Extract action data (using the same logic as getCampaignInsights)
+        const actionsArray = (insight.actions && Array.isArray(insight.actions))
+          ? insight.actions
+          : (insight.action_types && Array.isArray(insight.action_types) ? insight.action_types : []);
+
+        if (actionsArray.length > 0) {
+          actionsArray.forEach((action: any) => {
+            const actionType = String(action.action_type || action.type || '').toLowerCase();
+            const valueNum = Number(action.value ?? action.count ?? 0);
+
+            // 1. Potencjalne kontakty telefoniczne - Include call confirmation events
+            if (actionType.includes('click_to_call') || actionType.includes('call_confirm')) {
+              click_to_call += valueNum;
+            }
+            // 2. Potencjalne kontakty email
+            if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
+              email_contacts += valueNum;
+            }
+            // 3. Kroki rezerwacji – Etap 1 (initiate_checkout proxy)
+            if (actionType.includes('booking_step_1') || actionType === 'initiate_checkout' || actionType.includes('initiate_checkout')) {
+              booking_step_1 += valueNum;
+            }
+            // 4. Rezerwacje (purchase)
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+              reservations += valueNum;
+            }
+            // 8. Etap 2 rezerwacji (add_to_cart proxy)
+            if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+              booking_step_2 += valueNum;
+            }
+          });
+        }
+
+        // 5. Wartość rezerwacji - handle both action_values and value fields
+        const actionValuesArray = (insight.action_values && Array.isArray(insight.action_values)) ? insight.action_values : [];
+        actionValuesArray.forEach((actionValue: any) => {
+          const t = String(actionValue.action_type || '').toLowerCase();
+          const v = Number(actionValue.value || 0);
+          if (t === 'purchase' || t.includes('fb_pixel_purchase')) {
+            reservation_value += v;
+          }
+        });
+
+        // Calculate metrics
+        const spend = parseFloat(insight.spend || '0');
+        const roas = spend > 0 && reservation_value > 0 ? reservation_value / spend : 0;
+        const cost_per_reservation = reservations > 0 ? spend / reservations : 0;
+
+        // Calculate total conversions from all tracked conversion types
+        const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2;
+        
+        // Calculate CTR and CPC if not provided
+        const impressions = parseInt(insight.impressions || '0');
+        const clicks = parseInt(insight.clicks || '0');
+        const calculatedCtr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+        const calculatedCpc = clicks > 0 ? spend / clicks : 0;
+
+        return {
+          campaign_id: insight.campaign_id || 'unknown',
+          campaign_name: insight.campaign_name || 'Unknown Campaign',
+          impressions: impressions,
+          clicks: clicks,
+          spend: spend,
+          conversions: totalConversions,
+          ctr: parseFloat(insight.ctr || calculatedCtr.toString()),
+          cpc: parseFloat(insight.cpc || calculatedCpc.toString()),
+          ...(insight.cpp && { cpp: parseFloat(insight.cpp) }),
+          ...(insight.frequency && { frequency: parseFloat(insight.frequency) }),
+          ...(insight.reach && { reach: parseInt(insight.reach) }),
+          ...(insight.cpm && { cpm: parseFloat(insight.cpm) }),
+          date_start: insight.date_start || dateStart,
+          date_stop: insight.date_stop || dateEnd,
+          
+          // Conversion tracking metrics
+          click_to_call,
+          email_contacts,
+          booking_step_1,
+          reservations,
+          reservation_value,
+          roas,
+          cost_per_reservation,
+          booking_step_2,
+        } as CampaignInsights;
+      });
+
+      console.log('✅ COMPLETE: Processed all campaigns with full data');
+      return insights;
+
+    } catch (error) {
+      console.error('💥 Error in getCompleteCampaignInsights:', error);
+      throw error;
     }
   }
 
@@ -1061,7 +1248,14 @@ export class MetaAPIService {
       
       console.log('🔗 Meta API Placement Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
-      const response = await fetch(url);
+      // Add timeout for meta tables (shorter timeout since these are less critical)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Meta API Placement Performance timeout after 10 seconds')), 10000);
+      });
+      
+      const fetchPromise = fetch(url);
+      
+      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
       const data: MetaAPIResponse = await response.json();
 
       if (!response.ok || data.error) {
@@ -1147,7 +1341,14 @@ export class MetaAPIService {
       
       console.log('🔗 Meta API Demographic Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
-      const response = await fetch(url);
+      // Add timeout for meta tables (shorter timeout since these are less critical)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Meta API Demographic Performance timeout after 10 seconds')), 10000);
+      });
+      
+      const fetchPromise = fetch(url);
+      
+      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
       const data: MetaAPIResponse = await response.json();
 
       if (!response.ok || data.error) {
@@ -1211,7 +1412,14 @@ export class MetaAPIService {
       
       console.log('🔗 Meta API Ad Relevance Results URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
-      const response = await fetch(url);
+      // Add timeout for meta tables (shorter timeout since these are less critical)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Meta API Ad Relevance Results timeout after 10 seconds')), 10000);
+      });
+      
+      const fetchPromise = fetch(url);
+      
+      const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
       const data: MetaAPIResponse = await response.json();
 
       if (!response.ok || data.error) {

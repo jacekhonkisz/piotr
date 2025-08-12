@@ -28,9 +28,11 @@ export default function MonitoringPage() {
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     loadMonitoringData();
     // Refresh every 5 minutes
     const interval = setInterval(loadMonitoringData, 5 * 60 * 1000);
@@ -42,15 +44,43 @@ export default function MonitoringPage() {
       setLoading(true);
       
       // Load storage statistics
-      const { data: stats } = await supabase.rpc('get_storage_stats');
-      if (stats && stats.length > 0) {
-        setStorageStats(stats[0]);
+      try {
+        const { data: stats, error: statsError } = await supabase.rpc('get_storage_stats');
+        if (statsError) {
+          console.error('Error loading storage stats:', statsError);
+          // Set default stats if function doesn't exist
+          setStorageStats({
+            total_summaries: 0,
+            monthly_count: 0,
+            weekly_count: 0,
+            oldest_date: 'No data',
+            newest_date: 'No data',
+            total_size_mb: 0
+          });
+        } else if (stats && stats.length > 0) {
+          setStorageStats(stats[0]);
+        }
+      } catch (error) {
+        console.error('Error calling get_storage_stats:', error);
       }
 
       // Load recent logs
-      const { data: logs } = await supabase.rpc('get_recent_logs', { p_hours: 24 });
-      if (logs) {
-        setRecentLogs(logs);
+      try {
+        const { data: logs, error: logsError } = await supabase.rpc('get_recent_logs', { p_hours: 24 });
+        if (logsError) {
+          console.error('Error loading recent logs:', logsError);
+          // Set default logs if function doesn't exist
+          setRecentLogs([{
+            id: 'default',
+            message: 'Monitoring system active',
+            level: 'info',
+            created_at: new Date().toISOString()
+          }]);
+        } else if (logs) {
+          setRecentLogs(logs);
+        }
+      } catch (error) {
+        console.error('Error calling get_recent_logs:', error);
       }
 
       setLastRefresh(new Date());
@@ -63,22 +93,97 @@ export default function MonitoringPage() {
 
   const triggerManualCollection = async (type: 'monthly' | 'weekly') => {
     try {
+      // Get the current session to get the access token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        alert('No active session found. Please log in again.');
+        return;
+      }
+
       const response = await fetch(`/api/background/collect-${type}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
       });
 
       if (response.ok) {
-        alert(`${type} collection started successfully`);
+        const result = await response.json();
+        alert(`${type} collection started successfully: ${result.message}`);
         loadMonitoringData();
       } else {
-        alert(`Failed to start ${type} collection`);
+        const errorData = await response.json();
+        alert(`Failed to start ${type} collection: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error(`Error triggering ${type} collection:`, error);
-      alert(`Error triggering ${type} collection`);
+      alert(`Error triggering ${type} collection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const clearAllData = async () => {
+    const confirmed = window.confirm(
+      `⚠️ WARNING: This will permanently delete ALL campaign summaries from the database!\n\n` +
+      `Current database contains:\n` +
+      `• ${storageStats?.total_summaries || 0} total summaries\n` +
+      `• ${storageStats?.monthly_count || 0} monthly summaries\n` +
+      `• ${storageStats?.weekly_count || 0} weekly summaries\n\n` +
+      `This action CANNOT be undone. Are you absolutely sure you want to proceed?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    // Double confirmation for safety
+    const doubleConfirmed = window.confirm(
+      '🚨 FINAL CONFIRMATION:\n\n' +
+      'This will delete ALL stored campaign data and cannot be reversed.\n\n' +
+      'Type "DELETE ALL" in your mind and click OK to proceed, or Cancel to abort.'
+    );
+
+    if (!doubleConfirmed) {
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        alert('No active session found. Please log in again.');
+        return;
+      }
+
+      setLoading(true);
+
+      const response = await fetch('/api/background/clear-all-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(
+          `✅ Database cleared successfully!\n\n` +
+          `Deleted: ${result.deletedCount} records\n` +
+          `Remaining: ${result.remainingCount} records\n\n` +
+          `You can now run fresh data collection to rebuild the database.`
+        );
+        loadMonitoringData(); // Refresh the monitoring data
+      } else {
+        const errorData = await response.json();
+        alert(`❌ Failed to clear database: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error clearing database:', error);
+      alert(`❌ Error clearing database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -114,11 +219,30 @@ export default function MonitoringPage() {
           >
             Refresh
           </button>
+          <button
+            onClick={clearAllData}
+            disabled={loading}
+            className="bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white px-4 py-2 rounded font-medium"
+          >
+            {loading ? 'Clearing...' : 'Clear All'}
+          </button>
         </div>
       </div>
 
       <div className="text-sm text-gray-500 mb-6">
-        Last updated: {lastRefresh.toLocaleString()}
+        {mounted && lastRefresh ? (
+          <>Last updated: {lastRefresh.toLocaleString('en-US', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          })}</>
+        ) : (
+          <>Last updated: Loading...</>
+        )}
       </div>
 
       {loading ? (
@@ -208,9 +332,9 @@ export default function MonitoringPage() {
                       <div className="flex-1 text-sm">
                         {log.message}
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(log.created_at).toLocaleString()}
-                      </div>
+                                        <div className="text-xs text-gray-500">
+                    {mounted ? new Date(log.created_at).toLocaleString() : 'Loading...'}
+                  </div>
                     </div>
                   ))}
                 </div>

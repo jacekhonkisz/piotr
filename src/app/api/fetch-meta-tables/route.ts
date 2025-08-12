@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../lib/meta-api';
+import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
+import logger from '../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,145 +10,182 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  console.log('🔄 /api/fetch-meta-tables called');
+  const startTime = Date.now();
+  
   try {
-    // Extract the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('❌ Missing or invalid authorization header');
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
+    logger.info('Meta tables fetch started', { endpoint: '/api/fetch-meta-tables' });
+    
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', authResult.statusCode || 401);
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const { user } = authResult;
     
-    // Create a client with the JWT token
-    const jwtClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    );
+    // Parse request body
+    const requestBody = await request.json();
+    const { dateRange, clientId } = requestBody;
     
-    // Get user from the JWT token
-    const { data: { user: jwtUser }, error: authError } = await jwtClient.auth.getUser();
-    
-    if (authError || !jwtUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!clientId) {
+      return createErrorResponse('Client ID required', 400);
     }
-
-    const { dateStart, dateEnd, clientId } = await request.json();
-    console.log('📅 Request data received:', { dateStart, dateEnd, clientId });
-
-    if (!dateStart || !dateEnd) {
-      console.log('❌ Missing date range');
-      return NextResponse.json({ error: 'Missing date range' }, { status: 400 });
+    
+    if (!dateRange || !dateRange.start || !dateRange.end) {
+      return createErrorResponse('Date range required', 400);
     }
-
-    // Get user profile to check role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', jwtUser.id)
+    
+    // Get client data
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', clientId)
       .single();
-
-    console.log('👤 User profile:', profile);
-
-    let client;
-
-    if (profile?.role === 'admin') {
-      // Admin can access any client's data
-      if (clientId) {
-        // Admin specified a specific client
-        console.log('👨‍💼 Admin accessing client:', clientId);
-        const { data: adminClient, error: adminClientError } = await supabase
-          .from('clients')
-          .select('*')
-          .eq('id', clientId)
-          .single();
-          
-        if (adminClientError || !adminClient) {
-          console.log('❌ Client not found for admin:', adminClientError);
-          return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-        }
-        client = adminClient;
-      } else {
-        console.log('❌ Admin must specify clientId');
-        return NextResponse.json({ error: 'Client ID required for admin access' }, { status: 400 });
-      }
-    } else if (profile?.role === 'client') {
-      // Client can only access their own data
-      console.log('🔍 Looking for client with email:', jwtUser.email);
-      const { data: clientData, error: clientError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('email', jwtUser.email)
-        .single();
-
-      if (clientError || !clientData) {
-        console.log('❌ Client not found:', clientError);
-        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-      }
-      client = clientData;
-    } else {
-      console.log('❌ Invalid user role');
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      
+    if (clientError || !clientData) {
+      console.error('❌ Client not found:', { clientId, error: clientError });
+      return createErrorResponse('Client not found', 404);
+    }
+    
+    // Check if user can access this client
+    if (!canAccessClient(user, clientData.email)) {
+      return createErrorResponse('Access denied', 403);
     }
 
-    console.log('✅ Client found:', { id: client.id, email: client.email, hasToken: !!client.meta_access_token });
-
-    if (!client.meta_access_token) {
-      console.log('❌ No Meta token available for client');
-      return NextResponse.json({ error: 'No Meta token available' }, { status: 400 });
+    const client = clientData;
+    
+    // Validate client has required Meta credentials
+    if (!client.meta_access_token || !client.ad_account_id) {
+      return createErrorResponse('Client missing Meta Ads credentials', 400);
     }
-
+    
+    console.log('✅ Fetching meta tables for client:', {
+      id: client.id,
+      name: client.name,
+      dateRange
+    });
+    
     // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);
-
-    // Fetch all three tables data with individual error handling
-    let placementData: any[] = [];
-    let demographicData: any[] = [];
-    let adRelevanceData: any[] = [];
-
+    
+    const adAccountId = client.ad_account_id.startsWith('act_') 
+      ? client.ad_account_id.substring(4)
+      : client.ad_account_id;
+    
+    console.log('📊 Fetching meta tables in parallel...');
+    
+    let metaTables = null;
+    let metaApiError: string | null = null;
+    
     try {
-      placementData = await metaService.getPlacementPerformance(client.ad_account_id, dateStart, dateEnd);
-      console.log('✅ Placement data fetched successfully:', placementData.length, 'records');
+      // Fetch all meta tables in parallel with individual error handling
+      const [placementResult, demographicResult, adRelevanceResult] = await Promise.allSettled([
+        metaService.getPlacementPerformance(adAccountId, dateRange.start, dateRange.end),
+        metaService.getDemographicPerformance(adAccountId, dateRange.start, dateRange.end),
+        metaService.getAdRelevanceResults(adAccountId, dateRange.start, dateRange.end)
+      ]);
+      
+      // Process results with individual error handling
+      let placementData: any[] = [];
+      let demographicData: any[] = [];
+      let adRelevanceData: any[] = [];
+      let partialErrors: string[] = [];
+      
+      if (placementResult.status === 'fulfilled') {
+        placementData = placementResult.value || [];
+        console.log('✅ Placement performance fetched:', placementData.length, 'records');
+      } else {
+        console.error('❌ Placement performance failed:', placementResult.reason);
+        partialErrors.push(`Placement: ${placementResult.reason}`);
+      }
+      
+      if (demographicResult.status === 'fulfilled') {
+        demographicData = demographicResult.value || [];
+        console.log('✅ Demographic performance fetched:', demographicData.length, 'records');
+      } else {
+        console.error('❌ Demographic performance failed:', demographicResult.reason);
+        partialErrors.push(`Demographics: ${demographicResult.reason}`);
+      }
+      
+      if (adRelevanceResult.status === 'fulfilled') {
+        adRelevanceData = adRelevanceResult.value || [];
+        console.log('✅ Ad relevance results fetched:', adRelevanceData.length, 'records');
+      } else {
+        console.error('❌ Ad relevance results failed:', adRelevanceResult.reason);
+        partialErrors.push(`Ad Relevance: ${adRelevanceResult.reason}`);
+      }
+      
+      metaTables = {
+        placementPerformance: placementData,
+        demographicPerformance: demographicData,
+        adRelevanceResults: adRelevanceData
+      };
+      
+      // Set error message if any partial failures occurred
+      if (partialErrors.length > 0) {
+        metaApiError = `Partial Meta API failures: ${partialErrors.join(', ')}`;
+        console.log('⚠️ Partial meta tables data available despite some API failures');
+      } else {
+        console.log('✅ All meta tables fetched successfully:', {
+          placementCount: placementData.length,
+          demographicCount: demographicData.length,
+          adRelevanceCount: adRelevanceData.length
+        });
+      }
+      
     } catch (error) {
-      console.log('⚠️ Placement data fetch failed:', error instanceof Error ? error.message : String(error));
+      console.error('❌ Complete failure to fetch meta tables:', error);
+      metaApiError = error instanceof Error ? error.message : 'Unknown error';
+      metaTables = {
+        placementPerformance: [],
+        demographicPerformance: [],
+        adRelevanceResults: []
+      };
     }
 
-    try {
-      demographicData = await metaService.getDemographicPerformance(client.ad_account_id, dateStart, dateEnd);
-      console.log('✅ Demographic data fetched successfully:', demographicData.length, 'records');
-    } catch (error) {
-      console.log('⚠️ Demographic data fetch failed:', error instanceof Error ? error.message : String(error));
-    }
-
-    try {
-      adRelevanceData = await metaService.getAdRelevanceResults(client.ad_account_id, dateStart, dateEnd);
-      console.log('✅ Ad relevance data fetched successfully:', adRelevanceData.length, 'records');
-    } catch (error) {
-      console.log('⚠️ Ad relevance data fetch failed:', error instanceof Error ? error.message : String(error));
-    }
+    const responseTime = Date.now() - startTime;
+    
+    logger.info('Meta tables fetch completed', {
+      clientId: client.id,
+      responseTime,
+      hasError: !!metaApiError
+    });
 
     return NextResponse.json({
       success: true,
       data: {
-        placementPerformance: placementData,
-        demographicPerformance: demographicData,
-        adRelevanceResults: adRelevanceData
+        metaTables,
+        dateRange,
+        client: {
+          id: client.id,
+          name: client.name
+        }
+      },
+      debug: {
+        responseTime,
+        metaApiError,
+        hasMetaApiError: !!metaApiError,
+        authenticatedUser: user.email
       }
     });
 
   } catch (error) {
-    console.error('Error fetching Meta tables data:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch Meta tables data' },
-      { status: 500 }
-    );
+    const responseTime = Date.now() - startTime;
+    
+    console.error('❌ Meta tables fetch failed:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      responseTime
+    });
+    
+    logger.error('Meta tables fetch failed', { 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      responseTime
+    });
+    
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 } 

@@ -963,12 +963,19 @@ function ReportsPageContent() {
       };
       console.log('📡 Making API call with request body:', requestBody);
       
-      // Create a timeout promise
+      // Create a timeout promise (increased for optimized API)
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('API call timeout after 20 seconds')), 20000);
+        setTimeout(() => reject(new Error('API call timeout after 40 seconds')), 40000);
       });
       
       console.log('⏱️ Starting API call with timeout...');
+      
+      // Add specific loading message for current month
+      if (isCurrentMonth) {
+        console.log('📅 Current month detected - fetching live data (may take 10-30s)');
+      } else {
+        console.log('📅 Previous month detected - using database (should be fast)');
+      }
       
       // Race between the fetch and timeout
       const response = await Promise.race([
@@ -1022,15 +1029,25 @@ function ReportsPageContent() {
       let data;
       try {
         data = await response.json();
-              console.log(`✅ API call successful for ${periodId}:`, data);
-      console.log(`🎯 ${isCurrentMonth ? 'LIVE API DATA' : 'API DATA'} received for ${periodId}`);
-      console.log(`📊 Raw API response structure:`, {
-        hasSuccess: !!data.success,
-        hasData: !!data.data,
-        dataKeys: data.data ? Object.keys(data.data) : [],
-        campaignsInData: data.data?.campaigns?.length || 0,
-        campaignsDirect: data.campaigns?.length || 0
-      });
+        console.log(`✅ API call successful for ${periodId}:`, data);
+        console.log(`🎯 ${isCurrentMonth ? 'LIVE API DATA' : 'API DATA'} received for ${periodId}`);
+        console.log(`📊 Raw API response structure:`, {
+          hasSuccess: !!data.success,
+          hasData: !!data.data,
+          dataKeys: data.data ? Object.keys(data.data) : [],
+          campaignsInData: data.data?.campaigns?.length || 0,
+          campaignsDirect: data.campaigns?.length || 0,
+          isPartialData: !!data.data?.partialData,
+          hasTimeoutError: !!data.data?.timeoutError
+        });
+
+        // Handle partial data response (timeout fallback)
+        if (data.data?.partialData && data.data?.timeoutError) {
+          console.log('⚠️ Received partial data due to Meta API timeout');
+          if (data.warning) {
+            setError(`⚠️ ${data.warning} You can try refreshing to attempt loading again.`);
+          }
+        }
       } catch (error) {
         console.error('❌ Failed to parse API response:', error);
         const responseText = await response.text();
@@ -1140,8 +1157,8 @@ function ReportsPageContent() {
       }
       
       if (isCurrentMonth) {
-        // For current month, don't show fallback data - show empty state instead
-        console.log('🔄 Current month API failed - showing empty state instead of fallback data');
+        // For current month, provide better error handling and retry option
+        console.log('🔄 Current month API failed - providing retry option');
         const emptyReport: MonthlyReport | WeeklyReport = {
           id: periodId,
           date_range_start: periodStartDate || '',
@@ -1153,7 +1170,12 @@ function ReportsPageContent() {
         console.log('💾 Setting empty report for current month API failure:', emptyReport);
         setReports(prev => ({ ...prev, [periodId]: emptyReport }));
         
-        setError(`API Error for current month: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('timeout')) {
+          setError(`Current month data loading timed out. This can happen with live Meta API calls. Please try refreshing the page or contact support if the issue persists.`);
+        } else {
+          setError(`API Error for current month: ${errorMessage}. Please try again or contact support.`);
+        }
       } else {
         // For previous months, show fallback data if API fails
         console.log('🔄 Previous month API failed - showing fallback data');
@@ -1260,15 +1282,7 @@ function ReportsPageContent() {
           return;
         }
 
-        // Check if this is the current month (same logic as original)
-        const isCurrentMonth = (() => {
-          if (viewType === 'monthly') {
-            const [year, month] = periodId.split('-').map(Number);
-            const currentDate = new Date();
-            return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
-          }
-          return false; // For weekly, always treat as current
-        })();
+        // Note: isCurrentMonth logic removed as it was unused
 
         // Check if this period is in the future (same logic as original)
         const [year, month] = periodId.split('-').map(Number);
@@ -1622,8 +1636,10 @@ function ReportsPageContent() {
                   'Authorization': `Bearer ${session.access_token}`
                 },
                 body: JSON.stringify({
-                  dateStart: periodStartDate,
-                  dateEnd: periodEndDate,
+                  dateRange: {
+                    start: periodStartDate,
+                    end: periodEndDate
+                  },
                   clientId: clientData.id
                 })
               });
@@ -2540,6 +2556,36 @@ function ReportsPageContent() {
             >
               <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-gray-700" />
             </button>
+
+            {/* Refresh Button for Current Month */}
+            {(() => {
+              if (viewType === 'monthly' && selectedPeriod) {
+                const [year, month] = selectedPeriod.split('-').map(Number);
+                const currentDate = new Date();
+                const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+                
+                if (isCurrentMonth) {
+                  return (
+                    <button
+                      onClick={async () => {
+                        if (selectedPeriod && selectedClient) {
+                          console.log('🔄 Force refreshing current month data...');
+                          await loadPeriodDataWithClient(selectedPeriod, selectedClient, true);
+                        }
+                      }}
+                      disabled={loadingPeriod !== null}
+                      className="p-2.5 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+                      title="Odśwież dane bieżącego miesiąca (pobierz najnowsze dane z Meta API)"
+                    >
+                      <svg className="w-5 h-5 text-blue-600 group-hover:text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  );
+                }
+              }
+              return null;
+            })()}
           </div>
 
           {/* Period Navigation Info */}
@@ -2547,6 +2593,49 @@ function ReportsPageContent() {
             <p className="text-xs text-gray-400">
               Użyj strzałek do nawigacji lub kliknij okres, aby wybrać z listy
             </p>
+            
+            {/* Cache Status for Current Month */}
+            {(() => {
+              if (viewType === 'monthly' && selectedPeriod && selectedReport) {
+                const [year, month] = selectedPeriod.split('-').map(Number);
+                const currentDate = new Date();
+                const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+                
+                if (isCurrentMonth && selectedReport.generated_at) {
+                  const lastUpdated = new Date(selectedReport.generated_at);
+                  const now = new Date();
+                  const ageMinutes = Math.floor((now.getTime() - lastUpdated.getTime()) / (1000 * 60));
+                  const ageHours = Math.floor(ageMinutes / 60);
+                  
+                  let ageText = '';
+                  let statusColor = '';
+                  
+                  if (ageMinutes < 5) {
+                    ageText = 'przed chwilą';
+                    statusColor = 'text-green-600';
+                  } else if (ageMinutes < 60) {
+                    ageText = `${ageMinutes} min temu`;
+                    statusColor = 'text-green-600';
+                  } else if (ageHours < 3) {
+                    ageText = `${ageHours}h ${ageMinutes % 60}min temu`;
+                    statusColor = 'text-blue-600';
+                  } else {
+                    ageText = `${ageHours}h ${ageMinutes % 60}min temu`;
+                    statusColor = 'text-orange-600';
+                  }
+                  
+                  return (
+                    <div className="mt-2">
+                      <p className={`text-xs ${statusColor} font-medium`}>
+                        📊 Dane aktualizowane {ageText}
+                        {ageHours >= 3 && ' • Kliknij odśwież dla najnowszych danych'}
+                      </p>
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })()}
           </div>
         </div>
         )}
@@ -2593,14 +2682,22 @@ function ReportsPageContent() {
                 </div>
               </div>
               
-              {selectedReport.date_range_start && selectedReport.date_range_end && (
-                <MetaAdsTables
-                  dateStart={selectedReport.date_range_start}
-                  dateEnd={selectedReport.date_range_end}
-                  clientId={client?.id || ''}
-                  onDataLoaded={setMetaTablesData}
-                />
-              )}
+              {selectedReport.date_range_start && selectedReport.date_range_end && (() => {
+                console.log('🔍 MetaAdsTables props:', {
+                  dateStart: selectedReport.date_range_start,
+                  dateEnd: selectedReport.date_range_end,
+                  clientId: client?.id,
+                  selectedReportId: selectedReport.id
+                });
+                return (
+                  <MetaAdsTables
+                    dateStart={selectedReport.date_range_start}
+                    dateEnd={selectedReport.date_range_end}
+                    clientId={client?.id || ''}
+                    onDataLoaded={setMetaTablesData}
+                  />
+                );
+              })()}
             </div>
           </>
         )}

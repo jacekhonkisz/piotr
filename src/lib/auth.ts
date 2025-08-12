@@ -1,82 +1,96 @@
-import { supabase } from './supabase';
-import type { User } from '@supabase/supabase-js';
-import type { Database } from './database.types';
+import { createClient } from '@supabase/supabase-js';
+import { Database } from './database.types';
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
+const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export interface AuthState {
-  user: User | null;
-  profile: Profile | null;
-  loading: boolean;
-}
+export type Profile = Database['public']['Tables']['profiles']['Row'];
 
-/**
- * Sign up a new user
- */
-export async function signUp(email: string, password: string, fullName: string, role: 'admin' | 'client' = 'client') {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: fullName,
-        role: role,
-      },
-    },
-  });
+// Helper function to verify user existence
+export async function verifyUserExists(email: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .single();
 
-  if (error) {
-    throw error;
+    if (error) {
+      console.error('Error verifying user:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (error) {
+    console.error('Error in verifyUserExists:', error);
+    return false;
   }
-
-  return data;
 }
 
-/**
- * Sign in with email and password
- */
-export async function signIn(email: string, password: string) {
-  console.log('Attempting to sign in with email:', email);
-  
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (error) {
-    console.error('Sign in error:', error);
+// Helper function for user creation with better error handling
+export async function createUserProfile(user: any): Promise<void> {
+  try {
+    console.log('Creating profile for user:', user.email);
     
-    // Provide more specific error messages
-    if (error.message.includes('Invalid login credentials')) {
-      throw new Error('Invalid email or password. Please check your credentials and try again.');
-    } else if (error.message.includes('Email not confirmed')) {
-      throw new Error('Please check your email and confirm your account before signing in.');
-    } else if (error.message.includes('Too many requests')) {
-      throw new Error('Too many login attempts. Please wait a moment before trying again.');
+    const { data, error } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        email: user.email,
+        role: 'client',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Profile creation error:', error);
+      // Don't throw error for duplicate key (user already exists)
+      if (error.code !== '23505') {
+        throw error;
+      } else {
+        console.log('Profile already exists, continuing...');
+      }
     } else {
-      throw new Error(`Authentication failed: ${error.message}`);
+      console.log('Profile created successfully:', data);
+    }
+  } catch (error: any) {
+    console.error('Error in createUserProfile:', error);
+    // Only throw if it's not a duplicate key error
+    if (error.code !== '23505') {
+      throw error;
     }
   }
-
-  console.log('Sign in successful:', data.user?.email);
-  return data;
 }
 
-/**
- * Sign out current user
- */
-export async function signOut() {
-  const { error } = await supabase.auth.signOut();
-  if (error) {
+// Helper function for updating profile timestamp  
+export async function updateProfileTimestamp(userId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error updating profile timestamp:', error);
+      throw error;
+    }
+  } catch (error) {
     throw error;
   }
 }
 
-// Enhanced caching with localStorage persistence
+// Enhanced caching with localStorage persistence and request deduplication
 let profileCache: { [key: string]: { profile: Profile | null; timestamp: number } } = {};
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const PROFILE_FETCH_TIMEOUT = 3000; // tighter timeout to avoid long waits
-const MAX_RETRIES = 1; // reduce retries to speed up failures
+const PROFILE_FETCH_TIMEOUT = 5000; // increased timeout for better reliability
+const MAX_RETRIES = 2; // increased retries with exponential backoff
+
+// Request deduplication to prevent race conditions
+let ongoingProfileRequests = new Map<string, Promise<Profile | null>>();
 
 // Load cache from localStorage on module load
 if (typeof window !== 'undefined') {
@@ -114,19 +128,17 @@ function saveCacheToStorage() {
  */
 export async function getCurrentProfile(): Promise<Profile | null> {
   const startTime = performance.now();
-  console.log('getCurrentProfile: Starting profile fetch...');
   
   try {
-    // Get the current session first (this is usually fast)
     const sessionStart = performance.now();
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const { data: { session }, error } = await supabase.auth.getSession();
     const sessionTime = performance.now() - sessionStart;
     
-    if (sessionError) {
-      console.error('Session error:', sessionError);
+    if (error) {
+      console.error('getCurrentProfile: Session error:', error);
       return null;
     }
-    
+
     if (!session?.user) {
       console.log('getCurrentProfile: No session or user found');
       return null;
@@ -136,8 +148,15 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     console.log(`getCurrentProfile: Session retrieved in ${sessionTime.toFixed(2)}ms`);
     console.log('getCurrentProfile: User found:', user.email, 'ID:', user.id);
 
-    // Check cache first (enhanced caching)
     const cacheKey = user.id;
+    
+    // Check if there's already an ongoing request for this user (deduplication)
+    if (ongoingProfileRequests.has(cacheKey)) {
+      console.log('getCurrentProfile: Returning ongoing request for user:', user.id);
+      return ongoingProfileRequests.get(cacheKey)!;
+    }
+
+    // Check cache first (enhanced caching)
     const cached = profileCache[cacheKey];
     const now = Date.now();
     
@@ -150,89 +169,103 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 
     console.log('getCurrentProfile: Cache miss, fetching from database for user ID:', user.id);
     
-    // Implement retry mechanism with exponential backoff
-    let lastError: any = null;
+    // Create promise for this request and store it for deduplication
+    const profileRequest = (async (): Promise<Profile | null> => {
+      // Implement retry mechanism with exponential backoff
+      let lastError: any = null;
     
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const queryStart = performance.now();
-        
-        // Use Promise.race with timeout for each attempt
-        const profilePromise = supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const queryStart = performance.now();
+          
+          // Use Promise.race with timeout for each attempt
+          const profilePromise = supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
 
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_FETCH_TIMEOUT);
-        });
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_FETCH_TIMEOUT);
+          });
 
-        const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
-        const queryTime = performance.now() - queryStart;
+          const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+          const queryTime = performance.now() - queryStart;
 
-        if (error) {
-          console.error(`Attempt ${attempt + 1} failed:`, error);
+          if (error) {
+            console.error(`Attempt ${attempt + 1} failed:`, error);
+            lastError = error;
+            
+            // Don't retry on certain errors
+            if (error.code === 'PGRST116' || error.message.includes('not found')) {
+              break;
+            }
+            
+            // Wait before retry (exponential backoff)
+            if (attempt < MAX_RETRIES) {
+              const delay = Math.pow(2, attempt) * 1000; // 1s, 2s backoff
+              console.log(`Retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            continue;
+          }
+
+          console.log(`getCurrentProfile: Profile fetched successfully in ${queryTime.toFixed(2)}ms`);
+          console.log('getCurrentProfile: Profile data:', profile);
+
+          // Cache the result
+          profileCache[cacheKey] = {
+            profile,
+            timestamp: now
+          };
+          
+          // Save to localStorage
+          saveCacheToStorage();
+
+          const totalTime = performance.now() - startTime;
+          console.log(`getCurrentProfile: Total time (database): ${totalTime.toFixed(2)}ms`);
+          
+          return profile;
+          
+        } catch (error: any) {
+          console.error(`Attempt ${attempt + 1} failed with exception:`, error);
           lastError = error;
           
-          // Don't retry on certain errors
-          if (error.code === 'PGRST116' || error.message.includes('not found')) {
-            break;
-          }
-          
-          // Wait before retry (exponential backoff)
           if (attempt < MAX_RETRIES) {
-            const delay = Math.pow(2, attempt) * 500; // faster backoff: 0.5s, 1s
+            const delay = Math.pow(2, attempt) * 1000;
             console.log(`Retrying in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
-          continue;
-        }
-
-        console.log(`getCurrentProfile: Profile fetched successfully in ${queryTime.toFixed(2)}ms`);
-        console.log('getCurrentProfile: Profile data:', profile);
-
-        // Cache the result
-        profileCache[cacheKey] = {
-          profile,
-          timestamp: now
-        };
-        
-        // Save to localStorage
-        saveCacheToStorage();
-
-        const totalTime = performance.now() - startTime;
-        console.log(`getCurrentProfile: Total time: ${totalTime.toFixed(2)}ms`);
-        
-        return profile;
-        
-      } catch (error: any) {
-        console.error(`Attempt ${attempt + 1} failed with exception:`, error);
-        lastError = error;
-        
-        if (attempt < MAX_RETRIES) {
-          const delay = Math.pow(2, attempt) * 1000;
-          console.log(`Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
-    }
 
-    // All retries failed
-    console.error('getCurrentProfile: All retry attempts failed');
-    console.error('Last error:', lastError);
-    
-    // Cache null result to prevent repeated failed requests (with shorter duration)
-    profileCache[cacheKey] = {
-      profile: null,
-      timestamp: now
-    };
-    saveCacheToStorage();
-    
-    const totalTime = performance.now() - startTime;
-    console.log(`getCurrentProfile: Total time (failed): ${totalTime.toFixed(2)}ms`);
-    
-    return null;
+      // All retries failed
+      console.error('getCurrentProfile: All retry attempts failed');
+      console.error('Last error:', lastError);
+      
+      // Cache null result to prevent repeated failed requests (with shorter duration)
+      profileCache[cacheKey] = {
+        profile: null,
+        timestamp: now - (CACHE_DURATION - 60000) // Cache for only 1 minute
+      };
+      saveCacheToStorage();
+      
+      const totalTime = performance.now() - startTime;
+      console.log(`getCurrentProfile: Total time (failed): ${totalTime.toFixed(2)}ms`);
+      
+      return null;
+    })();
+
+    // Store the ongoing request for deduplication
+    ongoingProfileRequests.set(cacheKey, profileRequest);
+
+    try {
+      const result = await profileRequest;
+      return result;
+    } finally {
+      // Clean up completed request
+      ongoingProfileRequests.delete(cacheKey);
+    }
     
   } catch (error: any) {
     console.error('Unexpected error in getCurrentProfile:', error);
@@ -248,8 +281,10 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 export function clearProfileCache(userId?: string) {
   if (userId) {
     delete profileCache[userId];
+    ongoingProfileRequests.delete(userId);
   } else {
     profileCache = {};
+    ongoingProfileRequests.clear();
   }
   saveCacheToStorage();
 }
@@ -273,11 +308,12 @@ export async function warmProfileCache(userId: string): Promise<void> {
  * Update user profile
  */
 export async function updateProfile(updates: Partial<Profile>) {
-  const { data: { user } } = await supabase.auth.getUser();
-  
+  const user = (await supabase.auth.getUser()).data.user;
   if (!user) {
-    throw new Error('No user logged in');
+    throw new Error('User not authenticated');
   }
+
+  console.log('Updating profile for user:', user.id);
 
   const { data, error } = await supabase
     .from('profiles')
@@ -287,6 +323,7 @@ export async function updateProfile(updates: Partial<Profile>) {
     .single();
 
   if (error) {
+    console.error('Error updating profile:', error);
     throw error;
   }
 
@@ -297,39 +334,108 @@ export async function updateProfile(updates: Partial<Profile>) {
   };
   saveCacheToStorage();
 
+  console.log('Profile updated successfully');
   return data;
 }
 
 /**
- * Reset password
+ * Get cache statistics for monitoring
  */
-export async function resetPassword(email: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/reset-password`,
-  });
+export function getProfileCacheStats() {
+  const now = Date.now();
+  const cacheEntries = Object.entries(profileCache);
+  
+  return {
+    totalEntries: cacheEntries.length,
+    validEntries: cacheEntries.filter(([_, entry]) => 
+      (now - entry.timestamp) < CACHE_DURATION
+    ).length,
+    ongoingRequests: ongoingProfileRequests.size,
+    oldestEntry: Math.min(...cacheEntries.map(([_, entry]) => entry.timestamp)),
+    newestEntry: Math.max(...cacheEntries.map(([_, entry]) => entry.timestamp))
+  };
+}
 
-  if (error) {
-    throw error;
+/**
+ * Sign in user with email and password
+ */
+export async function signIn(email: string, password: string) {
+  try {
+    console.log('Signing in user:', email);
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+
+    console.log('Sign in successful');
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error in signIn:', error);
+    return { data: null, error };
   }
 }
 
 /**
- * Update password
+ * Sign up user with email and password
  */
-export async function updatePassword(newPassword: string) {
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-  });
+export async function signUp(email: string, password: string) {
+  try {
+    console.log('Signing up user:', email);
+    
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password
+    });
 
-  if (error) {
-    throw error;
+    if (error) {
+      console.error('Sign up error:', error);
+      throw error;
+    }
+
+    console.log('Sign up successful');
+    return { data, error: null };
+  } catch (error) {
+    console.error('Error in signUp:', error);
+    return { data: null, error };
   }
 }
 
 /**
- * Check if current user is admin
+ * Sign out user
  */
-export async function isCurrentUserAdmin(): Promise<boolean> {
-  const profile = await getCurrentProfile();
-  return profile?.role === 'admin';
+export async function signOut() {
+  try {
+    console.log('Signing out user');
+    
+    // Clear profile cache
+    clearProfileCache();
+    
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error('Sign out error:', error);
+      throw error;
+    }
+
+    console.log('Sign out successful');
+    return { error: null };
+  } catch (error) {
+    console.error('Error in signOut:', error);
+    return { error };
+  }
+}
+
+/**
+ * Auth state interface for context
+ */
+export interface AuthState {
+  user: any;
+  profile: Profile | null;
+  loading: boolean;
 } 
