@@ -151,7 +151,7 @@ export default function DashboardPage() {
   const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}_${selectedClient?.id || 'default'}_v4`;
 
   // Note: Smart caching is now handled by the API layer, no need for localStorage
-  const saveToCache = (data: ClientDashboardData, source: 'cache' | 'stale-cache' | 'live-api-cached' | 'database') => {
+  const saveToCache = (_data: ClientDashboardData, _source: 'cache' | 'stale-cache' | 'live-api-cached' | 'database') => {
     // Smart caching is now handled by the API - this function is kept for compatibility
     console.log('📦 Smart caching handled by API, skipping localStorage cache');
   };
@@ -597,7 +597,10 @@ export default function DashboardPage() {
             cost_per_reservation: 0,
             booking_step_2: 0
           },
-          debug: {}
+          debug: {
+            campaigns: [], // Add empty campaigns to debug
+            source: 'session-error-fallback'
+          }
         };
       }
 
@@ -694,7 +697,11 @@ export default function DashboardPage() {
             averageCpc
           },
           conversionMetrics,
-          debug: monthData.debug || {}
+          debug: {
+            ...monthData.debug,
+            campaigns: campaigns, // Add campaigns to debug for MetaPerformanceLive daily data storage
+            source: monthData.debug?.source || 'live-api-cached'
+          }
         };
       } else {
         console.warn('⚠️ API response missing campaigns data:', monthData);
@@ -718,7 +725,10 @@ export default function DashboardPage() {
             cost_per_reservation: 0,
             booking_step_2: 0
           },
-          debug: {}
+          debug: {
+            campaigns: [], // Add empty campaigns to debug
+            source: 'no-campaigns-data-fallback'
+          }
         };
       }
     } catch (error) {
@@ -743,7 +753,10 @@ export default function DashboardPage() {
           cost_per_reservation: 0,
           booking_step_2: 0
         },
-        debug: {}
+        debug: {
+          campaigns: [], // Add empty campaigns to debug
+          source: 'catch-error-fallback'
+        }
       };
     }
   };
@@ -784,7 +797,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <LoadingSpinner text={loadingMessage} progress={loadingProgress} />
       </div>
     );
@@ -792,7 +805,7 @@ export default function DashboardPage() {
 
   if (!clientData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-rose-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-slate-900 mb-2">Nie znaleziono klienta</h3>
@@ -803,17 +816,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Premium Header */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50">
+      {/* Modern Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                              <div className="w-10 h-10 bg-secondary-600 rounded-lg flex items-center justify-center shadow-sm">
                 <BarChart3 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
+                <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
                 <p className="text-sm text-slate-600">Meta Ads Analytics</p>
               </div>
               
@@ -831,7 +844,7 @@ export default function DashboardPage() {
             
             <div className="flex items-center space-x-4">
               {/* Data Status */}
-              <div className="flex items-center space-x-3 px-4 py-2 bg-slate-100/80 rounded-full">
+              <div className="flex items-center space-x-3 px-4 py-2 bg-slate-100 rounded-lg">
                 <div className={`w-2 h-2 rounded-full ${
                   dataSource === 'cache' ? 'bg-emerald-500' : 
                   dataSource === 'stale-cache' ? 'bg-orange-500 animate-pulse' :
@@ -848,7 +861,7 @@ export default function DashboardPage() {
               <button
                 onClick={refreshLiveData}
                 disabled={refreshingData}
-                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200"
+                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200"
                 title="Odśwież dane"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshingData ? 'animate-spin' : ''}`} />
@@ -858,7 +871,7 @@ export default function DashboardPage() {
               {user?.role === 'admin' && (
                 <button
                   onClick={clearAllClientCaches}
-                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-xl transition-all duration-200"
+                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200"
                   title="Wyczyść wszystkie cache"
                 >
                   <Trash2 className="h-5 w-5" />
@@ -867,12 +880,12 @@ export default function DashboardPage() {
 
               {/* User Menu */}
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-secondary-600 rounded-lg flex items-center justify-center">
                   <User className="h-4 w-4 text-white" />
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all duration-200"
+                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200"
                 >
                   <LogOut className="h-5 w-5" />
                 </button>
@@ -907,7 +920,7 @@ export default function DashboardPage() {
             <div className="flex items-center space-x-3">
               <button 
                 onClick={() => router.push('/reports')}
-                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium hover:shadow-lg transition-all duration-200 flex items-center space-x-2"
+                className="px-6 py-3 bg-secondary-600 text-white rounded-lg font-medium hover:bg-secondary-700 hover:shadow-md transition-all duration-200 flex items-center space-x-2"
               >
                 <Download className="h-4 w-4" />
                 <span>Zobacz pełne raporty</span>
@@ -951,11 +964,11 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Recent Campaigns */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-slate-200/50">
+        {/* Recent Campaigns - Modern Card Design */}
+        <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-slate-900">Ostatnie kampanie</h3>
-            <button className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center space-x-1">
+            <button className="text-secondary-600 hover:text-secondary-700 text-sm font-medium flex items-center space-x-1 hover:bg-slate-50 px-3 py-1 rounded-lg transition-all duration-200">
               <span>Zobacz wszystkie</span>
               <ArrowUpRight className="h-4 w-4" />
             </button>
@@ -968,12 +981,12 @@ export default function DashboardPage() {
               <p className="text-slate-600">Dane kampanii pojawią się tutaj po wygenerowaniu raportów.</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {clientData.campaigns.slice(0, 5).map((campaign) => (
-                <div key={campaign.id} className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl hover:bg-slate-100/50 transition-all duration-200">
+                <div key={campaign.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-all duration-200 border border-transparent hover:border-slate-200">
                   <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg flex items-center justify-center">
-                      <Target className="h-5 w-5 text-blue-600" />
+                    <div className="w-10 h-10 bg-secondary-100 rounded-lg flex items-center justify-center">
+                      <Target className="h-5 w-5 text-secondary-600" />
                     </div>
                     <div>
                       <div className="font-medium text-slate-900">{campaign.campaign_name || 'Unnamed Campaign'}</div>

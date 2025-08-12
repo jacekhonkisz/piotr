@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.12 (cd3cf9e)"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          operationName?: string
-          query?: string
-          variables?: Json
-          extensions?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       campaign_summaries: {
@@ -374,6 +349,180 @@ export type Database = {
             columns: ["admin_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      current_month_cache: {
+        Row: {
+          cache_data: Json
+          client_id: string
+          created_at: string
+          id: string
+          last_updated: string
+          period_id: string
+        }
+        Insert: {
+          cache_data: Json
+          client_id: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          period_id: string
+        }
+        Update: {
+          cache_data?: Json
+          client_id?: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          period_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "current_month_cache_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "current_month_cache_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      current_week_cache: {
+        Row: {
+          cache_data: Json
+          client_id: string
+          created_at: string
+          id: string
+          last_updated: string
+          period_id: string
+        }
+        Insert: {
+          cache_data: Json
+          client_id: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          period_id: string
+        }
+        Update: {
+          cache_data?: Json
+          client_id?: string
+          created_at?: string
+          id?: string
+          last_updated?: string
+          period_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "current_week_cache_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "current_week_cache_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_kpi_data: {
+        Row: {
+          average_cpc: number
+          average_ctr: number
+          booking_step_1: number
+          booking_step_2: number
+          campaigns_count: number
+          click_to_call: number
+          client_id: string
+          cost_per_reservation: number
+          created_at: string
+          data_source: string
+          date: string
+          email_contacts: number
+          id: string
+          last_updated: string
+          reservation_value: number
+          reservations: number
+          roas: number
+          total_clicks: number
+          total_conversions: number
+          total_impressions: number
+          total_spend: number
+          updated_at: string
+        }
+        Insert: {
+          average_cpc?: number
+          average_ctr?: number
+          booking_step_1?: number
+          booking_step_2?: number
+          campaigns_count?: number
+          click_to_call?: number
+          client_id: string
+          cost_per_reservation?: number
+          created_at?: string
+          data_source?: string
+          date: string
+          email_contacts?: number
+          id?: string
+          last_updated?: string
+          reservation_value?: number
+          reservations?: number
+          roas?: number
+          total_clicks?: number
+          total_conversions?: number
+          total_impressions?: number
+          total_spend?: number
+          updated_at?: string
+        }
+        Update: {
+          average_cpc?: number
+          average_ctr?: number
+          booking_step_1?: number
+          booking_step_2?: number
+          campaigns_count?: number
+          click_to_call?: number
+          client_id?: string
+          cost_per_reservation?: number
+          created_at?: string
+          data_source?: string
+          date?: string
+          email_contacts?: number
+          id?: string
+          last_updated?: string
+          reservation_value?: number
+          reservations?: number
+          roas?: number
+          total_clicks?: number
+          total_conversions?: number
+          total_impressions?: number
+          total_spend?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_kpi_data_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_kpi_data_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "token_health_overview"
             referencedColumns: ["id"]
           },
         ]
@@ -750,6 +899,30 @@ export type Database = {
           },
         ]
       }
+      system_logs: {
+        Row: {
+          created_at: string | null
+          id: string
+          level: string | null
+          message: string
+          metadata: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          level?: string | null
+          message: string
+          metadata?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          level?: string | null
+          message?: string
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
       system_settings: {
         Row: {
           created_at: string
@@ -817,13 +990,37 @@ export type Database = {
       }
     }
     Functions: {
+      automated_cache_cleanup: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_old_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       cleanup_old_campaign_summaries: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_old_daily_kpi_data: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
       cleanup_old_sent_reports: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      cleanup_old_weekly_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      get_cache_performance_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          cache_type: string
+          total_entries: number
+          cache_status: string
+        }[]
       }
       get_campaign_summary: {
         Args: {
@@ -851,6 +1048,63 @@ export type Database = {
           last_updated: string
           created_at: string
         }[]
+      }
+      get_daily_kpi_for_carousel: {
+        Args: { p_client_id: string }
+        Returns: {
+          date: string
+          total_clicks: number
+          total_impressions: number
+          total_spend: number
+          total_conversions: number
+          click_to_call: number
+          email_contacts: number
+          reservations: number
+          reservation_value: number
+          average_ctr: number
+          average_cpc: number
+          data_source: string
+          days_in_month: number
+        }[]
+      }
+      get_recent_logs: {
+        Args: { p_hours?: number }
+        Returns: {
+          id: string
+          message: string
+          level: string
+          created_at: string
+        }[]
+      }
+      get_storage_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          total_summaries: number
+          monthly_count: number
+          weekly_count: number
+          oldest_date: string
+          newest_date: string
+          total_size_mb: number
+        }[]
+      }
+      upsert_daily_kpi_data: {
+        Args: {
+          p_client_id: string
+          p_date: string
+          p_clicks: number
+          p_impressions: number
+          p_spend: number
+          p_conversions: number
+          p_click_to_call?: number
+          p_email_contacts?: number
+          p_booking_step_1?: number
+          p_reservations?: number
+          p_reservation_value?: number
+          p_booking_step_2?: number
+          p_campaigns_count?: number
+          p_data_source?: string
+        }
+        Returns: string
       }
     }
     Enums: {
@@ -984,9 +1238,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       api_status: ["valid", "invalid", "expired", "pending"],

@@ -43,13 +43,16 @@ const componentInstances = new Set<number>(); // Track component instances for d
 const COMPONENT_CACHE_DURATION = 10000; // 10 seconds cache for component level
 
 export default function MetaPerformanceLive({ clientId, currency = 'PLN', sharedData }: MetaPerformanceLiveProps) {
-  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const [metrics, setMetrics] = useState<ConversionMetrics | null>(null);
-  const [bars, setBars] = useState<number[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>('');
-  const [dataSource, setDataSource] = useState<string>('smart-cache');
+  const [dataSource, setDataSource] = useState<string>('');
   const [cacheAge, setCacheAge] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [clicksBars, setClicksBars] = useState<number[]>([]);
+  const [spendBars, setSpendBars] = useState<number[]>([]);
+  const [conversionsBars, setConversionsBars] = useState<number[]>([]);
+  const [ctrBars, setCtrBars] = useState<number[]>([]);
   
   // Add request deduplication
   const requestInProgress = useRef(false);
@@ -91,6 +94,10 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       setLastUpdated(sharedData.lastUpdated || new Date().toISOString());
       setDataSource(sharedData.debug?.source || 'shared-data');
       setCacheAge(sharedData.debug?.cacheAge || null);
+      
+      // Generate daily data points for the last 7 days + current month
+      // REMOVED: No more fallback data generation - only real database data
+      
       setLoading(false);
       return;
     }
@@ -113,6 +120,15 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         setLastUpdated(lastUpdated);
         setDataSource(dataSource);
         setCacheAge(cacheAge);
+        
+        // Try to fetch ONLY real daily data
+        fetchDailyDataPoints().then((hasRealData) => {
+          if (!hasRealData) {
+            console.log('ℹ️ No real daily data available from global cache - showing empty chart');
+            // Old setBars removed
+          }
+        });
+        
         setLoading(false);
         return;
       }
@@ -129,6 +145,15 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         setLastUpdated(lastUpdated);
         setDataSource(dataSource);
         setCacheAge(cacheAge);
+        
+        // Try to fetch ONLY real daily data
+        fetchDailyDataPoints().then((hasRealData) => {
+          if (!hasRealData) {
+            console.log('ℹ️ No real daily data available from global request - showing empty chart');
+            // Old setBars removed
+          }
+        });
+        
         setLoading(false);
         return;
       } catch (error) {
@@ -289,34 +314,6 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         totalClicks: s.totalClicks
       });
 
-      // Build a thin-bar sparkline from campaign spend/clicks mix to show activity variety
-      let values: number[] = [];
-      
-      if (campaigns && campaigns.length > 0) {
-        values = campaigns
-          .map((c) => Number(c.clicks || 0) + Number(c.conversions || 0) + Number(c.spend || 0) / 10)
-          .filter((v) => Number.isFinite(v));
-      }
-      
-      // Ensure we always have some bars to render (fallback to static data if no campaigns)
-      const barCount = 48;
-      const normalized: number[] = [];
-      
-      if (values.length > 0) {
-        const max = Math.max(1, ...values);
-        for (let i = 0; i < barCount; i++) {
-          const v = values[i % values.length] || 0;
-          const h = Math.max(0.05, Math.min(1, (v / max)));
-          normalized.push(h);
-        }
-      } else {
-        // Fallback: create static bars when no campaign data is available
-        for (let i = 0; i < barCount; i++) {
-          const h = Math.max(0.05, Math.min(1, (0.3 + Math.sin(i * 0.2) * 0.2)));
-          normalized.push(h);
-        }
-      }
-
       console.log('🔄 MetaPerformanceLive: Setting component state with real data:', {
         averageCtr: s.averageCtr,
         totalSpend: s.totalSpend,
@@ -325,12 +322,21 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       
       setStats(s);
       setMetrics(cm);
-      setBars(normalized);
       setLastUpdated(new Date().toLocaleTimeString('pl-PL'));
       
       // Set data source information from smart cache response
       setDataSource(json.debug?.source || json.source || 'smart-cache');
       setCacheAge(json.debug?.cacheAge || null);
+
+          // Store daily data and fetch ONLY real historical points
+          storeDailyData(s, cm, campaigns, json.debug?.source || 'api');
+          // Try to fetch ONLY real daily data
+          fetchDailyDataPoints().then((hasRealData) => {
+            if (!hasRealData) {
+              console.log('ℹ️ No real daily data available from component cache - showing empty chart');
+              // Old setBars removed
+            }
+          });
 
       console.log(`✅ MetaPerformanceLive: Data loaded from ${json.debug?.source || json.source} (cache age: ${json.debug?.cacheAge ? formatCacheAge(json.debug.cacheAge) : 'N/A'})`);
 
@@ -360,9 +366,72 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     }
   }, [clientId]); // Add dependency array for useCallback
 
-  const handleRefresh = () => {
-    console.log('🔄 MetaPerformanceLive: Manual refresh requested');
-    fetchSmartCacheData(true); // Force refresh
+  // Store daily data for current day
+  const storeDailyData = async (stats: Stats, conversionMetrics: ConversionMetrics, campaigns: any[], dataSource: string) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      
+      console.log('📊 Storing daily KPI data:', {
+        date: today,
+        totalClicks: stats.totalClicks,
+        totalSpend: stats.totalSpend,
+        campaignsCount: campaigns.length,
+        dataSource
+      });
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      // Try to break down monthly data into daily values for more accurate storage
+      const currentDate = new Date();
+      const daysInMonth = currentDate.getDate();
+      
+      // Calculate daily averages, but adjust for today specifically
+      const avgDailyClicks = Math.round(stats.totalClicks / daysInMonth);
+      const avgDailySpend = stats.totalSpend / daysInMonth;
+      const avgDailyImpressions = Math.round(stats.totalImpressions / daysInMonth);
+      const avgDailyConversions = Math.round(stats.totalConversions / daysInMonth);
+      
+      // For today, try to get more recent data (assume today represents 10-15% of monthly total)
+      const todayFactor = Math.min(0.15, 1 / daysInMonth * 1.2); // Today might be slightly higher
+      const estimatedTodayClicks = Math.round(stats.totalClicks * todayFactor);
+      const estimatedTodaySpend = stats.totalSpend * todayFactor;
+      
+      await fetch('/api/daily-kpi-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          clientId,
+          date: today,
+          campaigns: campaigns,
+          conversionMetrics: {
+            ...conversionMetrics,
+            // Scale conversion metrics to daily level
+            click_to_call: Math.round((conversionMetrics.click_to_call || 0) * todayFactor),
+            email_contacts: Math.round((conversionMetrics.email_contacts || 0) * todayFactor),
+            reservations: Math.round((conversionMetrics.reservations || 0) * todayFactor),
+            reservation_value: (conversionMetrics.reservation_value || 0) * todayFactor,
+          },
+          dataSource,
+          estimatedDailyData: {
+            avgDailyClicks,
+            avgDailySpend,
+            avgDailyImpressions,
+            avgDailyConversions,
+            estimatedTodayClicks,
+            estimatedTodaySpend,
+            daysInMonth
+          }
+        })
+      });
+
+      console.log('📊 Daily KPI data stored successfully for:', today);
+    } catch (error) {
+      console.warn('⚠️ Failed to store daily KPI data:', error);
+    }
   };
 
   // Use shared data if available, otherwise fetch independently
@@ -381,13 +450,13 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       setCacheAge(sharedData.debug?.cacheAge || null);
       setLoading(false);
       
-      // Generate bars for visualization
-      const normalizeValue = (value: number, max: number) => Math.max(0.1, Math.min(1, value / max));
-      const maxSpend = Math.max(sharedData.stats.totalSpend, 1000);
-      const normalized = Array.from({length: 12}, () => 
-        normalizeValue(Math.random() * sharedData.stats.totalSpend, maxSpend)
-      );
-      setBars(normalized);
+      // Fetch ONLY real daily data - no estimates
+      fetchDailyDataPoints().then((hasRealData) => {
+        if (!hasRealData) {
+          console.log('ℹ️ No real daily data available from shared data - showing empty chart');
+          // Old setBars removed
+        }
+      });
       
     } else if (!isRequesting && !requestInProgress.current && clientId) {
       console.log('🔄 MetaPerformanceLive: No shared data, fetching independently');
@@ -410,11 +479,111 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     };
   }, [clientId]);
 
+  // Fetch daily data points for chart - DATABASE FIRST approach
+  const fetchDailyDataPoints = async () => {
+    try {
+      console.log('📊 Fetching daily data from DATABASE for clientId:', clientId);
+      
+      // Get data directly from database - NO API CALLS
+      const { data: dailyData, error } = await supabase
+        .from('daily_kpi_data')
+        .select('date, total_clicks, total_spend, total_conversions, average_ctr, data_source')
+        .eq('client_id', clientId)
+        .order('date', { ascending: false })
+        .limit(7);
+
+      if (error) {
+        console.error('❌ Database error fetching daily data:', error);
+        setClicksBars([]);
+        setSpendBars([]);
+        setConversionsBars([]);
+        setCtrBars([]);
+        return false;
+      }
+
+      if (!dailyData || dailyData.length === 0) {
+        console.log('⚠️ No daily data found in database for client:', clientId);
+        setClicksBars([]);
+        setSpendBars([]);
+        setConversionsBars([]);
+        setCtrBars([]);
+        return false;
+      }
+
+      console.log('✅ Found daily data in database:', {
+        recordCount: dailyData.length,
+        latestDate: dailyData[0]?.date,
+        sources: Array.from(new Set(dailyData.map(d => d.data_source)))
+      });
+
+      // Create bars from database data (reverse order for chronological display)
+      const reversedData = dailyData.reverse();
+      
+      const clicksBarsData = reversedData.map((day: any, index: number) => {
+        const clicks = day.total_clicks || 0;
+        const spend = day.total_spend || 0;
+        const conversions = day.total_conversions || 0;
+        const ctr = day.average_ctr || 0;
+        console.log(`📊 Day ${index + 1} (${day.date}): ${clicks} clicks, €${spend}, ${conversions} conversions, CTR: ${ctr}%`);
+        return clicks;
+      });
+      
+      const spendBarsData = reversedData.map(day => day.total_spend || 0);
+      const conversionsBarsData = reversedData.map(day => day.total_conversions || 0);
+      const ctrBarsData = reversedData.map(day => day.average_ctr || 0);
+
+      console.log('📈 Using database daily data:', {
+        totalDays: dailyData.length,
+        clicksRange: {
+          min: Math.min(...clicksBarsData),
+          max: Math.max(...clicksBarsData)
+        },
+        spendRange: {
+          min: Math.min(...spendBarsData),
+          max: Math.max(...spendBarsData)
+        },
+        totalClicks: clicksBarsData.reduce((a: number, b: number) => a + b, 0),
+        totalSpend: spendBarsData.reduce((a: number, b: number) => a + b, 0),
+        dataSource: 'database'
+      });
+
+      setClicksBars(clicksBarsData);
+      setSpendBars(spendBarsData);
+      setConversionsBars(conversionsBarsData);
+      setCtrBars(ctrBarsData);
+      
+      // Debug: Log what's being stored in each KPI array
+      console.log('🔍 DEBUG: Data being stored in KPI arrays:');
+      console.log('- clicksBars:', clicksBarsData);
+      console.log('- spendBars:', spendBarsData);
+      console.log('- conversionsBars:', conversionsBarsData, '← Should be [9,12,6,7,8,635,223]');
+      console.log('- ctrBars:', ctrBarsData);
+
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error fetching daily data from database:', error);
+      setClicksBars([]);
+      setSpendBars([]);
+      setConversionsBars([]);
+      setCtrBars([]);
+      return false;
+    }
+  };
+
+  // Generate daily data points for the last 7 days + current month
+  // REMOVED: No more fallback data generation - only real database data
+
+  const handleRefresh = () => {
+    console.log('🔄 MetaPerformanceLive: Manual refresh requested');
+    fetchSmartCacheData(true); // Force refresh
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-xl font-bold text-slate-900">Wydajność kampanii Meta Ads</h3>
+          <h3 className="text-xl font-semibold text-slate-900">Wydajność kampanii Meta Ads</h3>
           <p className="text-sm text-slate-600">Dane z inteligentnego cache (aktualizacja co 3h)</p>
         </div>
         <div className="flex items-center space-x-3">
@@ -427,21 +596,21 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
               </div>
             )}
             {dataSource === 'stale-cache' && (
-              <div className="flex items-center space-x-1 text-yellow-600">
+              <div className="flex items-center space-x-1 text-orange-500">
                 <Clock className="w-3 h-3" />
-                <span>Stale Cache</span>
+                <span>Odświeżanie</span>
               </div>
             )}
             {dataSource === 'force-refresh' && (
-              <div className="flex items-center space-x-1 text-blue-600">
+              <div className="flex items-center space-x-1 text-secondary-600">
                 <RefreshCw className="w-3 h-3" />
-                <span>Fresh</span>
+                <span>Świeże</span>
               </div>
             )}
             {cacheAge && (
-              <div className="flex items-center space-x-1 text-gray-500">
+              <div className="flex items-center space-x-1 text-slate-500">
                 <Clock className="w-3 h-3" />
-                <span>{formatCacheAge(cacheAge)} old</span>
+                <span>{formatCacheAge(cacheAge)}</span>
               </div>
             )}
           </div>
@@ -450,14 +619,14 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
+            className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
             title="Odśwież dane"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           
           {/* Last Updated */}
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-slate-500">
             {lastUpdated ? `Ostatnia aktualizacja: ${lastUpdated}` : 'Ładowanie...'}
           </div>
         </div>
@@ -467,19 +636,11 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         <KPICarousel
           items={[
             {
-              id: 'ctr',
-              label: 'Średni CTR',
-              value: `${stats.averageCtr.toFixed(1)}%`,
-              sublabel: 'Bieżący miesiąc',
-              bars,
-              dateForMarker: new Date().toISOString()
-            },
-            {
               id: 'clicks',
               label: 'Kliknięcia',
               value: stats.totalClicks.toLocaleString('pl-PL'),
               sublabel: 'Bieżący miesiąc',
-              bars,
+              bars: clicksBars,
               dateForMarker: new Date().toISOString()
             },
             {
@@ -487,7 +648,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
               label: 'Wydatki',
               value: formatCurrency(stats.totalSpend),
               sublabel: 'Bieżący miesiąc',
-              bars,
+              bars: spendBars,
               dateForMarker: new Date().toISOString()
             },
             {
@@ -495,7 +656,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
               label: 'Konwersje',
               value: stats.totalConversions.toLocaleString('pl-PL'),
               sublabel: 'Bieżący miesiąc',
-              bars,
+              bars: conversionsBars,
               dateForMarker: new Date().toISOString()
             }
           ] as KPI[]}
@@ -504,13 +665,13 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       )}
 
       {/* Cache Information */}
-      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-        <div className="text-xs text-gray-600">
+      <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+        <div className="text-xs text-slate-600">
           <div className="flex items-center justify-between">
             <span>💡 Inteligentny cache: Dane są aktualizowane co 3 godziny automatycznie</span>
             <span className="text-green-600 font-medium">✓ Brak niepotrzebnych API wywołań</span>
           </div>
-          <div className="mt-1 text-gray-500">
+          <div className="mt-1 text-slate-500">
             Źródło: {dataSource === 'cache' ? 'Cache (szybkie)' : dataSource === 'force-refresh' ? 'Meta API (świeże)' : 'Baza danych'}
             {cacheAge && ` • Wiek: ${formatCacheAge(cacheAge)}`}
           </div>

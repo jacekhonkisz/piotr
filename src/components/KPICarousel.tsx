@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export type KPI = {
@@ -100,7 +100,7 @@ export default function KPICarousel({ items, variant = "light", autoMs = 8000 }:
             aria-selected={i === index}
             aria-label={`Przejdź do slajdu ${i + 1}`}
             onClick={() => setIndex(i)}
-            className={`h-1.5 w-6 rounded-full transition-colors ${i === index ? "bg-brand-blue" : "bg-brand-blue50"}`}
+            className={`h-1.5 w-6 rounded-full transition-colors ${i === index ? "bg-secondary-600" : "bg-slate-300"}`}
           />
         ))}
       </div>
@@ -142,13 +142,13 @@ function KpiSlide({ kpi, variant = "light" }: { kpi: KPI; variant?: "light" | "d
 
   return (
     <div
-      className={`relative grid grid-cols-12 gap-6 rounded-2xl border shadow-sm p-0 md:p-0 ${
-        variant === "dark" ? "bg-secondary-800 border-secondary-700" : "bg-ui-card border-ui-border"
+      className={`relative grid grid-cols-12 gap-0 rounded-lg border shadow-sm p-0 md:p-0 hover:shadow-md transition-all duration-200 ${
+        variant === "dark" ? "bg-secondary-800 border-secondary-700" : "bg-slate-50 border-slate-200"
       }`}
       aria-label={`${kpi.label}: ${String(kpi.value)}`}
     >
-      {/* left dark panel */}
-      <div className="col-span-12 md:col-span-5 bg-brand-blue text-white rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none flex items-center justify-center p-6 md:p-8">
+      {/* left navy panel */}
+      <div className="col-span-12 md:col-span-5 bg-secondary-600 text-white rounded-t-lg md:rounded-l-lg md:rounded-tr-none flex items-center justify-center p-6 md:p-8">
         <div className="text-center md:text-left w-full">
           <div className="text-sm md:text-base opacity-90">{kpi.label}</div>
           <div className="mt-2 text-5xl md:text-6xl font-semibold leading-none">{displayValue}</div>
@@ -156,77 +156,176 @@ function KpiSlide({ kpi, variant = "light" }: { kpi: KPI; variant?: "light" | "d
         </div>
       </div>
 
-      {/* right spark bars area */}
-      <div className="col-span-12 md:col-span-7 rounded-b-2xl md:rounded-r-2xl md:rounded-bl-none overflow-hidden bg-yellow-100 p-4 md:p-6">
-        <WavySparkline data={bars} />
+      {/* right chart area */}
+      <div className="col-span-12 md:col-span-7 rounded-b-lg md:rounded-r-lg md:rounded-bl-none bg-slate-50 p-4 md:p-6 h-44 relative">
+        <DailyBarCarousel data={kpi.bars} kpi={kpi} />
       </div>
     </div>
   );
 }
 
-function WavySparkline({ data }: { data: number[] }) {
-  // Use fixed viewBox and scale via preserveAspectRatio to avoid measurement glitches
-  const WIDTH = 800;
-  const HEIGHT = 220;
-  const MARGIN_X = 24;
-  const MARGIN_Y = 28;
-  const count = Math.min(36, Math.max(16, data.length || 24));
+const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { data: number[]; kpi: KPI }) {
+  const [highlightedDayIndex, setHighlightedDayIndex] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoAdvanceMs = 3000; // 3 seconds per highlight
 
-  const points = useMemo(() => {
-    const values = normalizeBars(
-      data.length ? data.slice(-count) : Array.from({ length: count }, (_, i) => 0.6 + 0.35 * Math.sin(i / 2))
-    );
-    const stepX = (WIDTH - MARGIN_X * 2) / (values.length - 1);
-    const usableH = HEIGHT - MARGIN_Y * 2;
-    return values.map((v, i) => {
-      const x = MARGIN_X + i * stepX;
-      const y = HEIGHT - MARGIN_Y - (v * 0.85 + 0.05) * usableH; // keep within margins
-      return { x, y };
-    });
+  // Filter and prepare data
+  const validData = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    return data.filter(d => typeof d === 'number' && !isNaN(d) && isFinite(d));
   }, [data]);
 
-  const d = useMemo(() => {
-    if (points.length === 0) return '';
-    let path = `M ${points[0]!.x} ${points[0]!.y}`;
-    for (let i = 1; i < points.length; i++) {
-      const p0 = points[i - 1]!;
-      const p1 = points[i]!;
-      const xc = (p0.x + p1.x) / 2;
-      const yc = (p0.y + p1.y) / 2;
-      path += ` Q ${p0.x} ${p0.y}, ${xc} ${yc}`;
-    }
-    // final smooth to the last point
-    const last = points[points.length - 1]!;
-    path += ` T ${last.x} ${last.y}`;
-    return path;
-  }, [points]);
+  const normalizedData = useMemo(() => {
+    if (validData.length === 0) return [];
+    return normalizeBars(validData);
+  }, [validData]);
 
-  const lastPoint = points.length > 0 ? points[points.length - 1]! : { x: WIDTH - MARGIN_X, y: HEIGHT / 2 };
+  // Auto-advance through days
+  useEffect(() => {
+    if (normalizedData.length <= 1) return;
+    
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setHighlightedDayIndex(prev => (prev + 1) % normalizedData.length);
+    }, autoAdvanceMs);
+    
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [normalizedData.length, autoAdvanceMs]);
+
+  // Format value based on KPI type
+  const formatValue = useCallback((value: number, kpiId: string) => {
+    switch (kpiId) {
+      case 'clicks':
+        return value.toLocaleString('pl-PL');
+      case 'spend':
+        return `${value.toFixed(0)} PLN`;
+      case 'conversions':
+        return value.toString();
+      default:
+        return value.toLocaleString('pl-PL');
+    }
+  }, []);
+
+  // Early return for no data
+  if (!validData || validData.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">
+        Brak danych historycznych
+      </div>
+    );
+  }
+
+  const highlightedValue = validData[highlightedDayIndex] || 0;
+  const highlightedNormalizedValue = normalizedData[highlightedDayIndex] || 0;
+  const dayNumber = highlightedDayIndex + 1;
+
+  // Generate date for actual data days (index 0 = oldest day, highest index = yesterday)
+  const getDateForDay = (dayIndex: number) => {
+    // Data is ordered chronologically: index 0 = oldest day, last index = yesterday
+    // We fetch 7 days of data, so index 0 = 6 days ago, index 6 = yesterday (1 day ago)
+    const totalDays = validData.length;
+    if (totalDays === 0) return '';
+    
+    const today = new Date();
+    // Calculate days back: if we have 7 days, index 0 = 6 days ago, index 6 = yesterday (1 day ago)
+    const daysBack = totalDays - dayIndex;
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() - daysBack);
+    
+    return targetDate.toLocaleDateString('pl-PL', { 
+      day: 'numeric',
+      month: 'short'
+    }).replace(' ', ' ');
+  };
 
   return (
-    <div className="relative h-[160px] md:h-[200px]">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" height="100%" preserveAspectRatio="none" className="absolute inset-0">
-        <motion.path
-          d={d}
-          fill="none"
-          stroke="#111827" /* slate-900 */
-          strokeWidth={3}
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: 1.2, ease: [0.22, 0.61, 0.36, 1] }}
-        />
-
-        {/* end dot */}
-        <motion.circle
-          cx={lastPoint.x}
-          cy={lastPoint.y}
-          r={5}
-          fill="#111827"
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 1.0, duration: 0.25 }}
-        />
-      </svg>
+    <div className="relative w-full h-full flex flex-col p-2">
+      {/* Value display for highlighted day */}
+      <div className="flex items-start justify-between mb-0">
+        <div>
+          {/* Removed date from left corner */}
+        </div>
+        <motion.div
+          key={`${highlightedDayIndex}-actual-value`}
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="text-right"
+        >
+          <div className="text-2xl font-bold text-slate-900">
+            {formatValue(highlightedValue, kpi.id)}
+          </div>
+          <div className="text-sm text-slate-500 mt-1">
+            {getDateForDay(highlightedDayIndex).replace('sie', 'sierpnia')}
+          </div>
+        </motion.div>
+      </div>
+      
+      {/* All bars container - moved much higher */}
+      <div className="flex items-end justify-center gap-3 px-2 relative z-10 -mt-11" style={{ height: '120px' }}>
+        {normalizedData.map((normalizedValue, index) => {
+          const isHighlighted = index === highlightedDayIndex;
+          const barHeight = Math.max(normalizedValue * 122, 21); // 75% bigger (70 * 1.75 ≈ 122, 12 * 1.75 ≈ 21)
+          
+          return (
+            <div key={index} className="flex flex-col items-center relative z-20">
+              {/* Bar with fixed height calculation */}
+              <motion.div
+                className={`rounded-full transition-all duration-500 cursor-pointer relative z-30 ${
+                  isHighlighted 
+                    ? 'bg-slate-900' 
+                    : 'bg-slate-300'
+                }`}
+                style={{ 
+                  width: isHighlighted ? '14px' : '10px',
+                  height: `${barHeight}px`,
+                }}
+                animate={{
+                  scale: isHighlighted ? 1.0 : 0.9,
+                  opacity: isHighlighted ? 1 : 0.7
+                }}
+                transition={{ duration: 0.4, ease: [0.22, 0.61, 0.36, 1] }}
+                onClick={() => setHighlightedDayIndex(index)}
+              />
+              
+              {/* Date below highlighted bar */}
+              <div className="h-4 flex items-center justify-center mt-1 relative z-30">
+                {isHighlighted && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -3 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                    className="text-xs font-medium text-slate-900 whitespace-nowrap"
+                  >
+                    {getDateForDay(index)}
+                  </motion.div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Progress indicator dots - moved lower */}
+      <div className="flex justify-center mt-3">
+        <div className="flex items-center gap-1.5">
+          {normalizedData.map((_, index) => (
+            <motion.div
+              key={index}
+              className={`rounded-full transition-all duration-300 ${
+                index === highlightedDayIndex ? 'bg-slate-900' : 'bg-slate-300'
+              }`}
+              animate={{
+                width: index === highlightedDayIndex ? '16px' : '6px',
+                height: '6px'
+              }}
+              transition={{ duration: 0.3 }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
-} 
+}); 
