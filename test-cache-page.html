@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Behavior Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .log-cache { background: #d4edda; color: #155724; }
+        .log-fresh { background: #fff3cd; color: #856404; }
+        .log-error { background: #f8d7da; color: #721c24; }
+        .log-info { background: #d1ecf1; color: #0c5460; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Cache Behavior Test</h1>
+    
+    <div class="container">
+        <h2>Test Configuration</h2>
+        <p>This page tests the profile caching behavior of your optimized auth system.</p>
+        
+        <div>
+            <label for="email">Email:</label>
+            <input type="email" id="email" placeholder="test@example.com" style="width: 200px; padding: 5px; margin: 5px;">
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="password" style="width: 200px; padding: 5px; margin: 5px;">
+        </div>
+        
+        <button onclick="testLogin()">🔐 Test Login & Profile Loading</button>
+        <button onclick="testProfileFetch()">📊 Test Profile Fetch</button>
+        <button onclick="clearLog()">🗑️ Clear Log</button>
+        <button onclick="checkCacheStatus()">📈 Check Cache Status</button>
+    </div>
+
+    <div class="container">
+        <h2>Performance Statistics</h2>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalFetches">0</div>
+                <div class="stat-label">Total Fetches</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="cacheHits">0</div>
+                <div class="stat-label">Cache Hits</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="freshFetches">0</div>
+                <div class="stat-label">Fresh Fetches</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgTime">0ms</div>
+                <div class="stat-label">Avg Time</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Real-time Log</h2>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        // Initialize Supabase
+        const supabaseUrl = 'https://xbklptrrfdspyvnjaojf.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhia2xwdHJyZmRzcHl2bmphb2pmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzNzEyODYsImV4cCI6MjA2ODk0NzI4Nn0.890DeNlTyqSGSqjb7LTRWTDVq--Phj8ZrMmfOvYiYPI';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // Statistics
+        let stats = {
+            totalFetches: 0,
+            cacheHits: 0,
+            freshFetches: 0,
+            totalTime: 0
+        };
+
+        // Logging function
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Clear log
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Update statistics display
+        function updateStats() {
+            document.getElementById('totalFetches').textContent = stats.totalFetches;
+            document.getElementById('cacheHits').textContent = stats.cacheHits;
+            document.getElementById('freshFetches').textContent = stats.freshFetches;
+            document.getElementById('avgTime').textContent = stats.totalFetches > 0 ? 
+                `${Math.round(stats.totalTime / stats.totalFetches)}ms` : '0ms';
+        }
+
+        // Test login and profile loading
+        async function testLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            if (!email || !password) {
+                log('Please enter email and password', 'error');
+                return;
+            }
+
+            log('🔐 Starting login test...', 'info');
+            
+            try {
+                // Sign in
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+                if (error) {
+                    log(`❌ Login failed: ${error.message}`, 'error');
+                    return;
+                }
+
+                log(`✅ Login successful for: ${data.user.email}`, 'info');
+                log(`🆔 User ID: ${data.user.id}`, 'info');
+
+                // Now test profile loading
+                await testProfileFetch();
+
+            } catch (error) {
+                log(`❌ Login error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test profile fetching
+        async function testProfileFetch() {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                
+                if (!user) {
+                    log('❌ No authenticated user found', 'error');
+                    return;
+                }
+
+                log(`📊 Fetching profile for user: ${user.id}`, 'info');
+                
+                const startTime = performance.now();
+                
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+
+                const fetchTime = performance.now() - startTime;
+                
+                if (error) {
+                    log(`❌ Profile fetch failed: ${error.message}`, 'error');
+                    return;
+                }
+
+                // Update statistics
+                stats.totalFetches++;
+                stats.totalTime += fetchTime;
+                
+                // Determine if this was cached or fresh (based on time)
+                if (fetchTime < 100) {
+                    stats.cacheHits++;
+                    log(`✅ Profile loaded in ${fetchTime.toFixed(2)}ms (CACHE HIT)`, 'cache');
+                } else {
+                    stats.freshFetches++;
+                    log(`🔄 Profile loaded in ${fetchTime.toFixed(2)}ms (FRESH FETCH)`, 'fresh');
+                }
+
+                log(`   Profile: ${profile.email} (${profile.role})`, 'info');
+                updateStats();
+
+            } catch (error) {
+                log(`❌ Profile fetch error: ${error.message}`, 'error');
+            }
+        }
+
+        // Check cache status
+        async function checkCacheStatus() {
+            try {
+                log('📈 Checking cache status...', 'info');
+                
+                const response = await fetch(`${supabaseUrl}/rest/v1/rpc/get_cache_performance_stats`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${supabaseKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const cacheStats = await response.json();
+                    log('📊 Cache Status:', 'info');
+                    cacheStats.forEach(stat => {
+                        log(`   ${stat.cache_type}: ${stat.total_entries} entries (${stat.cache_status})`, 'info');
+                    });
+                } else {
+                    log('❌ Failed to fetch cache stats', 'error');
+                }
+
+            } catch (error) {
+                log(`❌ Cache status error: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize
+        log('🚀 Cache Behavior Test Page Loaded', 'info');
+        log('💡 Enter your credentials and click "Test Login" to see caching in action', 'info');
+        log('📊 The system will show whether each profile fetch hits the cache or fetches fresh data', 'info');
+    </script>
+</body>
+</html> 

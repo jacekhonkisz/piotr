@@ -56,11 +56,14 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
   const [isRequesting, setIsRequesting] = useState(false);
 
   const dateRange = useMemo(() => {
-    const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-      .toISOString()
-      .split('T')[0];
-    const end = new Date().toISOString().split('T')[0];
-    return { start, end };
+    // Use the same date range logic as dashboard for consistency
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    return {
+      start: `${year}-${String(month).padStart(2, '0')}-01`,
+      end: new Date(year, month, 0).toISOString().split('T')[0] // Last day of current month
+    };
   }, []);
 
   const formatCurrency = (amount: number) => {
@@ -78,6 +81,19 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
 
   const fetchSmartCacheData = useCallback(async (forceRefresh: boolean = false) => {
     const cacheKey = `${clientId}_smart_cache`;
+    
+    // PRIORITY 1: Use shared data from dashboard if available (prevents duplicate API calls)
+    if (!forceRefresh && sharedData && sharedData.stats && sharedData.conversionMetrics) {
+      console.log('🎯 MetaPerformanceLive: Using shared data from dashboard (NO API CALL NEEDED)');
+      
+      setStats(sharedData.stats);
+      setMetrics(sharedData.conversionMetrics);
+      setLastUpdated(sharedData.lastUpdated || new Date().toISOString());
+      setDataSource(sharedData.debug?.source || 'shared-data');
+      setCacheAge(sharedData.debug?.cacheAge || null);
+      setLoading(false);
+      return;
+    }
     
     // Check if request is already active (prevent race conditions)
     if (activeRequests.has(cacheKey)) {
@@ -148,9 +164,12 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         console.log(`🔄 MetaPerformanceLive: Fetching data from fetch-live-data (consistent with dashboard cards)`);
 
         // Use same endpoint as dashboard cards for data consistency
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
         const currentMonth = {
-          start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-          end: new Date().toISOString().split('T')[0]
+          start: `${year}-${String(month).padStart(2, '0')}-01`,
+          end: new Date(year, month, 0).toISOString().split('T')[0] // Last day of current month
         };
 
         const response = await fetch('/api/fetch-live-data', {

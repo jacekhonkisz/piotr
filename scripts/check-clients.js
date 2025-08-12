@@ -1,4 +1,5 @@
-require('dotenv').config({path: '.env.local'});
+// Script to check current clients in the database
+require('dotenv').config({ path: '.env.local' });
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -7,47 +8,91 @@ const supabase = createClient(
 );
 
 async function checkClients() {
-  console.log('🔍 Checking clients with Meta API tokens...\n');
-  
-  const { data: clients, error } = await supabase
-    .from('clients')
-    .select('id, name, meta_access_token, ad_account_id');
+  console.log('🔍 Checking Current Clients in Database\n');
 
-  if (error) {
-    console.error('❌ Error fetching clients:', error);
-    return;
-  }
+  try {
+    // Get all clients
+    const { data: clients, error } = await supabase
+      .from('clients')
+      .select('id, name, email, api_status, meta_access_token, ad_account_id')
+      .order('name');
 
-  console.log(`📊 Found ${clients.length} total clients:\n`);
-
-  clients.forEach((client, index) => {
-    console.log(`${index + 1}. ${client.name}`);
-    console.log(`   ID: ${client.id}`);
-    console.log(`   Ad Account: ${client.ad_account_id || 'Not set'}`);
-    console.log(`   Meta Token: ${client.meta_access_token ? '✅ Present' : '❌ Missing'}`);
-    if (client.meta_access_token) {
-      console.log(`   Token Preview: ${client.meta_access_token.substring(0, 20)}...`);
+    if (error) {
+      console.error('❌ Error fetching clients:', error.message);
+      return;
     }
-    console.log('');
-  });
 
-  const clientsWithTokens = clients.filter(c => c.meta_access_token);
-  console.log(`\n🎯 Summary:`);
-  console.log(`   Total clients: ${clients.length}`);
-  console.log(`   Clients with Meta tokens: ${clientsWithTokens.length}`);
-  console.log(`   Clients without Meta tokens: ${clients.length - clientsWithTokens.length}`);
+    if (!clients || clients.length === 0) {
+      console.log('⚠️ No clients found in database');
+      return;
+    }
 
-  if (clientsWithTokens.length === 0) {
-    console.log('\n⚠️  No clients have Meta API tokens!');
-    console.log('   This means all PDFs will show demo data.');
-    console.log('   To see real Meta API data, you need to:');
-    console.log('   1. Add Meta API tokens to clients');
-    console.log('   2. Ensure tokens have proper permissions');
-    console.log('   3. Verify ad account IDs are correct');
-  } else {
-    console.log('\n✅ Found clients with Meta tokens!');
-    console.log('   These clients will show real Meta API data in PDFs.');
+    console.log(`📊 Found ${clients.length} clients:\n`);
+
+    clients.forEach((client, index) => {
+      const hasToken = client.meta_access_token ? '✅' : '❌';
+      const hasAdAccount = client.ad_account_id ? '✅' : '❌';
+      const status = client.api_status || 'unknown';
+      
+      console.log(`${index + 1}. ${client.name}`);
+      console.log(`   📧 Email: ${client.email}`);
+      console.log(`   🔑 Meta Token: ${hasToken}`);
+      console.log(`   📊 Ad Account: ${hasAdAccount}`);
+      console.log(`   📈 API Status: ${status}`);
+      console.log(`   🆔 ID: ${client.id}`);
+      console.log('');
+    });
+
+    // Check for specific clients
+    const havet = clients.find(c => c.name.toLowerCase().includes('havet'));
+    const belmonte = clients.find(c => c.name.toLowerCase().includes('belmonte'));
+
+    console.log('🎯 Target Clients Status:');
+    console.log('─'.repeat(50));
+    
+    if (havet) {
+      console.log('✅ Havet found:');
+      console.log(`   Name: ${havet.name}`);
+      console.log(`   Token: ${havet.meta_access_token ? 'Present' : 'Missing'}`);
+      console.log(`   Ad Account: ${havet.ad_account_id || 'Missing'}`);
+      console.log(`   Status: ${havet.api_status}`);
+    } else {
+      console.log('❌ Havet not found');
+    }
+
+    if (belmonte) {
+      console.log('✅ Belmonte found:');
+      console.log(`   Name: ${belmonte.name}`);
+      console.log(`   Token: ${belmonte.meta_access_token ? 'Present' : 'Missing'}`);
+      console.log(`   Ad Account: ${belmonte.ad_account_id || 'Missing'}`);
+      console.log(`   Status: ${belmonte.api_status}`);
+    } else {
+      console.log('❌ Belmonte not found');
+    }
+
+    // Check which clients need data collection
+    const clientsNeedingData = clients.filter(c => 
+      c.meta_access_token && 
+      c.ad_account_id && 
+      c.api_status === 'valid'
+    );
+
+    console.log('\n📊 Clients Ready for Data Collection:');
+    console.log('─'.repeat(50));
+    
+    if (clientsNeedingData.length > 0) {
+      clientsNeedingData.forEach(client => {
+        console.log(`✅ ${client.name} - Ready for collection`);
+      });
+    } else {
+      console.log('⚠️ No clients are ready for data collection');
+      console.log('   (Missing tokens, ad accounts, or invalid API status)');
+    }
+
+  } catch (error) {
+    console.error('❌ Error:', error.message);
   }
 }
 
-checkClients().catch(console.error); 
+// Run the check
+checkClients(); 

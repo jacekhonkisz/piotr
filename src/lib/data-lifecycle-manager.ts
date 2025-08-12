@@ -1,0 +1,407 @@
+import { createClient } from '@supabase/supabase-js';
+import logger from './logger';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export class DataLifecycleManager {
+  private static instance: DataLifecycleManager;
+
+  public static getInstance(): DataLifecycleManager {
+    if (!DataLifecycleManager.instance) {
+      DataLifecycleManager.instance = new DataLifecycleManager();
+    }
+    return DataLifecycleManager.instance;
+  }
+
+  /**
+   * Archive completed current month data to permanent storage
+   * This runs when a month ends to preserve the cached data
+   */
+  async archiveCompletedMonths(): Promise<void> {
+    console.log('📅 Starting monthly data archival process...');
+    
+    try {
+      // Get current date info
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      
+      // Get previous month info
+      const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+      const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+      const prevMonthPeriodId = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+      
+      console.log(`📊 Archiving completed month: ${prevMonthPeriodId}`);
+      
+      // Get all clients with cache data for the previous month
+      const { data: cacheData, error: cacheError } = await supabase
+        .from('current_month_cache')
+        .select('*')
+        .eq('period_id', prevMonthPeriodId);
+      
+      if (cacheError) {
+        throw new Error(`Failed to fetch month cache data: ${cacheError.message}`);
+      }
+      
+      if (!cacheData || cacheData.length === 0) {
+        console.log('📝 No monthly cache data found to archive');
+        return;
+      }
+      
+      console.log(`📦 Found ${cacheData.length} monthly cache entries to archive`);
+      
+      // Archive each cache entry to campaign_summaries
+      let archivedCount = 0;
+      let errorCount = 0;
+      
+      for (const cacheEntry of cacheData) {
+        try {
+          await this.archiveMonthlyData(cacheEntry);
+          archivedCount++;
+        } catch (error) {
+          console.error(`❌ Failed to archive monthly data for client ${cacheEntry.client_id}:`, error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`✅ Monthly archival completed: ${archivedCount} archived, ${errorCount} errors`);
+      
+      // Clean up archived cache entries
+      if (archivedCount > 0) {
+        await this.cleanupArchivedMonthlyCache(prevMonthPeriodId);
+      }
+      
+    } catch (error) {
+      console.error('❌ Monthly data archival failed:', error);
+      logger.error('Monthly data archival failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Archive completed current week data to permanent storage
+   * This runs when a week ends to preserve the cached data
+   */
+  async archiveCompletedWeeks(): Promise<void> {
+    console.log('📅 Starting weekly data archival process...');
+    
+    try {
+      // Get previous week info
+      const now = new Date();
+      const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      // Calculate previous week boundaries
+      const dayOfWeek = lastWeek.getDay();
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      
+      const startOfWeek = new Date(lastWeek);
+      startOfWeek.setDate(startOfWeek.getDate() - daysToMonday);
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      // Get ISO week number for previous week
+      const date = new Date(lastWeek.getTime());
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+      const week1 = new Date(date.getFullYear(), 0, 4);
+      const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+      
+      const prevWeekPeriodId = `${date.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+      
+      console.log(`📊 Archiving completed week: ${prevWeekPeriodId}`);
+      
+      // Get all clients with cache data for the previous week
+      const { data: cacheData, error: cacheError } = await supabase
+        .from('current_week_cache')
+        .select('*')
+        .eq('period_id', prevWeekPeriodId);
+      
+      if (cacheError) {
+        throw new Error(`Failed to fetch week cache data: ${cacheError.message}`);
+      }
+      
+      if (!cacheData || cacheData.length === 0) {
+        console.log('📝 No weekly cache data found to archive');
+        return;
+      }
+      
+      console.log(`📦 Found ${cacheData.length} weekly cache entries to archive`);
+      
+      // Archive each cache entry to campaign_summaries
+      let archivedCount = 0;
+      let errorCount = 0;
+      
+      for (const cacheEntry of cacheData) {
+        try {
+          await this.archiveWeeklyData(cacheEntry);
+          archivedCount++;
+        } catch (error) {
+          console.error(`❌ Failed to archive weekly data for client ${cacheEntry.client_id}:`, error);
+          errorCount++;
+        }
+      }
+      
+      console.log(`✅ Weekly archival completed: ${archivedCount} archived, ${errorCount} errors`);
+      
+      // Clean up archived cache entries
+      if (archivedCount > 0) {
+        await this.cleanupArchivedWeeklyCache(prevWeekPeriodId);
+      }
+      
+    } catch (error) {
+      console.error('❌ Weekly data archival failed:', error);
+      logger.error('Weekly data archival failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Clean up data older than 12 months from campaign_summaries table
+   */
+  async cleanupOldData(): Promise<void> {
+    console.log('🧹 Starting old data cleanup process...');
+    
+    try {
+      // Calculate cutoff date (12 months ago)
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - 12);
+      const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+      
+      console.log(`🗑️ Removing data older than: ${cutoffDateStr}`);
+      
+      // Remove old monthly summaries
+      const { data: deletedMonthly, error: monthlyError } = await supabase
+        .from('campaign_summaries')
+        .delete()
+        .eq('summary_type', 'monthly')
+        .lt('summary_date', cutoffDateStr)
+        .select('id');
+      
+      if (monthlyError) {
+        throw new Error(`Failed to delete old monthly data: ${monthlyError.message}`);
+      }
+      
+      // Remove old weekly summaries
+      const { data: deletedWeekly, error: weeklyError } = await supabase
+        .from('campaign_summaries')
+        .delete()
+        .eq('summary_type', 'weekly')
+        .lt('summary_date', cutoffDateStr)
+        .select('id');
+      
+      if (weeklyError) {
+        throw new Error(`Failed to delete old weekly data: ${weeklyError.message}`);
+      }
+      
+      const monthlyCount = deletedMonthly?.length || 0;
+      const weeklyCount = deletedWeekly?.length || 0;
+      const totalDeleted = monthlyCount + weeklyCount;
+      
+      console.log(`✅ Old data cleanup completed:`);
+      console.log(`   Monthly records deleted: ${monthlyCount}`);
+      console.log(`   Weekly records deleted: ${weeklyCount}`);
+      console.log(`   Total records deleted: ${totalDeleted}`);
+      
+      logger.info('Old data cleanup completed', {
+        monthlyDeleted: monthlyCount,
+        weeklyDeleted: weeklyCount,
+        totalDeleted,
+        cutoffDate: cutoffDateStr
+      });
+      
+    } catch (error) {
+      console.error('❌ Old data cleanup failed:', error);
+      logger.error('Old data cleanup failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Archive monthly cache data to campaign_summaries
+   */
+  private async archiveMonthlyData(cacheEntry: any): Promise<void> {
+    const cacheData = cacheEntry.cache_data;
+    
+    // Calculate the first day of the month from period_id (e.g., "2025-08" -> "2025-08-01")
+    const summaryDate = `${cacheEntry.period_id}-01`;
+    
+    const summary = {
+      client_id: cacheEntry.client_id,
+      summary_type: 'monthly',
+      summary_date: summaryDate,
+      total_spend: cacheData?.stats?.totalSpend || 0,
+      total_impressions: cacheData?.stats?.totalImpressions || 0,
+      total_clicks: cacheData?.stats?.totalClicks || 0,
+      total_conversions: cacheData?.stats?.totalConversions || 0,
+      average_ctr: cacheData?.stats?.averageCtr || 0,
+      average_cpc: cacheData?.stats?.averageCpc || 0,
+      average_cpa: cacheData?.conversionMetrics?.cost_per_reservation || 0,
+      active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ACTIVE').length || 0,
+      total_campaigns: cacheData?.campaigns?.length || 0,
+      campaign_data: cacheData?.campaigns || [],
+      meta_tables: cacheData?.metaTables || null,
+      data_source: 'smart_cache_archive',
+      last_updated: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date'
+      });
+
+    if (error) {
+      throw new Error(`Failed to archive monthly summary: ${error.message}`);
+    }
+
+    console.log(`💾 Archived monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+  }
+
+  /**
+   * Archive weekly cache data to campaign_summaries
+   */
+  private async archiveWeeklyData(cacheEntry: any): Promise<void> {
+    const cacheData = cacheEntry.cache_data;
+    
+    // Use the start date of the week from the cached data
+    const cachedStartDate = cacheData?.period?.startDate;
+    const summaryDate: string = typeof cachedStartDate === 'string' ? cachedStartDate : this.getWeekStartDate(cacheEntry.period_id);
+    
+    const summary = {
+      client_id: cacheEntry.client_id,
+      summary_type: 'weekly',
+      summary_date: summaryDate,
+      total_spend: cacheData?.stats?.totalSpend || 0,
+      total_impressions: cacheData?.stats?.totalImpressions || 0,
+      total_clicks: cacheData?.stats?.totalClicks || 0,
+      total_conversions: cacheData?.stats?.totalConversions || 0,
+      average_ctr: cacheData?.stats?.averageCtr || 0,
+      average_cpc: cacheData?.stats?.averageCpc || 0,
+      average_cpa: cacheData?.conversionMetrics?.cost_per_reservation || 0,
+      active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ACTIVE').length || 0,
+      total_campaigns: cacheData?.campaigns?.length || 0,
+      campaign_data: cacheData?.campaigns || [],
+      meta_tables: cacheData?.metaTables || null,
+      data_source: 'smart_cache_archive',
+      last_updated: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date'
+      });
+
+    if (error) {
+      throw new Error(`Failed to archive weekly summary: ${error.message}`);
+    }
+
+    console.log(`💾 Archived weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+  }
+
+  /**
+   * Clean up archived monthly cache entries
+   */
+  private async cleanupArchivedMonthlyCache(periodId: string): Promise<void> {
+    const { error } = await supabase
+      .from('current_month_cache')
+      .delete()
+      .eq('period_id', periodId);
+
+    if (error) {
+      console.error(`⚠️ Failed to cleanup monthly cache for ${periodId}:`, error.message);
+    } else {
+      console.log(`🧹 Cleaned up monthly cache for period ${periodId}`);
+    }
+  }
+
+  /**
+   * Clean up archived weekly cache entries
+   */
+  private async cleanupArchivedWeeklyCache(periodId: string): Promise<void> {
+    const { error } = await supabase
+      .from('current_week_cache')
+      .delete()
+      .eq('period_id', periodId);
+
+    if (error) {
+      console.error(`⚠️ Failed to cleanup weekly cache for ${periodId}:`, error.message);
+    } else {
+      console.log(`🧹 Cleaned up weekly cache for period ${periodId}`);
+    }
+  }
+
+  /**
+   * Get week start date from ISO week format (e.g., "2025-W33" -> "2025-08-10")
+   */
+  private getWeekStartDate(periodId: string): string {
+    const [year, weekStr] = periodId.split('-W');
+    if (!year || !weekStr) {
+      throw new Error(`Invalid period ID format: ${periodId}`);
+    }
+    
+    const weekNumber = parseInt(weekStr, 10);
+    
+    // Calculate first day of the year
+    const firstDay = new Date(parseInt(year, 10), 0, 1);
+    
+    // Find the first Monday of the year
+    const firstMonday = new Date(firstDay);
+    const dayOfWeek = firstDay.getDay();
+    const daysToMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+    firstMonday.setDate(firstDay.getDate() + daysToMonday);
+    
+    // Calculate the start of the target week
+    const targetWeek = new Date(firstMonday);
+    targetWeek.setDate(firstMonday.getDate() + (weekNumber - 1) * 7);
+    
+    return targetWeek.toISOString().split('T')[0] as string;
+  }
+
+  /**
+   * Get status of data lifecycle operations
+   */
+  async getLifecycleStatus(): Promise<any> {
+    try {
+      // Count current cache entries
+      const [monthlyCache, weeklyCache, storedSummaries] = await Promise.all([
+        supabase.from('current_month_cache').select('count', { count: 'exact' }),
+        supabase.from('current_week_cache').select('count', { count: 'exact' }),
+        supabase.from('campaign_summaries').select('count', { count: 'exact' })
+      ]);
+
+      // Get oldest and newest summary dates
+      const { data: oldestSummary } = await supabase
+        .from('campaign_summaries')
+        .select('summary_date')
+        .order('summary_date', { ascending: true })
+        .limit(1);
+
+      const { data: newestSummary } = await supabase
+        .from('campaign_summaries')
+        .select('summary_date')
+        .order('summary_date', { ascending: false })
+        .limit(1);
+
+      return {
+        currentMonthCacheEntries: monthlyCache.count || 0,
+        currentWeekCacheEntries: weeklyCache.count || 0,
+        storedSummaries: storedSummaries.count || 0,
+        oldestData: oldestSummary?.[0]?.summary_date || 'None',
+        newestData: newestSummary?.[0]?.summary_date || 'None',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ Failed to get lifecycle status:', error);
+      return { error: 'Failed to get status' };
+    }
+  }
+} 

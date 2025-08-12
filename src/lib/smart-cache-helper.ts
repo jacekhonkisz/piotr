@@ -6,8 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Cache duration: 3 hours
-const CACHE_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
+// Cache duration: 6 hours (was 3 hours)
+const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
 
 // Helper function to check if cached data is still fresh
 export function isCacheFresh(lastUpdated: string): boolean {
@@ -293,7 +293,20 @@ async function refreshCacheInBackground(clientId: string, periodId: string) {
       throw new Error('Client not found for background refresh');
     }
 
-    // Fetch fresh data in background
+    // CRITICAL FIX: Only refresh if cache is actually stale to prevent unnecessary API calls
+    const { data: currentCache } = await supabase
+      .from('current_month_cache')
+      .select('last_updated')
+      .eq('client_id', clientId)
+      .eq('period_id', periodId)
+      .single();
+      
+    if (currentCache && isCacheFresh(currentCache.last_updated)) {
+      console.log('✅ Cache became fresh during cooldown, skipping background refresh');
+      return;
+    }
+
+    // Fetch fresh data in background (force refresh to bypass cache)
     const freshData = await fetchFreshCurrentMonthData(clientData);
     
     console.log('✅ Background cache refresh completed for:', { clientId, periodId });
@@ -365,7 +378,19 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
             source: 'cache'
           };
         } else {
-          console.log('⚠️ Cache is stale, returning stale data instantly + refreshing in background');
+          // Configuration: Set to false to disable background refresh
+          const ENABLE_BACKGROUND_REFRESH = false; // ⚠️ DISABLED to prevent API calls
+          
+          if (ENABLE_BACKGROUND_REFRESH) {
+            console.log('⚠️ Cache is stale, returning stale data instantly + refreshing in background');
+            
+            // Refresh in background (non-blocking)
+            refreshCacheInBackground(clientId, currentMonth.periodId).catch((err: any) => 
+              console.log('⚠️ Background refresh failed:', err)
+            );
+          } else {
+            console.log('⚠️ Cache is stale, returning stale data (background refresh DISABLED)');
+          }
           
           // Return stale data instantly (don't wait!)
           const staleData = {
@@ -373,11 +398,6 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
             fromCache: true,
             cacheAge: Date.now() - new Date(cachedData.last_updated).getTime()
           };
-          
-          // Refresh in background (non-blocking)
-          refreshCacheInBackground(clientId, currentMonth.periodId).catch((err: any) => 
-            console.log('⚠️ Background refresh failed:', err)
-          );
           
           return {
             success: true,
@@ -409,12 +429,364 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
     throw new Error('Client not found');
   }
 
-  // Fetch fresh data
+  // Fetch fresh data and store in cache
   const freshData = await fetchFreshCurrentMonthData(clientData);
+  
+  // Store fresh data in cache
+  try {
+    await supabase
+      .from('current_month_cache')
+      .upsert({
+        client_id: clientId,
+        cache_data: freshData,
+        last_updated: new Date().toISOString(),
+        period_id: currentMonth.periodId
+      });
+    console.log('✅ Fresh data cached successfully');
+  } catch (cacheError) {
+    console.log('⚠️ Failed to cache fresh data:', cacheError);
+  }
   
   return {
     success: true,
     data: freshData,
     source: forceRefresh ? 'force-refresh' : 'cache-miss'
   };
+}
+
+// Helper function to get current week info with ISO week format
+export function getCurrentWeekInfo() {
+  const now = new Date();
+  
+  // Get current week boundaries (Monday to Sunday)
+  const currentDayOfWeek = now.getDay();
+  const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
+  
+  const startOfCurrentWeek = new Date(now);
+  startOfCurrentWeek.setDate(startOfCurrentWeek.getDate() - daysToMonday);
+  startOfCurrentWeek.setHours(0, 0, 0, 0);
+  
+  const endOfCurrentWeek = new Date(startOfCurrentWeek);
+  endOfCurrentWeek.setDate(endOfCurrentWeek.getDate() + 6);
+  endOfCurrentWeek.setHours(23, 59, 59, 999);
+  
+  // Calculate ISO week number
+  const year = now.getFullYear();
+  const startOfYear = new Date(year, 0, 1);
+  const daysFromStart = Math.floor((startOfCurrentWeek.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+  const weekNumber = Math.ceil((daysFromStart + startOfYear.getDay() + 1) / 7);
+  
+  return {
+    year,
+    week: weekNumber,
+    startDate: startOfCurrentWeek.toISOString().split('T')[0],
+    endDate: endOfCurrentWeek.toISOString().split('T')[0],
+    periodId: `${year}-W${String(weekNumber).padStart(2, '0')}`
+  };
+}
+
+// Function to fetch fresh weekly data from Meta API
+export async function fetchFreshCurrentWeekData(client: any) {
+  console.log('🔄 Fetching fresh current week data from Meta API...');
+  
+  const currentWeek = getCurrentWeekInfo();
+  const metaService = new MetaAPIService(client.meta_access_token);
+  
+  const adAccountId = client.ad_account_id.startsWith('act_') 
+    ? client.ad_account_id.substring(4)
+    : client.ad_account_id;
+
+  try {
+    // Use getCampaignInsights for weekly data
+    const campaignInsights = await metaService.getCampaignInsights(
+      adAccountId,
+      currentWeek.startDate!,
+      currentWeek.endDate!,
+      0 // No time increment
+    );
+
+    // Get account info  
+    const accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
+
+    console.log(`✅ Fetched ${campaignInsights.length} campaigns for weekly caching`);
+
+    // Calculate stats (same logic as monthly)
+    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
+    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
+    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
+    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+    const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+
+    // Calculate conversion metrics (same logic as monthly)
+    const totalConversionsSum = campaignInsights.reduce((sum, c) => sum + (c.conversions || 0), 0);
+    
+    const realConversionMetrics = campaignInsights.reduce((acc, campaign) => {
+      return {
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+        reservations: acc.reservations + (campaign.reservations || 0),
+        reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      };
+    }, {
+      click_to_call: 0,
+      email_contacts: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      reservations: 0,
+      reservation_value: 0,
+    });
+
+    const conversionMetrics = {
+      click_to_call: realConversionMetrics.click_to_call > 0 
+        ? realConversionMetrics.click_to_call 
+        : Math.round(totalConversionsSum * 0.15),
+      
+      email_contacts: realConversionMetrics.email_contacts > 0 
+        ? realConversionMetrics.email_contacts 
+        : Math.round(totalConversionsSum * 0.10),
+      
+      booking_step_1: realConversionMetrics.booking_step_1 > 0 
+        ? realConversionMetrics.booking_step_1 
+        : Math.round(totalConversionsSum * 0.75),
+      
+      booking_step_2: realConversionMetrics.booking_step_2 > 0 
+        ? realConversionMetrics.booking_step_2 
+        : Math.round(totalConversionsSum * 0.75 * 0.50),
+      
+      reservations: realConversionMetrics.reservations > 0 
+        ? realConversionMetrics.reservations 
+        : totalConversionsSum,
+      
+      reservation_value: realConversionMetrics.reservation_value > 0 
+        ? realConversionMetrics.reservation_value 
+        : 0,
+      
+      roas: totalSpend > 0 && realConversionMetrics.reservation_value > 0 
+        ? realConversionMetrics.reservation_value / totalSpend 
+        : 0,
+      
+      cost_per_reservation: (realConversionMetrics.reservations || totalConversionsSum) > 0 
+        ? totalSpend / (realConversionMetrics.reservations || totalConversionsSum) 
+        : 0
+    };
+
+    return {
+      client: {
+        ...client,
+        currency: accountInfo?.currency || 'PLN'
+      },
+      campaigns: campaignInsights,
+      stats: {
+        totalSpend,
+        totalImpressions,
+        totalClicks,
+        totalConversions,
+        averageCtr,
+        averageCpc
+      },
+      conversionMetrics,
+      dateRange: {
+        start: currentWeek.startDate,
+        end: currentWeek.endDate
+      },
+      accountInfo: accountInfo ? {
+        currency: accountInfo.currency,
+        timezone: accountInfo.timezone_name,
+        status: accountInfo.account_status
+      } : null,
+      fromCache: false,
+      lastUpdated: new Date().toISOString()
+    };
+
+  } catch (error) {
+    console.error('❌ Failed to fetch weekly data from Meta API:', error);
+    throw error;
+  }
+}
+
+// Weekly smart cache function
+export async function getSmartWeekCacheData(clientId: string, forceRefresh: boolean = false) {
+  const currentWeek = getCurrentWeekInfo();
+  const cacheKey = `${clientId}_${currentWeek.periodId}`;
+  
+  console.log('📅 Smart weekly cache request:', {
+    clientId,
+    periodId: currentWeek.periodId,
+    forceRefresh
+  });
+  
+  // If same request is already in progress, return that promise (unless force refresh)
+  if (!forceRefresh && globalRequestCache.has(cacheKey)) {
+    console.log('🔄 Reusing existing weekly cache request for', cacheKey);
+    return await globalRequestCache.get(cacheKey);
+  }
+
+  // Create and cache the request promise
+  const requestPromise = executeSmartWeeklyCacheRequest(clientId, currentWeek, forceRefresh);
+  globalRequestCache.set(cacheKey, requestPromise);
+  
+  try {
+    const result = await requestPromise;
+    return result;
+  } finally {
+    // Clean up after request completes
+    globalRequestCache.delete(cacheKey);
+  }
+}
+
+// Weekly cache logic
+async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any, forceRefresh: boolean) {
+  // Check if we have fresh cached data (unless force refresh)
+  if (!forceRefresh) {
+    try {
+      const { data: cachedData, error: cacheError } = await supabase
+        .from('current_week_cache')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('period_id', currentWeek.periodId)
+        .single();
+
+      if (!cacheError && cachedData) {
+        if (isCacheFresh(cachedData.last_updated)) {
+          console.log('✅ Returning fresh weekly cached data');
+          
+          return {
+            success: true,
+            data: {
+              ...cachedData.cache_data,
+              fromCache: true,
+              cacheAge: Date.now() - new Date(cachedData.last_updated).getTime()
+            },
+            source: 'weekly-cache'
+          };
+        } else {
+          // Configuration: Set to false to disable background refresh
+          const ENABLE_BACKGROUND_REFRESH = false; // ⚠️ DISABLED to prevent API calls
+          
+          if (ENABLE_BACKGROUND_REFRESH) {
+            console.log('⚠️ Weekly cache is stale, returning stale data + refreshing in background');
+            
+            // Refresh in background
+            refreshWeeklyCacheInBackground(clientId, currentWeek.periodId).catch((err: any) => 
+              console.log('⚠️ Weekly background refresh failed:', err)
+            );
+          } else {
+            console.log('⚠️ Weekly cache is stale, returning stale data (background refresh DISABLED)');
+          }
+          
+          // Return stale data instantly
+          const staleData = {
+            ...cachedData.cache_data,
+            fromCache: true,
+            cacheAge: Date.now() - new Date(cachedData.last_updated).getTime()
+          };
+          
+          return {
+            success: true,
+            data: staleData,
+            source: 'stale-weekly-cache'
+          };
+        }
+      } else {
+        console.log('⚠️ No weekly cache found, fetching new data');
+        if (cacheError) {
+          console.log('⚠️ Weekly cache query error:', cacheError.message);
+        }
+      }
+    } catch (dbError) {
+      console.log('⚠️ Weekly cache database error, proceeding with live fetch:', dbError);
+    }
+  } else {
+    console.log('🔄 Force weekly refresh requested, bypassing cache');
+  }
+
+  // Get client data
+  const { data: clientData, error: clientError } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', clientId)
+    .single();
+    
+  if (clientError || !clientData) {
+    throw new Error('Client not found for weekly cache');
+  }
+
+  // Fetch fresh weekly data and store in cache
+  const freshData = await fetchFreshCurrentWeekData(clientData);
+  
+  // Store fresh data in weekly cache
+  try {
+    await supabase
+      .from('current_week_cache')
+      .upsert({
+        client_id: clientId,
+        cache_data: freshData,
+        last_updated: new Date().toISOString(),
+        period_id: currentWeek.periodId
+      });
+    console.log('✅ Fresh weekly data cached successfully');
+  } catch (cacheError) {
+    console.log('⚠️ Failed to cache fresh weekly data:', cacheError);
+  }
+  
+  return {
+    success: true,
+    data: freshData,
+    source: forceRefresh ? 'force-weekly-refresh' : 'weekly-cache-miss'
+  };
+}
+
+// Background refresh for weekly cache
+async function refreshWeeklyCacheInBackground(clientId: string, periodId: string) {
+  const key = `weekly_refresh_${clientId}_${periodId}`;
+  
+  // Check cooldown (5 minutes)
+  if (lastRefreshTime.has(key)) {
+    const timeSinceLastRefresh = Date.now() - lastRefreshTime.get(key)!;
+    if (timeSinceLastRefresh < 5 * 60 * 1000) { // 5 minutes
+      console.log(`⏰ Weekly refresh cooldown active for ${key}, skipping`);
+      return;
+    }
+  }
+  
+  lastRefreshTime.set(key, Date.now());
+  
+  try {
+    console.log(`🔄 Starting weekly background refresh for ${clientId}...`);
+    
+    // Get client data
+    const { data: clientData, error: clientError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', clientId)
+      .single();
+      
+    if (clientError || !clientData) {
+      throw new Error('Client not found for weekly background refresh');
+    }
+
+    // Fetch fresh data
+    const freshData = await fetchFreshCurrentWeekData(clientData);
+    
+    // Update cache
+    await supabase
+      .from('current_week_cache')
+      .upsert({
+        client_id: clientId,
+        cache_data: freshData,
+        last_updated: new Date().toISOString(),
+        period_id: periodId
+      });
+
+    console.log(`✅ Weekly background refresh completed for ${clientId}`);
+    
+  } catch (error) {
+    console.error('❌ Weekly background cache refresh failed:', error);
+    // Reset cooldown on error to allow retry
+    lastRefreshTime.delete(key);
+    throw error;
+  }
 } 

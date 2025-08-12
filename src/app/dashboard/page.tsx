@@ -58,14 +58,14 @@ interface ClientDashboardData {
 interface CachedData {
   data: ClientDashboardData;
   timestamp: number;
-  dataSource: 'live' | 'database';
+  dataSource: 'cache' | 'stale-cache' | 'live-api-cached' | 'database';
 }
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [clientData, setClientData] = useState<ClientDashboardData | null>(null);
   const [refreshingData, setRefreshingData] = useState(false);
-  const [dataSource, setDataSource] = useState<'live' | 'database'>('database');
+  const [dataSource, setDataSource] = useState<'cache' | 'stale-cache' | 'live-api-cached' | 'database'>('database');
   const [dashboardInitialized, setDashboardInitialized] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('Ładowanie dashboardu...');
@@ -126,8 +126,7 @@ export default function DashboardPage() {
       };
 
       setClientData(dashboardData);
-      setDataSource(mainDashboardData.debug?.source === 'cache' || mainDashboardData.debug?.source === 'stale-cache' ? 'database' : 'live');
-      saveToCache(dashboardData, mainDashboardData.debug?.source === 'cache' || mainDashboardData.debug?.source === 'stale-cache' ? 'database' : 'live');
+      setDataSource(mainDashboardData.debug?.source || 'database');
       
       setLoadingProgress(100);
       setLoadingMessage('Gotowe!');
@@ -151,17 +150,10 @@ export default function DashboardPage() {
 
   const getCacheKey = () => `dashboard_cache_${user?.email || 'anonymous'}_${selectedClient?.id || 'default'}_v4`;
 
-  const saveToCache = (data: ClientDashboardData, source: 'live' | 'database') => {
-    try {
-      const cacheData: CachedData = {
-        data,
-        timestamp: Date.now(),
-        dataSource: source
-      };
-      localStorage.setItem(getCacheKey(), JSON.stringify(cacheData));
-    } catch (error) {
-      console.error('Error saving to cache:', error);
-    }
+  // Note: Smart caching is now handled by the API layer, no need for localStorage
+  const saveToCache = (data: ClientDashboardData, source: 'cache' | 'stale-cache' | 'live-api-cached' | 'database') => {
+    // Smart caching is now handled by the API - this function is kept for compatibility
+    console.log('📦 Smart caching handled by API, skipping localStorage cache');
   };
 
   const clearCache = () => {
@@ -218,9 +210,8 @@ export default function DashboardPage() {
       }
     }
 
-    if (user && profile && dashboardInitialized) {
-      loadClientDashboardWithCache();
-    }
+    // Remove this block - it was causing infinite loops
+    // Dashboard loading is handled in the initialization block above
     
     return;
   }, [user, profile, dashboardInitialized, authLoading]);
@@ -324,11 +315,15 @@ export default function DashboardPage() {
       };
 
       setClientData(dashboardData);
-      setDataSource('live');
-      saveToCache(dashboardData, 'live');
+      setDataSource('live-api-cached');
+      setLoading(false); // 🔧 FIX: Properly set loading to false
+      
+      // Note: Smart caching is now handled by the API, no need for localStorage cache
     } catch (error) {
       console.error('Error loading client dashboard:', error);
-      await loadClientDashboardFromDatabase();
+      setLoading(false); // 🔧 FIX: Set loading to false on error too
+      // 🔧 FIX: Remove potential loop - don't call another load function
+      // await loadClientDashboardFromDatabase();
     }
   };
 
@@ -520,12 +515,16 @@ export default function DashboardPage() {
 
   const loadMainDashboardData = async (currentClient: any) => {
     try {
+      // Use the same date range logic as smart cache helper to ensure proper cache detection
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
       const dateRange = {
-        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-        end: new Date().toISOString().split('T')[0]
+        start: `${year}-${String(month).padStart(2, '0')}-01`,
+        end: new Date(year, month, 0).toISOString().split('T')[0] // Last day of current month
       };
       
-      console.log('📅 Dashboard loading current month data:', dateRange);
+      console.log('📅 Dashboard loading FULL CURRENT MONTH data for smart caching:', dateRange);
       
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
@@ -552,27 +551,24 @@ export default function DashboardPage() {
         };
       }
 
-      // Reduced timeout from 30 seconds to 15 seconds for better UX
+      // Increased timeout to 30 seconds for smart cache system
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.warn('⚠️ Dashboard API call timed out after 15 seconds');
+        console.warn('⚠️ Dashboard API call timed out after 30 seconds');
         controller.abort();
-      }, 15000); // Reduced from 30000
+      }, 30000);
       
-      // Use fetch-live-data for consistent data with reports page
+      // Use fetch-live-data with smart caching enabled (no force refresh)
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'Cache-Control': 'max-age=300', // 5 minute cache
-          'Pragma': 'cache',
-          'Expires': new Date(Date.now() + 300000).toUTCString() // 5 minutes
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({
           clientId: currentClient.id,
           dateRange: dateRange,
-          forceRefresh: false
+          forceFresh: false  // Let smart caching handle this
         }),
         signal: controller.signal
       });
@@ -606,6 +602,26 @@ export default function DashboardPage() {
       }
 
       const monthData = await response.json();
+      
+      // Log smart cache performance
+      console.log('📊 Dashboard data received:', {
+        source: monthData.debug?.source,
+        campaignCount: monthData.data?.campaigns?.length,
+        responseTime: monthData.debug?.responseTime,
+        cacheAge: monthData.debug?.cacheAge,
+        isSmartCache: monthData.debug?.source === 'cache' || monthData.debug?.source === 'stale-cache'
+      });
+      
+      // Log if smart caching worked
+      if (monthData.debug?.source === 'cache') {
+        console.log('🚀 ✅ SMART CACHE HIT! Dashboard loaded from fresh cache in', monthData.debug.responseTime + 'ms');
+      } else if (monthData.debug?.source === 'stale-cache') {
+        console.log('⚡ ✅ SMART CACHE STALE! Dashboard loaded from stale cache in', monthData.debug.responseTime + 'ms');
+      } else if (monthData.debug?.source === 'live-api-cached') {
+        console.log('🔄 ✅ LIVE API + CACHE! Dashboard fetched fresh data and cached it in', monthData.debug.responseTime + 'ms');
+      } else {
+        console.log('🐌 ❌ NO SMART CACHE! Dashboard loaded from', monthData.debug?.source, 'in', monthData.debug.responseTime + 'ms');
+      }
       
       // Validate that returned data matches expected period
       const validateDataPeriod = (data: any, expectedRange: any) => {
@@ -816,9 +832,15 @@ export default function DashboardPage() {
             <div className="flex items-center space-x-4">
               {/* Data Status */}
               <div className="flex items-center space-x-3 px-4 py-2 bg-slate-100/80 rounded-full">
-                <div className={`w-2 h-2 rounded-full ${dataSource === 'live' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${
+                  dataSource === 'cache' ? 'bg-emerald-500' : 
+                  dataSource === 'stale-cache' ? 'bg-orange-500 animate-pulse' :
+                  dataSource === 'live-api-cached' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                }`}></div>
                 <span className="text-sm text-slate-700">
-                  {dataSource === 'live' ? 'Dane na żywo' : 'Cache'}
+                  {dataSource === 'cache' ? 'Cache (świeże)' : 
+                   dataSource === 'stale-cache' ? 'Cache (odświeżanie)' :
+                   dataSource === 'live-api-cached' ? 'Na żywo' : 'Baza danych'}
                 </span>
               </div>
               

@@ -54,6 +54,46 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
   return result;
 }
 
+// Helper function to check if date range is current week
+function isCurrentWeek(startDate: string, endDate: string): boolean {
+  const now = new Date();
+  
+  // Get current week boundaries (Monday to Sunday) - use local timezone consistently
+  const currentDayOfWeek = now.getDay();
+  const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1; // Sunday = 0, Monday = 1
+  
+  const startOfCurrentWeek = new Date(now);
+  startOfCurrentWeek.setDate(startOfCurrentWeek.getDate() - daysToMonday);
+  startOfCurrentWeek.setHours(0, 0, 0, 0);
+  
+  const endOfCurrentWeek = new Date(startOfCurrentWeek);
+  endOfCurrentWeek.setDate(endOfCurrentWeek.getDate() + 6);
+  endOfCurrentWeek.setHours(23, 59, 59, 999);
+  
+  // Convert to date strings for comparison (avoid timezone issues)
+  const currentWeekStartStr = startOfCurrentWeek.toISOString().split('T')[0];
+  const currentWeekEndStr = endOfCurrentWeek.toISOString().split('T')[0];
+  
+  console.log('🔍 CURRENT WEEK DETECTION:', {
+    now: now.toISOString(),
+    currentWeekStart: currentWeekStartStr,
+    currentWeekEnd: currentWeekEndStr,
+    requestStartDate: startDate,
+    requestEndDate: endDate
+  });
+  
+  // Simple string comparison for date ranges
+  const result = startDate === currentWeekStartStr && endDate === currentWeekEndStr;
+  
+  console.log('🔍 CURRENT WEEK DETECTION RESULT:', {
+    startDateMatches: startDate === currentWeekStartStr,
+    endDateMatches: endDate === currentWeekEndStr,
+    result
+  });
+  
+  return result;
+}
+
 // Helper function to load data from database for previous months
 async function loadFromDatabase(clientId: string, startDate: string, endDate: string) {
   console.log(`📊 Loading data from database for ${clientId} (${startDate} to ${endDate})`);
@@ -238,22 +278,35 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
           console.log('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
 
-      // SMART ROUTING: Current month vs Previous months
+      // SMART ROUTING: Current month vs Current week vs Previous periods
       const isCurrentMonthRequest = isCurrentMonth(startDate, endDate);
-      console.log(`📊 DETAILED ROUTING ANALYSIS:`, {
+      const isCurrentWeekRequest = isCurrentWeek(startDate, endDate);
+      
+      console.log(`📊 CRITICAL DEBUG - ROUTING ANALYSIS:`, {
         startDate,
         endDate,
         currentSystemDate: new Date().toISOString(),
         currentYear: new Date().getFullYear(),
         currentMonth: new Date().getMonth() + 1,
         isCurrentMonthRequest,
+        isCurrentWeekRequest,
         forceFresh,
-        routingDecision: isCurrentMonthRequest ? 'SMART CACHE' : 'DATABASE FIRST'
+        forceFreshType: typeof forceFresh,
+        routingDecision: isCurrentMonthRequest ? 'SMART CACHE (MONTHLY)' : 
+                        isCurrentWeekRequest ? 'SMART CACHE (WEEKLY)' : 'DATABASE FIRST'
+      });
+
+      // CRITICAL DEBUG: Check exactly why database cache might be skipped
+      console.log(`🔍 CRITICAL DEBUG - CACHE CONDITIONS:`, {
+        'isCurrentMonthRequest': isCurrentMonthRequest,
+        'NOT forceFresh': !forceFresh,
+        'Combined condition (isCurrentMonthRequest && !forceFresh)': isCurrentMonthRequest && !forceFresh,
+        'Will check database cache': isCurrentMonthRequest && !forceFresh
       });
       
-      if (!forceFresh && !isCurrentMonthRequest) {
-        // Previous months: Use database lookup (data doesn't change)
-        console.log('📊 Checking database for previous month data...');
+      if (!forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest) {
+        // Previous periods: Use database lookup (data doesn't change)
+        console.log('📊 Checking database for previous period data...');
         const databaseResult = await loadFromDatabase(clientId, startDate, endDate);
         
         if (databaseResult) {
@@ -271,29 +324,19 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             }
           });
         }
-      } else if (isCurrentMonthRequest && !forceFresh) {
-        // Current month: Use smart cache (3-hour refresh) BUT fetch live and store
-        console.log('📊 🔴 CURRENT MONTH DETECTED - CHECKING SMART CACHE...');
+      } else if (isCurrentWeekRequest && !forceFresh) {
+        // Current week: Use smart cache (3-hour refresh) for weekly data
+        console.log('📊 🟡 CURRENT WEEK DETECTED - CHECKING WEEKLY SMART CACHE...');
         
         try {
-          // Use the shared smart cache helper
-          const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
+          // Use the shared weekly smart cache helper
+          const { getSmartWeekCacheData } = await import('../../../lib/smart-cache-helper');
+          const cacheResult = await getSmartWeekCacheData(clientId, false);
           
-          console.log('📊 🔍 Calling getSmartCacheData for clientId:', clientId);
-          const cacheResult = await getSmartCacheData(clientId, false);
-          
-          console.log('📊 💾 Cache result received:', {
-            success: cacheResult.success,
-            hasData: !!cacheResult.data,
-            hasCampaigns: cacheResult.data?.campaigns !== undefined,
-            campaignCount: cacheResult.data?.campaigns?.length || 'N/A',
-            source: cacheResult.source,
-            fromCache: cacheResult.data?.fromCache
-          });
-          
-          if (cacheResult.success && cacheResult.data.campaigns !== undefined) {
+          if (cacheResult.success && cacheResult.data.campaigns.length >= 0) {
             const responseTime = Date.now() - startTime;
-            console.log(`🚀 ✅ SMART CACHE HIT! Completed in ${responseTime}ms - campaigns: ${cacheResult.data.campaigns.length}`);
+            console.log(`🚀 Weekly smart cache returned data in ${responseTime}ms`);
+            console.log(`📊 Weekly cache source: ${cacheResult.source}`);
             
             return NextResponse.json({
               success: true,
@@ -301,27 +344,267 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
               debug: {
                 source: cacheResult.source,
                 responseTime,
-                cacheAge: cacheResult.data.cacheAge,
                 authenticatedUser: user.email,
-                currency: cacheResult.data.client?.currency || 'PLN'
+                currency: 'PLN',
+                period: 'current-week'
               }
             });
-          } else {
-            console.log('⚠️ ❌ SMART CACHE MISS - Reason:', {
-              success: cacheResult.success,
-              hasData: !!cacheResult.data,
-              hasCampaigns: cacheResult.data?.campaigns !== undefined,
-              error: cacheResult.error || 'No error'
-            });
-            console.log('📊 🔄 Falling back to live Meta API fetch and will cache result...');
           }
         } catch (cacheError) {
-          console.log('⚠️ ❌ Smart cache error, fetching live data:', cacheError);
+          console.error('⚠️ Weekly smart cache failed, falling back to live fetch:', cacheError);
         }
+      } else if (isCurrentMonthRequest && !forceFresh) {
+        // Current month: SIMPLE DATABASE-FIRST APPROACH
+        console.log('📊 🔴 CURRENT MONTH DETECTED - CHECKING DATABASE CACHE...');
+        console.log('🔍 CRITICAL DEBUG - Cache check parameters:', {
+          clientId,
+          currentTime: new Date().toISOString()
+        });
+        
+        try {
+          // Check database cache directly (no complex smart cache logic)
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth() + 1;
+          const periodId = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+          
+          console.log('🔍 CRITICAL DEBUG - Database query parameters:', {
+            periodId,
+            clientId,
+            tableName: 'current_month_cache'
+          });
+
+          // Try the database query with better error handling
+          // Using standard Supabase query (avoiding TypeScript issues)
+          const { data: cacheQueryResult, error: cacheQueryError } = await supabase
+            .from('current_month_cache')
+            .select('cache_data, last_updated')
+            .eq('client_id', clientId)
+            .eq('period_id', periodId)
+            .maybeSingle(); // Use maybeSingle instead of single to avoid "no rows" errors
+
+          console.log('🔍 CRITICAL DEBUG - Database query result:', {
+            hasResult: !!cacheQueryResult,
+            hasError: !!cacheQueryError,
+            errorMessage: cacheQueryError?.message,
+            errorCode: cacheQueryError?.code,
+            resultType: typeof cacheQueryResult,
+            resultKeys: cacheQueryResult ? Object.keys(cacheQueryResult) : null
+          });
+
+          let cachedData = cacheQueryResult;
+          let cacheError = cacheQueryError;
+
+          console.log('🔍 CRITICAL DEBUG - Parsing database query result...');
+          
+          console.log('🔍 CRITICAL DEBUG - Database query result:', {
+            hasData: !!cachedData,
+            hasError: !!cacheError,
+            errorMessage: cacheError?.message,
+            errorCode: cacheError?.code,
+            dataKeys: cachedData ? Object.keys(cachedData) : null
+          });
+
+          if (cacheError) {
+            console.log('❌ CRITICAL DEBUG - Database cache error:', cacheError);
+          }
+
+          if (cachedData) {
+            const cacheAge = Date.now() - new Date(cachedData.last_updated).getTime();
+            const cacheAgeHours = cacheAge / (1000 * 60 * 60);
+            const isCacheFresh = cacheAgeHours < 6; // 6 hour cache (was 3)
+
+            console.log('🔍 CRITICAL DEBUG - Cache age analysis:', {
+              cacheAge,
+              cacheAgeHours,
+              isCacheFresh,
+              lastUpdated: cachedData.last_updated
+            });
+
+            if (isCacheFresh) {
+              console.log('✅ Database Cache: Returning fresh cached data', {
+                cacheAgeMinutes: Math.round(cacheAge / 1000 / 60),
+                lastUpdated: cachedData.last_updated
+              });
+
+              const responseTime = Date.now() - startTime;
+              return NextResponse.json({
+                success: true,
+                data: {
+                  ...cachedData.cache_data,
+                  fromCache: true,
+                  cacheAge: cacheAge
+                },
+                debug: {
+                  source: 'database-cache',
+                  responseTime,
+                  cacheAge: cacheAge,
+                  authenticatedUser: user.email,
+                  currency: 'PLN',
+                  cacheInfo: `Fresh cache (${Math.round(cacheAge / 1000 / 60)} minutes old)`
+                }
+              });
+            } else {
+              // 🔧 FIX: ALWAYS return stale cache instead of bypassing to Meta API
+              console.log('⚠️ Database Cache: Cache is stale, but returning stale data (NO BYPASS)', {
+                cacheAgeHours: Math.round(cacheAgeHours * 10) / 10,
+                lastUpdated: cachedData.last_updated,
+                policy: 'database-first'
+              });
+
+              const responseTime = Date.now() - startTime;
+              return NextResponse.json({
+                success: true,
+                data: {
+                  ...cachedData.cache_data,
+                  fromCache: true,
+                  cacheAge: cacheAge,
+                  staleData: true
+                },
+                debug: {
+                  source: 'database-cache-stale',
+                  responseTime,
+                  cacheAge: cacheAge,
+                  authenticatedUser: user.email,
+                  currency: 'PLN',
+                  cacheInfo: `Stale cache (${Math.round(cacheAgeHours * 10) / 10} hours old) - database-first policy`
+                }
+              });
+            }
+          } else {
+            // 🔧 FIX: Return empty data structure instead of bypassing to Meta API
+            console.log('⚠️ Database Cache: No cache found, returning empty data (NO BYPASS)', {
+              policy: 'database-first'
+            });
+
+            const responseTime = Date.now() - startTime;
+            return NextResponse.json({
+              success: true,
+              data: {
+                campaigns: [],
+                stats: {
+                  totalSpend: 0,
+                  totalImpressions: 0,
+                  totalClicks: 0,
+                  totalConversions: 0,
+                  averageCtr: 0,
+                  averageCpc: 0
+                },
+                conversionMetrics: {
+                  click_to_call: 0,
+                  email_contacts: 0,
+                  booking_step_1: 0,
+                  reservations: 0,
+                  reservation_value: 0,
+                  roas: 0,
+                  cost_per_reservation: 0,
+                  booking_step_2: 0
+                },
+                fromCache: false,
+                noData: true
+              },
+              debug: {
+                source: 'database-no-cache',
+                responseTime,
+                authenticatedUser: user.email,
+                currency: 'PLN',
+                cacheInfo: 'No cache found - database-first policy'
+              }
+            });
+          }
+        } catch (cacheError) {
+          // 🔧 FIX: Return empty data instead of bypassing to Meta API on error
+          console.log('❌ CRITICAL DEBUG - Database cache exception, returning empty data (NO BYPASS):', cacheError);
+          
+          const responseTime = Date.now() - startTime;
+          return NextResponse.json({
+            success: true,
+            data: {
+              campaigns: [],
+              stats: {
+                totalSpend: 0,
+                totalImpressions: 0,
+                totalClicks: 0,
+                totalConversions: 0,
+                averageCtr: 0,
+                averageCpc: 0
+              },
+              conversionMetrics: {
+                click_to_call: 0,
+                email_contacts: 0,
+                booking_step_1: 0,
+                reservations: 0,
+                reservation_value: 0,
+                roas: 0,
+                cost_per_reservation: 0,
+                booking_step_2: 0
+              },
+              fromCache: false,
+              error: true
+            },
+            debug: {
+              source: 'database-error',
+              responseTime,
+              authenticatedUser: user.email,
+              currency: 'PLN',
+              cacheInfo: 'Database error - database-first policy',
+              error: cacheError instanceof Error ? cacheError.message : 'Unknown error'
+            }
+          });
+        }
+      } else {
+        console.log('🔍 CRITICAL DEBUG - Database cache check SKIPPED because:', {
+          isCurrentMonthRequest,
+          forceFresh,
+          condition: `${isCurrentMonthRequest} && !${forceFresh}`,
+          result: isCurrentMonthRequest && !forceFresh
+        });
       }
 
-      // If database lookup failed OR this is current month (live fetch + cache), proceed with Meta API
-      console.log(`🔄 Proceeding with live Meta API fetch${isCurrentMonthRequest ? ' (will cache for 3 hours)' : ''}...`);
+      // 🔧 CRITICAL FIX: Only proceed with Meta API if explicitly forced
+      if (!forceFresh) {
+        console.log('🚫 CRITICAL PROTECTION - Meta API bypass BLOCKED (database-first policy)');
+        console.log('💡 To refresh data, use forceFresh: true parameter');
+        
+        const responseTime = Date.now() - startTime;
+        return NextResponse.json({
+          success: true,
+          data: {
+            campaigns: [],
+            stats: {
+              totalSpend: 0,
+              totalImpressions: 0,
+              totalClicks: 0,
+              totalConversions: 0,
+              averageCtr: 0,
+              averageCpc: 0
+            },
+            conversionMetrics: {
+              click_to_call: 0,
+              email_contacts: 0,
+              booking_step_1: 0,
+              reservations: 0,
+              reservation_value: 0,
+              roas: 0,
+              cost_per_reservation: 0,
+              booking_step_2: 0
+            },
+            fromCache: false,
+            bypassBlocked: true
+          },
+          debug: {
+            source: 'bypass-blocked',
+            responseTime,
+            authenticatedUser: user.email,
+            currency: 'PLN',
+            cacheInfo: 'Meta API bypass blocked - database-first policy enforced'
+          }
+        });
+      }
+
+      // Only reach here if forceFresh: true
+      console.log(`🔄 EXPLICIT FORCE REFRESH - Proceeding with live Meta API fetch (forceFresh: true)`);
+      console.log('🔍 Meta API call reason: Explicit force refresh requested');
 
       // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);

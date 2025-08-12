@@ -777,7 +777,6 @@ function ReportsPageContent() {
       return false; // For weekly, always treat as current
     })();
 
-    // For current month, always fetch fresh data (no caching)
     // For previous months, check if we already have this data
     if (!isCurrentMonth && reports[periodId]) {
       console.log('✅ Data already loaded for previous period, skipping API call');
@@ -785,13 +784,8 @@ function ReportsPageContent() {
     }
 
     if (isCurrentMonth) {
-      console.log('🔄 Current month detected - always fetching fresh live data from API');
-      // Force clear any cached data for current month to ensure fresh API call
-      setReports(prev => {
-        const newReports = { ...prev };
-        delete newReports[periodId];
-        return newReports;
-      });
+      console.log('🔄 Current month detected - using SMART CACHING system');
+      // Let smart caching handle current month data optimization
     } else {
       console.log('📚 Previous month detected - will use stored data if available');
     }
