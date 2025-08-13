@@ -27,7 +27,15 @@ import {
   Globe,
   Calendar,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Activity,
+  Monitor,
+  Heart,
+  TrendingUp,
+  AlertTriangle,
+  FileText,
+  Download,
+  Search
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
@@ -133,6 +141,19 @@ export default function AdminSettingsPage() {
   const [emailTestMessage, setEmailTestMessage] = useState('');
   const [lastBulkSend, setLastBulkSend] = useState<BulkEmailLog | null>(null);
   const [bulkSendLogs, setBulkSendLogs] = useState<BulkEmailLog[]>([]);
+  
+  // Token health state
+  const [tokenHealthData, setTokenHealthData] = useState<any[]>([]);
+  const [loadingTokenHealth, setLoadingTokenHealth] = useState(false);
+  
+  // Email logs state
+  const [emailLogs, setEmailLogs] = useState<any[]>([]);
+  const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
+  const [emailLogSearch, setEmailLogSearch] = useState('');
+  
+  // Monitoring state
+  const [systemMetrics, setSystemMetrics] = useState<any>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -226,6 +247,11 @@ export default function AdminSettingsPage() {
       // Load bulk email logs
       await loadBulkEmailLogs();
       
+      // Load additional data for new sections
+      loadTokenHealthData();
+      loadEmailLogs();
+      loadSystemMetrics();
+      
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -247,6 +273,62 @@ export default function AdminSettingsPage() {
       setLastBulkSend((logs?.[0] as BulkEmailLog) || null);
     } catch (error) {
       console.error('Error loading bulk email logs:', error);
+    }
+  };
+
+  const loadTokenHealthData = async () => {
+    try {
+      setLoadingTokenHealth(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const response = await fetch('/api/clients', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setTokenHealthData(result.clients || []);
+      }
+    } catch (error) {
+      console.error('Error loading token health data:', error);
+    } finally {
+      setLoadingTokenHealth(false);
+    }
+  };
+
+  const loadEmailLogs = async () => {
+    try {
+      setLoadingEmailLogs(true);
+      const { data: logs, error } = await supabase
+        .from('email_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      if (error) throw error;
+      setEmailLogs(logs || []);
+    } catch (error) {
+      console.error('Error loading email logs:', error);
+    } finally {
+      setLoadingEmailLogs(false);
+    }
+  };
+
+  const loadSystemMetrics = async () => {
+    try {
+      setLoadingMetrics(true);
+      const response = await fetch('/api/health');
+      if (response.ok) {
+        const metrics = await response.json();
+        setSystemMetrics(metrics);
+      }
+    } catch (error) {
+      console.error('Error loading system metrics:', error);
+    } finally {
+      setLoadingMetrics(false);
     }
   };
 
@@ -766,6 +848,29 @@ export default function AdminSettingsPage() {
                 </div>
               )}
 
+              {/* Calendar Integration */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-blue-600" />
+                    <h4 className="text-sm font-semibold text-blue-900">Kalendarz raportów</h4>
+                  </div>
+                  <button
+                    onClick={() => router.push('/admin/calendar')}
+                    className="text-xs bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Otwórz kalendarz
+                  </button>
+                </div>
+                <p className="text-xs text-blue-700">
+                  📅 Zobacz harmonogram automatycznych raportów w kalendarzu. Wszyscy klienci z konfiguracją "{reportingConfig.default_reporting_frequency}" będą otrzymywać raporty 
+                  {reportingConfig.default_reporting_frequency === 'monthly' 
+                    ? ` ${reportingConfig.default_reporting_day}. dnia każdego miesiąca`
+                    : ` w każdy ${['', 'poniedziałek', 'wtorek', 'środę', 'czwartek', 'piątek', 'sobotę', 'niedzielę'][reportingConfig.default_reporting_weekday]}`
+                  }.
+                </p>
+              </div>
+
               <div className="flex items-center gap-3 p-4 bg-green-50/50 rounded-xl border border-green-100">
                 <input
                   type="checkbox"
@@ -1096,6 +1201,247 @@ export default function AdminSettingsPage() {
             </div>
           </div>
         )}
+
+        {/* Token Health Section */}
+        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-2xl shadow-lg">
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Stan tokenów</h2>
+                <p className="text-sm text-gray-600">Monitor token health across all clients</p>
+              </div>
+            </div>
+            <button
+              onClick={loadTokenHealthData}
+              disabled={loadingTokenHealth}
+              className="group nav-premium-button hover:border-blue-300 flex items-center gap-2 px-4 py-2"
+            >
+              <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-blue-600 transition-colors ${loadingTokenHealth ? 'animate-spin' : ''}`} />
+              <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">
+                {loadingTokenHealth ? 'Loading...' : 'Refresh'}
+              </span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {tokenHealthData.map((client) => (
+              <div key={client.id} className="bg-white/50 rounded-xl p-6 border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-gray-900">{client.name}</h3>
+                  <div className={`w-3 h-3 rounded-full ${
+                    client.token_health_status === 'valid' ? 'bg-green-500' :
+                    client.token_health_status === 'expiring_soon' ? 'bg-orange-500' :
+                    'bg-red-500'
+                  }`}></div>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Status:</span>
+                    <span className={`font-medium ${
+                      client.token_health_status === 'valid' ? 'text-green-600' :
+                      client.token_health_status === 'expiring_soon' ? 'text-orange-600' :
+                      'text-red-600'
+                    }`}>
+                      {client.token_health_status === 'valid' ? 'Healthy' :
+                       client.token_health_status === 'expiring_soon' ? 'Expiring Soon' :
+                       client.token_health_status === 'expired' ? 'Expired' : 'Invalid'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">API Status:</span>
+                    <span className={`font-medium ${
+                      client.api_status === 'valid' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {client.api_status === 'valid' ? 'Connected' : 'Disconnected'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {tokenHealthData.length === 0 && !loadingTokenHealth && (
+            <div className="text-center py-12">
+              <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">No token data available</p>
+            </div>
+          )}
+        </div>
+
+        {/* Email Logs Section */}
+        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-purple-500 to-pink-600 p-3 rounded-2xl shadow-lg">
+                <Mail className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Logi e-mail</h2>
+                <p className="text-sm text-gray-600">Track email delivery and performance</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search logs..."
+                  value={emailLogSearch}
+                  onChange={(e) => setEmailLogSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white/50"
+                />
+              </div>
+              <button
+                onClick={loadEmailLogs}
+                disabled={loadingEmailLogs}
+                className="group nav-premium-button hover:border-purple-300 flex items-center gap-2 px-4 py-2"
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-purple-600 transition-colors ${loadingEmailLogs ? 'animate-spin' : ''}`} />
+                <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">
+                  {loadingEmailLogs ? 'Loading...' : 'Refresh'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50/50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Recipient
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Subject
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white/50 divide-y divide-gray-200">
+                {emailLogs
+                  .filter(log => 
+                    !emailLogSearch || 
+                    log.recipient?.toLowerCase().includes(emailLogSearch.toLowerCase()) ||
+                    log.subject?.toLowerCase().includes(emailLogSearch.toLowerCase())
+                  )
+                  .slice(0, 20)
+                  .map((log) => (
+                    <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {log.recipient}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                        {log.subject}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          log.status === 'sent' ? 'bg-green-100 text-green-800' :
+                          log.status === 'failed' ? 'bg-red-100 text-red-800' :
+                          'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {log.email_type || 'report'}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {emailLogs.length === 0 && !loadingEmailLogs && (
+            <div className="text-center py-12">
+              <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">No email logs found</p>
+            </div>
+          )}
+        </div>
+
+        {/* System Monitoring Section */}
+        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-2xl shadow-lg">
+                <Activity className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Monitorowanie</h2>
+                <p className="text-sm text-gray-600">System health and performance metrics</p>
+              </div>
+            </div>
+            <button
+              onClick={loadSystemMetrics}
+              disabled={loadingMetrics}
+              className="group nav-premium-button hover:border-green-300 flex items-center gap-2 px-4 py-2"
+            >
+              <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-green-600 transition-colors ${loadingMetrics ? 'animate-spin' : ''}`} />
+              <span className="text-sm font-medium text-gray-700 group-hover:text-green-700">
+                {loadingMetrics ? 'Loading...' : 'Refresh'}
+              </span>
+            </button>
+          </div>
+
+          {systemMetrics ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <Heart className="w-5 h-5 text-green-500" />
+                  <span className="text-sm font-medium text-gray-700">System Status</span>
+                </div>
+                <div className="text-2xl font-bold text-green-600">Healthy</div>
+                <div className="text-xs text-gray-500">All systems operational</div>
+              </div>
+
+              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <Users className="w-5 h-5 text-blue-500" />
+                  <span className="text-sm font-medium text-gray-700">Active Clients</span>
+                </div>
+                <div className="text-2xl font-bold text-blue-600">{systemMetrics.activeClients || '0'}</div>
+                <div className="text-xs text-gray-500">Currently connected</div>
+              </div>
+
+              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <TrendingUp className="w-5 h-5 text-purple-500" />
+                  <span className="text-sm font-medium text-gray-700">Reports Today</span>
+                </div>
+                <div className="text-2xl font-bold text-purple-600">{systemMetrics.reportsToday || '0'}</div>
+                <div className="text-xs text-gray-500">Generated today</div>
+              </div>
+
+              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <AlertTriangle className="w-5 h-5 text-orange-500" />
+                  <span className="text-sm font-medium text-gray-700">API Errors</span>
+                </div>
+                <div className="text-2xl font-bold text-orange-600">{systemMetrics.apiErrors || '0'}</div>
+                <div className="text-xs text-gray-500">Last 24 hours</div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Monitor className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">Loading system metrics...</p>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

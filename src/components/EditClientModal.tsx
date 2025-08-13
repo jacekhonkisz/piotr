@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield, Upload, Trash2, Image } from 'lucide-react';
+import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield, Upload, Trash2, Image, Calendar, Mail } from 'lucide-react';
 import { MetaAPIService } from '../lib/meta-api';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/database.types';
+import { getMonthBoundaries, getWeekBoundaries } from '../lib/date-range-utils';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 
@@ -49,6 +50,13 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Add new state for scheduled emails preview
+  const [upcomingEmails, setUpcomingEmails] = useState<Array<{
+    date: string;
+    period: string;
+    type: string;
+  }>>([]);
 
   // Initialize form data when client changes
   useEffect(() => {
@@ -510,6 +518,125 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       setLoading(false);
     }
   };
+
+  // Helper functions (same as calendar page and reports page)
+  const getWeekNumber = (date: Date) => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+
+  const generatePeriodId = (date: Date, type: 'monthly' | 'weekly') => {
+    if (type === 'monthly') {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    } else {
+      const year = date.getFullYear();
+      const week = getWeekNumber(date);
+      return `${year}-W${String(week).padStart(2, '0')}`;
+    }
+  };
+
+  const calculateUpcomingEmails = (frequency: string, sendDay: number) => {
+    if (frequency === 'on_demand' || !sendDay) {
+      setUpcomingEmails([]);
+      return;
+    }
+
+    const emails = [];
+    const today = new Date();
+    
+    if (frequency === 'monthly') {
+      // Generate next 3 monthly emails
+      for (let i = 0; i < 3; i++) {
+        const targetMonth = new Date(today.getFullYear(), today.getMonth() + i, sendDay);
+        
+        // If the send day for this month has already passed, move to next month
+        if (targetMonth < today) {
+          targetMonth.setMonth(targetMonth.getMonth() + 1);
+        }
+        
+        // Generate period ID for the month being reported
+        const reportMonth = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
+        const periodId = generatePeriodId(reportMonth, 'monthly');
+        
+        // Calculate the actual report period dates
+        const [year, month] = periodId.split('-').map(Number);
+        const validYear = year || today.getFullYear();
+        const validMonth = month || (today.getMonth() + 1);
+        const isCurrentMonth = validYear === today.getFullYear() && validMonth === (today.getMonth() + 1);
+        
+        let periodDisplay;
+        if (isCurrentMonth) {
+          const startDate = new Date(Date.UTC(validYear, validMonth - 1, 1));
+          periodDisplay = `${startDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })} (do dziś)`;
+        } else {
+          const dateRange = getMonthBoundaries(validYear, validMonth);
+          const startDate = new Date(dateRange.start);
+          periodDisplay = startDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+        }
+        
+        emails.push({
+          date: targetMonth.toLocaleDateString('pl-PL'),
+          period: periodDisplay,
+          type: 'Miesięczny raport'
+        });
+      }
+    } else if (frequency === 'weekly') {
+      // Generate next 4 weekly emails
+      const today = new Date();
+      let currentDate = new Date(today);
+      
+      // Find the next occurrence of the send day
+      const targetWeekday = sendDay; // 1=Monday, 7=Sunday
+      const currentWeekday = currentDate.getDay() || 7; // Convert Sunday(0) to 7
+      
+      let daysToNext = targetWeekday - currentWeekday;
+      if (daysToNext <= 0) {
+        daysToNext += 7; // Move to next week
+      }
+      
+      for (let i = 0; i < 4; i++) {
+        const sendDate = new Date(currentDate);
+        sendDate.setDate(currentDate.getDate() + daysToNext + (i * 7));
+        
+        // Generate period ID for the week being reported
+        const reportWeek = new Date(sendDate);
+        const weekPeriodId = generatePeriodId(reportWeek, 'weekly');
+        
+        // Calculate the actual report period dates
+        const [year, weekStr] = weekPeriodId.split('-W');
+        const week = parseInt(weekStr || '1');
+        
+        // Calculate week boundaries
+        const yearNum = parseInt(year || today.getFullYear().toString());
+        const jan4 = new Date(yearNum, 0, 4);
+        const startOfWeek1 = new Date(jan4);
+        startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+        const weekStartDate = new Date(startOfWeek1);
+        weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+        const dateRange = getWeekBoundaries(weekStartDate);
+        
+        const periodDisplay = `Tydzień ${new Date(dateRange.start).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })} - ${new Date(dateRange.end).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+        
+        emails.push({
+          date: sendDate.toLocaleDateString('pl-PL'),
+          period: periodDisplay,
+          type: 'Tygodniowy raport'
+        });
+      }
+    }
+    
+    setUpcomingEmails(emails);
+  };
+
+  // Calculate upcoming emails when frequency or send day changes
+  useEffect(() => {
+    if (formData.reporting_frequency && formData.send_day && typeof formData.send_day === 'number') {
+      calculateUpcomingEmails(formData.reporting_frequency, formData.send_day);
+    }
+  }, [formData.reporting_frequency, formData.send_day]);
 
   if (!isOpen || !client) return null;
 
@@ -985,6 +1112,33 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                   ))
                 )}
               </select>
+            </div>
+          )}
+
+          {/* Upcoming Emails Preview */}
+          {upcomingEmails.length > 0 && (
+            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <h4 className="text-sm font-semibold text-blue-900">Nadchodzące automatyczne email</h4>
+              </div>
+              <div className="space-y-2">
+                {upcomingEmails.map((email, index) => (
+                  <div key={index} className="flex items-center justify-between py-2 px-3 bg-white rounded border border-blue-100">
+                    <div className="flex items-center gap-3">
+                      <Mail className="w-3 h-3 text-blue-500" />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{email.type}</div>
+                        <div className="text-xs text-gray-600">Okres: {email.period}</div>
+                      </div>
+                    </div>
+                    <div className="text-sm text-blue-600 font-medium">{email.date}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 text-xs text-blue-700 bg-blue-100 rounded px-2 py-1">
+                💡 Te email będą automatycznie wysłane zgodnie z ustawionym harmonogramem
+              </div>
             </div>
           )}
           
