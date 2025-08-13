@@ -63,6 +63,22 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         }
       };
 
+      // Debug: Log the data being sent to PDF generation
+      console.log('🔍 InteractivePDFButton: Sending data to PDF generation:', {
+        hasDirectData: !!(campaigns && totals && client),
+        hasCampaigns: !!campaigns?.length,
+        hasTotals: !!totals,
+        hasClient: !!client,
+        hasMetaTables: !!metaTables,
+        metaTablesStructure: metaTables ? {
+          hasPlacementPerformance: !!metaTables.placementPerformance?.length,
+          hasDemographicPerformance: !!metaTables.demographicPerformance?.length,
+          hasAdRelevanceResults: !!metaTables.adRelevanceResults?.length,
+          demographicCount: metaTables.demographicPerformance?.length || 0,
+          demographicSample: metaTables.demographicPerformance?.slice(0, 2)
+        } : null
+      });
+
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {

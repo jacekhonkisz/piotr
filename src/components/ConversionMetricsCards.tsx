@@ -173,6 +173,11 @@ export default function ConversionMetricsCards({
           const IconComponent = metric.icon;
           const hasValue = metric.value !== '0' && metric.value !== '—';
           
+          // Special handling for metrics that might legitimately be 0
+          const isPhoneMetric = metric.title.includes('telefoniczne');
+          const isBookingStep2Metric = metric.title.includes('Etap 2');
+          const showConfigurationWarning = !hasValue && (isPhoneMetric || isBookingStep2Metric);
+          
           return (
             <div 
               key={index} 
@@ -199,10 +204,14 @@ export default function ConversionMetricsCards({
                 {metric.description}
               </p>
               
-              {!hasValue && (
+              {showConfigurationWarning && (
                 <div className="mt-3 flex items-center text-xs text-amber-600">
                   <AlertCircle className="h-3 w-3 mr-1" />
-                  <span>Nie skonfigurowane</span>
+                  <span>
+                    {isPhoneMetric 
+                      ? 'Brak śledzenia połączeń w reklamach' 
+                      : 'Brak śledzenia koszyka/kroku 2'}
+                  </span>
                 </div>
               )}
             </div>
@@ -222,22 +231,29 @@ export default function ConversionMetricsCards({
               </h3>
               <div className="mt-2 text-sm text-blue-700">
                 <p className="mb-2">
-                  <strong>Potencjalne kontakty telefoniczne:</strong> Zaciągane z Meta API - actions → click_to_call
+                  <strong>📞 Potencjalne kontakty telefoniczne:</strong> Meta API - actions → click_to_call, phone_number_clicks
+                  <br />
+                  <span className="text-xs text-blue-600">💡 Skonfiguruj tracking połączeń w Facebook Ads Manager</span>
                 </p>
                 <p className="mb-2">
-                  <strong>Potencjalne kontakty email:</strong> Zaciągane z Meta API - actions → link_click (mailto:)
+                  <strong>📧 Potencjalne kontakty email:</strong> Meta API - actions → link_click (mailto:)
                 </p>
                 <p className="mb-2">
-                  <strong>Kroki rezerwacji:</strong> Zaciągane z Meta API - actions → booking_step_1, booking_step_2
+                  <strong>🛒 Kroki rezerwacji – Etap 1:</strong> Meta API - actions → booking_step_1, initiate_checkout
                 </p>
                 <p className="mb-2">
-                  <strong>Rezerwacje:</strong> Zaciągane z Meta API - actions → purchase/reservation
+                  <strong>✅ Rezerwacje (zakończone):</strong> Meta API - actions → purchase/reservation
                 </p>
                 <p className="mb-2">
-                  <strong>Wartość rezerwacji:</strong> Zaciągane z Meta API - action_values → purchase value
+                  <strong>💰 Wartość rezerwacji:</strong> Meta API - action_values → purchase value
+                </p>
+                <p className="mb-2">
+                  <strong>🛒 Etap 2 rezerwacji:</strong> Meta API - actions → booking_step_2, add_to_cart, view_content
+                  <br />
+                  <span className="text-xs text-blue-600">💡 Skonfiguruj events Facebook Pixel na stronie klienta</span>
                 </p>
                 <p>
-                  <strong>ROAS & Koszt per rezerwacja:</strong> Obliczane automatycznie na podstawie wydatków i wartości
+                  <strong>📊 ROAS & Koszt per rezerwacja:</strong> Obliczane automatycznie na podstawie wydatków i wartości
                 </p>
               </div>
             </div>

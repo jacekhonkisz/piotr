@@ -1,0 +1,117 @@
+Logo
+
+Raport Meta Ads — jacek
+6 stycznia 2025 – 12 stycznia 2025
+Źródło: Meta Ads API • Wygenerowano: 13.08.2025 08:17:35
+
+Podsumowanie
+W tygodniu od 6 stycznia 2025 do 12 stycznia 2025 wydaliśmy na kampanie
+reklamowe 0,00 zł.
+
+Wydajność kampanii
+
+Statystyki konwersji
+
+Wydatki łączne
+
+0,00 zł
+
+Potencjalne kontakty – telefon
+
+— i
+
+Wyświetlenia
+
+0
+
+Potencjalne kontakty – e-mail
+
+— i
+
+Kliknięcia
+
+0
+
+Kroki rezerwacji – Etap 1
+
+— i
+
+Zasięg
+
+0
+
+Rezerwacje (zakończone)
+
+— i
+
+CTR
+
+0,00%
+
+Wartość rezerwacji (zł)
+
+— i
+
+CPC
+
+0,00 zł
+
+ROAS (x)
+
+— i
+
+CPM
+
+0,00 zł
+
+Koszt per rezerwacja (zł)
+
+— i
+
+Etap 2 rezerwacji
+
+— i
+
+Demografia – Wyświetlenia
+
+Brak danych demograficznych dla tego okresu.
+Dane demograficzne będą dostępne po zebraniu wystarczającej liczby
+wyświetleń.
+
+Demografia – Kliknięcia
+
+Brak danych demograficznych dla tego okresu.
+Dane demograficzne będą dostępne po zebraniu wystarczającej liczby
+kliknięć.
+
+Szczegóły kampanii
+NAZWA
+KAMPANII
+
+WYDATKI
+
+WYŚWIETLENIA
+
+KLIKNIĘCIA
+
+CTR
+
+CPC
+
+Metodologia i przypisy
+Źródło: Meta Ads API, czas pobrania danych: 2025-08-13T06:17:35.237Z (UTC)
+Definicje metryk:
+• Wydatki: Całkowita kwota wydana na kampanie reklamowe
+• CTR: Stosunek kliknięć do wyświetleń (Click-Through Rate)
+• CPC: Średni koszt kliknięcia (Cost Per Click)
+
+KONW
+
+• CPM: Koszt za 1000 wyświetleń (Cost Per Mille)
+• CPA: Koszt pozyskania klienta (Cost Per Acquisition)
+• ROAS: Zwrot z wydatków reklamowych (Return on Ad Spend)
+Zakres analizy: 6 stycznia 2025 – 12 stycznia 2025
+
+Raport wygenerowany automatycznie • 13.08.2025 08:17:35
+
+

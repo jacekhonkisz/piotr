@@ -94,20 +94,40 @@ const formatDate = (dateString: string) => {
   });
 };
 
-// Helper function to get week start and end dates
+// Helper function to get week start and end dates using proper ISO week calculation
 const getWeekDateRange = (year: number, week: number) => {
-  const firstDayOfYear = new Date(year, 0, 1);
-  const days = (week - 1) * 7;
-  const startDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
-  const endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+  console.log(`🔍 getWeekDateRange called with year=${year}, week=${week}`);
+  
+  // 🔧 EXACT COPY of API logic from reports/page.tsx lines 899-912
+  const yearNum = year;
+  
+  // January 4th is always in week 1 of the ISO year (SAME AS API)
+  const jan4 = new Date(yearNum, 0, 4);
+  
+  // Find the Monday of week 1 (SAME AS API)
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  
+  // Calculate the start date of the target week (SAME AS API)
+  const weekStartDate = new Date(startOfWeek1);
+  weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+  
+  // Use the same getWeekBoundaries logic as API (adds 6 days with UTC)
+  const endDate = new Date(weekStartDate);
+  endDate.setUTCDate(weekStartDate.getUTCDate() + 6);
   
   const formatDateForDisplay = (date: Date) => {
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    return `${day.toString().padStart(2, '0')}.${month.toString().padStart(2, '0')}`;
+    // Use toISOString to get consistent formatting like API
+    const isoString = date.toISOString().split('T')[0] || '';
+    const [yearStr, monthStr, dayStr] = isoString.split('-');
+    return `${dayStr}.${monthStr}`;
   };
   
-  return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}.${year}`;
+  const result = `${formatDateForDisplay(weekStartDate)} - ${formatDateForDisplay(endDate)}.${year}`;
+  console.log(`🔍 getWeekDateRange result: ${result} (startDate: ${weekStartDate.toISOString().split('T')[0]}, endDate: ${endDate.toISOString().split('T')[0]})`);
+  console.log(`🔧 API MATCH: Using exact same logic as reports/page.tsx`);
+  
+  return result;
 };
 
 const getWeekNumber = (date: Date) => {
@@ -197,6 +217,27 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
   console.log('🔍 WeeklyReportView: Reports keys:', Object.keys(reports));
   console.log('🔍 WeeklyReportView: Reports data:', reports);
   
+  // Add detailed campaign data logging
+  Object.keys(reports).forEach(reportId => {
+    const report = reports[reportId];
+    if (report?.campaigns) {
+      console.log(`🔍 WeeklyReportView: Report ${reportId} has ${report.campaigns.length} campaigns`);
+      report.campaigns.forEach((campaign, idx) => {
+        console.log(`🔍 WeeklyReportView: Campaign ${idx}:`, {
+          name: campaign.campaign_name,
+          spend: campaign.spend,
+          conversions: campaign.conversions,
+          click_to_call: campaign.click_to_call,
+          email_contacts: campaign.email_contacts,
+          booking_step_1: campaign.booking_step_1,
+          reservations: campaign.reservations,
+          reservation_value: campaign.reservation_value,
+          booking_step_2: campaign.booking_step_2
+        });
+      });
+    }
+  });
+  
   const [expandedCampaigns, setExpandedCampaigns] = useState<{ [key: string]: boolean }>({});
 
   const reportIds = Object.keys(reports);
@@ -229,20 +270,32 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         if (!report) return null;
         const campaigns = report.campaigns || [];
         
+        console.log('🔍 WeeklyReportView processing report:', reportId);
+        console.log('🔍 Report object:', report);
+        console.log('🔍 Campaigns count:', campaigns.length);
+        console.log('🔍 Campaigns data:', campaigns);
+        
         // Calculate campaign performance totals
-        const campaignTotals = campaigns.reduce((acc, campaign) => ({
-          spend: acc.spend + (campaign.spend || 0),
-          impressions: acc.impressions + (campaign.impressions || 0),
-          clicks: acc.clicks + (campaign.clicks || 0),
-          reach: acc.reach + (campaign.reach || 0),
-          status: campaign.status || 'UNKNOWN'
-        }), { 
+        const campaignTotals = campaigns.reduce((acc, campaign) => {
+          console.log('🔍 Processing campaign for totals:', campaign);
+          const result = {
+            spend: acc.spend + (campaign.spend || 0),
+            impressions: acc.impressions + (campaign.impressions || 0),
+            clicks: acc.clicks + (campaign.clicks || 0),
+            reach: acc.reach + (campaign.reach || 0),
+            status: campaign.status || 'UNKNOWN'
+          };
+          console.log('🔍 Accumulator after this campaign:', result);
+          return result;
+        }, { 
           spend: 0, 
           impressions: 0, 
           clicks: 0, 
           reach: 0,
           status: 'UNKNOWN'
         });
+        
+        console.log('🔍 Final campaignTotals:', campaignTotals);
 
         // Calculate derived campaign metrics
         const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
@@ -263,7 +316,16 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         } else if (viewType === 'monthly') {
           reportTitle = 'Raport - Miesiąc';
         } else {
-          reportTitle = `Raport - ${getWeekDateRange(startDate.getFullYear(), weekNumber)}`;
+          // 🚨 FIX: For weekly reports, use the reportId instead of corrupted database date
+          // reportId format: "2025-W33" -> extract year and week number
+          const [year, weekStr] = reportId.split('-W');
+          const weekNum = parseInt(weekStr || '1');
+          const yearNum = parseInt(year || new Date().getFullYear().toString());
+          
+          console.log(`🔧 TITLE FIX: Using reportId ${reportId} instead of corrupted date_range_start ${report.date_range_start}`);
+          console.log(`   Extracted: year=${yearNum}, week=${weekNum}`);
+          
+          reportTitle = `Raport - ${getWeekDateRange(yearNum, weekNum)}`;
         }
 
         // Determine how many campaigns to show
@@ -272,6 +334,39 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         const hasMoreCampaigns = campaigns.length > 5;
 
         console.log('🔍 WeeklyReportView: About to render report:', reportId, 'with campaigns:', campaigns.length, 'totals:', campaignTotals);
+        
+        // Add detailed debugging about the date range
+        console.log('🔍 WeeklyReportView: Report date analysis:', {
+          reportId,
+          dateRangeStart: report.date_range_start,
+          dateRangeEnd: report.date_range_end,
+          startDate: startDate.toISOString().split('T')[0],
+          weekNumber,
+          calculatedTitle: reportTitle,
+          totalSpend: campaignTotals.spend,
+          campaignsCount: campaigns.length
+        });
+        
+        // Calculate actual days in the report range
+        const reportStartDate = new Date(report.date_range_start);
+        const reportEndDate = new Date(report.date_range_end);
+        const daysDifference = Math.ceil((reportEndDate.getTime() - reportStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        
+        console.log('🚨 WeeklyReportView: Date range analysis:', {
+          reportStartDate: reportStartDate.toISOString().split('T')[0],
+          reportEndDate: reportEndDate.toISOString().split('T')[0],
+          daysDifference,
+          isExactlyOneWeek: daysDifference === 7,
+          isLongerThanWeek: daysDifference > 7,
+          expectedForWeek: '7 days',
+          actualDays: daysDifference
+        });
+        
+        if (daysDifference > 7) {
+          console.log('⚠️ WARNING: Weekly report contains MORE than 7 days of data!');
+          console.log('   This explains why spend/metrics are higher than expected');
+          console.log('   The API may be returning a longer date range than requested');
+        }
 
         return (
           <div key={reportId} className="space-y-10">
@@ -285,7 +380,35 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   <div className="flex items-center space-x-6 text-sm text-gray-600">
                     <div className="flex items-center space-x-2">
                       <Calendar className="w-4 h-4" />
-                      <span>{formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}</span>
+                      {viewType === 'weekly' && reportId.includes('-W') ? (
+                        // 🚨 FIX: For weekly reports, calculate correct date range from reportId
+                        (() => {
+                          const [year, weekStr] = reportId.split('-W');
+                          const weekNum = parseInt(weekStr || '1');
+                          const yearNum = parseInt(year || new Date().getFullYear().toString());
+                          
+                          // Calculate proper week boundaries
+                          const jan4 = new Date(yearNum, 0, 4);
+                          const startOfWeek1 = new Date(jan4);
+                          startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+                          const weekStartDate = new Date(startOfWeek1);
+                          weekStartDate.setDate(startOfWeek1.getDate() + (weekNum - 1) * 7);
+                          const weekEndDate = new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+                          
+                          const weekStartDateStr = weekStartDate.toISOString().split('T')[0] || '';
+                          const weekEndDateStr = weekEndDate.toISOString().split('T')[0] || '';
+                          
+                          console.log(`🔧 SUBTITLE FIX: Using calculated dates for ${reportId}`);
+                          console.log(`   Week start: ${weekStartDateStr}`);
+                          console.log(`   Week end: ${weekEndDateStr}`);
+                          
+                          return (
+                            <span>{formatDate(weekStartDateStr)} - {formatDate(weekEndDateStr)}</span>
+                          );
+                        })()
+                      ) : (
+                        <span>{formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}</span>
+                      )}
                     </div>
                     <div className="flex items-center space-x-2">
                       <Clock className="w-4 h-4" />
@@ -364,6 +487,13 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   subtitle="Cost per mille"
                   tooltip="Koszt za 1000 wyświetleń"
                 />
+                
+                <MetricCard
+                  title="Konwersje"
+                  value={campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0).toString()}
+                  subtitle="Łączna liczba konwersji"
+                  tooltip="Całkowita liczba konwersji ze wszystkich kampanii"
+                />
               </div>
             </section>
 
@@ -390,7 +520,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                 total_spend: 0
               });
 
-              // Calculate ROAS and cost per reservation
+              // Calculate ROAS and cost per reservation from aggregated totals
               const roas = conversionTotals.total_spend > 0 && conversionTotals.reservation_value > 0 
                 ? conversionTotals.reservation_value / conversionTotals.total_spend 
                 : 0;
@@ -399,63 +529,24 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                 ? conversionTotals.total_spend / conversionTotals.reservations 
                 : 0;
 
-              // 🔧 ENHANCED FALLBACK LOGIC: Apply intelligent fallback for 0 conversion metrics
-              // This prevents "Nie skonfigurowane" when campaigns have activity but 0 conversion tracking
-              const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
-              const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0);
-              const hasActivity = totalClicks > 0 || totalImpressions > 0 || conversionTotals.total_spend > 0;
-              
-              // Create enhanced conversion metrics with fallback
+              // Create final conversion metrics object using calculated totals
               const conversionMetrics = {
                 click_to_call: conversionTotals.click_to_call,
                 email_contacts: conversionTotals.email_contacts,
                 booking_step_1: conversionTotals.booking_step_1,
                 reservations: conversionTotals.reservations,
                 reservation_value: conversionTotals.reservation_value,
-                roas: roas,
-                cost_per_reservation: cost_per_reservation,
-                booking_step_2: conversionTotals.booking_step_2
+                booking_step_2: conversionTotals.booking_step_2,
+                roas,
+                cost_per_reservation
               };
-              
-              // Apply smart fallback for any 0 values when there's campaign activity
-              if (hasActivity) {
-                if (conversionMetrics.click_to_call === 0) {
-                  conversionMetrics.click_to_call = Math.max(1, Math.round(totalClicks * 0.01)); // 1% call rate
-                }
-                if (conversionMetrics.email_contacts === 0) {
-                  conversionMetrics.email_contacts = Math.max(1, Math.round(totalClicks * 0.005)); // 0.5% email rate  
-                }
-                if (conversionMetrics.booking_step_1 === 0) {
-                  conversionMetrics.booking_step_1 = Math.max(1, Math.round(totalClicks * 0.02)); // 2% booking start rate
-                }
-                if (conversionMetrics.reservations === 0) {
-                  conversionMetrics.reservations = Math.max(1, Math.round(totalClicks * 0.005)); // 0.5% conversion rate
-                }
-                if (conversionMetrics.booking_step_2 === 0) {
-                  // Booking step 2 is typically 40-60% of booking step 1
-                  conversionMetrics.booking_step_2 = Math.max(1, Math.round(conversionMetrics.booking_step_1 * 0.5)); // 50% of step 1
-                }
-                
-                // Handle reservation_value and ROAS calculation
-                if (conversionMetrics.reservation_value === 0 && conversionMetrics.reservations > 0) {
-                  // Average reservation value for hotels (industry standard: $200-500)
-                  conversionMetrics.reservation_value = conversionMetrics.reservations * 350; // $350 per reservation
-                }
-                
-                // Recalculate ROAS if we now have reservation_value
-                if (conversionMetrics.reservation_value > 0 && conversionTotals.total_spend > 0) {
-                  conversionMetrics.roas = conversionMetrics.reservation_value / conversionTotals.total_spend;
-                }
-                
-                // Recalculate dependent metrics if reservations changed
-                if (conversionTotals.reservations === 0 && conversionMetrics.reservations > 0) {
-                  conversionMetrics.cost_per_reservation = conversionTotals.total_spend > 0 
-                    ? conversionTotals.total_spend / conversionMetrics.reservations 
-                    : 0;
-                }
-              }
-              
 
+              console.log('🔍 WeeklyReportView: Conversion metrics calculation:', {
+                campaignsCount: campaigns.length,
+                conversionTotals,
+                conversionMetrics,
+                hasConversions: conversionTotals.reservations > 0 || conversionTotals.click_to_call > 0 || conversionTotals.email_contacts > 0
+              });
 
               return (
                 <section className="mb-8">

@@ -655,8 +655,14 @@ export class MetaAPIService {
               
               console.log('🔍 MetaAPI: Processing action:', { actionType, valueNum });
 
-              // 1. Potencjalne kontakty telefoniczne - Include call confirmation events
-              if (actionType.includes('click_to_call') || actionType.includes('call_confirm')) {
+              // 1. Potencjalne kontakty telefoniczne - Enhanced with more action types
+              if (actionType.includes('click_to_call') || 
+                  actionType.includes('call_confirm') ||
+                  actionType.includes('phone_number_clicks') ||
+                  actionType.includes('call_placed') ||
+                  actionType.includes('phone_number_click') ||
+                  actionType.includes('call_button') ||
+                  actionType.includes('phone_call')) {
                 click_to_call += valueNum;
               }
               // 2. Potencjalne kontakty email
@@ -671,8 +677,12 @@ export class MetaAPIService {
               if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
                 reservations += valueNum;
               }
-              // 8. Etap 2 rezerwacji (add_to_cart proxy)
-              if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+              // 8. Etap 2 rezerwacji - Fixed to prevent funnel inversion
+              if (actionType.includes('booking_step_2') || 
+                  actionType.includes('add_to_cart') ||
+                  actionType.includes('add_to_basket') ||
+                  actionType.includes('checkout_step_2') ||
+                  actionType.includes('add_payment_info')) {
                 booking_step_2 += valueNum;
               }
             });
@@ -702,6 +712,11 @@ export class MetaAPIService {
           console.log(`   💵 Reservation Value: ${reservation_value} zł`);
           console.log(`   📈 ROAS: ${roas.toFixed(2)}x`);
           console.log(`   💲 Cost per Reservation: ${cost_per_reservation.toFixed(2)} zł`);
+
+          // Validate conversion funnel logic (Etap 1 should be >= Etap 2)
+          if (booking_step_2 > booking_step_1 && booking_step_1 > 0) {
+            console.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
+          }
 
           // Calculate total conversions from all tracked conversion types
           const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2;
@@ -843,8 +858,14 @@ export class MetaAPIService {
             const actionType = String(action.action_type || action.type || '').toLowerCase();
             const valueNum = Number(action.value ?? action.count ?? 0);
 
-            // 1. Potencjalne kontakty telefoniczne - Include call confirmation events
-            if (actionType.includes('click_to_call') || actionType.includes('call_confirm')) {
+            // 1. Potencjalne kontakty telefoniczne - Enhanced with more action types
+            if (actionType.includes('click_to_call') || 
+                actionType.includes('call_confirm') ||
+                actionType.includes('phone_number_clicks') ||
+                actionType.includes('call_placed') ||
+                actionType.includes('phone_number_click') ||
+                actionType.includes('call_button') ||
+                actionType.includes('phone_call')) {
               click_to_call += valueNum;
             }
             // 2. Potencjalne kontakty email
@@ -859,8 +880,12 @@ export class MetaAPIService {
             if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
               reservations += valueNum;
             }
-            // 8. Etap 2 rezerwacji (add_to_cart proxy)
-            if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+            // 8. Etap 2 rezerwacji - Fixed to prevent funnel inversion
+            if (actionType.includes('booking_step_2') || 
+                actionType.includes('add_to_cart') ||
+                actionType.includes('add_to_basket') ||
+                actionType.includes('checkout_step_2') ||
+                actionType.includes('add_payment_info')) {
               booking_step_2 += valueNum;
             }
           });
@@ -880,6 +905,11 @@ export class MetaAPIService {
         const spend = parseFloat(insight.spend || '0');
         const roas = spend > 0 && reservation_value > 0 ? reservation_value / spend : 0;
         const cost_per_reservation = reservations > 0 ? spend / reservations : 0;
+
+        // Validate conversion funnel logic (Etap 1 should be >= Etap 2)
+        if (booking_step_2 > booking_step_1 && booking_step_1 > 0) {
+          console.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
+        }
 
         // Calculate total conversions from all tracked conversion types
         const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2;
@@ -1264,22 +1294,29 @@ export class MetaAPIService {
       }
 
       if (data.data) {
-        const placements = data.data.map(insight => {
-          // Handle missing publisher_platform data
+        // First, normalize and map the raw data
+        const rawPlacements = data.data.map(insight => {
+          // Normalize placement names consistently
           let placement = insight.publisher_platform;
           if (!placement || placement === 'unknown' || placement === 'Unknown') {
-            // Try to infer placement from other fields or use a default
-            if (insight.publisher_platform === 'facebook') {
-              placement = 'Facebook';
-            } else if (insight.publisher_platform === 'instagram') {
-              placement = 'Instagram';
-            } else if (insight.publisher_platform === 'audience_network') {
-              placement = 'Audience Network';
-            } else if (insight.publisher_platform === 'messenger') {
-              placement = 'Messenger';
-            } else {
-              // Use a more descriptive default
-              placement = 'Meta Platform';
+            placement = 'Meta Platform';
+          } else {
+            // Standardize placement names
+            switch (placement.toLowerCase()) {
+              case 'facebook':
+                placement = 'facebook';
+                break;
+              case 'instagram':
+                placement = 'instagram';
+                break;
+              case 'audience_network':
+                placement = 'audience_network';
+                break;
+              case 'messenger':
+                placement = 'messenger';
+                break;
+              default:
+                placement = placement.toLowerCase();
             }
           }
           
@@ -1294,9 +1331,40 @@ export class MetaAPIService {
           };
         });
 
-        console.log('✅ Parsed placement performance:', placements.length, 'placements');
-        console.log('   Placement types found:', Array.from(new Set(placements.map(p => p.placement))));
-        return placements;
+        // Consolidate by placement (sum metrics for same placement)
+        const consolidatedMap = new Map();
+        
+        rawPlacements.forEach(item => {
+          const existing = consolidatedMap.get(item.placement);
+          
+          if (existing) {
+            // Sum the metrics
+            existing.spend += item.spend;
+            existing.impressions += item.impressions;
+            existing.clicks += item.clicks;
+          } else {
+            // Add new placement
+            consolidatedMap.set(item.placement, { ...item });
+          }
+        });
+        
+        // Recalculate derived metrics for consolidated data
+        const consolidated = Array.from(consolidatedMap.values()).map(item => ({
+          ...item,
+          ctr: item.impressions > 0 ? (item.clicks / item.impressions) * 100 : 0,
+          cpc: item.clicks > 0 ? item.spend / item.clicks : 0,
+          // Calculate CPA (Cost Per Action) - using clicks as proxy for actions
+          cpa: item.clicks > 0 ? item.spend / item.clicks : 0,
+          // Note: cpp (cost per purchase) is not aggregated since we don't have purchase data here
+          cpp: null
+        }));
+
+        console.log('✅ Consolidated placement performance:', consolidated.length, 'unique placements');
+        console.log('   Raw placements before consolidation:', rawPlacements.length);
+        console.log('   Consolidated placement types:', Array.from(new Set(consolidated.map(p => p.placement))));
+        console.log('   Consolidation breakdown:', consolidated.map(p => `${p.placement}: ${p.spend.toFixed(2)} spend, ${p.clicks} clicks`));
+        
+        return consolidated;
       }
 
       return [];

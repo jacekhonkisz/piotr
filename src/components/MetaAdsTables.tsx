@@ -24,6 +24,7 @@ interface PlacementPerformance {
   clicks: number;
   ctr: number;
   cpc: number;
+  cpa?: number;
   cpp?: number;
 }
 

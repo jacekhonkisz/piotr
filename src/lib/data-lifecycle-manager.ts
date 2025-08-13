@@ -162,18 +162,21 @@ export class DataLifecycleManager {
   }
 
   /**
-   * Clean up data older than 12 months from campaign_summaries table
+   * Clean up data older than 13 months from campaign_summaries table
+   * Note: Keeps 13+ months to ensure year-over-year comparisons always have required data
+   * When in month 13, we need month 1 data for comparison (12 months back)
    */
   async cleanupOldData(): Promise<void> {
     console.log('🧹 Starting old data cleanup process...');
     
     try {
-      // Calculate cutoff date (12 months ago)
+      // Calculate cutoff date (13 months ago to preserve year-over-year comparison data)
+      // This ensures we always have at least 13 months of data for year-over-year comparisons
       const cutoffDate = new Date();
-      cutoffDate.setMonth(cutoffDate.getMonth() - 12);
+      cutoffDate.setMonth(cutoffDate.getMonth() - 13);
       const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
       
-      console.log(`🗑️ Removing data older than: ${cutoffDateStr}`);
+      console.log(`🗑️ Removing data older than: ${cutoffDateStr} (13+ months retention for year-over-year comparisons)`);
       
       // Remove old monthly summaries
       const { data: deletedMonthly, error: monthlyError } = await supabase
@@ -275,6 +278,43 @@ export class DataLifecycleManager {
     const cachedStartDate = cacheData?.period?.startDate;
     const summaryDate: string = typeof cachedStartDate === 'string' ? cachedStartDate : this.getWeekStartDate(cacheEntry.period_id);
     
+    // Calculate conversion metrics from campaign data
+    const campaigns = cacheData?.campaigns || [];
+    const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      total_spend: acc.total_spend + (campaign.spend || 0)
+    }), {
+      click_to_call: 0,
+      email_contacts: 0,
+      booking_step_1: 0,
+      reservations: 0,
+      reservation_value: 0,
+      booking_step_2: 0,
+      total_spend: 0
+    });
+
+    // Calculate derived conversion metrics
+    const roas = conversionTotals.total_spend > 0 && conversionTotals.reservation_value > 0 
+      ? conversionTotals.reservation_value / conversionTotals.total_spend 
+      : 0;
+    
+    const cost_per_reservation = conversionTotals.reservations > 0 
+      ? conversionTotals.total_spend / conversionTotals.reservations 
+      : 0;
+
+    console.log(`📊 Weekly archive conversion metrics calculated:`, {
+      client_id: cacheEntry.client_id,
+      period: cacheEntry.period_id,
+      conversionTotals,
+      roas,
+      cost_per_reservation
+    });
+    
     const summary = {
       client_id: cacheEntry.client_id,
       summary_type: 'weekly',
@@ -285,12 +325,21 @@ export class DataLifecycleManager {
       total_conversions: cacheData?.stats?.totalConversions || 0,
       average_ctr: cacheData?.stats?.averageCtr || 0,
       average_cpc: cacheData?.stats?.averageCpc || 0,
-      average_cpa: cacheData?.conversionMetrics?.cost_per_reservation || 0,
+      average_cpa: cost_per_reservation,
       active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ACTIVE').length || 0,
       total_campaigns: cacheData?.campaigns?.length || 0,
       campaign_data: cacheData?.campaigns || [],
       meta_tables: cacheData?.metaTables || null,
       data_source: 'smart_cache_archive',
+      // Add aggregated conversion metrics
+      click_to_call: conversionTotals.click_to_call,
+      email_contacts: conversionTotals.email_contacts,
+      booking_step_1: conversionTotals.booking_step_1,
+      reservations: conversionTotals.reservations,
+      reservation_value: conversionTotals.reservation_value,
+      booking_step_2: conversionTotals.booking_step_2,
+      roas: roas,
+      cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()
     };
 
@@ -305,6 +354,7 @@ export class DataLifecycleManager {
     }
 
     console.log(`💾 Archived weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    console.log(`💾 Conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value, ${roas.toFixed(2)} ROAS`);
   }
 
   /**

@@ -47,6 +47,41 @@ interface ReportData {
     reservation_value: number;
     booking_step_2: number;
   };
+  previousWeekTotals?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+  };
+  previousWeekConversions?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    booking_step_2: number;
+  };
+  reportType?: 'weekly' | 'monthly' | 'custom';
+  previousYearTotals?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+  };
+  previousYearConversions?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    booking_step_2: number;
+  };
   metaTables?: {
     placementPerformance: any[];
     demographicPerformance: any[];
@@ -80,7 +115,13 @@ function generatePDFHTML(reportData: ReportData): string {
   const formatStatValue = (current: any, previous?: number, formatter?: (val: number) => string): string => {
     const formattedCurrent = formatter ? formatter(current) : current.toString();
     
-    if (previous !== undefined && reportData.previousMonthTotals) {
+    // Determine if we have comparison data and what type it is
+    const hasWeeklyComparison = reportData.reportType === 'weekly' && reportData.previousMonthTotals;
+    const hasMonthlyComparison = reportData.reportType === 'monthly' && reportData.previousMonthTotals;
+    const hasCustomComparison = reportData.reportType === 'custom' && reportData.previousMonthTotals;
+    const hasComparison = hasWeeklyComparison || hasMonthlyComparison || hasCustomComparison;
+    
+    if (previous !== undefined && hasComparison) {
       const change = calculatePercentageChange(current, previous);
       return `
         <div class="stat-value">
@@ -99,6 +140,146 @@ function generatePDFHTML(reportData: ReportData): string {
     } else {
       return `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`;
     }
+  };
+
+  // Function to determine if year-over-year comparison should be shown
+  const shouldShowYearOverYear = (): boolean => {
+    console.log('🔍 YEAR-OVER-YEAR VALIDATION DEBUG:');
+    console.log('   Report Type:', reportData.reportType);
+    console.log('   Previous Year Totals:', !!reportData.previousYearTotals);
+    console.log('   Previous Year Conversions:', !!reportData.previousYearConversions);
+    console.log('   Date Range:', reportData.dateRange);
+    
+    // Show for monthly reports OR custom reports that span reasonable periods
+    if (reportData.reportType !== 'monthly' && reportData.reportType !== 'custom') {
+      console.log('🚫 Year-over-year hidden: Not a monthly or custom report');
+      return false;
+    }
+    
+    // Must have previous year data
+    if (!reportData.previousYearTotals || !reportData.previousYearConversions) {
+      console.log('🚫 Year-over-year hidden: No previous year data');
+      console.log('   Available totals keys:', reportData.previousYearTotals ? Object.keys(reportData.previousYearTotals) : 'none');
+      console.log('   Available conversions keys:', reportData.previousYearConversions ? Object.keys(reportData.previousYearConversions) : 'none');
+      return false;
+    }
+    
+    // Check if we have meaningful comparison data (previous year must have spend)
+    const currentSpend = reportData.totals.spend || 0;
+    const previousSpend = reportData.previousYearTotals.spend || 0;
+    
+    console.log('   Current spend:', currentSpend);
+    console.log('   Previous year spend:', previousSpend);
+    
+    // Show comparison if previous year has meaningful data (even if current is 0)
+    // This handles cases where current period has no campaigns table data but summary data exists
+    if (previousSpend <= 0) {
+      console.log('🚫 Year-over-year hidden: No meaningful previous year data');
+      return false;
+    }
+    
+    console.log('✅ Year-over-year comparison shown: Previous year has meaningful data');
+    return true;
+  };
+
+  // Function to determine if period-over-period comparison should be shown
+  const shouldShowPeriodComparison = (): boolean => {
+    console.log('🔍 PERIOD COMPARISON VALIDATION DEBUG:');
+    console.log('   Report Type:', reportData.reportType);
+    console.log('   Previous Month Totals:', !!reportData.previousMonthTotals);
+    console.log('   Previous Month Conversions:', !!reportData.previousMonthConversions);
+    
+    // 🚨 ENHANCED DEBUGGING
+    console.log('🚨 DETAILED VALIDATION DEBUG:');
+    console.log('   previousMonthTotals value:', reportData.previousMonthTotals);
+    console.log('   previousMonthConversions value:', reportData.previousMonthConversions);
+    console.log('   Type check previousMonthTotals:', typeof reportData.previousMonthTotals);
+    console.log('   Type check previousMonthConversions:', typeof reportData.previousMonthConversions);
+    
+    if (reportData.reportType === 'weekly') {
+      // For weekly reports, check if we have previous week data (stored in previousMonthTotals)
+      const hasData = !!(reportData.previousMonthTotals && reportData.previousMonthConversions);
+      console.log('   Weekly comparison data available:', hasData);
+      
+      if (hasData && reportData.previousMonthTotals) {
+        const previousSpend = reportData.previousMonthTotals.spend || 0;
+        console.log('   Previous week spend:', previousSpend);
+        
+        if (previousSpend > 0) {
+          console.log('   ✅ Weekly comparison shown: Previous week has meaningful data');
+          return true;
+        } else {
+          console.log('   🚫 Weekly comparison hidden: Previous week has no spend');
+          return false;
+        }
+      }
+      
+      return false;
+    } else if (reportData.reportType === 'monthly' || reportData.reportType === 'custom') {
+      const hasData = !!(reportData.previousMonthTotals && reportData.previousMonthConversions);
+              console.log('   Monthly/Custom comparison data available:', hasData);
+        
+        // Show comparison if we have previous month data (regardless of current period data)
+        if (hasData && reportData.previousMonthTotals) {
+          const previousSpend = reportData.previousMonthTotals.spend || 0;
+          console.log('   Previous period spend:', previousSpend);
+          
+          if (previousSpend > 0) {
+            console.log(`   ✅ ${reportData.reportType} comparison shown: Previous period has meaningful data`);
+            return true;
+          } else {
+            console.log(`   🚫 ${reportData.reportType} comparison hidden: Previous period has no spend`);
+            return false;
+          }
+        }
+        
+        return false;
+    }
+    console.log('   No period comparison for this report type');
+    return false;
+    };
+
+  // Function to get the period comparison label
+  const getPeriodComparisonLabel = (): string => {
+    if (reportData.reportType === 'weekly') {
+      return 'vs poprzedni tydzień';
+    } else if (reportData.reportType === 'monthly') {
+      return 'vs poprzedni miesiąc';
+    }
+    return 'vs poprzedni okres';
+  };
+
+
+
+  // Generate summary section
+  const generateSummarySection = (): string => {
+    const summaryParts = [];
+    
+    // Build summary based on current period data
+    const periodLabel = reportData.reportType === 'weekly' ? 'tygodniu' : 'miesiącu';
+    const startDate = formatDate(reportData.dateRange.start);
+    const endDate = formatDate(reportData.dateRange.end);
+    
+    summaryParts.push(`W ${periodLabel} od ${startDate} do ${endDate} wydaliśmy na kampanie reklamowe ${formatCurrency(totalSpend)}.`);
+    
+    if (totalImpressions > 0) {
+      summaryParts.push(`Działania te zaowocowały ${formatNumber(totalImpressions)} wyświetleniami`);
+      if (totalClicks > 0) {
+        summaryParts.push(`a liczba kliknięć wyniosła ${formatNumber(totalClicks)}, co dało CTR na poziomie ${formatPercentage(ctr)}.`);
+        summaryParts.push(`Średni koszt kliknięcia (CPC) wyniósł ${formatCurrency(cpc)}.`);
+      } else {
+        summaryParts.push('.');
+      }
+    }
+    
+    if (conversionMetrics.reservations > 0) {
+      summaryParts.push(`W tym okresie zaobserwowaliśmy ${formatNumber(conversionMetrics.reservations)} konwersje, co przekłada się na koszt pozyskania konwersji (CPA) na poziomie ${formatCurrency(cost_per_reservation)}.`);
+      if (conversionMetrics.reservation_value > 0) {
+        summaryParts.push(`Wszystkie konwersje to rezerwacje, dzięki czemu koszt pozyskania rezerwacji również wyniósł ${formatCurrency(cost_per_reservation)}.`);
+      }
+    }
+    
+    return summaryParts.join(' ');
   };
 
   // Polish number formatting
@@ -155,6 +336,115 @@ function generatePDFHTML(reportData: ReportData): string {
   const cost_per_reservation = conversionMetrics.reservations > 0 
     ? totalSpend / conversionMetrics.reservations 
     : 0;
+
+  // Function to generate period comparison table
+  const generatePeriodComparisonTable = (): string => {
+    console.log('🔍 PERIOD COMPARISON TABLE GENERATION DEBUG:');
+    console.log('   Previous month totals:', !!reportData.previousMonthTotals);
+    console.log('   Previous month conversions:', !!reportData.previousMonthConversions);
+    console.log('   Campaigns length:', reportData.campaigns.length);
+    console.log('   Conversion metrics reservations:', conversionMetrics.reservations);
+    console.log('   Conversion metrics reservation_value:', conversionMetrics.reservation_value);
+    
+    // TEMPORARY: Force show for debugging - always show if we have previous month data
+    if (!reportData.previousMonthTotals) {
+      console.log('   🚫 No previous month totals - returning empty string');
+      return '';
+    }
+    
+    console.log('   ✅ Generating period comparison table');
+    
+    const currentPeriodLabel = reportData.reportType === 'weekly' ? 'Bieżący tydzień' : 
+                                reportData.reportType === 'custom' ? 'Bieżący okres' : 'Bieżący miesiąc';
+    const previousPeriodLabel = reportData.reportType === 'weekly' ? 'Poprzedni tydzień' : 
+                                reportData.reportType === 'custom' ? 'Poprzedni miesiąc' : 'Poprzedni miesiąc';
+    
+    return `
+      <div class="period-comparison">
+        <h3>Porównanie ${reportData.reportType === 'weekly' ? 'tydzień do tygodnia' : 
+                          reportData.reportType === 'custom' ? 'okres do poprzedniego miesiąca' : 'miesiąc do miesiąca'}</h3>
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th class="metric-name">Metryka</th>
+              <th>${currentPeriodLabel}</th>
+              <th>${previousPeriodLabel}</th>
+              <th>Zmiana</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="metric-name">Wartość rezerwacji</td>
+              <td class="current-period">${formatCurrency(conversionMetrics.reservation_value)}</td>
+              <td class="previous-period">${formatCurrency(reportData.previousMonthConversions?.reservation_value || 0)}</td>
+              <td class="period-change ${(() => {
+                const prev = reportData.previousMonthConversions?.reservation_value || 0;
+                if (prev === 0) return 'neutral';
+                return conversionMetrics.reservation_value > prev ? 'positive' : 
+                       conversionMetrics.reservation_value < prev ? 'negative' : 'neutral';
+              })()}">
+                ${(() => {
+                  const prev = reportData.previousMonthConversions?.reservation_value || 0;
+                  if (prev === 0) return '—';
+                  const change = ((conversionMetrics.reservation_value - prev) / prev) * 100;
+                  const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                  const sign = change > 0 ? '+' : '';
+                  return `${arrow} ${sign}${change.toFixed(1)}%`;
+                })()}
+              </td>
+            </tr>
+            <tr>
+              <td class="metric-name">Wydatki</td>
+              <td class="current-period">${formatCurrency(totalSpend)}</td>
+              <td class="previous-period">${formatCurrency(reportData.previousMonthTotals?.spend || 0)}</td>
+              <td class="period-change ${(() => {
+                const prev = reportData.previousMonthTotals?.spend || 0;
+                if (prev === 0) return 'neutral';
+                return totalSpend > prev ? 'negative' : totalSpend < prev ? 'positive' : 'neutral';
+              })()}">
+                ${(() => {
+                  const prev = reportData.previousMonthTotals?.spend || 0;
+                  if (prev === 0) return '—';
+                  const change = ((totalSpend - prev) / prev) * 100;
+                  const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                  const sign = change > 0 ? '+' : '';
+                  return `${arrow} ${sign}${change.toFixed(1)}%`;
+                })()}
+              </td>
+            </tr>
+            <tr>
+              <td class="metric-name">Koszt per rezerwacja</td>
+              <td class="current-period">${cost_per_reservation > 0 ? formatCurrency(cost_per_reservation) : '—'}</td>
+              <td class="previous-period">${(() => {
+                const prevReservations = reportData.previousMonthConversions?.reservations || 0;
+                const prevSpend = reportData.previousMonthTotals?.spend || 0;
+                return prevReservations > 0 && prevSpend > 0 ? formatCurrency(prevSpend / prevReservations) : '—';
+              })()}</td>
+              <td class="period-change ${(() => {
+                const prevReservations = reportData.previousMonthConversions?.reservations || 0;
+                const prevSpend = reportData.previousMonthTotals?.spend || 0;
+                if (cost_per_reservation <= 0 || prevReservations <= 0 || prevSpend <= 0) return 'neutral';
+                const prevCostPerReservation = prevSpend / prevReservations;
+                return cost_per_reservation > prevCostPerReservation ? 'negative' : 
+                       cost_per_reservation < prevCostPerReservation ? 'positive' : 'neutral';
+              })()}">
+                ${(() => {
+                  const prevReservations = reportData.previousMonthConversions?.reservations || 0;
+                  const prevSpend = reportData.previousMonthTotals?.spend || 0;
+                  if (cost_per_reservation <= 0 || prevReservations <= 0 || prevSpend <= 0) return '—';
+                  const prevCostPerReservation = prevSpend / prevReservations;
+                  const change = ((cost_per_reservation - prevCostPerReservation) / prevCostPerReservation) * 100;
+                  const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                  const sign = change > 0 ? '+' : '';
+                  return `${arrow} ${sign}${change.toFixed(1)}%`;
+                })()}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
 
   // Helper function for grouping and top N processing
   const groupAndTopN = (rows: any[], config: any) => {
@@ -329,6 +619,41 @@ function generatePDFHTML(reportData: ReportData): string {
   const demographicData = processDemographicData();
   const topAds = reportData.metaTables?.adRelevanceResults?.slice(0, 10) || [];
 
+  // Helper function to generate demographic data table
+  const generateDemographicTable = (data: any[], metric: 'impressions' | 'clicks') => {
+    if (!data || data.length === 0) return '';
+    
+    const total = data.reduce((sum, item) => sum + (item[metric] || 0), 0);
+    
+    return `
+      <div style="margin-top: 16px;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+          <thead>
+            <tr style="background: #f8f9fa; border-bottom: 1px solid #dee2e6;">
+              <th style="padding: 8px; text-align: left; font-weight: 600;">${metric === 'impressions' ? 'Grupa' : 'Grupa'}</th>
+              <th style="padding: 8px; text-align: right; font-weight: 600;">${metric === 'impressions' ? 'Wyświetlenia' : 'Kliknięcia'}</th>
+              <th style="padding: 8px; text-align: right; font-weight: 600;">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.map(item => {
+              const value = item[metric] || 0;
+              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+              const label = item.gender || item.age || 'Nieznana';
+              return `
+                <tr style="border-bottom: 1px solid #f1f3f4;">
+                  <td style="padding: 6px 8px;">${label}</td>
+                  <td style="padding: 6px 8px; text-align: right; font-weight: 500;">${value.toLocaleString('pl-PL')}</td>
+                  <td style="padding: 6px 8px; text-align: right; color: #6b7280;">${percentage}%</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
+
   return `
     <!DOCTYPE html>
     <html lang="pl">
@@ -367,32 +692,27 @@ function generatePDFHTML(reportData: ReportData): string {
             .container {
                 max-width: 900px;
                 margin: 0 auto;
-                padding: 32px;
+                padding: 0;
             }
             
             /* Page 1 - Premium Cover */
             .cover-page {
                 background: var(--bg-panel);
                 border-radius: 16px;
-                padding: 64px 48px;
+                padding: 20px;
                 text-align: center;
-                margin-bottom: 48px;
-                min-height: 70vh;
+                margin-bottom: 24px;
+                min-height: 90vh;
                 display: flex;
                 flex-direction: column;
-                justify-content: center;
-                position: relative;
-                padding-top: 140px; /* Extra padding to avoid logo overlap */
+                justify-content: flex-start;
             }
             
             .logo-slot {
-                position: absolute;
-                top: 32px;
-                left: 32px;
-                width: 96px;
-                height: 96px;
-                border: 2px dashed var(--border-soft);
-                border-radius: 8px;
+                position: relative;
+                width: 120px;
+                height: 120px;
+                margin: 0 auto 20px auto;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -401,28 +721,22 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .logo-image {
-                position: absolute;
-                top: 32px;
-                left: 32px;
-                width: 96px;
-                height: 96px;
+                width: 120px;
+                height: 120px;
                 object-fit: contain;
-                border-radius: 8px;
-                background: white;
-                padding: 4px;
-                border: 1px solid var(--border-soft);
-                z-index: 10;
+                margin: 0 auto 20px auto;
+                display: block;
             }
             
             .cover-title {
-                margin-bottom: 48px;
+                margin-bottom: 20px;
             }
             
             .cover-title h1 {
                 font-size: 36px;
                 font-weight: 700;
                 color: var(--text-strong);
-                margin-bottom: 16px;
+                margin-bottom: 12px;
                 letter-spacing: -0.02em;
             }
             
@@ -430,13 +744,13 @@ function generatePDFHTML(reportData: ReportData): string {
                 font-size: 24px;
                 font-weight: 600;
                 color: var(--text-muted);
-                margin-bottom: 8px;
+                margin-bottom: 10px;
             }
             
             .cover-meta {
                 font-size: 14px;
                 color: var(--text-muted);
-                margin-bottom: 48px;
+                margin-bottom: 20px;
             }
             
             /* KPI Row for Cover */
@@ -445,6 +759,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 justify-content: center;
                 gap: 32px;
                 flex-wrap: wrap;
+                margin-bottom: 32px;
             }
             
             .cover-kpi {
@@ -457,7 +772,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 font-weight: 700;
                 color: var(--text-strong);
                 display: block;
-                margin-bottom: 4px;
+                margin-bottom: 8px;
             }
             
             .cover-kpi-label {
@@ -470,7 +785,7 @@ function generatePDFHTML(reportData: ReportData): string {
             
             /* Executive Summary on Cover */
             .cover-summary {
-                margin-top: 48px;
+                margin-top: 12px;
                 text-align: left;
             }
             
@@ -478,19 +793,146 @@ function generatePDFHTML(reportData: ReportData): string {
                 font-size: 20px;
                 font-weight: 600;
                 color: var(--text-strong);
-                margin-bottom: 24px;
+                margin-bottom: 12px;
             }
             
             .summary-content {
                 font-size: 16px;
-                line-height: 1.7;
+                line-height: 1.4;
                 color: var(--text-muted);
                 max-width: 700px;
                 margin: 0 auto;
             }
             
             .summary-content p {
-                margin-bottom: 16px;
+                margin-bottom: 12px;
+            }
+            
+            /* Year-over-Year Comparison Table */
+            .year-comparison {
+                margin-top: 20px;
+                text-align: left;
+            }
+            
+            .year-comparison h3 {
+                font-size: 20px;
+                font-weight: 600;
+                color: var(--text-strong);
+                margin-bottom: 12px;
+                text-align: center;
+            }
+            
+            .comparison-table {
+                width: 100%;
+                border-collapse: collapse;
+                background: var(--bg-panel);
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            
+            .comparison-table th {
+                background: var(--bg-page);
+                color: var(--text-strong);
+                padding: 12px 16px;
+                text-align: center;
+                font-weight: 600;
+                font-size: 14px;
+                border-bottom: 2px solid var(--border-soft);
+            }
+            
+            .comparison-table td {
+                padding: 12px 16px;
+                border-bottom: 1px solid var(--border-soft);
+                font-size: 14px;
+                color: var(--text-strong);
+                text-align: center;
+            }
+            
+            .comparison-table tbody tr:nth-child(even) {
+                background: #FAFBFC;
+            }
+            
+            .comparison-table tbody tr:last-child td {
+                border-bottom: none;
+            }
+            
+            .metric-name {
+                font-weight: 600;
+                color: var(--text-strong);
+                text-align: left !important;
+            }
+            
+            .current-year {
+                font-weight: 600;
+                color: var(--brand-primary);
+            }
+            
+            .previous-year {
+                font-weight: 500;
+                color: var(--text-muted);
+            }
+            
+            .year-change {
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+            }
+            
+            .year-change.positive {
+                color: #10B981;
+            }
+            
+            .year-change.negative {
+                color: #EF4444;
+            }
+            
+            .year-change.neutral {
+                color: var(--text-muted);
+            }
+            
+            .current-period {
+                font-weight: 600;
+                color: var(--brand-primary);
+            }
+            
+            .previous-period {
+                font-weight: 500;
+                color: var(--text-muted);
+            }
+            
+            .period-change {
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+            }
+            
+            .period-change.positive {
+                color: #10B981;
+            }
+            
+            .period-change.negative {
+                color: #EF4444;
+            }
+            
+            .period-change.neutral {
+                color: var(--text-muted);
+            }
+            
+            .period-comparison {
+                margin-top: 24px;
+            }
+            
+            .period-comparison h3 {
+                font-size: 20px;
+                font-weight: 600;
+                color: var(--text-strong);
+                margin-bottom: 12px;
+                text-align: center;
             }
             
             /* KPI Overview Section */
@@ -597,6 +1039,14 @@ function generatePDFHTML(reportData: ReportData): string {
             
             .stat-comparison.neutral {
                 color: var(--text-muted);
+            }
+            
+            .comparison-period {
+                font-size: 10px;
+                color: var(--text-muted);
+                font-weight: 400;
+                display: block;
+                margin-top: 2px;
             }
             
             .stat-not-configured {
@@ -781,12 +1231,85 @@ function generatePDFHTML(reportData: ReportData): string {
                 </div>
                 
                 <!-- Executive Summary -->
-                ${reportData.executiveSummary ? `
                 <div class="cover-summary">
                     <h3>Podsumowanie</h3>
                     <div class="summary-content">
-                        ${reportData.executiveSummary.trim()}
+                        ${reportData.executiveSummary ? reportData.executiveSummary.trim() : generateSummarySection()}
                     </div>
+                </div>
+                
+                <!-- Period-over-Period Comparison - Now shown inline with individual metrics -->
+                
+                <!-- Year-over-Year Comparison -->
+                ${shouldShowYearOverYear() ? `
+                
+                <div class="year-comparison">
+                    <h3>Porównanie rok do roku</h3>
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th class="metric-name">Metryka</th>
+                                <th>${new Date(reportData.dateRange.start).getFullYear()}</th>
+                                <th>${new Date(reportData.dateRange.start).getFullYear() - 1}</th>
+                                <th>Zmiana</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="metric-name">Wartość rezerwacji</td>
+                                <td class="current-year">${formatCurrency(conversionMetrics.reservation_value)}</td>
+                                <td class="previous-year">${formatCurrency(reportData.previousYearConversions!.reservation_value)}</td>
+                                <td class="year-change ${reportData.previousYearConversions!.reservation_value > 0 ? (conversionMetrics.reservation_value > reportData.previousYearConversions!.reservation_value ? 'positive' : conversionMetrics.reservation_value < reportData.previousYearConversions!.reservation_value ? 'negative' : 'neutral') : 'neutral'}">
+                                    ${reportData.previousYearConversions!.reservation_value > 0 ? 
+                                        (() => {
+                                            const change = ((conversionMetrics.reservation_value - reportData.previousYearConversions!.reservation_value) / reportData.previousYearConversions!.reservation_value) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            return `${arrow} ${sign}${change.toFixed(1)}%`;
+                                        })() :
+                                        '—'
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="metric-name">Wydatki</td>
+                                <td class="current-year">${formatCurrency(totalSpend)}</td>
+                                <td class="previous-year">${formatCurrency(reportData.previousYearTotals!.spend)}</td>
+                                <td class="year-change ${reportData.previousYearTotals!.spend > 0 ? (totalSpend > reportData.previousYearTotals!.spend ? 'positive' : totalSpend < reportData.previousYearTotals!.spend ? 'negative' : 'neutral') : 'neutral'}">
+                                    ${reportData.previousYearTotals!.spend > 0 ? 
+                                        (() => {
+                                            const change = ((totalSpend - reportData.previousYearTotals!.spend) / reportData.previousYearTotals!.spend) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            return `${arrow} ${sign}${change.toFixed(1)}%`;
+                                        })() :
+                                        '—'
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="metric-name">Koszt per rezerwacja</td>
+                                <td class="current-year">${cost_per_reservation > 0 ? formatCurrency(cost_per_reservation) : '—'}</td>
+                                <td class="previous-year">${reportData.previousYearConversions!.reservations > 0 && reportData.previousYearTotals!.spend > 0 ? formatCurrency(reportData.previousYearTotals!.spend / reportData.previousYearConversions!.reservations) : '—'}</td>
+                                <td class="year-change ${cost_per_reservation > 0 && reportData.previousYearConversions!.reservations > 0 && reportData.previousYearTotals!.spend > 0 ? 
+                                    (() => {
+                                        const previousCostPerReservation = reportData.previousYearTotals!.spend / reportData.previousYearConversions!.reservations;
+                                        return cost_per_reservation > previousCostPerReservation ? 'negative' : cost_per_reservation < previousCostPerReservation ? 'positive' : 'neutral';
+                                    })() : 'neutral'}">
+                                    ${cost_per_reservation > 0 && reportData.previousYearConversions!.reservations > 0 && reportData.previousYearTotals!.spend > 0 ? 
+                                        (() => {
+                                            const previousCostPerReservation = reportData.previousYearTotals!.spend / reportData.previousYearConversions!.reservations;
+                                            const change = ((cost_per_reservation - previousCostPerReservation) / previousCostPerReservation) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            return `${arrow} ${sign}${change.toFixed(1)}%`;
+                                        })() :
+                                        '—'
+                                    }
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
                 ` : ''}
             </div>
@@ -883,38 +1406,102 @@ function generatePDFHTML(reportData: ReportData): string {
             </div>
 
             <!-- Page 3 - Demographics (Impressions) -->
+            ${demographicData.gender.length > 0 || demographicData.age.length > 0 ? `
             <div class="section page-break-before">
                 <div class="chart-container">
                     <div class="chart-title">Demografia – Wyświetlenia</div>
                     <div class="charts-grid">
+                        ${demographicData.gender.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według płci</h4>
                             <canvas id="genderImpressionsChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.gender, 'impressions')}
                         </div>
+                        ` : `
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Brak danych demograficznych według płci
+                            </div>
+                        </div>
+                        `}
+                        ${demographicData.age.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według grup wieku</h4>
                             <canvas id="ageImpressionsChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.age, 'impressions')}
                         </div>
+                        ` : `
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Brak danych demograficznych według wieku
+                            </div>
+                        </div>
+                        `}
                     </div>
                 </div>
             </div>
+            ` : `
+            <div class="section page-break-before">
+                <div class="chart-container">
+                    <div class="chart-title">Demografia – Wyświetlenia</div>
+                    <div style="text-align: center; padding: 40px; color: #6c757d;">
+                        <p>Brak danych demograficznych dla tego okresu.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej liczby wyświetleń.</p>
+                    </div>
+                </div>
+            </div>
+            `}
 
             <!-- Page 4 - Demographics (Clicks) -->
-            <div class="section">
+            ${demographicData.gender.length > 0 || demographicData.age.length > 0 ? `
+            <div class="section page-break-before">
                 <div class="chart-container">
                     <div class="chart-title">Demografia – Kliknięcia</div>
                     <div class="charts-grid">
+                        ${demographicData.gender.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według płci</h4>
                             <canvas id="genderClicksChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.gender, 'clicks')}
                         </div>
+                        ` : `
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Brak danych demograficznych według płci
+                            </div>
+                        </div>
+                        `}
+                        ${demographicData.age.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według grup wieku</h4>
                             <canvas id="ageClicksChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.age, 'clicks')}
                         </div>
+                        ` : `
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Brak danych demograficznych według wieku
+                            </div>
+                        </div>
+                        `}
                     </div>
                 </div>
             </div>
+            ` : `
+            <div class="section">
+                <div class="chart-container">
+                    <div class="chart-title">Demografia – Kliknięcia</div>
+                    <div style="text-align: center; padding: 40px; color: #6c757d;">
+                        <p>Brak danych demograficznych dla tego okresu.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej liczby kliknięć.</p>
+                    </div>
+                </div>
+            </div>
+            `}
 
             <!-- Top Placement Performance -->
             ${placementData.length > 0 ? `
@@ -1082,93 +1669,441 @@ function generatePDFHTML(reportData: ReportData): string {
             }
         };
         
+        // Capture console logs for debugging
+        window.consoleLogs = [];
+        const originalLog = console.log;
+        const originalError = console.error;
+        console.log = function(...args) {
+            window.consoleLogs.push({type: 'log', args: args});
+            originalLog.apply(console, args);
+        };
+        console.error = function(...args) {
+            window.consoleLogs.push({type: 'error', args: args});
+            originalError.apply(console, args);
+        };
+        
+        console.log('🔍 PDF: Starting chart generation...');
+        console.log('🔍 PDF: Demographic data:', demographicData);
+        
         // Gender Impressions Chart
-        if (demographicData.gender && demographicData.gender.length > 0) {
-            const ctx1 = document.getElementById('genderImpressionsChart').getContext('2d');
-            new Chart(ctx1, {
-                type: 'pie',
-                data: {
-                    labels: demographicData.gender.map(g => g.gender),
-                    datasets: [{
-                        data: demographicData.gender.map(g => g.impressions),
-                        backgroundColor: genderColors,
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: chartOptions
-            });
+        try {
+            if (demographicData.gender && demographicData.gender.length > 0) {
+                const canvas1 = document.getElementById('genderImpressionsChart');
+                if (canvas1) {
+                    console.log('✅ PDF: Found genderImpressionsChart canvas');
+                    const ctx1 = canvas1.getContext('2d');
+                    new Chart(ctx1, {
+                        type: 'pie',
+                        data: {
+                            labels: demographicData.gender.map(g => g.gender),
+                            datasets: [{
+                                data: demographicData.gender.map(g => g.impressions),
+                                backgroundColor: genderColors,
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    console.log('✅ PDF: Gender impressions chart created');
+                } else {
+                    console.log('❌ PDF: genderImpressionsChart canvas not found');
+                }
+            } else {
+                console.log('⚠️ PDF: No gender data available');
+            }
+        } catch (error) {
+            console.error('❌ PDF: Error creating gender impressions chart:', error);
         }
         
         // Age Impressions Chart
-        if (demographicData.age && demographicData.age.length > 0) {
-            const ctx2 = document.getElementById('ageImpressionsChart').getContext('2d');
-            new Chart(ctx2, {
-                type: 'pie',
-                data: {
-                    labels: demographicData.age.map(a => a.age),
-                    datasets: [{
-                        data: demographicData.age.map(a => a.impressions),
-                        backgroundColor: ageColors,
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: chartOptions
-            });
+        try {
+            if (demographicData.age && demographicData.age.length > 0) {
+                const canvas2 = document.getElementById('ageImpressionsChart');
+                if (canvas2) {
+                    console.log('✅ PDF: Found ageImpressionsChart canvas');
+                    const ctx2 = canvas2.getContext('2d');
+                    new Chart(ctx2, {
+                        type: 'pie',
+                        data: {
+                            labels: demographicData.age.map(a => a.age),
+                            datasets: [{
+                                data: demographicData.age.map(a => a.impressions),
+                                backgroundColor: ageColors,
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    console.log('✅ PDF: Age impressions chart created');
+                } else {
+                    console.log('❌ PDF: ageImpressionsChart canvas not found');
+                }
+            } else {
+                console.log('⚠️ PDF: No age data available');
+            }
+        } catch (error) {
+            console.error('❌ PDF: Error creating age impressions chart:', error);
         }
         
         // Gender Clicks Chart
-        if (demographicData.gender && demographicData.gender.length > 0) {
-            const ctx3 = document.getElementById('genderClicksChart').getContext('2d');
-            new Chart(ctx3, {
-                type: 'pie',
-                data: {
-                    labels: demographicData.gender.map(g => g.gender),
-                    datasets: [{
-                        data: demographicData.gender.map(g => g.clicks),
-                        backgroundColor: genderColors,
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: chartOptions
-            });
+        try {
+            if (demographicData.gender && demographicData.gender.length > 0) {
+                const canvas3 = document.getElementById('genderClicksChart');
+                if (canvas3) {
+                    console.log('✅ PDF: Found genderClicksChart canvas');
+                    const ctx3 = canvas3.getContext('2d');
+                    new Chart(ctx3, {
+                        type: 'pie',
+                        data: {
+                            labels: demographicData.gender.map(g => g.gender),
+                            datasets: [{
+                                data: demographicData.gender.map(g => g.clicks),
+                                backgroundColor: genderColors,
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    console.log('✅ PDF: Gender clicks chart created');
+                } else {
+                    console.log('❌ PDF: genderClicksChart canvas not found');
+                }
+            }
+        } catch (error) {
+            console.error('❌ PDF: Error creating gender clicks chart:', error);
         }
         
         // Age Clicks Chart
-        if (demographicData.age && demographicData.age.length > 0) {
-            const ctx4 = document.getElementById('ageClicksChart').getContext('2d');
-            new Chart(ctx4, {
-                type: 'pie',
-                data: {
-                    labels: demographicData.age.map(a => a.age),
-                    datasets: [{
-                        data: demographicData.age.map(a => a.clicks),
-                        backgroundColor: ageColors,
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }]
-                },
-                options: chartOptions
-            });
+        try {
+            if (demographicData.age && demographicData.age.length > 0) {
+                const canvas4 = document.getElementById('ageClicksChart');
+                if (canvas4) {
+                    console.log('✅ PDF: Found ageClicksChart canvas');
+                    const ctx4 = canvas4.getContext('2d');
+                    new Chart(ctx4, {
+                        type: 'pie',
+                        data: {
+                            labels: demographicData.age.map(a => a.age),
+                            datasets: [{
+                                data: demographicData.age.map(a => a.clicks),
+                                backgroundColor: ageColors,
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    console.log('✅ PDF: Age clicks chart created');
+                } else {
+                    console.log('❌ PDF: ageClicksChart canvas not found');
+                }
+            }
+        } catch (error) {
+            console.error('❌ PDF: Error creating age clicks chart:', error);
         }
+        
+        console.log('🔍 PDF: Chart generation completed');
         </script>
         </body>
     </html>
   `;
 }
 
-// Helper function to get previous month date range
-function getPreviousMonthDateRange(dateRange: { start: string; end: string }) {
-  const currentStart = new Date(dateRange.start);
-  const previousStart = new Date(currentStart.getFullYear(), currentStart.getMonth() - 1, 1);
-  const previousEnd = new Date(currentStart.getFullYear(), currentStart.getMonth(), 0);
+// Helper function to detect report type based on date range
+function detectReportType(dateRange: { start: string; end: string }): 'weekly' | 'monthly' | 'custom' {
+  const start = new Date(dateRange.start);
+  const end = new Date(dateRange.end);
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   
-  return {
+  console.log(`🔍 Report type detection: ${daysDiff} days between ${dateRange.start} and ${dateRange.end}`);
+  
+  if (daysDiff === 7) {
+    console.log('📊 Detected: WEEKLY report');
+    return 'weekly';
+  }
+  if (daysDiff >= 28 && daysDiff <= 31) {
+    console.log('📊 Detected: MONTHLY report');
+    return 'monthly';
+  }
+  
+  console.log('📊 Detected: CUSTOM report');
+  return 'custom';
+}
+
+// Helper function to get previous week date range
+function getPreviousWeekDateRange(dateRange: { start: string; end: string }) {
+  const currentStart = new Date(dateRange.start);
+  
+  // Previous week is exactly 7 days before current week start
+  const previousStart = new Date(currentStart.getTime() - (7 * 24 * 60 * 60 * 1000));
+  const previousEnd = new Date(previousStart.getTime() + (6 * 24 * 60 * 60 * 1000));
+  
+  const result = {
     start: previousStart.toISOString().split('T')[0],
     end: previousEnd.toISOString().split('T')[0]
   };
+  
+  console.log('📅 Previous week calculation:');
+  console.log(`   Current week: ${dateRange.start} to ${dateRange.end}`);
+  console.log(`   Previous week: ${result.start} to ${result.end}`);
+  
+  return result;
+}
+
+// Helper function to get previous month date range
+function getPreviousMonthDateRange(dateRange: { start: string; end: string }) {
+  // Parse date properly to avoid timezone issues
+  const dateParts = dateRange.start.split('-').map(Number);
+  if (dateParts.length !== 3) {
+    throw new Error(`Invalid date format: ${dateRange.start}`);
+  }
+  
+  const year = dateParts[0]!;
+  const month = dateParts[1]!;
+  const day = dateParts[2]!;
+  
+  // Calculate previous month
+  let previousYear = year;
+  let previousMonth = month - 1;
+  
+  // Handle year rollover
+  if (previousMonth === 0) {
+    previousMonth = 12;
+    previousYear = year - 1;
+  }
+  
+  // Format as YYYY-MM-DD (always first day of month)
+  const previousStart = `${previousYear}-${previousMonth.toString().padStart(2, '0')}-01`;
+  
+  // Calculate last day of previous month
+  const lastDayOfPreviousMonth = new Date(year, month - 1, 0).getDate();
+  const previousEnd = `${previousYear}-${previousMonth.toString().padStart(2, '0')}-${lastDayOfPreviousMonth.toString().padStart(2, '0')}`;
+  
+  console.log('📅 Date calculation:');
+  console.log(`   Current: ${dateRange.start} (Year: ${year}, Month: ${month})`);
+  console.log(`   Previous: ${previousStart} (Year: ${previousYear}, Month: ${previousMonth})`);
+  
+  return {
+    start: previousStart,
+    end: previousEnd
+  };
+}
+
+// Helper function to get previous year date range
+function getPreviousYearDateRange(dateRange: { start: string; end: string }) {
+  // Parse date properly to avoid timezone issues
+  const dateParts = dateRange.start.split('-').map(Number);
+  if (dateParts.length !== 3) {
+    throw new Error(`Invalid date format: ${dateRange.start}`);
+  }
+  
+  const year = dateParts[0]!;
+  const month = dateParts[1]!;
+  const day = dateParts[2]!;
+  
+  // Calculate previous year (same month)
+  const previousYear = year - 1;
+  
+  // Format as YYYY-MM-DD (always first day of month)
+  const previousYearStart = `${previousYear}-${month.toString().padStart(2, '0')}-01`;
+  
+  // Calculate last day of the month in previous year
+  const lastDayOfPreviousYearMonth = new Date(previousYear, month, 0).getDate();
+  const previousYearEnd = `${previousYear}-${month.toString().padStart(2, '0')}-${lastDayOfPreviousYearMonth.toString().padStart(2, '0')}`;
+  
+  console.log('📅 Previous year calculation:');
+  console.log(`   Current: ${dateRange.start} (Year: ${year}, Month: ${month})`);
+  console.log(`   Previous year: ${previousYearStart} (Year: ${previousYear}, Month: ${month})`);
+  
+  return {
+    start: previousYearStart,
+    end: previousYearEnd
+  };
+}
+
+// Helper function to fetch previous year data from database (fast lookup)
+async function fetchPreviousYearDataFromDB(dateRange: { start: string; end: string }, clientId: string) {
+  try {
+    console.log('📊 Fetching previous year data from database (fast lookup)...');
+    const previousYearDateRange = getPreviousYearDateRange(dateRange);
+    console.log('   Previous year range:', previousYearDateRange);
+
+    // Query campaign_summaries table for stored monthly data from previous year
+    const { data: storedSummary, error } = await supabase
+      .from('campaign_summaries')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('summary_type', 'monthly')
+      .eq('summary_date', previousYearDateRange.start)
+      .single();
+
+    if (error) {
+      console.log('⚠️ No stored summary found for previous year:', error.message);
+      return null;
+    }
+
+    if (storedSummary) {
+      console.log(`✅ Found stored summary for ${previousYearDateRange.start}`);
+      
+      // Extract campaign data for conversion calculations
+      const previousYearCampaigns = storedSummary.campaign_data || [];
+      console.log(`   Previous year campaigns from summary: ${previousYearCampaigns.length}`);
+
+      // Also fetch conversion data from campaigns table for the previous year
+      const { data: previousYearCampaignRecords } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('client_id', clientId)
+        .gte('created_at', previousYearDateRange.start)
+        .lt('created_at', `${previousYearDateRange.start.split('-')[0]}-${(parseInt(previousYearDateRange.start.split('-')[1]!) + 1).toString().padStart(2, '0')}-01`);
+
+      console.log(`   Previous year campaigns from campaigns table: ${previousYearCampaignRecords?.length || 0}`);
+
+      // Calculate conversion metrics from both sources
+      const campaignsToProcess = previousYearCampaignRecords && previousYearCampaignRecords.length > 0 
+        ? previousYearCampaignRecords 
+        : previousYearCampaigns;
+
+      const previousYearTotals = campaignsToProcess.reduce((acc: any, campaign: any) => ({
+        spend: acc.spend + (campaign.spend || 0),
+        impressions: acc.impressions + (campaign.impressions || 0),
+        clicks: acc.clicks + (campaign.clicks || 0),
+        conversions: acc.conversions + (campaign.conversions || 0),
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        reservations: acc.reservations + (campaign.purchase || campaign.reservations || 0), // Support both field names
+        reservation_value: acc.reservation_value + (campaign.purchase_value || campaign.reservation_value || 0), // Support both field names
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      }), { 
+        spend: 0, impressions: 0, clicks: 0, conversions: 0,
+        click_to_call: 0, email_contacts: 0, booking_step_1: 0,
+        reservations: 0, reservation_value: 0, booking_step_2: 0
+      });
+
+      console.log(`   Previous year totals: reservations=${previousYearTotals.reservations}, value=${previousYearTotals.reservation_value}`);
+
+      const previousYearTotalsFormatted = {
+        spend: storedSummary.total_spend,
+        impressions: storedSummary.total_impressions,
+        clicks: storedSummary.total_clicks,
+        conversions: storedSummary.total_conversions,
+        ctr: storedSummary.average_ctr,
+        cpc: storedSummary.average_cpc,
+        cpm: storedSummary.total_impressions > 0 ? (storedSummary.total_spend / storedSummary.total_impressions) * 1000 : 0
+      };
+
+      const previousYearConversions = {
+        click_to_call: previousYearTotals.click_to_call,
+        email_contacts: previousYearTotals.email_contacts,
+        booking_step_1: previousYearTotals.booking_step_1,
+        reservations: previousYearTotals.reservations,
+        reservation_value: previousYearTotals.reservation_value,
+        booking_step_2: previousYearTotals.booking_step_2,
+      };
+
+      console.log('✅ Previous year data loaded from database:', {
+        spend: previousYearTotalsFormatted.spend,
+        conversions: previousYearTotalsFormatted.conversions,
+        reservations: previousYearConversions.reservations,
+        reservation_value: previousYearConversions.reservation_value,
+        source: 'database'
+      });
+
+      return { previousYearTotals: previousYearTotalsFormatted, previousYearConversions };
+    }
+    
+    console.log('⚠️ No previous year data found in database');
+    return null;
+  } catch (error) {
+    console.log('⚠️ Previous year database lookup failed:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
+}
+
+// Helper function to fetch previous week data from database (fast lookup)
+async function fetchPreviousWeekDataFromDB(dateRange: { start: string; end: string }, clientId: string) {
+  try {
+    console.log('📊 Fetching previous week data from database (fast lookup)...');
+    const previousDateRange = getPreviousWeekDateRange(dateRange);
+    console.log('   Previous week range:', previousDateRange);
+
+    // Query campaign_summaries table for stored weekly data
+    const { data: storedSummary, error } = await supabase
+      .from('campaign_summaries')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('summary_type', 'weekly')
+      .eq('summary_date', previousDateRange.start)
+      .single();
+
+    if (error) {
+      console.log('⚠️ No stored weekly summary found for previous week:', error.message);
+      return null;
+    }
+
+    if (storedSummary) {
+      console.log(`✅ Found stored weekly summary for ${previousDateRange.start}`);
+      
+      // Extract campaign data for conversion calculations
+      const previousCampaigns = storedSummary.campaign_data || [];
+      console.log(`   Previous week campaigns: ${previousCampaigns.length}`);
+
+      // Calculate conversion metrics from stored campaign data
+      const previousTotals = previousCampaigns.reduce((acc: any, campaign: any) => ({
+        spend: acc.spend + (campaign.spend || 0),
+        impressions: acc.impressions + (campaign.impressions || 0),
+        clicks: acc.clicks + (campaign.clicks || 0),
+        conversions: acc.conversions + (campaign.conversions || 0),
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        reservations: acc.reservations + (campaign.reservations || 0),
+        reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      }), { 
+        spend: 0, impressions: 0, clicks: 0, conversions: 0,
+        click_to_call: 0, email_contacts: 0, booking_step_1: 0,
+        reservations: 0, reservation_value: 0, booking_step_2: 0
+      });
+
+      const previousWeekTotals = {
+        spend: storedSummary.total_spend,
+        impressions: storedSummary.total_impressions,
+        clicks: storedSummary.total_clicks,
+        conversions: storedSummary.total_conversions,
+        ctr: storedSummary.average_ctr,
+        cpc: storedSummary.average_cpc,
+        cpm: storedSummary.total_impressions > 0 ? (storedSummary.total_spend / storedSummary.total_impressions) * 1000 : 0
+      };
+
+      const previousWeekConversions = {
+        click_to_call: previousTotals.click_to_call,
+        email_contacts: previousTotals.email_contacts,
+        booking_step_1: previousTotals.booking_step_1,
+        reservations: previousTotals.reservations,
+        reservation_value: previousTotals.reservation_value,
+        booking_step_2: previousTotals.booking_step_2,
+      };
+
+      console.log('✅ Previous week data loaded from database:', {
+        spend: previousWeekTotals.spend,
+        conversions: previousWeekTotals.conversions,
+        source: 'database'
+      });
+
+      return { previousWeekTotals, previousWeekConversions };
+    }
+    
+    console.log('⚠️ No previous week data found in database');
+    return null;
+  } catch (error) {
+    console.log('⚠️ Weekly database lookup failed:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
 }
 
 // Helper function to fetch previous month data from database (fast lookup)
@@ -1291,11 +2226,26 @@ export async function POST(request: NextRequest) {
     let calculatedTotals: any = null;
     let metaTablesData: any = null;
     
-    // Start previous month fetch early (in parallel) if using direct data
-    let previousMonthPromise: Promise<any> = Promise.resolve(null);
+    // Detect report type to use correct comparison logic
+    const reportType = detectReportType(dateRange);
+    
+    // Start previous period and year fetches early (in parallel) if using direct data
+    let previousPeriodPromise: Promise<any> = Promise.resolve(null);
+    let previousYearPromise: Promise<any> = Promise.resolve(null);
     if (directCampaigns && directTotals) {
-      console.log('🚀 Using direct data - starting previous month database lookup in parallel');
-      previousMonthPromise = fetchPreviousMonthDataFromDB(dateRange, clientId);
+      console.log(`🚀 Using direct data - starting ${reportType} and year database lookups in parallel`);
+      
+      if (reportType === 'weekly') {
+        previousPeriodPromise = fetchPreviousWeekDataFromDB(dateRange, clientId);
+      } else if (reportType === 'monthly') {
+        previousPeriodPromise = fetchPreviousMonthDataFromDB(dateRange, clientId);
+      } else if (reportType === 'custom') {
+        // For custom reports, try to get previous month data for comparison
+        console.log('📊 Custom report: fetching previous month data for comparison');
+        previousPeriodPromise = fetchPreviousMonthDataFromDB(dateRange, clientId);
+      }
+      
+      previousYearPromise = fetchPreviousYearDataFromDB(dateRange, clientId);
     }
 
     // If we have direct data, use it (much faster)
@@ -1376,24 +2326,100 @@ export async function POST(request: NextRequest) {
       };
     }
 
-        // Get previous month data (either from parallel fetch or sequential fetch)
+        // Get previous month and year data (either from parallel fetch or sequential fetch)
     let previousMonthTotals: any = null;
     let previousMonthConversions: any = null;
+    let previousYearTotals: any = null;
+    let previousYearConversions: any = null;
 
     if (directCampaigns) {
-      // Wait for parallel previous month fetch to complete
-      console.log('⏳ Waiting for parallel previous month fetch...');
-      const previousMonthData = await previousMonthPromise;
-      if (previousMonthData) {
-        previousMonthTotals = previousMonthData.previousMonthTotals;
-        previousMonthConversions = previousMonthData.previousMonthConversions;
+      // Wait for parallel previous period and year fetches to complete
+      console.log(`⏳ Waiting for parallel ${reportType} and year fetches...`);
+      const [previousPeriodData, previousYearData] = await Promise.all([
+        previousPeriodPromise,
+        previousYearPromise
+      ]);
+      
+          console.log('🔍 COMPARISON DATA RESULTS:');
+    console.log('   Previous Period Data:', !!previousPeriodData);
+    console.log('   Previous Year Data:', !!previousYearData);
+    
+    // Enhanced debugging for period comparison issue
+    console.log('🚨 PERIOD COMPARISON DEBUG - ENHANCED:');
+    console.log('   Report Type:', reportType);
+    console.log('   Previous Period Promise Result:', previousPeriodData);
+    if (previousPeriodData) {
+      console.log('   Previous Period Data Structure:');
+      console.log('      Weekly totals:', previousPeriodData.previousWeekTotals);
+      console.log('      Monthly totals:', previousPeriodData.previousMonthTotals);
+      console.log('      Weekly conversions:', previousPeriodData.previousWeekConversions);
+      console.log('      Monthly conversions:', previousPeriodData.previousMonthConversions);
+    }
+    
+    if (previousPeriodData) {
+        if (reportType === 'weekly') {
+          // For weekly reports, use previous week data
+          previousMonthTotals = previousPeriodData.previousWeekTotals;
+          previousMonthConversions = previousPeriodData.previousWeekConversions;
+          console.log('✅ Using previous week data for weekly PDF comparisons');
+          console.log('   Week totals:', previousMonthTotals);
+          console.log('   Week conversions:', previousMonthConversions);
+        } else if (reportType === 'monthly') {
+          // For monthly reports, use previous month data
+          previousMonthTotals = previousPeriodData.previousMonthTotals;
+          previousMonthConversions = previousPeriodData.previousMonthConversions;
+          console.log('✅ Using previous month data for monthly PDF comparisons');
+          console.log('   Month totals:', previousMonthTotals);
+          console.log('   Month conversions:', previousMonthConversions);
+        } else if (reportType === 'custom') {
+          // For custom reports, use previous month data for comparison
+          previousMonthTotals = previousPeriodData.previousMonthTotals;
+          previousMonthConversions = previousPeriodData.previousMonthConversions;
+          console.log('✅ Using previous month data for custom PDF comparisons');
+          console.log('   Month totals:', previousMonthTotals);
+          console.log('   Month conversions:', previousMonthConversions);
+        }
+      } else {
+        console.log('❌ No previous period data found');
+      }
+      
+      if (previousYearData) {
+        previousYearTotals = previousYearData.previousYearTotals;
+        previousYearConversions = previousYearData.previousYearConversions;
+        console.log('✅ Previous year data loaded');
+        console.log('   Year totals:', previousYearTotals);
+        console.log('   Year conversions:', previousYearConversions);
+      } else {
+        console.log('❌ No previous year data found');
       }
     } else {
-      // Sequential database lookup for non-direct data path
-      const previousMonthData = await fetchPreviousMonthDataFromDB(dateRange, clientId);
-      if (previousMonthData) {
-        previousMonthTotals = previousMonthData.previousMonthTotals;
-        previousMonthConversions = previousMonthData.previousMonthConversions;
+      // Sequential database lookups for non-direct data path
+      console.log('📊 Using database-only path for PDF generation');
+      if (reportType === 'weekly') {
+        const previousWeekData = await fetchPreviousWeekDataFromDB(dateRange, clientId);
+        if (previousWeekData) {
+          previousMonthTotals = previousWeekData.previousWeekTotals;
+          previousMonthConversions = previousWeekData.previousWeekConversions;
+        }
+      } else if (reportType === 'monthly') {
+        const previousMonthData = await fetchPreviousMonthDataFromDB(dateRange, clientId);
+        if (previousMonthData) {
+          previousMonthTotals = previousMonthData.previousMonthTotals;
+          previousMonthConversions = previousMonthData.previousMonthConversions;
+        }
+      } else if (reportType === 'custom') {
+        console.log('📊 Custom report: fetching previous month data for comparison (sequential path)');
+        const previousMonthData = await fetchPreviousMonthDataFromDB(dateRange, clientId);
+        if (previousMonthData) {
+          previousMonthTotals = previousMonthData.previousMonthTotals;
+          previousMonthConversions = previousMonthData.previousMonthConversions;
+        }
+      }
+      
+      const previousYearData = await fetchPreviousYearDataFromDB(dateRange, clientId);
+      if (previousYearData) {
+        previousYearTotals = previousYearData.previousYearTotals;
+        previousYearConversions = previousYearData.previousYearConversions;
       }
     }
 
@@ -1473,16 +2499,60 @@ export async function POST(request: NextRequest) {
       console.log('⚠️ Error fetching/generating AI Executive Summary:', error);
     }
 
+    // Handle case where campaigns table is empty but campaign_summaries has data
+    let finalTotals = calculatedTotals;
+    let finalCampaigns = campaigns;
+    
+    if ((!campaigns || campaigns.length === 0) && reportType === 'monthly') {
+      console.log('🔍 Campaigns table empty, checking campaign_summaries for current period data...');
+      
+      // Try to get current period data from campaign_summaries
+      const { data: currentSummary } = await supabase
+        .from('campaign_summaries')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('summary_type', 'monthly')
+        .eq('summary_date', dateRange.start)
+        .single();
+        
+      if (currentSummary) {
+        console.log('✅ Found current period data in campaign_summaries');
+        
+        // Use summary data for totals
+        finalTotals = {
+          spend: currentSummary.total_spend || 0,
+          impressions: currentSummary.total_impressions || 0,
+          clicks: currentSummary.total_clicks || 0,
+          conversions: currentSummary.total_conversions || 0,
+          ctr: currentSummary.average_ctr || 0,
+          cpc: currentSummary.average_cpc || 0,
+          cpm: currentSummary.total_impressions > 0 ? (currentSummary.total_spend / currentSummary.total_impressions) * 1000 : 0
+        };
+        
+        // Use campaign data from summary
+        finalCampaigns = currentSummary.campaign_data || [];
+        
+        console.log('📊 Using campaign_summaries data - Spend:', finalTotals.spend, 'zł, Campaigns:', finalCampaigns.length);
+      } else {
+        console.log('⚠️ No current period data found in campaign_summaries either');
+      }
+    }
+
     // Prepare report data
     const reportData: ReportData = {
       client,
       dateRange,
-      campaigns,
-      totals: calculatedTotals,
+      campaigns: finalCampaigns,
+      totals: finalTotals,
       previousMonthTotals,
       previousMonthConversions,
+      previousWeekTotals: reportType === 'weekly' ? previousMonthTotals : undefined,
+      previousWeekConversions: reportType === 'weekly' ? previousMonthConversions : undefined,
+      previousYearTotals,
+      previousYearConversions,
       metaTables: metaTablesData,
-      executiveSummary
+      executiveSummary,
+      reportType
     };
 
     console.log('🎯 PDF Generation Data:', {
@@ -1494,8 +2564,35 @@ export async function POST(request: NextRequest) {
       clicks: (reportData.totals.clicks || 0).toLocaleString(),
       hasMetaTables: !!reportData.metaTables,
       hasExecutiveSummary: !!reportData.executiveSummary,
-      hasPreviousMonthData: !!reportData.previousMonthTotals
+      hasPreviousMonthData: !!reportData.previousMonthTotals,
+      hasPreviousYearData: !!reportData.previousYearTotals
     });
+
+    // 🚨 CRITICAL DEBUGGING FOR PERIOD COMPARISON
+    console.log('🚨 FINAL REPORT DATA STRUCTURE FOR COMPARISON:');
+    console.log('   Report Type:', reportData.reportType);
+    console.log('   Previous Month Totals Present:', !!reportData.previousMonthTotals);
+    console.log('   Previous Month Conversions Present:', !!reportData.previousMonthConversions);
+    if (reportData.previousMonthTotals) {
+      console.log('   Previous Month Totals Content:', reportData.previousMonthTotals);
+    }
+    if (reportData.previousMonthConversions) {
+      console.log('   Previous Month Conversions Content:', reportData.previousMonthConversions);
+    }
+
+    // Detailed comparison data debug
+    if (reportData.previousMonthTotals) {
+      console.log('📊 Previous Month Data Details:');
+      console.log('   Spend:', (reportData.previousMonthTotals.spend || 0).toFixed(2) + ' zł');
+      console.log('   Conversions:', reportData.previousMonthConversions?.reservations || 0);
+      console.log('   Impressions:', (reportData.previousMonthTotals.impressions || 0).toLocaleString());
+    }
+    if (reportData.previousYearTotals) {
+      console.log('📊 Previous Year Data Details:');
+      console.log('   Spend:', (reportData.previousYearTotals.spend || 0).toFixed(2) + ' zł');
+      console.log('   Conversions:', reportData.previousYearConversions?.reservations || 0);
+      console.log('   Impressions:', (reportData.previousYearTotals.impressions || 0).toLocaleString());
+    }
 
     // Generate PDF HTML
     const html = generatePDFHTML(reportData);
@@ -1516,15 +2613,27 @@ export async function POST(request: NextRequest) {
     
     // Wait for charts to render
     console.log('⏳ Waiting for charts to render...');
-    await new Promise(resolve => setTimeout(resolve, 3000)); // Give Chart.js time to render
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Give Chart.js more time to render
     
     // Check if charts were rendered by looking for canvas elements
-    const chartsRendered = await page.evaluate(() => {
+    const chartsInfo = await page.evaluate(() => {
       const canvases = document.querySelectorAll('canvas');
-      return canvases.length > 0;
+      const hasChartJs = typeof (window as any).Chart !== 'undefined';
+      return {
+        canvasCount: canvases.length,
+        hasChartJs,
+        canvasIds: Array.from(canvases).map(c => c.id),
+        chartJsInstances: hasChartJs ? ((window as any).Chart.instances?.length || 0) : 0
+      };
     });
     
-    console.log('📊 Charts rendered status:', chartsRendered);
+    console.log('📊 Charts status:', chartsInfo);
+    
+    // Get console logs from the page
+    const pageLogs = await page.evaluate(() => {
+      return (window as any).consoleLogs || [];
+    });
+    console.log('🔍 Page console logs:', pageLogs);
     
     const pdfBuffer = await page.pdf({
       format: 'A4',

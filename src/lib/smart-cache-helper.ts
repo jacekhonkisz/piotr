@@ -663,8 +663,8 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
             source: 'weekly-cache'
           };
         } else {
-          // Configuration: Set to false to disable background refresh
-          const ENABLE_BACKGROUND_REFRESH = false; // ⚠️ DISABLED to prevent API calls
+          // Configuration: Set to true to enable background refresh
+          const ENABLE_BACKGROUND_REFRESH = true; // ✅ ENABLED for proper caching
           
           if (ENABLE_BACKGROUND_REFRESH) {
             console.log('⚠️ Weekly cache is stale, returning stale data + refreshing in background');

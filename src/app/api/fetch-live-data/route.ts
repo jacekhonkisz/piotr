@@ -58,60 +58,75 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
 function isCurrentWeek(startDate: string, endDate: string): boolean {
   const now = new Date();
   
-  // Get current week boundaries (Monday to Sunday) - use local timezone consistently
-  const currentDayOfWeek = now.getDay();
-  const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1; // Sunday = 0, Monday = 1
+  // 🔧 FIX: Use exact same ISO week calculation as frontend
+  // This MUST match the frontend logic exactly
+  const getISOWeekBoundaries = (date: Date) => {
+    // Get current week boundaries (Monday to Sunday)
+    const currentDayOfWeek = date.getDay();
+    const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
+    
+    const startOfCurrentWeek = new Date(date);
+    startOfCurrentWeek.setDate(startOfCurrentWeek.getDate() - daysToMonday);
+    startOfCurrentWeek.setHours(0, 0, 0, 0);
+    
+         const endOfCurrentWeek = new Date(startOfCurrentWeek);
+     endOfCurrentWeek.setDate(endOfCurrentWeek.getDate() + 6);
+     endOfCurrentWeek.setHours(0, 0, 0, 0); // Use 00:00:00 for date comparison
+    
+    return {
+      start: startOfCurrentWeek.toISOString().split('T')[0],
+      end: endOfCurrentWeek.toISOString().split('T')[0]
+    };
+  };
   
-  const startOfCurrentWeek = new Date(now);
-  startOfCurrentWeek.setDate(startOfCurrentWeek.getDate() - daysToMonday);
-  startOfCurrentWeek.setHours(0, 0, 0, 0);
+  const currentWeekBoundaries = getISOWeekBoundaries(now);
   
-  const endOfCurrentWeek = new Date(startOfCurrentWeek);
-  endOfCurrentWeek.setDate(endOfCurrentWeek.getDate() + 6);
-  endOfCurrentWeek.setHours(23, 59, 59, 999);
-  
-  // Convert to date strings for comparison (avoid timezone issues)
-  const currentWeekStartStr = startOfCurrentWeek.toISOString().split('T')[0];
-  const currentWeekEndStr = endOfCurrentWeek.toISOString().split('T')[0];
-  
-  console.log('🔍 CURRENT WEEK DETECTION:', {
+  console.log('🔍 CURRENT WEEK DETECTION (ISO):', {
     now: now.toISOString(),
-    currentWeekStart: currentWeekStartStr,
-    currentWeekEnd: currentWeekEndStr,
+    currentWeekStart: currentWeekBoundaries.start,
+    currentWeekEnd: currentWeekBoundaries.end,
     requestStartDate: startDate,
     requestEndDate: endDate
   });
   
   // Simple string comparison for date ranges
-  const result = startDate === currentWeekStartStr && endDate === currentWeekEndStr;
+  const result = startDate === currentWeekBoundaries.start && endDate === currentWeekBoundaries.end;
   
-  console.log('🔍 CURRENT WEEK DETECTION RESULT:', {
-    startDateMatches: startDate === currentWeekStartStr,
-    endDateMatches: endDate === currentWeekEndStr,
+  console.log('🔍 CURRENT WEEK DETECTION RESULT (ISO):', {
+    startDateMatches: startDate === currentWeekBoundaries.start,
+    endDateMatches: endDate === currentWeekBoundaries.end,
     result
   });
   
   return result;
 }
 
-// Helper function to load data from database for previous months
+// Helper function to load data from database for previous months/weeks
 async function loadFromDatabase(clientId: string, startDate: string, endDate: string) {
   console.log(`📊 Loading data from database for ${clientId} (${startDate} to ${endDate})`);
+  
+  // Determine if this is a weekly or monthly request based on date range
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const summaryType = daysDiff <= 7 ? 'weekly' : 'monthly';
+  
+  console.log(`📊 Detected ${summaryType} request (${daysDiff} days)`);
   
   const { data: storedSummary, error } = await supabase
     .from('campaign_summaries')
     .select('*')
     .eq('client_id', clientId)
     .eq('summary_date', startDate)
-    .eq('summary_type', 'monthly')
+    .eq('summary_type', summaryType)
     .single();
 
   if (error || !storedSummary) {
-    console.log('⚠️ No stored data found, falling back to live fetch');
+    console.log(`⚠️ No stored ${summaryType} data found, falling back to live fetch`);
     return null;
   }
 
-  console.log('✅ Found stored data in database');
+  console.log(`✅ Found stored ${summaryType} data in database`);
   
   // Extract data from stored summary
   const campaigns = storedSummary.campaign_data || [];
@@ -124,18 +139,39 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     averageCpc: storedSummary.average_cpc || 0
   };
 
-  // Extract conversion metrics from campaign data
-  const conversionMetrics = {
-    click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
-    email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
-    booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
-    reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
-    reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
-    booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
-    roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
-    cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
-      totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
-  };
+  // ENHANCED: Use aggregated conversion metrics from database if available
+  let conversionMetrics;
+  
+  if (storedSummary.click_to_call !== null && storedSummary.click_to_call !== undefined) {
+    // Use pre-aggregated conversion metrics from database columns (preferred)
+    conversionMetrics = {
+      click_to_call: storedSummary.click_to_call || 0,
+      email_contacts: storedSummary.email_contacts || 0,
+      booking_step_1: storedSummary.booking_step_1 || 0,
+      reservations: storedSummary.reservations || 0,
+      reservation_value: storedSummary.reservation_value || 0,
+      booking_step_2: storedSummary.booking_step_2 || 0,
+      roas: storedSummary.roas || 0,
+      cost_per_reservation: storedSummary.cost_per_reservation || 0
+    };
+    
+    console.log(`📊 Using pre-aggregated conversion metrics from database:`, conversionMetrics);
+  } else {
+    // Fallback: Calculate from campaign data (legacy support)
+    conversionMetrics = {
+      click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
+      email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+      booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+      reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
+      reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
+      booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+      roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
+      cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
+        totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
+    };
+    
+    console.log(`📊 Calculated conversion metrics from campaign data (fallback):`, conversionMetrics);
+  }
 
   return {
     client: {
@@ -154,7 +190,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       timezone: 'Europe/Warsaw',
       status: 'ACTIVE'
     },
-    fromDatabase: true
+    fromDatabase: true,
+    summaryType: summaryType
   };
 }
   
@@ -293,7 +330,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         forceFresh,
         forceFreshType: typeof forceFresh,
         routingDecision: isCurrentMonthRequest ? 'SMART CACHE (MONTHLY)' : 
-                        isCurrentWeekRequest ? 'SMART CACHE (WEEKLY)' : 'DATABASE FIRST'
+                        isCurrentWeekRequest ? 'SMART CACHE (WEEKLY)' : 'DATABASE FIRST',
+        willUseWeeklyCache: isCurrentWeekRequest && !forceFresh,
+        willUseDatabaseLookup: !forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest
       });
 
       // CRITICAL DEBUG: Check exactly why database cache might be skipped

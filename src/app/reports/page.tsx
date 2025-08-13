@@ -22,7 +22,7 @@ import ClientSelector from '../../components/ClientSelector';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
-import { getMonthBoundaries, getWeekBoundaries } from '../../lib/date-range-utils';
+import { getMonthBoundaries, getWeekBoundaries, getISOWeekStartDate, getWeeksInYear } from '../../lib/date-range-utils';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 
@@ -77,20 +77,37 @@ const formatDate = (dateString: string) => {
   });
 };
 
-// Helper function to get week start and end dates
+// Helper function to get week start and end dates - STANDARDIZED TO ISO
 const getWeekDateRange = (year: number, week: number) => {
-  const firstDayOfYear = new Date(year, 0, 1);
-  const days = (week - 1) * 7;
-  const startDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
-  const endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+  // 🔧 STANDARDIZED: Use the same ISO week calculation as API and WeeklyReportView
+  const yearNum = year;
+  
+  // January 4th is always in week 1 of the ISO year (SAME AS API)
+  const jan4 = new Date(yearNum, 0, 4);
+  
+  // Find the Monday of week 1 (SAME AS API)
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  
+  // Calculate the start date of the target week (SAME AS API)
+  const weekStartDate = new Date(startOfWeek1);
+  weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+  
+  // Use the same getWeekBoundaries logic as API (adds 6 days with UTC)
+  const endDate = new Date(weekStartDate);
+  endDate.setUTCDate(weekStartDate.getUTCDate() + 6);
   
   const formatDateForDisplay = (date: Date) => {
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    return `${day.toString().padStart(2, '0')}.${month.toString().padStart(2, '0')}`;
+    // Use toISOString to get consistent formatting like API
+    const isoString = date.toISOString().split('T')[0] || '';
+    const [yearStr, monthStr, dayStr] = isoString.split('-');
+    return `${dayStr}.${monthStr}`;
   };
   
-  return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}.${year}`;
+  const result = `${formatDateForDisplay(weekStartDate)} - ${formatDateForDisplay(endDate)}.${year}`;
+  console.log(`🔧 DROPDOWN ISO: Week ${week} of ${year} = ${result} (startDate: ${weekStartDate.toISOString().split('T')[0]}, endDate: ${endDate.toISOString().split('T')[0]})`);
+  
+  return result;
 };
 
 
@@ -211,7 +228,7 @@ function ReportsPageContent() {
     if (type === 'monthly') {
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     } else {
-      // For weekly, use ISO week format
+      // For weekly, use proper ISO week format
       const year = date.getFullYear();
       const week = getWeekNumber(date);
       return `${year}-W${String(week).padStart(2, '0')}`;
@@ -726,7 +743,6 @@ function ReportsPageContent() {
     }
     
     const periods: string[] = [];
-    // Use actual current date (August 2025) as the latest period
     const currentDate = new Date();
     const limit = type === 'monthly' ? 24 : 52; // 2 years for monthly, 1 year for weekly
     
@@ -739,8 +755,27 @@ function ReportsPageContent() {
         // For monthly, go back from current month
         periodDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
       } else {
-        // For weekly, go back from current week
-        periodDate = new Date(currentDate.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+        // For weekly, use proper ISO week calculation (standardized)
+        // Instead of simple Monday-based weeks, use ISO week boundaries
+        
+        // Get current ISO week
+        const currentWeekNumber = getWeekNumber(currentDate);
+        const currentYear = currentDate.getFullYear();
+        
+        // Calculate the target week number (go back i weeks from current)
+        let targetWeek = currentWeekNumber - i;
+        let targetYear = currentYear;
+        
+        // Handle year boundaries (ISO weeks can span years)
+        if (targetWeek <= 0) {
+          targetYear = currentYear - 1;
+          targetWeek = getWeeksInYear(targetYear) + targetWeek;
+        }
+        
+        // Calculate the actual date for this ISO week
+        periodDate = getISOWeekStartDate(targetYear, targetWeek);
+        
+        console.log(`📅 ISO Weekly period ${i}: targetYear=${targetYear}, targetWeek=${targetWeek}, periodDate=${periodDate.toISOString().split('T')[0]}`);
       }
       
       // Validate that the period is not in the future
@@ -751,15 +786,28 @@ function ReportsPageContent() {
       
       const periodId = generatePeriodId(periodDate, type);
       periods.push(periodId);
+      
+      // Special logging for the first few periods (current and recent)
+      if (i < 3) {
+        console.log(`📅 Generated period ${i} (${type}): ${periodId} from date ${periodDate.toISOString().split('T')[0]}`);
+      }
     }
     
     console.log(`📅 Generated ${periods.length} periods for ${type} view`);
+    console.log(`📅 First 5 ${type} periods:`, periods.slice(0, 5));
     return periods;
   };
 
   // Load data for a specific period with explicit client data
   const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false) => {
     console.log(`📊 Loading ${viewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
+    
+    // 🚨 TEMPORARY FIX: Force fresh data for weekly reports due to database corruption
+    // Remove this after database cleanup
+    const forceWeeklyFresh = viewType === 'weekly';
+    if (forceWeeklyFresh) {
+      console.log('🚨 FORCING FRESH DATA for weekly reports due to database corruption issue');
+    }
     
     // Prevent duplicate calls
     if (loadingRef.current || apiCallInProgress) {
@@ -778,9 +826,16 @@ function ReportsPageContent() {
     })();
 
     // For previous months, check if we already have this data
-    if (!isCurrentMonth && reports[periodId]) {
+    // 🚨 TEMPORARY: Force fresh data for ALL weekly reports to fix date range issues
+    const forceAllWeeklyFresh = viewType === 'weekly';
+    
+    if (!isCurrentMonth && reports[periodId] && !forceWeeklyFresh && !forceAllWeeklyFresh) {
       console.log('✅ Data already loaded for previous period, skipping API call');
       return;
+    }
+    
+    if (forceAllWeeklyFresh) {
+      console.log('🚨 FORCING FRESH DATA for all weekly reports to fix date range corruption');
     }
 
     if (isCurrentMonth) {
@@ -868,13 +923,46 @@ function ReportsPageContent() {
           });
         }
       } else {
-        // Parse week ID to get start and end dates using standardized utility
+        // Parse week ID to get start and end dates using proper ISO week calculation
         const [year, weekStr] = periodId.split('-W');
         const week = parseInt(weekStr || '1');
-        const firstDayOfYear = new Date(parseInt(year || new Date().getFullYear().toString()), 0, 1);
-        const days = (week - 1) * 7;
-        const weekStartDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
+        
+        // Proper ISO week calculation - find the start date of the given ISO week
+        const yearNum = parseInt(year || new Date().getFullYear().toString());
+        
+        // January 4th is always in week 1 of the ISO year
+        const jan4 = new Date(yearNum, 0, 4);
+        
+        // Find the Monday of week 1
+        const startOfWeek1 = new Date(jan4);
+        startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+        
+        // Calculate the start date of the target week
+        const weekStartDate = new Date(startOfWeek1);
+        weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+        
         dateRange = getWeekBoundaries(weekStartDate);
+        
+        console.log(`📅 ISO Week parsing for ${periodId}:`, {
+          periodId,
+          year: yearNum,
+          week,
+          jan4: jan4.toISOString().split('T')[0],
+          startOfWeek1: startOfWeek1.toISOString().split('T')[0],
+          weekStartDate: weekStartDate.toISOString().split('T')[0],
+          dateRange,
+          calculatedStart: dateRange.start,
+          calculatedEnd: dateRange.end
+        });
+        
+        // 🚨 CRITICAL DEBUG: Log the exact dates being used
+        console.log(`🚨 CRITICAL: Week ${week} of ${yearNum} should be:`, {
+          expectedStart: '2025-08-10', // Monday Aug 10
+          expectedEnd: '2025-08-16',   // Sunday Aug 16
+          actualStart: dateRange.start,
+          actualEnd: dateRange.end,
+          isCorrect: dateRange.start === '2025-08-10' && dateRange.end === '2025-08-16'
+        });
       }
       
       // Use standardized date formatting
@@ -953,8 +1041,24 @@ function ReportsPageContent() {
           end: periodEndDate
         },
         clientId: clientData.id, // Always send the client ID for real clients
-        ...(forceClearCache && { forceFresh: true }) // Add cache clearing if requested
+        ...(forceClearCache && { forceFresh: true }), // Add cache clearing if requested
+        ...(forceWeeklyFresh && { forceFresh: true, reason: 'weekly_corruption_fix' }) // Force fresh for weekly reports
       };
+      
+      // 🚨 CRITICAL DEBUG: Verify what dates are being sent to API
+      console.log('🚨 CRITICAL API REQUEST:', {
+        periodId,
+        viewType,
+        periodStartDate,
+        periodEndDate,
+        requestBody,
+        isWeekly: viewType === 'weekly',
+        shouldBeAugust: periodId === '2025-W33',
+        actuallyIsAugust: periodStartDate.includes('2025-08'),
+        forceWeeklyFresh,
+        forceFresh: forceWeeklyFresh
+      });
+      
       console.log('📡 Making API call with request body:', requestBody);
       
       // Create a timeout promise (increased for optimized API)
@@ -1025,6 +1129,20 @@ function ReportsPageContent() {
         data = await response.json();
         console.log(`✅ API call successful for ${periodId}:`, data);
         console.log(`🎯 ${isCurrentMonth ? 'LIVE API DATA' : 'API DATA'} received for ${periodId}`);
+        
+        // 🚨 CRITICAL DEBUG: Check what the API actually returned
+        console.log(`🚨 CRITICAL API RESPONSE:`, {
+          periodId,
+          responseSuccess: data.success,
+          apiDateRange: data.data?.dateRange || data.dateRange,
+          apiFromCache: data.data?.fromCache || data.fromCache,
+          apiLastUpdated: data.data?.lastUpdated || data.lastUpdated,
+          apiSource: data.debug?.source,
+          campaignsCount: data.data?.campaigns?.length || data.campaigns?.length || 0,
+          totalSpend: data.data?.stats?.totalSpend || 'not available',
+          isForceWeeklyFresh: forceWeeklyFresh
+        });
+        
         console.log(`📊 Raw API response structure:`, {
           hasSuccess: !!data.success,
           hasData: !!data.data,
@@ -1034,14 +1152,6 @@ function ReportsPageContent() {
           isPartialData: !!data.data?.partialData,
           hasTimeoutError: !!data.data?.timeoutError
         });
-
-        // Handle partial data response (timeout fallback)
-        if (data.data?.partialData && data.data?.timeoutError) {
-          console.log('⚠️ Received partial data due to Meta API timeout');
-          if (data.warning) {
-            setError(`⚠️ ${data.warning} You can try refreshing to attempt loading again.`);
-          }
-        }
       } catch (error) {
         console.error('❌ Failed to parse API response:', error);
         const responseText = await response.text();
@@ -1067,6 +1177,21 @@ function ReportsPageContent() {
         campaignsDirect: data.campaigns?.length || 0,
         rawCampaigns: rawCampaigns.length
       });
+      
+      // 🔍 DEBUG: Check raw campaign data structure
+      if (rawCampaigns.length > 0) {
+        console.log(`🔍 RAW CAMPAIGN DATA DEBUG - Sample from API:`, {
+          campaignName: rawCampaigns[0]?.campaign_name,
+          spend: rawCampaigns[0]?.spend,
+          click_to_call: rawCampaigns[0]?.click_to_call,
+          email_contacts: rawCampaigns[0]?.email_contacts,
+          booking_step_1: rawCampaigns[0]?.booking_step_1,
+          reservations: rawCampaigns[0]?.reservations,
+          reservation_value: rawCampaigns[0]?.reservation_value,
+          booking_step_2: rawCampaigns[0]?.booking_step_2,
+          allKeys: Object.keys(rawCampaigns[0] || {})
+        });
+      }
       
       // Transform campaigns to match frontend interface
       const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
@@ -1109,25 +1234,85 @@ function ReportsPageContent() {
       console.log(`📊 Transformed campaigns:`, campaigns.length, 'campaigns');
       if (campaigns.length > 0) {
         console.log(`📊 Sample campaign:`, campaigns[0]);
+        console.log(`🔍 CONVERSION DATA DEBUG - Sample campaign:`, {
+          campaignName: campaigns[0]?.campaign_name,
+          click_to_call: campaigns[0]?.click_to_call,
+          email_contacts: campaigns[0]?.email_contacts,
+          booking_step_1: campaigns[0]?.booking_step_1,
+          reservations: campaigns[0]?.reservations,
+          reservation_value: campaigns[0]?.reservation_value,
+          booking_step_2: campaigns[0]?.booking_step_2
+        });
+        
+        // 🔍 DATA FRESHNESS AUDIT
+        console.log(`🕐 DATA FRESHNESS AUDIT:`, {
+          dataSource: data.debug?.source || 'unknown',
+          generatedAt: data.data?.lastUpdated || data.lastUpdated || 'unknown',
+          isFromCache: data.data?.fromCache || false,
+          cacheAge: data.data?.cacheAge ? `${Math.round(data.data.cacheAge / 1000)}s` : 'unknown',
+          totalCampaigns: campaigns.length,
+          totalSpend: campaigns.reduce((sum, c) => sum + c.spend, 0),
+          dateRange: `${periodStartDate} to ${periodEndDate}`,
+          isCurrentWeek: periodId === '2025-W33',
+          shouldBeFreshData: periodId === '2025-W33' ? 'YES - Current week' : 'NO - Historical'
+        });
       }
+      
+      // 🚨 FIX: For weekly reports, ALWAYS use the calculated dates, not API response dates
+      // The API might return wrong date ranges for weekly data
+      let correctStartDate, correctEndDate;
+      
+      if (viewType === 'weekly') {
+        // For weekly reports, use the calculated dates from the period parsing
+        correctStartDate = periodStartDate;
+        correctEndDate = periodEndDate;
+        console.log(`🔧 WEEKLY OVERRIDE: Using calculated dates for ${periodId}`, {
+          calculatedStart: periodStartDate,
+          calculatedEnd: periodEndDate,
+          reason: 'Weekly reports must use exact week boundaries',
+          spend: campaigns.reduce((sum, c) => sum + c.spend, 0),
+          campaignCount: campaigns.length
+        });
+      } else {
+        // For monthly reports, use API response dates if available
+        const apiDateRange = data.data?.dateRange || data.dateRange;
+        correctStartDate = apiDateRange?.start || periodStartDate;
+        correctEndDate = apiDateRange?.end || periodEndDate;
+      }
+      
+      console.log(`🔧 REPORT OBJECT FIX:`, {
+        periodId,
+        originalStart: periodStartDate,
+        originalEnd: periodEndDate,
+        usingStart: correctStartDate,
+        usingEnd: correctEndDate,
+        viewType: viewType,
+        dateSource: viewType === 'weekly' ? 'calculated' : 'api_or_calculated'
+      });
       
       const report: MonthlyReport | WeeklyReport = {
         id: periodId,
-        date_range_start: periodStartDate,
-        date_range_end: periodEndDate,
+        date_range_start: correctStartDate,
+        date_range_end: correctEndDate,
         generated_at: new Date().toISOString(),
         campaigns: campaigns
       };
 
       console.log(`💾 Setting successful report for ${periodId}:`, report);
+      console.log(`💾 Report campaigns count:`, report.campaigns.length);
+      if (report.campaigns.length > 0) {
+        console.log(`💾 Sample campaign:`, report.campaigns[0]);
+      }
       console.log(`🎯 ${isCurrentMonth ? 'LIVE API DATA' : 'API DATA'} set for ${periodId} with ${campaigns.length} campaigns`);
+      
       setReports(prev => {
         const newState = { ...prev, [periodId]: report };
         console.log('💾 Updated reports state:', {
           periodId,
           totalReports: Object.keys(newState).length,
           allPeriods: Object.keys(newState),
-          dataSource: isCurrentMonth ? 'LIVE API' : 'API'
+          dataSource: isCurrentMonth ? 'LIVE API' : 'API',
+          selectedPeriodData: newState[periodId]?.campaigns?.length || 0
         });
         return newState;
       });
@@ -1358,13 +1543,35 @@ function ReportsPageContent() {
               });
             }
           } else {
-            // Parse week ID to get start and end dates using standardized utility (same logic as original)
+            // Parse week ID to get start and end dates using proper ISO week calculation (same logic as original)
             const [year, weekStr] = periodId.split('-W');
             const week = parseInt(weekStr || '1');
-            const firstDayOfYear = new Date(parseInt(year || new Date().getFullYear().toString()), 0, 1);
-            const days = (week - 1) * 7;
-            const weekStartDate = new Date(firstDayOfYear.getTime() + days * 24 * 60 * 60 * 1000);
+            
+            // Proper ISO week calculation - find the start date of the given ISO week
+            const yearNum = parseInt(year || new Date().getFullYear().toString());
+            
+            // January 4th is always in week 1 of the ISO year
+            const jan4 = new Date(yearNum, 0, 4);
+            
+            // Find the Monday of week 1
+            const startOfWeek1 = new Date(jan4);
+            startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+            
+            // Calculate the start date of the target week
+            const weekStartDate = new Date(startOfWeek1);
+            weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+            
             dateRange = getWeekBoundaries(weekStartDate);
+            
+            console.log(`🔧 DEV: ISO Week parsing for ${periodId}:`, {
+              periodId,
+              year: yearNum,
+              week,
+              jan4: jan4.toISOString().split('T')[0],
+              startOfWeek1: startOfWeek1.toISOString().split('T')[0],
+              weekStartDate: weekStartDate.toISOString().split('T')[0],
+              dateRange
+            });
           }
           
           // Use standardized date formatting (same logic as original)
@@ -1582,10 +1789,26 @@ function ReportsPageContent() {
             console.log(`📊 Sample campaign:`, campaigns[0]);
           }
           
+          // 🚨 FIX: Use correct dates from API response instead of potentially corrupted periodStartDate/periodEndDate
+          const apiDateRange = data.data?.dateRange || data.dateRange;
+          const correctStartDate = apiDateRange?.start || periodStartDate;
+          const correctEndDate = apiDateRange?.end || periodEndDate;
+          
+          console.log(`🔧 REPORT OBJECT FIX:`, {
+            periodId,
+            originalStart: periodStartDate,
+            originalEnd: periodEndDate,
+            apiReturnedStart: apiDateRange?.start,
+            apiReturnedEnd: apiDateRange?.end,
+            usingStart: correctStartDate,
+            usingEnd: correctEndDate,
+            isUsingAPIResponse: !!(apiDateRange?.start && apiDateRange?.end)
+          });
+          
           const report: MonthlyReport | WeeklyReport = {
             id: periodId,
-            date_range_start: periodStartDate,
-            date_range_end: periodEndDate,
+            date_range_start: correctStartDate,
+            date_range_end: correctEndDate,
             generated_at: new Date().toISOString(),
             campaigns: campaigns
           };
@@ -1641,7 +1864,7 @@ function ReportsPageContent() {
               if (metaTablesResponse.ok) {
                 const metaTablesResult = await metaTablesResponse.json();
                 if (metaTablesResult.success) {
-                  metaTablesData = metaTablesResult.data;
+                  metaTablesData = metaTablesResult.data.metaTables; // Extract just the metaTables part
                   console.log('✅ DEV: Meta tables data fetched for PDF:', {
                     placementCount: metaTablesData.placementPerformance?.length || 0,
                     demographicCount: metaTablesData.demographicPerformance?.length || 0,
@@ -1807,6 +2030,15 @@ function ReportsPageContent() {
   // Handle view type change
   const handleViewTypeChange = (newViewType: 'monthly' | 'weekly' | 'all-time' | 'custom') => {
     console.log('🔄 View type changed to:', newViewType);
+    
+    // 🚨 TEMPORARY FIX: Clear ALL state for weekly reports to fix date corruption
+    if (newViewType === 'weekly') {
+      console.log('🚨 WEEKLY VIEW: Clearing all state to fix date corruption');
+      setReports({});
+      setSelectedPeriod('');
+      setAvailablePeriods([]);
+    }
+    
     setViewType(newViewType);
     setReports({}); // Clear existing reports
     
@@ -1916,8 +2148,14 @@ function ReportsPageContent() {
 
   // Calculate totals for selected period
   const getSelectedPeriodTotals = () => {
+    console.log('🔍 getSelectedPeriodTotals called');
+    console.log('🔍 selectedReport:', selectedReport);
+    console.log('🔍 campaigns length:', selectedReport?.campaigns?.length || 0);
+    
     if (!selectedReport || !selectedReport.campaigns.length) {
       console.log('⚠️ No selected report or no campaigns, returning zeros');
+      console.log('⚠️ selectedReport exists:', !!selectedReport);
+      console.log('⚠️ campaigns array:', selectedReport?.campaigns);
       return {
         spend: 0,
         impressions: 0,
@@ -2653,14 +2891,24 @@ function ReportsPageContent() {
 
         {selectedReport && !loadingPeriod && (
           <>
-            <WeeklyReportView
-              reports={{ 
-                [viewType === 'all-time' ? 'all-time' : 
-                 viewType === 'custom' ? 'custom' : 
-                 selectedPeriod]: selectedReport 
-              }}
-              viewType={viewType}
-            />
+            {(() => {
+              const totals = getSelectedPeriodTotals();
+              console.log('🎯 Rendering WeeklyReportView with:');
+              console.log('   selectedReport:', selectedReport);
+              console.log('   campaigns:', selectedReport.campaigns);
+              console.log('   totals:', totals);
+              
+              return (
+                <WeeklyReportView
+                  reports={{ 
+                    [viewType === 'all-time' ? 'all-time' : 
+                     viewType === 'custom' ? 'custom' : 
+                     selectedPeriod]: selectedReport 
+                  }}
+                  viewType={viewType}
+                />
+              );
+            })()}
             
             {/* Meta Ads Tables Section */}
             <div className="bg-white rounded-lg p-6 mb-8">

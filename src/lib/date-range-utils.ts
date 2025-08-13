@@ -110,6 +110,36 @@ export function formatDateForMetaAPI(date: Date): string {
 }
 
 /**
+ * Get the number of ISO weeks in a given year
+ */
+export function getWeeksInYear(year: number): number {
+  // December 28th is always in the last week of the ISO year
+  const dec28 = new Date(Date.UTC(year, 11, 28));
+  const dayNum = dec28.getUTCDay() || 7;
+  dec28.setUTCDate(dec28.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dec28.getUTCFullYear(), 0, 1));
+  return Math.ceil((((dec28.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+/**
+ * Get the start date (Monday) of a specific ISO week
+ */
+export function getISOWeekStartDate(year: number, week: number): Date {
+  // January 4th is always in week 1 of the ISO year
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  
+  // Find the Monday of week 1
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() + 6) % 7));
+  
+  // Calculate the start date of the target week
+  const weekStartDate = new Date(startOfWeek1);
+  weekStartDate.setUTCDate(startOfWeek1.getUTCDate() + (week - 1) * 7);
+  
+  return weekStartDate;
+}
+
+/**
  * Validate date range for Meta API limits
  */
 export function validateDateRange(startDate: string, endDate: string): {

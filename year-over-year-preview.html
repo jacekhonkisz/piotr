@@ -1,0 +1,205 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview: Year-over-Year Comparison Table</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --bg-page: #F7F8FB;
+            --bg-panel: #FFFFFF;
+            --text-strong: #0B1324;
+            --text-muted: #6B7280;
+            --brand-primary: #3B82F6;
+            --brand-accent: #FF7A00;
+            --border-soft: #E6E9EF;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            line-height: 1.5;
+            color: var(--text-strong);
+            background: var(--bg-page);
+            padding: 32px;
+            margin: 0;
+        }
+        
+        .preview-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--bg-panel);
+            border-radius: 16px;
+            padding: 48px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .preview-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-strong);
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .preview-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            text-align: center;
+        }
+        
+        .year-comparison {
+            margin-top: 48px;
+            text-align: left;
+        }
+        
+        .year-comparison h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-strong);
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-panel);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .comparison-table th {
+            background: var(--bg-page);
+            color: var(--text-strong);
+            padding: 16px 20px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            border-bottom: 2px solid var(--border-soft);
+        }
+        
+        .comparison-table td {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-soft);
+            font-size: 14px;
+            color: var(--text-strong);
+            text-align: center;
+        }
+        
+        .comparison-table tbody tr:nth-child(even) {
+            background: #FAFBFC;
+        }
+        
+        .comparison-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .metric-name {
+            font-weight: 600;
+            color: var(--text-strong);
+            text-align: left !important;
+        }
+        
+        .current-year {
+            font-weight: 600;
+            color: var(--brand-primary);
+        }
+        
+        .previous-year {
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        
+        .year-change {
+            font-weight: 600;
+        }
+        
+        .year-change.positive {
+            color: #10B981;
+        }
+        
+        .year-change.negative {
+            color: #EF4444;
+        }
+        
+        .year-change.neutral {
+            color: var(--text-muted);
+        }
+        
+        .instructions {
+            margin-top: 32px;
+            padding: 20px;
+            background: #FEF3C7;
+            border-radius: 8px;
+            border-left: 4px solid #F59E0B;
+        }
+        
+        .instructions h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #92400E;
+            margin-bottom: 8px;
+        }
+        
+        .instructions p {
+            font-size: 14px;
+            color: #92400E;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-container">
+        <h1 class="preview-title">Year-over-Year Comparison Preview</h1>
+        <p class="preview-subtitle">This is how the table will appear on Page 1 of PDF reports</p>
+        
+        <div class="year-comparison">
+            <h3>Porównanie rok do roku</h3>
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th class="metric-name">Metryka</th>
+                        <th>2025</th>
+                        <th>2024</th>
+                        <th>Zmiana</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="metric-name">Wartość rezerwacji</td>
+                        <td class="current-year">488 850,16 zł</td>
+                        <td class="previous-year">425 300,00 zł</td>
+                        <td class="year-change positive">↗ +14.9%</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Wydatki</td>
+                        <td class="current-year">7 790,57 zł</td>
+                        <td class="previous-year">8 250,00 zł</td>
+                        <td class="year-change negative">↘ -5.6%</td>
+                    </tr>
+                    <tr>
+                        <td class="metric-name">Koszt per rezerwacja</td>
+                        <td class="current-year">58,14 zł</td>
+                        <td class="previous-year">68,75 zł</td>
+                        <td class="year-change positive">↘ -15.4%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="instructions">
+            <h4>📋 When will this appear in real PDFs?</h4>
+            <p>• <strong>Starting in 2026:</strong> When we have 12+ months of data</p>
+            <p>• <strong>January 2026:</strong> Will compare to January 2025</p>
+            <p>• <strong>August 2026:</strong> Will compare to August 2025</p>
+            <p>• <strong>Location:</strong> Page 1, below the "Podsumowanie" section</p>
+            <p>• <strong>Data source:</strong> Real data from campaign_summaries table</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -345,6 +345,43 @@ export class BackgroundDataCollector {
    * Store weekly summary in database
    */
   private async storeWeeklySummary(clientId: string, data: any): Promise<void> {
+    // Calculate conversion metrics from campaign data
+    const campaigns = data.campaigns || [];
+    const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      total_spend: acc.total_spend + (campaign.spend || 0)
+    }), {
+      click_to_call: 0,
+      email_contacts: 0,
+      booking_step_1: 0,
+      reservations: 0,
+      reservation_value: 0,
+      booking_step_2: 0,
+      total_spend: 0
+    });
+
+    // Calculate derived conversion metrics
+    const roas = conversionTotals.total_spend > 0 && conversionTotals.reservation_value > 0 
+      ? conversionTotals.reservation_value / conversionTotals.total_spend 
+      : 0;
+    
+    const cost_per_reservation = conversionTotals.reservations > 0 
+      ? conversionTotals.total_spend / conversionTotals.reservations 
+      : 0;
+
+    console.log(`📊 Background weekly collection conversion metrics:`, {
+      clientId,
+      summary_date: data.summary_date,
+      conversionTotals,
+      roas,
+      cost_per_reservation
+    });
+
     const summary = {
       client_id: clientId,
       summary_type: 'weekly',
@@ -355,12 +392,21 @@ export class BackgroundDataCollector {
       total_conversions: data.totals.conversions || 0,
       average_ctr: data.totals.ctr || 0,
       average_cpc: data.totals.cpc || 0,
-      average_cpa: data.totals.cpa || 0,
+      average_cpa: cost_per_reservation,
       active_campaigns: data.activeCampaignCount || data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
       total_campaigns: data.campaigns.length,
       campaign_data: data.campaigns,
       meta_tables: data.metaTables,
       data_source: 'meta_api',
+      // Add aggregated conversion metrics
+      click_to_call: conversionTotals.click_to_call,
+      email_contacts: conversionTotals.email_contacts,
+      booking_step_1: conversionTotals.booking_step_1,
+      reservations: conversionTotals.reservations,
+      reservation_value: conversionTotals.reservation_value,
+      booking_step_2: conversionTotals.booking_step_2,
+      roas: roas,
+      cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()
     };
 
@@ -373,6 +419,8 @@ export class BackgroundDataCollector {
     if (error) {
       throw new Error(`Failed to store weekly summary: ${error.message}`);
     }
+
+    console.log(`💾 Stored weekly summary with conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value`);
   }
 
   /**
