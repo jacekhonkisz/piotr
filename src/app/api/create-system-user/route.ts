@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import logger from '../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log('🔧 Creating System User for client:', clientName);
+    logger.info('🔧 Creating System User for client:', clientName);
 
     // Step 1: Create System User via Meta Business Manager API
     const systemUserName = `API Access User - ${clientName}`;
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      console.log('✅ System User setup instructions created');
+      logger.info('✅ System User setup instructions created');
 
       return NextResponse.json({ 
         success: true, 

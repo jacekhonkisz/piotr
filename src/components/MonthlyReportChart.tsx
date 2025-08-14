@@ -50,7 +50,7 @@ export default function MonthlyReportChart({ type, data, title, height = 300 }: 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry?.isIntersecting) {
           setIsVisible(true);
         }
       },

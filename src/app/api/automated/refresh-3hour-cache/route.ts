@@ -244,7 +244,7 @@ export async function POST() {
       
       // Small delay between batches
       if (i + batchSize < clients.length) {
-        console.log('⏸️ Waiting 3 seconds before next batch...');
+        logger.info('⏸️ Waiting 3 seconds before next batch...');
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }

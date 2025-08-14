@@ -3,6 +3,8 @@
  * Fetches real campaign data using Meta Business API
  */
 
+import logger from './logger';
+
 interface MetaAPIResponse {
   data?: any[];
   error?: {
@@ -130,7 +132,7 @@ export class MetaAPIService {
 
   public clearCache(): void {
     apiCache.clear();
-    console.log('🗑️ Meta API cache cleared');
+    logger.info('🗑️ Meta API cache cleared');
   }
 
   /**
@@ -360,7 +362,7 @@ export class MetaAPIService {
   async validateToken(): Promise<{ valid: boolean; error?: string; permissions?: string[] }> {
     try {
       // First, test basic token validity
-      console.log('⏱️ Starting token validation with timeout...');
+      logger.info('⏱️ Starting token validation with timeout...');
       
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Token validation timeout after 10 seconds')), 10000);
@@ -371,7 +373,7 @@ export class MetaAPIService {
         timeoutPromise
       ]) as Response;
       
-      console.log('📡 Token validation fetch completed...');
+      logger.info('📡 Token validation fetch completed...');
       
       const data = await response.json();
 
@@ -381,7 +383,7 @@ export class MetaAPIService {
 
       // Test if token has ads_read permission by trying to get ad accounts
       try {
-        console.log('⏱️ Testing ad accounts access with timeout...');
+        logger.info('⏱️ Testing ad accounts access with timeout...');
         
         const adAccountsResponse = await Promise.race([
           fetch(
@@ -390,7 +392,7 @@ export class MetaAPIService {
           timeoutPromise
         ]) as Response;
         
-        console.log('📡 Ad accounts test completed...');
+        logger.info('📡 Ad accounts test completed...');
         
         if (adAccountsResponse.status === 403) {
           return { 
@@ -429,7 +431,7 @@ export class MetaAPIService {
       // Remove 'act_' prefix if present
       const cleanAccountId = adAccountId.replace('act_', '');
       
-      console.log('⏱️ Starting ad account validation with timeout...');
+      logger.info('⏱️ Starting ad account validation with timeout...');
       
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Ad account validation timeout after 10 seconds')), 10000);
@@ -442,7 +444,7 @@ export class MetaAPIService {
         timeoutPromise
       ]) as Response;
       
-      console.log('📡 Ad account validation fetch completed...');
+      logger.info('📡 Ad account validation fetch completed...');
       
       if (response.status === 403) {
         return { 
@@ -518,7 +520,7 @@ export class MetaAPIService {
 
       return [];
     } catch (error) {
-      console.error('Error fetching ad accounts:', error);
+      logger.error('Error fetching ad accounts:', error);
       return [];
     }
   }
@@ -534,7 +536,7 @@ export class MetaAPIService {
   ): Promise<CampaignInsights[]> {
     try {
       // DISABLED CACHING for live conversion metrics - always fetch fresh data
-      console.log('🔄 LIVE FETCH: Always fetching fresh campaign insights (no cache)');
+      logger.info('🔄 LIVE FETCH: Always fetching fresh campaign insights (no cache)');
 
       const fields = [
         'campaign_id',
@@ -577,10 +579,10 @@ export class MetaAPIService {
       // Ensure we have the act_ prefix for the API call
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
-      console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
-      console.log('📅 Date Range for API call:', { dateStart, dateEnd, timeIncrement });
+      logger.info('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('📅 Date Range for API call:', { dateStart, dateEnd, timeIncrement });
 
-      console.log('⏱️ Starting Meta API fetch with timeout...');
+      logger.info('⏱️ Starting Meta API fetch with timeout...');
       
       // Create a timeout promise (increased for better reliability)
       const timeoutPromise = new Promise((_, reject) => {
@@ -593,12 +595,12 @@ export class MetaAPIService {
         timeoutPromise
       ]) as Response;
       
-      console.log('📡 Meta API fetch completed, processing response...');
+      logger.info('📡 Meta API fetch completed, processing response...');
       
       const data: MetaAPIResponse = await response.json();
 
-      console.log('📥 Meta API Response Status:', response.status);
-      console.log('📥 Meta API Response Data:', {
+      logger.info('📥 Meta API Response Status:', response.status);
+      logger.info('📥 Meta API Response Data:', {
         hasData: !!data.data,
         dataLength: data.data?.length || 0,
         hasError: !!data.error,
@@ -607,18 +609,18 @@ export class MetaAPIService {
       });
 
       if (!response.ok) {
-        console.error('❌ Meta API Error Response:', data);
+        logger.error('❌ Meta API Error Response:', data);
         throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'} (Code: ${data.error?.code || response.status})`);
       }
 
       if (data.error) {
-        console.error('❌ Meta API returned error:', data.error);
+        logger.error('❌ Meta API returned error:', data.error);
         throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
       }
 
       // Handle case where no data is returned (common for large date ranges with no campaigns)
       if (!data.data || data.data.length === 0) {
-        console.log('⚠️ No campaign data returned from Meta API - this is normal for date ranges with no active campaigns');
+        logger.info('⚠️ No campaign data returned from Meta API - this is normal for date ranges with no active campaigns');
         return [];
       }
 
@@ -639,21 +641,21 @@ export class MetaAPIService {
             ? insight.actions
             : (insight.action_types && Array.isArray(insight.action_types) ? insight.action_types : []);
 
-          console.log('🔍 MetaAPI: Campaign', insight.campaign_name, 'has', actionsArray.length, 'total actions');
+          logger.info('🔍 MetaAPI: Campaign', insight.campaign_name, 'has', actionsArray.length, 'total actions');
           if (actionsArray.length === 0) {
-            console.log('🔍 MetaAPI: No actions found for campaign', insight.campaign_name);
-            console.log('🔍 MetaAPI: Available insight keys:', Object.keys(insight));
+            logger.info('🔍 MetaAPI: No actions found for campaign', insight.campaign_name);
+            logger.info('🔍 MetaAPI: Available insight keys:', Object.keys(insight));
           }
 
           if (actionsArray.length > 0) {
-            console.log('🔍 MetaAPI: Found actions array for campaign', insight.campaign_name, 'with', actionsArray.length, 'actions');
-            console.log('🔍 MetaAPI: Action types found:', actionsArray.map((a: any) => a.action_type || a.type));
+            logger.info('🔍 MetaAPI: Found actions array for campaign', insight.campaign_name, 'with', actionsArray.length, 'actions');
+            logger.info('🔍 MetaAPI: Action types found:', actionsArray.map((a: any) => a.action_type || a.type));
             
             actionsArray.forEach((action: any) => {
               const actionType = String(action.action_type || action.type || '').toLowerCase();
               const valueNum = Number(action.value ?? action.count ?? 0);
               
-              console.log('🔍 MetaAPI: Processing action:', { actionType, valueNum });
+              logger.info('🔍 MetaAPI: Processing action:', { actionType, valueNum });
 
               // 1. Potencjalne kontakty telefoniczne - Enhanced with more action types
               if (actionType.includes('click_to_call') || 
@@ -706,16 +708,16 @@ export class MetaAPIService {
           const cost_per_reservation = reservations > 0 ? spend / reservations : 0;
 
           // DEBUG: Log final calculations
-          console.log(`📊 FINAL CALCULATIONS for ${insight.campaign_name}:`);
-          console.log(`   💰 Spend: ${spend} zł`);
-          console.log(`   ✅ Reservations: ${reservations}`);
-          console.log(`   💵 Reservation Value: ${reservation_value} zł`);
-          console.log(`   📈 ROAS: ${roas.toFixed(2)}x`);
-          console.log(`   💲 Cost per Reservation: ${cost_per_reservation.toFixed(2)} zł`);
+          logger.info(`📊 FINAL CALCULATIONS for ${insight.campaign_name}:`);
+          logger.info(`   💰 Spend: ${spend} zł`);
+          logger.info(`   ✅ Reservations: ${reservations}`);
+          logger.info(`   💵 Reservation Value: ${reservation_value} zł`);
+          logger.info(`   📈 ROAS: ${roas.toFixed(2)}x`);
+          logger.info(`   💲 Cost per Reservation: ${cost_per_reservation.toFixed(2)} zł`);
 
           // Validate conversion funnel logic (Etap 1 should be >= Etap 2)
           if (booking_step_2 > booking_step_1 && booking_step_1 > 0) {
-            console.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
+            logger.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
           }
 
           // Calculate total conversions from all tracked conversion types
@@ -749,17 +751,17 @@ export class MetaAPIService {
           } as CampaignInsights;
         });
 
-        console.log('✅ Parsed campaign insights:', insights.length, 'campaigns');
+        logger.info('✅ Parsed campaign insights:', insights.length, 'campaigns');
         
         // CACHING DISABLED - always return fresh data for live conversion metrics
         return insights;
       }
 
-      console.log('⚠️ No campaign insights data in response');
+      logger.info('⚠️ No campaign insights data in response');
       return [];
     } catch (error) {
-      console.error('💥 Error fetching campaign insights:', error);
-      console.error('💥 Error details:', {
+      logger.error('💥 Error fetching campaign insights:', error);
+      logger.error('💥 Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         adAccountId,
@@ -779,7 +781,7 @@ export class MetaAPIService {
     dateEnd: string
   ): Promise<CampaignInsights[]> {
     try {
-      console.log('🔄 COMPLETE FETCH: Fetching ALL campaigns with pagination');
+      logger.info('🔄 COMPLETE FETCH: Fetching ALL campaigns with pagination');
 
       const fields = [
         'campaign_id',
@@ -813,7 +815,7 @@ export class MetaAPIService {
       while (nextUrl) {
         const url = nextUrl.includes('?') ? nextUrl : `${nextUrl}?${baseParams.toString()}`;
         
-        console.log('📡 Fetching campaigns page:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+        logger.info('📡 Fetching campaigns page:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
         
         const response = await fetch(url);
         const data: MetaAPIResponse = await response.json();
@@ -828,7 +830,7 @@ export class MetaAPIService {
         // Check for pagination
         nextUrl = data.paging && data.paging.next ? data.paging.next : null;
         
-        console.log(`📈 Fetched ${campaigns.length} campaigns (total: ${allCampaigns.length})`);
+        logger.info(`📈 Fetched ${campaigns.length} campaigns (total: ${allCampaigns.length})`);
         
         // Add delay between paginated requests to respect rate limits
         if (nextUrl) {
@@ -836,7 +838,7 @@ export class MetaAPIService {
         }
       }
 
-      console.log(`✅ COMPLETE: Fetched total of ${allCampaigns.length} campaigns`);
+      logger.info(`✅ COMPLETE: Fetched total of ${allCampaigns.length} campaigns`);
 
       // Process all campaigns using the same logic as getCampaignInsights
       const insights = allCampaigns.map(insight => {
@@ -908,7 +910,7 @@ export class MetaAPIService {
 
         // Validate conversion funnel logic (Etap 1 should be >= Etap 2)
         if (booking_step_2 > booking_step_1 && booking_step_1 > 0) {
-          console.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
+          logger.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
         }
 
         // Calculate total conversions from all tracked conversion types
@@ -948,11 +950,11 @@ export class MetaAPIService {
         } as CampaignInsights;
       });
 
-      console.log('✅ COMPLETE: Processed all campaigns with full data');
+      logger.info('✅ COMPLETE: Processed all campaigns with full data');
       return insights;
 
     } catch (error) {
-      console.error('💥 Error in getCompleteCampaignInsights:', error);
+      logger.error('💥 Error in getCompleteCampaignInsights:', error);
       throw error;
     }
   }
@@ -969,7 +971,7 @@ export class MetaAPIService {
       const startDate: string = new Date(year, month - 1, 1).toISOString().split('T')[0] || '';
       const endDate: string = new Date(year, month, 0).toISOString().split('T')[0] || '';
       
-      console.log(`📅 Fetching monthly insights for ${year}-${month.toString().padStart(2, '0')} (${startDate} to ${endDate})`);
+      logger.info(`📅 Fetching monthly insights for ${year}-${month.toString().padStart(2, '0')} (${startDate} to ${endDate})`);
       
       // Use time_increment=1 to get daily breakdown
       const insights = await this.getCampaignInsights(adAccountId, startDate, endDate, 1);
@@ -1009,10 +1011,10 @@ export class MetaAPIService {
         cpc: campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0,
       }));
       
-      console.log(`✅ Aggregated ${aggregatedInsights.length} campaigns for ${year}-${month.toString().padStart(2, '0')}`);
+      logger.info(`✅ Aggregated ${aggregatedInsights.length} campaigns for ${year}-${month.toString().padStart(2, '0')}`);
       return aggregatedInsights;
     } catch (error) {
-      console.error('💥 Error fetching monthly campaign insights:', error);
+      logger.error('💥 Error fetching monthly campaign insights:', error);
       throw error;
     }
   }
@@ -1036,9 +1038,9 @@ export class MetaAPIService {
 
     try {
       const url = `${this.baseUrl}/${endpoint}?${params}`;
-      console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
       
-      console.log('⏱️ Starting Meta API fetch with timeout...');
+      logger.info('⏱️ Starting Meta API fetch with timeout...');
       
       // Create a timeout promise
       const timeoutPromise = new Promise((_, reject) => {
@@ -1051,12 +1053,12 @@ export class MetaAPIService {
         timeoutPromise
       ]) as Response;
       
-      console.log('📡 Meta API fetch completed, processing response...');
+      logger.info('📡 Meta API fetch completed, processing response...');
       
       const data: MetaAPIResponse = await response.json();
       
-      console.log('📥 Meta API Response Status:', response.status);
-      console.log('📥 Meta API Response Data:', {
+      logger.info('📥 Meta API Response Status:', response.status);
+      logger.info('📥 Meta API Response Data:', {
         hasData: !!data.data,
         dataLength: data.data?.length || 0,
         hasError: !!data.error,
@@ -1088,7 +1090,7 @@ export class MetaAPIService {
 
       return campaigns;
     } catch (error) {
-      console.error('❌ Error fetching campaigns:', error);
+      logger.error('❌ Error fetching campaigns:', error);
       throw error;
     }
   }
@@ -1108,9 +1110,9 @@ export class MetaAPIService {
 
     try {
       const url = `${this.baseUrl}/${endpoint}?${params}`;
-      console.log('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
       
-      console.log('⏱️ Starting account info fetch with timeout...');
+      logger.info('⏱️ Starting account info fetch with timeout...');
       
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Account info fetch timeout after 10 seconds')), 10000);
@@ -1121,12 +1123,12 @@ export class MetaAPIService {
         timeoutPromise
       ]) as Response;
       
-      console.log('📡 Account info fetch completed...');
+      logger.info('📡 Account info fetch completed...');
       
       const data = await response.json();
       
-      console.log('📥 Meta API Response Status:', response.status);
-      console.log('📥 Meta API Response Data:', data);
+      logger.info('📥 Meta API Response Status:', response.status);
+      logger.info('📥 Meta API Response Data:', data);
 
       if (data.error) {
         throw new Error(`Meta API Error: ${data.error.message} (Code: ${data.error.code})`);
@@ -1137,7 +1139,7 @@ export class MetaAPIService {
 
       return data;
     } catch (error) {
-      console.error('❌ Error fetching account info:', error);
+      logger.error('❌ Error fetching account info:', error);
       throw error;
     }
   }
@@ -1181,7 +1183,7 @@ export class MetaAPIService {
       const data: MetaAPIResponse = await response.json();
       return data.data?.[0] || {};
     } catch (error) {
-      console.error('Error fetching account insights:', error);
+      logger.error('Error fetching account insights:', error);
       return {};
     }
   }
@@ -1238,7 +1240,7 @@ export class MetaAPIService {
         generated_at: new Date().toISOString(),
       };
     } catch (error) {
-      console.error('Error generating client report:', error);
+      logger.error('Error generating client report:', error);
       throw error;
     }
   }
@@ -1276,7 +1278,7 @@ export class MetaAPIService {
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       
-      console.log('🔗 Meta API Placement Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API Placement Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
       // Add timeout for meta tables (shorter timeout since these are less critical)
       const timeoutPromise = new Promise((_, reject) => {
@@ -1289,7 +1291,7 @@ export class MetaAPIService {
       const data: MetaAPIResponse = await response.json();
 
       if (!response.ok || data.error) {
-        console.error('❌ Meta API Placement Performance Error:', data.error);
+        logger.error('❌ Meta API Placement Performance Error:', data.error);
         throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'}`);
       }
 
@@ -1359,17 +1361,17 @@ export class MetaAPIService {
           cpp: null
         }));
 
-        console.log('✅ Consolidated placement performance:', consolidated.length, 'unique placements');
-        console.log('   Raw placements before consolidation:', rawPlacements.length);
-        console.log('   Consolidated placement types:', Array.from(new Set(consolidated.map(p => p.placement))));
-        console.log('   Consolidation breakdown:', consolidated.map(p => `${p.placement}: ${p.spend.toFixed(2)} spend, ${p.clicks} clicks`));
+        logger.info('✅ Consolidated placement performance:', consolidated.length, 'unique placements');
+        logger.info('   Raw placements before consolidation:', rawPlacements.length);
+        logger.info('   Consolidated placement types:', Array.from(new Set(consolidated.map(p => p.placement))));
+        logger.info('   Consolidation breakdown:', consolidated.map(p => `${p.placement}: ${p.spend.toFixed(2)} spend, ${p.clicks} clicks`));
         
         return consolidated;
       }
 
       return [];
     } catch (error) {
-      console.error('💥 Error fetching placement performance:', error);
+      logger.error('💥 Error fetching placement performance:', error);
       throw error;
     }
   }
@@ -1407,7 +1409,7 @@ export class MetaAPIService {
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       
-      console.log('🔗 Meta API Demographic Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API Demographic Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
       // Add timeout for meta tables (shorter timeout since these are less critical)
       const timeoutPromise = new Promise((_, reject) => {
@@ -1420,7 +1422,7 @@ export class MetaAPIService {
       const data: MetaAPIResponse = await response.json();
 
       if (!response.ok || data.error) {
-        console.error('❌ Meta API Demographic Performance Error:', data.error);
+        logger.error('❌ Meta API Demographic Performance Error:', data.error);
         throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'}`);
       }
 
@@ -1436,13 +1438,13 @@ export class MetaAPIService {
           cpp: insight.cpp ? parseFloat(insight.cpp) : null,
         }));
 
-        console.log('✅ Parsed demographic performance:', demographics.length, 'demographics');
+        logger.info('✅ Parsed demographic performance:', demographics.length, 'demographics');
         return demographics;
       }
 
       return [];
     } catch (error) {
-      console.error('💥 Error fetching demographic performance:', error);
+      logger.error('💥 Error fetching demographic performance:', error);
       throw error;
     }
   }
@@ -1478,7 +1480,7 @@ export class MetaAPIService {
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       
-      console.log('🔗 Meta API Ad Relevance Results URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API Ad Relevance Results URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
       // Add timeout for meta tables (shorter timeout since these are less critical)
       const timeoutPromise = new Promise((_, reject) => {
@@ -1491,7 +1493,7 @@ export class MetaAPIService {
       const data: MetaAPIResponse = await response.json();
 
       if (!response.ok || data.error) {
-        console.error('❌ Meta API Ad Relevance Results Error:', data.error);
+        logger.error('❌ Meta API Ad Relevance Results Error:', data.error);
         throw new Error(`Meta API Error: ${data.error?.message || 'Unknown error'}`);
       }
 
@@ -1504,13 +1506,13 @@ export class MetaAPIService {
           cpp: insight.cpp ? parseFloat(insight.cpp) : null,
         }));
 
-        console.log('✅ Parsed ad relevance results:', ads.length, 'ads');
+        logger.info('✅ Parsed ad relevance results:', ads.length, 'ads');
         return ads;
       }
 
       return [];
     } catch (error) {
-      console.error('💥 Error fetching ad relevance results:', error);
+      logger.error('💥 Error fetching ad relevance results:', error);
       throw error;
     }
   }

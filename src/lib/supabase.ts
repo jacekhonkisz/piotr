@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
+import logger from './logger';
 
 // Get environment variables with robust fallbacks for browser compatibility
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 
@@ -47,7 +48,7 @@ export const supabaseAdmin = supabaseServiceKey
 export const getCurrentUser = async () => {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) {
-    console.error('Error getting current user:', error);
+    logger.error('Error getting current user:', error);
     return null;
   }
   return user;
@@ -74,7 +75,7 @@ export const isAdmin = async (userId?: string) => {
 export const signOut = async () => {
   const { error } = await supabase.auth.signOut();
   if (error) {
-    console.error('Error signing out:', error);
+    logger.error('Error signing out:', error);
     throw error;
   }
 };
@@ -88,7 +89,7 @@ export const getUserProfile = async (userId: string) => {
     .single();
 
   if (error) {
-    console.error('Error getting user profile:', error);
+    logger.error('Error getting user profile:', error);
     return null;
   }
 

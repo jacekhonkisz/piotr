@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initializingRef = useRef(false);
   const profileCacheRef = useRef<{ [key: string]: Profile | null }>({});
   const lastAuthEventRef = useRef<string>('');
-  const _authStateHandlerRef = useRef<any>(null);
+
   const profileRequestQueueRef = useRef<Promise<Profile | null> | null>(null);
   const initializationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastEventTimeRef = useRef<number>(0);

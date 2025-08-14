@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../../lib/meta-api';
+import logger from '../../../../lib/logger';
 
 export async function GET(
   request: NextRequest,
@@ -87,7 +88,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('User authenticated:', user.email, 'ID:', user.id);
+    logger.info('User authenticated:', user.email, 'ID:', user.id);
 
     // Check if user is admin
     const { data: profile, error: profileError } = await supabase
@@ -102,11 +103,11 @@ export async function PUT(
     }
 
     if (profile?.role !== 'admin') {
-      console.log('Access denied for user:', user.email, 'Role:', profile?.role);
+      logger.info('Access denied for user:', user.email, 'Role:', profile?.role);
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    console.log('Admin access confirmed for user:', user.email);
+    logger.info('Admin access confirmed for user:', user.email);
 
     // Get the client to update
     const { data: existingClient, error: fetchError } = await supabase
@@ -121,11 +122,11 @@ export async function PUT(
       return NextResponse.json({ error: 'Client not found or access denied' }, { status: 404 });
     }
 
-    console.log('Client found:', existingClient.name);
+    logger.info('Client found:', existingClient.name);
 
     // Parse request body
     const requestData = await request.json();
-    console.log('Updating client with data:', {
+    logger.info('Updating client with data:', {
       name: requestData.name,
       email: requestData.email,
       contact_emails: requestData.contact_emails
@@ -146,7 +147,7 @@ export async function PUT(
     // Handle token update if provided
     let tokenValidation: any = null;
     if (requestData.meta_access_token) {
-      console.log('🔐 Validating and converting new Meta access token...');
+      logger.info('🔐 Validating and converting new Meta access token...');
       const metaService = new MetaAPIService(requestData.meta_access_token);
       tokenValidation = await metaService.validateAndConvertToken();
 
@@ -160,9 +161,9 @@ export async function PUT(
       const finalToken = tokenValidation.convertedToken || requestData.meta_access_token;
       
       if (tokenValidation.convertedToken) {
-        console.log('✅ Token successfully converted to long-lived token');
+        logger.info('✅ Token successfully converted to long-lived token');
       } else {
-        console.log('ℹ️ Token appears to already be long-lived or conversion not needed');
+        logger.info('ℹ️ Token appears to already be long-lived or conversion not needed');
       }
 
       // Validate the specific ad account ID with the final token
@@ -176,7 +177,7 @@ export async function PUT(
         }, { status: 400 });
       }
 
-      console.log('✅ Ad account validation successful');
+      logger.info('✅ Ad account validation successful');
 
       // Update token-related fields
       updates.meta_access_token = finalToken;
@@ -220,7 +221,7 @@ export async function PUT(
       }, { status: 500 });
     }
 
-    console.log('✅ Client updated successfully:', updatedClient.id);
+    logger.info('Success', updatedClient.id);
 
     return NextResponse.json({
       success: true,
@@ -244,37 +245,37 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  console.log('DELETE request received for client ID:', params.id);
+  logger.info('DELETE request received for client ID:', params.id);
   
   try {
     // Get the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('Unauthorized: Missing or invalid authorization header');
+      logger.info('Unauthorized: Missing or invalid authorization header');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.substring(7);
-    console.log('Token received, length:', token.length);
+    logger.info('Token received, length:', token.length);
 
     // Verify the current user
-    console.log('Verifying user token...');
-    console.log('Token length:', token.length);
-    console.log('Token preview:', token.substring(0, 20) + '...');
+    logger.info('Verifying user token...');
+    logger.info('Token length:', token.length);
+    logger.info('Token preview:', token.substring(0, 20) + '...');
     
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
-      console.log('Invalid token:', authError?.message || 'No user found');
-      console.log('Auth error details:', authError);
+      logger.info('Invalid token:', authError?.message || 'No user found');
+      logger.info('Auth error details:', authError);
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
-    console.log('User verified:', user.email);
-    console.log('User ID from token:', user.id);
+    logger.info('User verified:', user.email);
+    logger.info('User ID from token:', user.id);
 
     // Get user profile to check if admin
-    console.log('Checking user profile for admin role...');
-    console.log('User ID from token:', user.id);
-    console.log('User email from token:', user.email);
+    logger.info('Checking user profile for admin role...');
+    logger.info('User ID from token:', user.id);
+    logger.info('User email from token:', user.email);
     
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -282,28 +283,28 @@ export async function DELETE(
       .eq('id', user.id)
       .single();
 
-    console.log('Profile query result:', { profile, error: profileError });
+    logger.info('Profile query result:', { profile, error: profileError });
 
     if (profileError) {
-      console.log('Profile error:', profileError.message);
-      console.log('Profile error details:', profileError);
+      logger.info('Profile error:', profileError.message);
+      logger.info('Profile error details:', profileError);
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     if (!profile) {
-      console.log('No profile found for user');
+      logger.info('No profile found for user');
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
     if (profile.role !== 'admin') {
-      console.log('User role is not admin:', profile.role);
+      logger.info('User role is not admin:', profile.role);
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    console.log('Admin access confirmed for user:', user.email, 'with role:', profile.role);
+    logger.info('Admin access confirmed for user:', user.email, 'with role:', profile.role);
 
     // Get the client details
-    console.log('Getting client details...');
+    logger.info('Getting client details...');
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('id, name, email')
@@ -312,15 +313,15 @@ export async function DELETE(
       .single();
 
     if (clientError || !client) {
-      console.log('Client not found:', clientError?.message || 'No client data');
+      logger.info('Client not found:', clientError?.message || 'No client data');
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
-    console.log('Client found:', client.name, client.email);
+    logger.info('Client found:', client.name, client.email);
 
     // Try to find and delete the associated user from auth
     // We need to search by email since that's how we link them
     try {
-      console.log('Searching for user in auth to delete...');
+      logger.info('Searching for user in auth to delete...');
       
       // Use a timeout for the auth operations to prevent hanging
       const authPromise = supabase.auth.admin.listUsers();
@@ -362,7 +363,7 @@ export async function DELETE(
     }
 
     // Delete the client record
-    console.log('Deleting client record from database...');
+    logger.info('Deleting client record from database...');
     const { error: deleteClientError } = await supabase
       .from('clients')
       .delete()
@@ -373,7 +374,7 @@ export async function DELETE(
       throw deleteClientError;
     }
 
-    console.log('Client record deleted successfully');
+    logger.info('Client record deleted successfully');
     return NextResponse.json({ 
       success: true, 
       message: `Client ${client.name} (${client.email}) deleted successfully` 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import EmailService from '../../../lib/email';
+import logger from '../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate the interactive PDF first
-    console.log('🔄 Generating interactive PDF for client:', client.name);
+    logger.info('🔄 Generating interactive PDF for client:', client.name);
     
     const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-pdf`, {
       method: 'POST',
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfBuffer = await pdfResponse.arrayBuffer();
-    console.log('✅ PDF generated successfully, size:', pdfBuffer.byteLength, 'bytes');
+    logger.info('Success', pdfBuffer.byteLength, 'bytes');
 
     // Generate report data for email
     const reportData = {
@@ -189,7 +190,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('✅ Interactive report sent successfully to:', emailRecipient || client.email);
+    logger.info('Success', emailRecipient || client.email);
 
     return NextResponse.json({
       success: true,

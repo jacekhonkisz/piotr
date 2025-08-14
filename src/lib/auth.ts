@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
+import logger from './logger';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,13 +19,13 @@ export async function verifyUserExists(email: string): Promise<boolean> {
       .single();
 
     if (error) {
-      console.error('Error verifying user:', error);
+      logger.error('Error verifying user:', error);
       return false;
     }
 
     return !!data;
   } catch (error) {
-    console.error('Error in verifyUserExists:', error);
+    logger.error('Error in verifyUserExists:', error);
     return false;
   }
 }
@@ -32,7 +33,7 @@ export async function verifyUserExists(email: string): Promise<boolean> {
 // Helper function for user creation with better error handling
 export async function createUserProfile(user: any): Promise<void> {
   try {
-    console.log('Creating profile for user:', user.email);
+    logger.info('Creating profile for user:', user.email);
     
     const { data, error } = await supabase
       .from('profiles')
@@ -47,18 +48,18 @@ export async function createUserProfile(user: any): Promise<void> {
       .single();
 
     if (error) {
-      console.error('Profile creation error:', error);
+      logger.error('Profile creation error:', error);
       // Don't throw error for duplicate key (user already exists)
       if (error.code !== '23505') {
         throw error;
       } else {
-        console.log('Profile already exists, continuing...');
+        logger.info('Profile already exists, continuing...');
       }
     } else {
-      console.log('Profile created successfully:', data);
+      logger.info('Profile created successfully:', data);
     }
   } catch (error: any) {
-    console.error('Error in createUserProfile:', error);
+    logger.error('Error in createUserProfile:', error);
     // Only throw if it's not a duplicate key error
     if (error.code !== '23505') {
       throw error;
@@ -75,7 +76,7 @@ export async function updateProfileTimestamp(userId: string): Promise<void> {
       .eq('id', userId);
 
     if (error) {
-      console.error('Error updating profile timestamp:', error);
+      logger.error('Error updating profile timestamp:', error);
       throw error;
     }
   } catch (error) {
@@ -108,7 +109,7 @@ if (typeof window !== 'undefined') {
       });
     }
   } catch (error) {
-    console.warn('Failed to load profile cache from localStorage:', error);
+    logger.warn('Failed to load profile cache from localStorage:', error);
   }
 }
 
@@ -118,7 +119,7 @@ function saveCacheToStorage() {
     try {
       localStorage.setItem('profile_cache', JSON.stringify(profileCache));
     } catch (error) {
-      console.warn('Failed to save profile cache to localStorage:', error);
+      logger.warn('Failed to save profile cache to localStorage:', error);
     }
   }
 }
@@ -135,24 +136,24 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     const sessionTime = performance.now() - sessionStart;
     
     if (error) {
-      console.error('getCurrentProfile: Session error:', error);
+      logger.error('getCurrentProfile: Session error:', error);
       return null;
     }
 
     if (!session?.user) {
-      console.log('getCurrentProfile: No session or user found');
+      logger.info('getCurrentProfile: No session or user found');
       return null;
     }
 
     const user = session.user;
-    console.log(`getCurrentProfile: Session retrieved in ${sessionTime.toFixed(2)}ms`);
-    console.log('getCurrentProfile: User found:', user.email, 'ID:', user.id);
+    logger.info(`getCurrentProfile: Session retrieved in ${sessionTime.toFixed(2)}ms`);
+    logger.info('getCurrentProfile: User found:', user.email, 'ID:', user.id);
 
     const cacheKey = user.id;
     
     // Check if there's already an ongoing request for this user (deduplication)
     if (ongoingProfileRequests.has(cacheKey)) {
-      console.log('getCurrentProfile: Returning ongoing request for user:', user.id);
+      logger.info('getCurrentProfile: Returning ongoing request for user:', user.id);
       return ongoingProfileRequests.get(cacheKey)!;
     }
 
@@ -161,13 +162,13 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     const now = Date.now();
     
     if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-      console.log('getCurrentProfile: Returning cached profile');
+      logger.info('getCurrentProfile: Returning cached profile');
       const totalTime = performance.now() - startTime;
-      console.log(`getCurrentProfile: Total time (cached): ${totalTime.toFixed(2)}ms`);
+      logger.info(`getCurrentProfile: Total time (cached): ${totalTime.toFixed(2)}ms`);
       return cached.profile || null;
     }
 
-    console.log('getCurrentProfile: Cache miss, fetching from database for user ID:', user.id);
+    logger.info('getCurrentProfile: Cache miss, fetching from database for user ID:', user.id);
     
     // Create promise for this request and store it for deduplication
     const profileRequest = (async (): Promise<Profile | null> => {
@@ -193,7 +194,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
           const queryTime = performance.now() - queryStart;
 
           if (error) {
-            console.error(`Attempt ${attempt + 1} failed:`, error);
+            logger.error(`Attempt ${attempt + 1} failed:`, error);
             lastError = error;
             
             // Don't retry on certain errors
@@ -204,14 +205,14 @@ export async function getCurrentProfile(): Promise<Profile | null> {
             // Wait before retry (exponential backoff)
             if (attempt < MAX_RETRIES) {
               const delay = Math.pow(2, attempt) * 1000; // 1s, 2s backoff
-              console.log(`Retrying in ${delay}ms...`);
+              logger.info(`Retrying in ${delay}ms...`);
               await new Promise(resolve => setTimeout(resolve, delay));
             }
             continue;
           }
 
-          console.log(`getCurrentProfile: Profile fetched successfully in ${queryTime.toFixed(2)}ms`);
-          console.log('getCurrentProfile: Profile data:', profile);
+          logger.info(`getCurrentProfile: Profile fetched successfully in ${queryTime.toFixed(2)}ms`);
+          logger.info('getCurrentProfile: Profile data:', profile);
 
           // Cache the result
           profileCache[cacheKey] = {
@@ -223,25 +224,25 @@ export async function getCurrentProfile(): Promise<Profile | null> {
           saveCacheToStorage();
 
           const totalTime = performance.now() - startTime;
-          console.log(`getCurrentProfile: Total time (database): ${totalTime.toFixed(2)}ms`);
+          logger.info(`getCurrentProfile: Total time (database): ${totalTime.toFixed(2)}ms`);
           
           return profile;
           
         } catch (error: any) {
-          console.error(`Attempt ${attempt + 1} failed with exception:`, error);
+          logger.error(`Attempt ${attempt + 1} failed with exception:`, error);
           lastError = error;
           
           if (attempt < MAX_RETRIES) {
             const delay = Math.pow(2, attempt) * 1000;
-            console.log(`Retrying in ${delay}ms...`);
+            logger.info(`Retrying in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
       }
 
       // All retries failed
-      console.error('getCurrentProfile: All retry attempts failed');
-      console.error('Last error:', lastError);
+      logger.error('getCurrentProfile: All retry attempts failed');
+      logger.error('Last error:', lastError);
       
       // Cache null result to prevent repeated failed requests (with shorter duration)
       profileCache[cacheKey] = {
@@ -251,7 +252,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
       saveCacheToStorage();
       
       const totalTime = performance.now() - startTime;
-      console.log(`getCurrentProfile: Total time (failed): ${totalTime.toFixed(2)}ms`);
+      logger.info(`getCurrentProfile: Total time (failed): ${totalTime.toFixed(2)}ms`);
       
       return null;
     })();
@@ -268,9 +269,9 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     }
     
   } catch (error: any) {
-    console.error('Unexpected error in getCurrentProfile:', error);
+    logger.error('Unexpected error in getCurrentProfile:', error);
     const totalTime = performance.now() - startTime;
-    console.log(`getCurrentProfile: Total time (error): ${totalTime.toFixed(2)}ms`);
+    logger.info(`getCurrentProfile: Total time (error): ${totalTime.toFixed(2)}ms`);
     return null;
   }
 }
@@ -294,13 +295,13 @@ export function clearProfileCache(userId?: string) {
  */
 export async function warmProfileCache(userId: string): Promise<void> {
   try {
-    console.log('Warming profile cache for user:', userId);
+    logger.info('Warming profile cache for user:', userId);
     const profile = await getCurrentProfile();
     if (profile) {
-      console.log('Profile cache warmed successfully');
+      logger.info('Profile cache warmed successfully');
     }
   } catch (error) {
-    console.warn('Failed to warm profile cache:', error);
+    logger.warn('Failed to warm profile cache:', error);
   }
 }
 
@@ -313,7 +314,7 @@ export async function updateProfile(updates: Partial<Profile>) {
     throw new Error('User not authenticated');
   }
 
-  console.log('Updating profile for user:', user.id);
+  logger.info('Updating profile for user:', user.id);
 
   const { data, error } = await supabase
     .from('profiles')
@@ -323,7 +324,7 @@ export async function updateProfile(updates: Partial<Profile>) {
     .single();
 
   if (error) {
-    console.error('Error updating profile:', error);
+    logger.error('Error updating profile:', error);
     throw error;
   }
 
@@ -334,7 +335,7 @@ export async function updateProfile(updates: Partial<Profile>) {
   };
   saveCacheToStorage();
 
-  console.log('Profile updated successfully');
+  logger.info('Profile updated successfully');
   return data;
 }
 
@@ -361,7 +362,7 @@ export function getProfileCacheStats() {
  */
 export async function signIn(email: string, password: string) {
   try {
-    console.log('Signing in user:', email);
+    logger.info('Signing in user:', email);
     
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -369,14 +370,14 @@ export async function signIn(email: string, password: string) {
     });
 
     if (error) {
-      console.error('Sign in error:', error);
+      logger.error('Sign in error:', error);
       throw error;
     }
 
-    console.log('Sign in successful');
+    logger.info('Sign in successful');
     return { data, error: null };
   } catch (error) {
-    console.error('Error in signIn:', error);
+    logger.error('Error in signIn:', error);
     return { data: null, error };
   }
 }
@@ -386,7 +387,7 @@ export async function signIn(email: string, password: string) {
  */
 export async function signUp(email: string, password: string) {
   try {
-    console.log('Signing up user:', email);
+    logger.info('Signing up user:', email);
     
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -394,14 +395,14 @@ export async function signUp(email: string, password: string) {
     });
 
     if (error) {
-      console.error('Sign up error:', error);
+      logger.error('Sign up error:', error);
       throw error;
     }
 
-    console.log('Sign up successful');
+    logger.info('Sign up successful');
     return { data, error: null };
   } catch (error) {
-    console.error('Error in signUp:', error);
+    logger.error('Error in signUp:', error);
     return { data: null, error };
   }
 }
@@ -411,7 +412,7 @@ export async function signUp(email: string, password: string) {
  */
 export async function signOut() {
   try {
-    console.log('Signing out user');
+    logger.info('Signing out user');
     
     // Clear profile cache
     clearProfileCache();
@@ -419,14 +420,14 @@ export async function signOut() {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
-      console.error('Sign out error:', error);
+      logger.error('Sign out error:', error);
       throw error;
     }
 
-    console.log('Sign out successful');
+    logger.info('Sign out successful');
     return { error: null };
   } catch (error) {
-    console.error('Error in signOut:', error);
+    logger.error('Error in signOut:', error);
     return { error };
   }
 }
@@ -438,4 +439,17 @@ export interface AuthState {
   user: any;
   profile: Profile | null;
   loading: boolean;
+}
+
+/**
+ * Check if current user is admin
+ */
+export async function isCurrentUserAdmin(): Promise<boolean> {
+  try {
+    const profile = await getCurrentProfile();
+    return profile?.role === 'admin';
+  } catch (error) {
+    logger.error('Error checking admin status:', error);
+    return false;
+  }
 } 

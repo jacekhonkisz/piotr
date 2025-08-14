@@ -22,7 +22,7 @@ describe('Basic API Tests', () => {
       status: 200,
     })
 
-    const { req } = createMocks({
+    const { req: _ } = createMocks({
       method: 'GET',
       url: '/api/clients',
       headers: {

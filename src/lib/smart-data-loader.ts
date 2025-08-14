@@ -6,6 +6,7 @@ import {
   validateDateRange,
   type DateRange 
 } from './date-range-utils';
+import logger from './logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,7 +55,7 @@ export class SmartDataLoader {
 
   clearCache(): void {
     this.cache.clear();
-    console.log('🗑️ SmartDataLoader cache cleared');
+    logger.info('🗑️ SmartDataLoader cache cleared');
   }
 
   /**
@@ -68,7 +69,7 @@ export class SmartDataLoader {
     const startDate = new Date(dateRange.start);
     const isRecentData = startDate >= twelveMonthsAgo;
     
-    console.log(`🔍 Smart data loading for client ${clientId}:`, {
+    logger.info(`🔍 Smart data loading for client ${clientId}:`, {
       dateRange,
       isRecentData,
       twelveMonthsAgo: twelveMonthsAgo.toISOString().split('T')[0]
@@ -108,7 +109,7 @@ export class SmartDataLoader {
       const cached = this.cache.get(cacheKey);
       
       if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
-        console.log(`📦 Using cached storage data for ${clientId}`);
+        logger.info(`📦 Using cached storage data for ${clientId}`);
         return {
           data: cached.data,
           source: 'stored',
@@ -132,7 +133,7 @@ export class SmartDataLoader {
         .single();
 
       if (error || !storedSummary) {
-        console.log(`📦 No stored data found for ${clientId} on ${dateRange.start}`);
+        logger.info(`📦 No stored data found for ${clientId} on ${dateRange.start}`);
         return null;
       }
 
@@ -141,7 +142,7 @@ export class SmartDataLoader {
       const maxAge = summaryType === 'weekly' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
       
       if (dataAge > maxAge) {
-        console.log(`📦 Stored data is stale for ${clientId}, will fetch fresh data`);
+        logger.info(`📦 Stored data is stale for ${clientId}, will fetch fresh data`);
         return null;
       }
 
@@ -151,7 +152,7 @@ export class SmartDataLoader {
         timestamp: Date.now()
       });
 
-      console.log(`📦 Using stored data for ${clientId} (${summaryType})`);
+      logger.info(`📦 Using stored data for ${clientId} (${summaryType})`);
       
       return {
         data: storedSummary,
@@ -162,7 +163,7 @@ export class SmartDataLoader {
       };
 
     } catch (error) {
-      console.error('❌ Error loading from storage:', error);
+      logger.error('❌ Error loading from storage:', error);
       return null;
     }
   }
@@ -172,7 +173,7 @@ export class SmartDataLoader {
    */
   private async loadFromAPI(clientId: string, dateRange: DateRange): Promise<{ data: any }> {
     try {
-      console.log(`🌐 Fetching live data from Meta API for ${clientId}`);
+      logger.info(`🌐 Fetching live data from Meta API for ${clientId}`);
       
       // Validate date range first
       const validation = validateDateRange(dateRange.start, dateRange.end);
@@ -184,7 +185,7 @@ export class SmartDataLoader {
       const rangeAnalysis = analyzeDateRange(dateRange.start, dateRange.end);
       const apiMethod = selectMetaAPIMethod(dateRange);
       
-      console.log(`📅 Date range analysis:`, {
+      logger.info(`📅 Date range analysis:`, {
         rangeType: rangeAnalysis.rangeType,
         daysDiff: rangeAnalysis.daysDiff,
         isValidMonthly: rangeAnalysis.isValidMonthly,
@@ -219,14 +220,14 @@ export class SmartDataLoader {
       let campaignInsights: any[] = [];
       
       if (apiMethod.method === 'getMonthlyCampaignInsights') {
-        console.log(`📅 Using monthly insights method for ${apiMethod.parameters.year}-${apiMethod.parameters.month}`);
+        logger.info(`📅 Using monthly insights method for ${apiMethod.parameters.year}-${apiMethod.parameters.month}`);
         campaignInsights = await metaService.getMonthlyCampaignInsights(
           adAccountId,
           apiMethod.parameters.year,
           apiMethod.parameters.month
         );
       } else {
-        console.log(`📅 Using standard insights method with time increment: ${apiMethod.parameters.timeIncrement}`);
+        logger.info(`📅 Using standard insights method with time increment: ${apiMethod.parameters.timeIncrement}`);
         campaignInsights = await metaService.getCampaignInsights(
           adAccountId,
           apiMethod.parameters.dateStart,
@@ -251,7 +252,7 @@ export class SmartDataLoader {
           adRelevanceResults: adRelevanceData
         };
       } catch (error) {
-        console.warn('⚠️ Failed to fetch meta tables:', error);
+        logger.warn('⚠️ Failed to fetch meta tables:', error);
       }
 
       const result = {
@@ -268,11 +269,11 @@ export class SmartDataLoader {
         metaTables
       };
 
-      console.log(`✅ Live data fetched successfully for ${clientId}`);
+      logger.info(`✅ Live data fetched successfully for ${clientId}`);
       return { data: result };
 
     } catch (error) {
-      console.error('❌ Error loading from API:', error);
+      logger.error('❌ Error loading from API:', error);
       throw error;
     }
   }
@@ -315,13 +316,13 @@ export class SmartDataLoader {
         });
 
       if (error) {
-        console.error('❌ Error storing summary:', error);
+        logger.error('❌ Error storing summary:', error);
       } else {
-        console.log(`💾 Stored ${summaryType} summary for ${clientId} on ${dateRange.start}`);
+        logger.info(`💾 Stored ${summaryType} summary for ${clientId} on ${dateRange.start}`);
       }
 
     } catch (error) {
-      console.error('❌ Error storing data:', error);
+      logger.error('❌ Error storing data:', error);
     }
   }
 
@@ -352,12 +353,12 @@ export class SmartDataLoader {
       const { error } = await supabase.rpc('cleanup_old_campaign_summaries');
       
       if (error) {
-        console.error('❌ Error cleaning up old data:', error);
+        logger.error('❌ Error cleaning up old data:', error);
       } else {
-        console.log('🧹 Cleaned up old campaign summaries');
+        logger.info('🧹 Cleaned up old campaign summaries');
       }
     } catch (error) {
-      console.error('❌ Error in cleanup:', error);
+      logger.error('❌ Error in cleanup:', error);
     }
   }
 

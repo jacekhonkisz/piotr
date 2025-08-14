@@ -228,11 +228,15 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
     const totalDays = validData.length;
     if (totalDays === 0) return '';
     
+    // Calculate the actual date for this bar
     const today = new Date();
-    // Calculate days back: if we have 7 days, index 0 = 6 days ago, index 6 = yesterday (1 day ago)
-    const daysBack = totalDays - dayIndex;
-    const targetDate = new Date(today);
-    targetDate.setDate(today.getDate() - daysBack);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    
+    // Calculate days back from yesterday
+    const daysBack = totalDays - 1 - dayIndex;
+    const targetDate = new Date(yesterday);
+    targetDate.setDate(yesterday.getDate() - daysBack);
     
     return targetDate.toLocaleDateString('pl-PL', { 
       day: 'numeric',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generatePassword } from '../../../lib/user-credentials';
 import { MetaAPIService } from '../../../lib/meta-api';
+import logger from '../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -131,7 +132,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('User authenticated:', user.email, 'ID:', user.id);
+    logger.info('User authenticated:', user.email, 'ID:', user.id);
 
     // Check if user is admin
     const { data: profile, error: profileError } = await supabase
@@ -146,17 +147,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (profile?.role !== 'admin') {
-      console.log('Access denied for user:', user.email, 'Role:', profile?.role);
+      logger.info('Access denied for user:', user.email, 'Role:', profile?.role);
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    console.log('Admin access confirmed for user:', user.email);
+    logger.info('Admin access confirmed for user:', user.email);
 
     // Parse request body
     const requestData = await request.json();
 
     // Validate and convert Meta access token to long-lived token
-    console.log('🔐 Validating and converting Meta access token...');
+    logger.info('🔐 Validating and converting Meta access token...');
     const metaService = new MetaAPIService(requestData.meta_access_token);
     const tokenValidation = await metaService.validateAndConvertToken();
 
@@ -170,13 +171,13 @@ export async function POST(request: NextRequest) {
     const finalToken = tokenValidation.convertedToken || requestData.meta_access_token;
     
     if (tokenValidation.convertedToken) {
-      console.log('✅ Token successfully converted to long-lived token');
+      logger.info('✅ Token successfully converted to long-lived token');
     } else {
-      console.log('ℹ️ Token appears to already be long-lived or conversion not needed');
+      logger.info('ℹ️ Token appears to already be long-lived or conversion not needed');
     }
 
     // Validate the specific ad account ID with the final token
-    console.log('🏢 Validating ad account access...');
+    logger.info('🏢 Validating ad account access...');
     const accountValidation = await metaService.validateAdAccount(requestData.ad_account_id);
     
     if (!accountValidation.valid) {
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log('✅ Ad account validation successful');
+    logger.info('✅ Ad account validation successful');
 
     // Check if user already exists in auth
     try {
@@ -258,7 +259,7 @@ export async function POST(request: NextRequest) {
         await supabase.auth.admin.deleteUser(authData.user.id);
         return NextResponse.json({ error: 'Failed to create user profile' }, { status: 400 });
       }
-      console.log('Profile created successfully');
+      logger.info('Profile created successfully');
     } else {
       // Update existing profile with our data (likely auto-created by Supabase)
       const { error: updateProfileError } = await supabase
@@ -276,7 +277,7 @@ export async function POST(request: NextRequest) {
         await supabase.auth.admin.deleteUser(authData.user.id);
         return NextResponse.json({ error: 'Failed to update user profile' }, { status: 400 });
       }
-      console.log('Profile updated successfully');
+      logger.info('Profile updated successfully');
     }
 
     // Add client to clients table with the long-lived token and enhanced token info
@@ -314,7 +315,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create client record' }, { status: 400 });
     }
 
-    console.log('✅ Client created successfully:', newClient.id);
+    logger.info('Success', newClient.id);
     console.log(`📊 Ad Account: ${accountValidation.account?.name || requestData.ad_account_id}`);
     console.log(`🔑 Token Status: ${tokenValidation.convertedToken ? 'Converted to long-lived' : 'Already long-lived'}`);
 

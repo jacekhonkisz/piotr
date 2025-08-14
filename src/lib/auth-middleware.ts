@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import logger from './logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -95,7 +96,7 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
     };
 
   } catch (error) {
-    console.error('Authentication error:', error);
+    logger.error('Authentication error:', error);
     return {
       success: false,
       error: 'Internal authentication error',

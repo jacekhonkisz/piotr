@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Access denied - admin only', 403);
     }
     
-    console.log('📊 Data lifecycle status requested by admin:', user.email);
+    logger.info('Data processing', user.email);
     
     const lifecycleManager = DataLifecycleManager.getInstance();
     const status = await lifecycleManager.getLifecycleStatus();

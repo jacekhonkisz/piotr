@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIService } from '../../../../lib/meta-api';
+import logger from '../../../../lib/logger';
 
 // This endpoint is for automated daily collection - no authentication required
 // Should only be called from internal scripts or cron jobs
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🚀 Starting automated daily KPI collection...');
+    logger.info('🚀 Starting automated daily KPI collection...');
     
     if (!supabaseAdmin) {
       return NextResponse.json({ error: 'Database connection error' }, { status: 500 });
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!clients || clients.length === 0) {
-      console.log('⚠️ No clients with Meta tokens found');
+      logger.info('⚠️ No clients with Meta tokens found');
       return NextResponse.json({ 
         success: true, 
         message: 'No clients to process',
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Clean up old data
-    console.log('\n🧹 Cleaning up old daily KPI data...');
+    logger.info('\n🧹 Cleaning up old daily KPI data...');
     const today = new Date();
     const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const cutoffDate = new Date(currentMonthStart);
@@ -203,7 +204,7 @@ export async function POST(request: NextRequest) {
       console.log(`✅ Cleaned up data older than ${cutoffDateStr}`);
     }
 
-    console.log('\n📊 Collection Summary:');
+    logger.info('\n📊 Collection Summary:');
     console.log(`✅ Successful: ${successCount}`);
     console.log(`❌ Failed: ${failureCount}`);
     console.log(`📈 Total clients: ${clients.length}`);

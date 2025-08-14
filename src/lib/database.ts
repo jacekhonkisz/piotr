@@ -1,8 +1,8 @@
 import { supabase } from './supabase';
 import type { Database } from './database.types';
+import logger from './logger';
 
-type Client = Database['public']['Tables']['clients']['Row'];
-type Report = Database['public']['Tables']['reports']['Row'];
+// Removed unused type declarations
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
 
 /**
@@ -15,7 +15,7 @@ export async function batchQueries<T extends Record<string, any>>(
     const results = await Promise.all(queries.map(query => query()));
     return results;
   } catch (error) {
-    console.error('Error in batch queries:', error);
+    logger.error('Error in batch queries:', error);
     throw error;
   }
 }
@@ -58,7 +58,7 @@ export async function getClientDashboardData(clientId: string) {
       campaigns: campaignsResult.data || []
     };
   } catch (error) {
-    console.error('Error fetching client dashboard data:', error);
+    logger.error('Error fetching client dashboard data:', error);
     throw error;
   }
 }
@@ -68,7 +68,7 @@ export async function getClientDashboardData(clientId: string) {
  */
 export async function getAdminDashboardStats(adminId: string) {
   try {
-    console.log('Getting admin dashboard stats for adminId:', adminId);
+    logger.info('Getting admin dashboard stats for adminId:', adminId);
     
     // First get all clients for this admin
     const { data: clients, error: clientsError } = await supabase
@@ -77,15 +77,15 @@ export async function getAdminDashboardStats(adminId: string) {
       .eq('admin_id', adminId);
 
     if (clientsError) {
-      console.error('Error fetching clients:', clientsError);
+      logger.error('Error fetching clients:', clientsError);
       throw clientsError;
     }
 
-    console.log('Found clients:', clients?.length || 0);
+    logger.info('Found clients:', clients?.length || 0);
     const clientIds = clients?.map(client => client.id) || [];
     
     if (clientIds.length === 0) {
-      console.log('No clients found, returning empty stats');
+      logger.info('No clients found, returning empty stats');
       return {
         totalClients: 0,
         totalReports: 0,
@@ -94,7 +94,7 @@ export async function getAdminDashboardStats(adminId: string) {
       };
     }
 
-    console.log('Client IDs:', clientIds);
+    logger.info('Client IDs:', clientIds);
 
     // Get reports and campaigns for all clients of this admin
     const [reportsResult, campaignsResult] = await Promise.all([
@@ -111,12 +111,12 @@ export async function getAdminDashboardStats(adminId: string) {
     ]);
 
     if (reportsResult.error) {
-      console.error('Error fetching reports:', reportsResult.error);
+      logger.error('Error fetching reports:', reportsResult.error);
       throw reportsResult.error;
     }
 
     if (campaignsResult.error) {
-      console.error('Error fetching campaigns:', campaignsResult.error);
+      logger.error('Error fetching campaigns:', campaignsResult.error);
       throw campaignsResult.error;
     }
 
@@ -130,10 +130,10 @@ export async function getAdminDashboardStats(adminId: string) {
       totalSpend
     };
 
-    console.log('Admin dashboard stats:', stats);
+    logger.info('Admin dashboard stats:', stats);
     return stats;
   } catch (error) {
-    console.error('Error fetching admin dashboard stats:', error);
+    logger.error('Error fetching admin dashboard stats:', error);
     throw error;
   }
 }
@@ -185,7 +185,7 @@ export async function getReportsWithCampaigns(clientId: string, limit: number = 
       };
     });
   } catch (error) {
-    console.error('Error fetching reports with campaigns:', error);
+    logger.error('Error fetching reports with campaigns:', error);
     throw error;
   }
 }
@@ -221,7 +221,7 @@ export async function getReportById(reportId: string) {
       campaigns: campaigns || []
     };
   } catch (error) {
-    console.error('Error fetching report by ID:', error);
+    logger.error('Error fetching report by ID:', error);
     throw error;
   }
 }

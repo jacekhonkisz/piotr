@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from './meta-api';
 import { SmartDataLoader } from './smart-data-loader';
 import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';
+import logger from './logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,16 +35,16 @@ export class BackgroundDataCollector {
    */
   async collectMonthlySummaries(): Promise<void> {
     if (this.isRunning) {
-      console.log('⚠️ Background data collection already running');
+      logger.info('⚠️ Background data collection already running');
       return;
     }
 
     this.isRunning = true;
-    console.log('📅 Starting monthly data collection...');
+    logger.info('📅 Starting monthly data collection...');
 
     try {
       const clients = await this.getAllActiveClients();
-      console.log(`📊 Found ${clients.length} active clients for monthly collection`);
+      logger.info(`📊 Found ${clients.length} active clients for monthly collection`);
 
       for (const client of clients) {
         try {
@@ -51,13 +52,13 @@ export class BackgroundDataCollector {
           // Add delay between clients to avoid rate limiting
           await this.delay(2000);
         } catch (error) {
-          console.error(`❌ Failed to collect monthly summary for ${client.name}:`, error);
+          logger.error(`❌ Failed to collect monthly summary for ${client.name}:`, error);
         }
       }
 
-      console.log('✅ Monthly data collection completed');
+      logger.info('✅ Monthly data collection completed');
     } catch (error) {
-      console.error('❌ Error in monthly data collection:', error);
+      logger.error('❌ Error in monthly data collection:', error);
     } finally {
       this.isRunning = false;
     }
@@ -68,16 +69,16 @@ export class BackgroundDataCollector {
    */
   async collectWeeklySummaries(): Promise<void> {
     if (this.isRunning) {
-      console.log('⚠️ Background data collection already running');
+      logger.info('⚠️ Background data collection already running');
       return;
     }
 
     this.isRunning = true;
-    console.log('📅 Starting weekly data collection...');
+    logger.info('📅 Starting weekly data collection...');
 
     try {
       const clients = await this.getAllActiveClients();
-      console.log(`📊 Found ${clients.length} active clients for weekly collection`);
+      logger.info(`📊 Found ${clients.length} active clients for weekly collection`);
 
       for (const client of clients) {
         try {
@@ -85,13 +86,13 @@ export class BackgroundDataCollector {
           // Add delay between clients to avoid rate limiting
           await this.delay(2000);
         } catch (error) {
-          console.error(`❌ Failed to collect weekly summary for ${client.name}:`, error);
+          logger.error(`❌ Failed to collect weekly summary for ${client.name}:`, error);
         }
       }
 
-      console.log('✅ Weekly data collection completed');
+      logger.info('✅ Weekly data collection completed');
     } catch (error) {
-      console.error('❌ Error in weekly data collection:', error);
+      logger.error('❌ Error in weekly data collection:', error);
     } finally {
       this.isRunning = false;
     }
@@ -101,7 +102,7 @@ export class BackgroundDataCollector {
    * Collect monthly summary for a specific client
    */
   private async collectMonthlySummaryForClient(client: Client): Promise<void> {
-    console.log(`📊 Collecting monthly summary for ${client.name}...`);
+    logger.info(`📊 Collecting monthly summary for ${client.name}...`);
 
     // Get the last 12 months using standardized utilities
     const currentDate = new Date();
@@ -123,7 +124,7 @@ export class BackgroundDataCollector {
 
     // Initialize Meta API service
     if (!client.meta_access_token || !client.ad_account_id) {
-      console.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
+      logger.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
       return;
     }
 
@@ -136,7 +137,7 @@ export class BackgroundDataCollector {
     // Validate token
     const tokenValidation = await metaService.validateToken();
     if (!tokenValidation.valid) {
-      console.warn(`⚠️ Invalid token for ${client.name}, skipping`);
+      logger.warn(`⚠️ Invalid token for ${client.name}, skipping`);
       return;
     }
 
@@ -146,7 +147,7 @@ export class BackgroundDataCollector {
 
     for (const monthData of monthsToCollect) {
       try {
-        console.log(`📅 Collecting ${monthData.year}-${monthData.month.toString().padStart(2, '0')} for ${client.name}`);
+        logger.info(`📅 Collecting ${monthData.year}-${monthData.month.toString().padStart(2, '0')} for ${client.name}`);
 
         // Fetch COMPLETE campaign insights using improved method with pagination
         // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
@@ -156,14 +157,14 @@ export class BackgroundDataCollector {
           monthData.endDate
         );
 
-        console.log(`📊 Retrieved ${campaignInsights.length} campaigns with complete data`);
+        logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete data`);
 
         // Calculate totals from complete campaign data
         const totals = this.calculateTotals(campaignInsights);
 
         // Count active campaigns (all returned campaigns are considered active)
         const activeCampaignCount = campaignInsights.length;
-        console.log(`📈 Active campaigns for ${monthData.year}-${monthData.month}: ${activeCampaignCount}`);
+        logger.info(`📈 Active campaigns for ${monthData.year}-${monthData.month}: ${activeCampaignCount}`);
 
         // Fetch meta tables
         let metaTables = null;
@@ -181,7 +182,7 @@ export class BackgroundDataCollector {
             adRelevanceResults: adRelevanceData
           };
         } catch (error) {
-          console.warn(`⚠️ Failed to fetch meta tables for ${client.name} ${monthData.year}-${monthData.month}:`, error);
+          logger.warn(`⚠️ Failed to fetch meta tables for ${client.name} ${monthData.year}-${monthData.month}:`, error);
         }
 
         // Store the summary
@@ -193,13 +194,13 @@ export class BackgroundDataCollector {
           activeCampaignCount
         });
 
-        console.log(`✅ Stored monthly summary for ${client.name} ${monthData.year}-${monthData.month}`);
+        logger.info(`✅ Stored monthly summary for ${client.name} ${monthData.year}-${monthData.month}`);
 
         // Add delay between months to avoid rate limiting
         await this.delay(1000);
 
       } catch (error) {
-        console.error(`❌ Failed to collect ${monthData.year}-${monthData.month} for ${client.name}:`, error);
+        logger.error(`❌ Failed to collect ${monthData.year}-${monthData.month} for ${client.name}:`, error);
       }
     }
   }
@@ -208,7 +209,7 @@ export class BackgroundDataCollector {
    * Collect weekly summary for a specific client
    */
   private async collectWeeklySummaryForClient(client: Client): Promise<void> {
-    console.log(`📊 Collecting weekly summary for ${client.name}...`);
+    logger.info(`📊 Collecting weekly summary for ${client.name}...`);
 
     // Get the last 52 weeks using standardized utilities
     const currentDate = new Date();
@@ -228,7 +229,7 @@ export class BackgroundDataCollector {
 
     // Initialize Meta API service
     if (!client.meta_access_token || !client.ad_account_id) {
-      console.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
+      logger.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
       return;
     }
 
@@ -241,7 +242,7 @@ export class BackgroundDataCollector {
     // Validate token
     const tokenValidation = await metaService.validateToken();
     if (!tokenValidation.valid) {
-      console.warn(`⚠️ Invalid token for ${client.name}, skipping`);
+      logger.warn(`⚠️ Invalid token for ${client.name}, skipping`);
       return;
     }
 
@@ -251,7 +252,7 @@ export class BackgroundDataCollector {
 
     for (const weekData of weeksToCollect) {
       try {
-        console.log(`📅 Collecting week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
+        logger.info(`📅 Collecting week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
 
         // Fetch COMPLETE weekly campaign insights using improved method with pagination
         const campaignInsights = await metaService.getCompleteCampaignInsights(
@@ -260,7 +261,7 @@ export class BackgroundDataCollector {
           weekData.endDate
         );
 
-        console.log(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
+        logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
 
         // Calculate totals from complete campaign data
         const totals = this.calculateTotals(campaignInsights);
@@ -284,7 +285,7 @@ export class BackgroundDataCollector {
             adRelevanceResults: adRelevanceData
           };
         } catch (error) {
-          console.warn(`⚠️ Failed to fetch meta tables for ${client.name} week ${weekData.weekNumber}:`, error);
+          logger.warn(`⚠️ Failed to fetch meta tables for ${client.name} week ${weekData.weekNumber}:`, error);
         }
 
         // Store the summary
@@ -296,13 +297,13 @@ export class BackgroundDataCollector {
           activeCampaignCount
         });
 
-        console.log(`✅ Stored weekly summary for ${client.name} week ${weekData.weekNumber}`);
+        logger.info(`✅ Stored weekly summary for ${client.name} week ${weekData.weekNumber}`);
 
         // Add delay between weeks to avoid rate limiting
         await this.delay(1000);
 
       } catch (error) {
-        console.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
+        logger.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
       }
     }
   }
@@ -374,7 +375,7 @@ export class BackgroundDataCollector {
       ? conversionTotals.total_spend / conversionTotals.reservations 
       : 0;
 
-    console.log(`📊 Background weekly collection conversion metrics:`, {
+    logger.info(`📊 Background weekly collection conversion metrics:`, {
       clientId,
       summary_date: data.summary_date,
       conversionTotals,
@@ -420,7 +421,7 @@ export class BackgroundDataCollector {
       throw new Error(`Failed to store weekly summary: ${error.message}`);
     }
 
-    console.log(`💾 Stored weekly summary with conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value`);
+    logger.info(`💾 Stored weekly summary with conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value`);
   }
 
   /**
@@ -469,22 +470,22 @@ export class BackgroundDataCollector {
    * Clean up old data
    */
   async cleanupOldData(): Promise<void> {
-    console.log('🧹 Starting cleanup of old data...');
+    logger.info('🧹 Starting cleanup of old data...');
     
     try {
       const smartLoader = SmartDataLoader.getInstance();
       await smartLoader.cleanupOldData();
-      console.log('✅ Campaign summaries cleanup completed');
+      logger.info('✅ Campaign summaries cleanup completed');
       
       // Also cleanup executive summaries
       const { ExecutiveSummaryCacheService } = await import('./executive-summary-cache');
       const executiveCacheService = ExecutiveSummaryCacheService.getInstance();
       await executiveCacheService.cleanupOldSummaries();
-      console.log('✅ Executive summaries cleanup completed');
+      logger.info('✅ Executive summaries cleanup completed');
       
-      console.log('✅ All cleanup completed');
+      logger.info('✅ All cleanup completed');
     } catch (error) {
-      console.error('❌ Error during cleanup:', error);
+      logger.error('❌ Error during cleanup:', error);
     }
   }
 } 

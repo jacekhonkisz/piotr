@@ -47,13 +47,13 @@ export async function POST(request: NextRequest) {
     // Parse request body first (can only be done once)
     const { clientId, dateRange } = await request.json();
 
-    console.log('📅 Generate Report - Received date range:', dateRange);
-    console.log('📅 Generate Report - Client ID:', clientId);
-    console.log('📅 Generate Report - Date range type:', typeof dateRange);
-    console.log('📅 Generate Report - Date range is null/undefined:', dateRange == null);
-    console.log('📅 Generate Report - Date range has start:', !!dateRange?.start);
-    console.log('📅 Generate Report - Date range has end:', !!dateRange?.end);
-    console.log('📅 Generate Report - Full request body:', JSON.stringify({ clientId, dateRange }, null, 2));
+    logger.info('📅 Generate Report - Received date range:', dateRange);
+    logger.info('📅 Generate Report - Client ID:', clientId);
+    logger.info('📅 Generate Report - Date range type:', typeof dateRange);
+    logger.info('📅 Generate Report - Date range is null/undefined:', dateRange == null);
+    logger.info('📅 Generate Report - Date range has start:', !!dateRange?.start);
+    logger.info('📅 Generate Report - Date range has end:', !!dateRange?.end);
+    logger.info('📅 Generate Report - Full request body:', JSON.stringify({ clientId, dateRange }, null, 2));
 
     // Get user profile to check role
     const { data: profile } = await supabase
@@ -148,19 +148,19 @@ export async function POST(request: NextRequest) {
     // Fetch Meta Ads tables data for consistency across all report generation methods
     let metaTablesData: any = null;
     try {
-      console.log('🔍 Fetching Meta Ads tables data for report generation...');
+      logger.info('🔍 Fetching Meta Ads tables data for report generation...');
       
       // Fetch placement performance
       const placementData = await metaService.getPlacementPerformance(targetClient.ad_account_id, startDate, endDate);
-      console.log('✅ Placement data fetched successfully:', placementData.length, 'records');
+      logger.info('Success', placementData.length, 'records');
       
       // Fetch demographic performance
       const demographicData = await metaService.getDemographicPerformance(targetClient.ad_account_id, startDate, endDate);
-      console.log('✅ Demographic data fetched successfully:', demographicData.length, 'records');
+      logger.info('Success', demographicData.length, 'records');
       
       // Fetch ad relevance results
       const adRelevanceData = await metaService.getAdRelevanceResults(targetClient.ad_account_id, startDate, endDate);
-      console.log('✅ Ad relevance data fetched successfully:', adRelevanceData.length, 'records');
+      logger.info('Success', adRelevanceData.length, 'records');
       
       metaTablesData = {
         placementPerformance: placementData,
@@ -168,9 +168,9 @@ export async function POST(request: NextRequest) {
         adRelevanceResults: adRelevanceData
       };
       
-      console.log('✅ Meta Ads tables data fetched successfully for report generation');
+      logger.info('✅ Meta Ads tables data fetched successfully for report generation');
     } catch (error) {
-      console.log('⚠️ Error fetching Meta Ads tables data for report generation:', error);
+      logger.warn('Warning', error);
       // Continue without Meta tables data - this is not critical for report generation
     }
 
@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
           // Fetch Meta Ads tables data for the fresh report
           let freshMetaTablesData: any = null;
           try {
-            console.log('🔍 Fetching Meta Ads tables data for fresh report...');
+            logger.info('🔍 Fetching Meta Ads tables data for fresh report...');
             
             const placementData = await metaService.getPlacementPerformance(targetClient.ad_account_id, startDate, endDate);
             const demographicData = await metaService.getDemographicPerformance(targetClient.ad_account_id, startDate, endDate);
@@ -265,9 +265,9 @@ export async function POST(request: NextRequest) {
               adRelevanceResults: adRelevanceData
             };
             
-            console.log('✅ Meta Ads tables data fetched successfully for fresh report');
+            logger.info('✅ Meta Ads tables data fetched successfully for fresh report');
           } catch (error) {
-            console.log('⚠️ Error fetching Meta Ads tables data for fresh report:', error);
+            logger.warn('Warning', error);
           }
           
           // Store the new report

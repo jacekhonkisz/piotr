@@ -33,8 +33,6 @@ import {
   Heart,
   TrendingUp,
   AlertTriangle,
-  FileText,
-  Download,
   Search
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
@@ -863,7 +861,7 @@ export default function AdminSettingsPage() {
                   </button>
                 </div>
                 <p className="text-xs text-blue-700">
-                  📅 Zobacz harmonogram automatycznych raportów w kalendarzu. Wszyscy klienci z konfiguracją "{reportingConfig.default_reporting_frequency}" będą otrzymywać raporty 
+                  📅 Zobacz harmonogram automatycznych raportów w kalendarzu. Wszyscy klienci z konfiguracją &quot;{reportingConfig.default_reporting_frequency}&quot; będą otrzymywać raporty 
                   {reportingConfig.default_reporting_frequency === 'monthly' 
                     ? ` ${reportingConfig.default_reporting_day}. dnia każdego miesiąca`
                     : ` w każdy ${['', 'poniedziałek', 'wtorek', 'środę', 'czwartek', 'piątek', 'sobotę', 'niedzielę'][reportingConfig.default_reporting_weekday]}`

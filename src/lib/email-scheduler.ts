@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import EmailService from './email';
+import logger from './logger';
 
 interface Client {
   id: string;
@@ -57,7 +58,7 @@ export class EmailScheduler {
    * Main method to check and send scheduled emails
    */
   async checkAndSendScheduledEmails(): Promise<SchedulerResult> {
-    console.log('📅 Starting email scheduler check...');
+    logger.info('📅 Starting email scheduler check...');
     
     const result: SchedulerResult = {
       sent: 0,
@@ -70,13 +71,13 @@ export class EmailScheduler {
       // Check if scheduler is enabled
       const settings = await this.getSystemSettings();
       if (!settings.email_scheduler_enabled) {
-        console.log('⚠️ Email scheduler is disabled');
+        logger.info('⚠️ Email scheduler is disabled');
         return result;
       }
 
       // Get all active clients
       const clients = await this.getActiveClients();
-      console.log(`📊 Found ${clients.length} active clients`);
+      logger.info(`📊 Found ${clients.length} active clients`);
 
       // Process each client
       for (const client of clients) {
@@ -104,12 +105,12 @@ export class EmailScheduler {
         }
       }
 
-      console.log(`✅ Email scheduler completed. Sent: ${result.sent}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`);
+      logger.info(`✅ Email scheduler completed. Sent: ${result.sent}, Skipped: ${result.skipped}, Errors: ${result.errors.length}`);
       return result;
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error('❌ Email scheduler error:', errorMsg);
+      logger.error('❌ Email scheduler error:', errorMsg);
       result.errors.push(`Scheduler error: ${errorMsg}`);
       return result;
     }
@@ -125,11 +126,11 @@ export class EmailScheduler {
     error?: string;
     period?: ReportPeriod;
   }> {
-    console.log(`📧 Processing client: ${client.name} (${client.reporting_frequency})`);
+    logger.info(`📧 Processing client: ${client.name} (${client.reporting_frequency})`);
 
     // Skip on_demand clients
     if (client.reporting_frequency === 'on_demand') {
-      console.log(`⏭️ Skipping ${client.name} - on_demand frequency`);
+      logger.info(`⏭️ Skipping ${client.name} - on_demand frequency`);
       return {
         clientId: client.id,
         clientName: client.name,
@@ -140,7 +141,7 @@ export class EmailScheduler {
 
     // Check if it's time to send
     if (!this.shouldSendEmail(client)) {
-      console.log(`⏭️ Skipping ${client.name} - not scheduled for today`);
+      logger.info(`⏭️ Skipping ${client.name} - not scheduled for today`);
       return {
         clientId: client.id,
         clientName: client.name,
@@ -162,7 +163,7 @@ export class EmailScheduler {
 
     // Check if we already sent this report
     if (await this.isReportAlreadySent(client, period)) {
-      console.log(`⏭️ Skipping ${client.name} - report already sent for this period`);
+      logger.info(`⏭️ Skipping ${client.name} - report already sent for this period`);
       return {
         clientId: client.id,
         clientName: client.name,
@@ -178,7 +179,7 @@ export class EmailScheduler {
       // Update client's last sent date
       await this.updateClientLastSentDate(client.id);
       
-      console.log(`✅ Successfully sent report to ${client.name} for ${period.start} to ${period.end}`);
+      logger.info(`✅ Successfully sent report to ${client.name} for ${period.start} to ${period.end}`);
       
       return {
         clientId: client.id,
@@ -189,7 +190,7 @@ export class EmailScheduler {
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`❌ Failed to send report to ${client.name}:`, errorMsg);
+      logger.error(`❌ Failed to send report to ${client.name}:`, errorMsg);
       
       // Log the error
       await this.logSchedulerError(client, period, errorMsg);
@@ -271,7 +272,7 @@ export class EmailScheduler {
       .single();
 
     if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-      console.error('Error checking if report already sent:', error);
+      logger.error('Error checking if report already sent:', error);
       return false;
     }
 
@@ -282,7 +283,7 @@ export class EmailScheduler {
    * Send a scheduled report to a client
    */
   private async sendScheduledReport(client: Client, period: ReportPeriod): Promise<void> {
-    console.log(`📤 Sending scheduled report to ${client.name} for ${period.start} to ${period.end}`);
+    logger.info(`📤 Sending scheduled report to ${client.name} for ${period.start} to ${period.end}`);
 
     // Generate report data
     const reportData = {
@@ -315,7 +316,7 @@ export class EmailScheduler {
 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Failed to send email to ${email}:`, errorMsg);
+        logger.error(`Failed to send email to ${email}:`, errorMsg);
         throw error;
       }
     }
@@ -343,7 +344,7 @@ export class EmailScheduler {
       .eq('id', clientId);
 
     if (error) {
-      console.error('Error updating client last sent date:', error);
+      logger.error('Error updating client last sent date:', error);
     }
   }
 
@@ -366,7 +367,7 @@ export class EmailScheduler {
       });
 
     if (error) {
-      console.error('Error logging scheduler success:', error);
+      logger.error('Error logging scheduler success:', error);
     }
   }
 
@@ -389,7 +390,7 @@ export class EmailScheduler {
       });
 
     if (error) {
-      console.error('Error logging scheduler error:', error);
+      logger.error('Error logging scheduler error:', error);
     }
   }
 
@@ -410,7 +411,7 @@ export class EmailScheduler {
       ]);
 
     if (error) {
-      console.error('Error fetching system settings:', error);
+      logger.error('Error fetching system settings:', error);
       throw error;
     }
 
@@ -480,7 +481,7 @@ export class EmailScheduler {
       .neq('reporting_frequency', 'on_demand');
 
     if (error) {
-      console.error('Error fetching active clients:', error);
+      logger.error('Error fetching active clients:', error);
       throw error;
     }
 

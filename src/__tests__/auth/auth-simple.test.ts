@@ -44,7 +44,7 @@ describe('Auth Functions', () => {
       email: 'test@example.com',
       password: 'password123',
     })
-    expect(result.user).toEqual(mockUser)
+    expect(result.data?.user).toEqual(mockUser)
   })
 
   test('signIn should handle invalid credentials', async () => {
@@ -69,7 +69,7 @@ describe('Auth Functions', () => {
 
     const { signUp } = await import('../../lib/auth')
     
-    const result = await signUp('new@example.com', 'password123', 'John Doe', 'client')
+    const result = await signUp('new@example.com', 'password123')
     
     expect(mockSupabase.auth.signUp).toHaveBeenCalledWith({
       email: 'new@example.com',
@@ -81,7 +81,7 @@ describe('Auth Functions', () => {
         },
       },
     })
-    expect(result.user).toEqual(mockUser)
+    expect(result.data?.user).toEqual(mockUser)
   })
 
   test('signOut should call supabase auth.signOut', async () => {

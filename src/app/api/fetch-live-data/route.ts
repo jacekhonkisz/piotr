@@ -29,7 +29,7 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
   const endYear = end.getFullYear();
   const endMonth = end.getMonth() + 1;
   
-  console.log('🔍 CURRENT MONTH DETECTION:', {
+  logger.debug('Debug info', {
     now: now.toISOString(),
     currentYear,
     currentMonth,
@@ -50,7 +50,7 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
          endYear === currentYear && 
          endMonth === currentMonth;
          
-  console.log('🎯 IS CURRENT MONTH RESULT:', result);
+  logger.info('🎯 IS CURRENT MONTH RESULT:', result);
   return result;
 }
 
@@ -81,7 +81,7 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   
   const currentWeekBoundaries = getISOWeekBoundaries(now);
   
-  console.log('🔍 CURRENT WEEK DETECTION (ISO):', {
+  logger.debug('Debug info', {
     now: now.toISOString(),
     currentWeekStart: currentWeekBoundaries.start,
     currentWeekEnd: currentWeekBoundaries.end,
@@ -92,7 +92,7 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   // Simple string comparison for date ranges
   const result = startDate === currentWeekBoundaries.start && endDate === currentWeekBoundaries.end;
   
-  console.log('🔍 CURRENT WEEK DETECTION RESULT (ISO):', {
+  logger.debug('Debug info', {
     startDateMatches: startDate === currentWeekBoundaries.start,
     endDateMatches: endDate === currentWeekBoundaries.end,
     result
@@ -229,7 +229,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       return createErrorResponse('Client not found', 404);
     }
     
-    console.log('✅ Client found:', {
+    logger.info('Success', {
       id: clientData.id,
       name: clientData.name,
       email: clientData.email,
@@ -255,7 +255,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       startDate = dateRange.start;
       endDate = dateRange.end;
       
-      console.log('📅 Received date range:', { startDate, endDate });
+      logger.info('📅 Received date range:', { startDate, endDate });
       
       // Check if this is an all-time request (very old start date)
       const startDateObj = new Date(startDate);
@@ -266,7 +266,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const isAllTimeRequest = startDateObj.getFullYear() <= 2010;
       const isWithinAPILimits = startDateObj >= maxPastDate;
       
-      console.log('📅 Request type:', { 
+      logger.info('📅 Request type:', { 
         isAllTimeRequest, 
         startYear: startDateObj.getFullYear(),
         isWithinAPILimits,
@@ -277,19 +277,19 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       // Only validate date range for requests within API limits
       if (isWithinAPILimits) {
         const validation = validateDateRange(startDate, endDate);
-        console.log('📅 Date range validation result:', validation);
+        logger.info('📅 Date range validation result:', validation);
         
         if (!validation.isValid) {
-          console.log('❌ Date range validation failed:', validation.error);
+          logger.error('Error occurred', validation.error);
           return NextResponse.json({ 
             error: 'Invalid date range', 
             details: validation.error
           }, { status: 400 });
         }
       } else if (isAllTimeRequest) {
-        console.log('📅 All-time request detected, skipping date range validation');
+        logger.info('📅 All-time request detected, skipping date range validation');
       } else {
-        console.log('⚠️ Date range exceeds Meta API limits (37 months), but proceeding anyway');
+        logger.info('⚠️ Date range exceeds Meta API limits (37 months), but proceeding anyway');
       }
       
       // Analyze date range
@@ -313,7 +313,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       apiMethod = selectMetaAPIMethod({ start: startDate, end: endDate });
     }
 
-          console.log('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
+          logger.info('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
 
       // SMART ROUTING: Current month vs Current week vs Previous periods
       const isCurrentMonthRequest = isCurrentMonth(startDate, endDate);
@@ -345,7 +345,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       
       if (!forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest) {
         // Previous periods: Use database lookup (data doesn't change)
-        console.log('📊 Checking database for previous period data...');
+        logger.info('📊 Checking database for previous period data...');
         const databaseResult = await loadFromDatabase(clientId, startDate, endDate);
         
         if (databaseResult) {
@@ -365,7 +365,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         }
       } else if (isCurrentWeekRequest && !forceFresh) {
         // Current week: Use smart cache (3-hour refresh) for weekly data
-        console.log('📊 🟡 CURRENT WEEK DETECTED - CHECKING WEEKLY SMART CACHE...');
+        logger.info('📊 🟡 CURRENT WEEK DETECTED - CHECKING WEEKLY SMART CACHE...');
         
         try {
           // Use the shared weekly smart cache helper
@@ -394,8 +394,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         }
       } else if (isCurrentMonthRequest && !forceFresh) {
         // Current month: SIMPLE DATABASE-FIRST APPROACH
-        console.log('📊 🔴 CURRENT MONTH DETECTED - CHECKING DATABASE CACHE...');
-        console.log('🔍 CRITICAL DEBUG - Cache check parameters:', {
+        logger.info('📊 🔴 CURRENT MONTH DETECTED - CHECKING DATABASE CACHE...');
+        logger.debug('Debug info', {
           clientId,
           currentTime: new Date().toISOString()
         });
@@ -407,7 +407,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           const currentMonth = now.getMonth() + 1;
           const periodId = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
           
-          console.log('🔍 CRITICAL DEBUG - Database query parameters:', {
+          logger.debug('Debug info', {
             periodId,
             clientId,
             tableName: 'current_month_cache'
@@ -422,7 +422,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             .eq('period_id', periodId)
             .maybeSingle(); // Use maybeSingle instead of single to avoid "no rows" errors
 
-          console.log('🔍 CRITICAL DEBUG - Database query result:', {
+          logger.debug('Debug info', {
             hasResult: !!cacheQueryResult,
             hasError: !!cacheQueryError,
             errorMessage: cacheQueryError?.message,
@@ -434,9 +434,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           let cachedData = cacheQueryResult;
           let cacheError = cacheQueryError;
 
-          console.log('🔍 CRITICAL DEBUG - Parsing database query result...');
+          logger.info('🔍 CRITICAL DEBUG - Parsing database query result...');
           
-          console.log('🔍 CRITICAL DEBUG - Database query result:', {
+          logger.debug('Debug info', {
             hasData: !!cachedData,
             hasError: !!cacheError,
             errorMessage: cacheError?.message,
@@ -445,7 +445,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           });
 
           if (cacheError) {
-            console.log('❌ CRITICAL DEBUG - Database cache error:', cacheError);
+            logger.error('Error occurred', cacheError);
           }
 
           if (cachedData) {
@@ -453,7 +453,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             const cacheAgeHours = cacheAge / (1000 * 60 * 60);
             const isCacheFresh = cacheAgeHours < 6; // 6 hour cache (was 3)
 
-            console.log('🔍 CRITICAL DEBUG - Cache age analysis:', {
+            logger.debug('Debug info', {
               cacheAge,
               cacheAgeHours,
               isCacheFresh,
@@ -461,7 +461,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             });
 
             if (isCacheFresh) {
-              console.log('✅ Database Cache: Returning fresh cached data', {
+              logger.info('Success', {
                 cacheAgeMinutes: Math.round(cacheAge / 1000 / 60),
                 lastUpdated: cachedData.last_updated
               });
@@ -485,7 +485,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
               });
             } else {
               // 🔧 FIX: ALWAYS return stale cache instead of bypassing to Meta API
-              console.log('⚠️ Database Cache: Cache is stale, but returning stale data (NO BYPASS)', {
+              logger.warn('Warning', {
                 cacheAgeHours: Math.round(cacheAgeHours * 10) / 10,
                 lastUpdated: cachedData.last_updated,
                 policy: 'database-first'
@@ -512,7 +512,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             }
           } else {
             // 🔧 FIX: Return empty data structure instead of bypassing to Meta API
-            console.log('⚠️ Database Cache: No cache found, returning empty data (NO BYPASS)', {
+            logger.warn('Warning', {
               policy: 'database-first'
             });
 
@@ -553,7 +553,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           }
         } catch (cacheError) {
           // 🔧 FIX: Return empty data instead of bypassing to Meta API on error
-          console.log('❌ CRITICAL DEBUG - Database cache exception, returning empty data (NO BYPASS):', cacheError);
+          logger.error('Error occurred', cacheError);
           
           const responseTime = Date.now() - startTime;
           return NextResponse.json({
@@ -592,7 +592,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           });
         }
       } else {
-        console.log('🔍 CRITICAL DEBUG - Database cache check SKIPPED because:', {
+        logger.debug('Debug info', {
           isCurrentMonthRequest,
           forceFresh,
           condition: `${isCurrentMonthRequest} && !${forceFresh}`,
@@ -602,8 +602,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
       // 🔧 CRITICAL FIX: Only proceed with Meta API if explicitly forced
       if (!forceFresh) {
-        console.log('🚫 CRITICAL PROTECTION - Meta API bypass BLOCKED (database-first policy)');
-        console.log('💡 To refresh data, use forceFresh: true parameter');
+        logger.info('🚫 CRITICAL PROTECTION - Meta API bypass BLOCKED (database-first policy)');
+        logger.info('💡 To refresh data, use forceFresh: true parameter');
         
         const responseTime = Date.now() - startTime;
         return NextResponse.json({
@@ -643,7 +643,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
       // Only reach here if forceFresh: true
       console.log(`🔄 EXPLICIT FORCE REFRESH - Proceeding with live Meta API fetch (forceFresh: true)`);
-      console.log('🔍 Meta API call reason: Explicit force refresh requested');
+      logger.info('🔍 Meta API call reason: Explicit force refresh requested');
 
       // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);
@@ -651,26 +651,26 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     // Check for cache clearing parameter
     const shouldClearCache = clearCache === 'true' || clearCache === true || forceFresh;
     if (shouldClearCache) {
-      console.log('🗑️ Cache clearing requested');
+      logger.info('🗑️ Cache clearing requested');
       metaService.clearCache();
     }
     
     // Validate token first
-    console.log('🔐 Validating Meta API token...');
+    logger.info('🔐 Validating Meta API token...');
     const tokenValidation = await metaService.validateToken();
-    console.log('🔐 Token validation result:', tokenValidation);
+    logger.info('🔐 Token validation result:', tokenValidation);
     
     // Also check token info to see permissions
     try {
       const tokenInfo = await metaService.getTokenInfo();
-      console.log('🔐 Token info:', {
+      logger.info('🔐 Token info:', {
         success: tokenInfo.success,
         scopes: tokenInfo.info?.scopes,
         isLongLived: tokenInfo.isLongLived,
         expiresAt: tokenInfo.expiresAt
       });
     } catch (error) {
-      console.log('⚠️ Could not get token info:', error);
+      logger.warn('Warning', error);
     }
     
     if (!tokenValidation.valid) {
@@ -681,13 +681,13 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     }
 
     // Fetch live campaign insights from Meta API
-    console.log('📈 Fetching campaign insights from Meta API...');
+    logger.info('📈 Fetching campaign insights from Meta API...');
     
     const adAccountId = client.ad_account_id.startsWith('act_') 
       ? client.ad_account_id.substring(4)
       : client.ad_account_id;
     
-    console.log('🏢 Using ad account ID:', adAccountId);
+    logger.info('🏢 Using ad account ID:', adAccountId);
     
     let campaignInsights: any[] = [];
     let metaApiError: string | null = null;
@@ -710,7 +710,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         );
       }
 
-      console.log('📊 Campaign insights result:', {
+      logger.info('Data processing', {
         count: campaignInsights.length,
         campaigns: campaignInsights.map(c => ({
           id: c.campaign_id,
@@ -728,14 +728,14 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
     // If no campaign-level insights, try to get basic campaign data
     if (campaignInsights.length === 0) {
-      console.log('⚠️ No campaign insights found, trying to get basic campaign data...');
+      logger.info('⚠️ No campaign insights found, trying to get basic campaign data...');
       
       try {
         const allCampaigns = await metaService.getCampaigns(adAccountId);
-        console.log('📋 All campaigns found:', allCampaigns.length);
+        logger.info('📋 All campaigns found:', allCampaigns.length);
 
         if (allCampaigns.length > 0) {
-          console.log('✅ Creating basic campaign data from campaigns list');
+          logger.info('✅ Creating basic campaign data from campaigns list');
           campaignInsights = allCampaigns.map(campaign => ({
             campaign_id: campaign.id,
             campaign_name: campaign.name,
@@ -759,17 +759,17 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     // Get account info to include currency
     let accountInfo = null;
     try {
-      console.log('🔍 Fetching account info for adAccountId:', adAccountId);
+      logger.debug('Debug info', adAccountId);
       accountInfo = await metaService.getAccountInfo(adAccountId);
-      console.log('💰 Account info fetched successfully:', {
+      logger.info('💰 Account info fetched successfully:', {
         currency: accountInfo.currency,
         timezone: accountInfo.timezone_name,
         status: accountInfo.account_status,
         fullResponse: accountInfo
       });
     } catch (error) {
-      console.log('⚠️ Could not fetch account info:', error);
-      console.log('⚠️ Error details:', {
+      logger.warn('Warning', error);
+      logger.warn('Warning', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : 'No stack trace'
       });
@@ -857,7 +857,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     // SMART CACHE: Store current month data for 3-hour reuse
     // (isCurrentMonthRequest already declared above)
     if (isCurrentMonthRequest) {
-      console.log('💾 🔴 CURRENT MONTH DATA - STORING IN SMART CACHE...', {
+      logger.info('💾 🔴 CURRENT MONTH DATA - STORING IN SMART CACHE...', {
         clientId,
         campaignCount: campaignInsights.length,
         willCache: true
@@ -880,9 +880,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             period_id: currentMonth.periodId
           });
 
-        console.log('✅ Current month data cached successfully');
+        logger.info('✅ Current month data cached successfully');
       } catch (cacheError) {
-        console.log('⚠️ Failed to cache current month data:', cacheError);
+        logger.warn('Warning', cacheError);
         // Don't fail the request if caching fails
       }
     }

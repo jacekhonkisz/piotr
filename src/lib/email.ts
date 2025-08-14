@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import logger from './logger';
 
 export interface EmailTemplate {
   subject: string;
@@ -54,7 +55,7 @@ export class EmailService {
       const { data, error } = await this.resend.emails.send(emailOptions);
 
       if (error) {
-        console.error('Email sending failed:', error);
+        logger.error('Email sending failed:', error);
         return { success: false, error: error.message };
       }
 
@@ -66,7 +67,7 @@ export class EmailService {
       }
       return result;
     } catch (error) {
-      console.error('Email service error:', error);
+      logger.error('Email service error:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
@@ -161,6 +162,49 @@ export class EmailService {
       html: emailTemplate.html,
       text: emailTemplate.text
     });
+  }
+
+  async sendCustomReportEmail(
+    clientEmail: string,
+    clientName: string,
+    reportData: {
+      dateRange: string;
+      totalSpend: number;
+      totalImpressions: number;
+      totalClicks: number;
+      totalConversions?: number;
+      ctr: number;
+      cpc: number;
+      cpm: number;
+    },
+    content: {
+      summary: string;
+      customMessage: string;
+    },
+    pdfBuffer?: Buffer
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const fromEmail = process.env.EMAIL_FROM_ADDRESS || 'noreply@yourdomain.com';
+    
+    const emailTemplate = this.generateCustomReportEmailTemplate(clientName, reportData, content);
+    
+    const emailData: EmailData = {
+      to: clientEmail,
+      from: fromEmail,
+      subject: emailTemplate.subject,
+      html: emailTemplate.html,
+      text: emailTemplate.text,
+    };
+
+    if (pdfBuffer) {
+      const fileName = `Meta_Ads_Performance_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+      emailData.attachments = [{
+        filename: fileName,
+        content: pdfBuffer,
+        contentType: 'application/pdf'
+      }];
+    }
+
+    return this.sendEmail(emailData);
   }
 
   private generateInteractiveReportEmailTemplate(clientName: string, reportData: any): EmailTemplate {
@@ -483,6 +527,299 @@ Your Meta Ads Reporting Team
 
 ---
 If you didn't request this access, please contact us immediately.
+    `;
+
+    return { subject, html, text };
+  }
+
+  private generateCustomReportEmailTemplate(
+    clientName: string, 
+    reportData: any, 
+    content: { summary: string; customMessage: string }
+  ): EmailTemplate {
+    const subject = `📊 Meta Ads Performance Report - ${reportData.dateRange}`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Meta Ads Performance Report</title>
+        <style>
+          body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0; 
+            padding: 20px;
+            background-color: #f5f7fa;
+          }
+          .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+          }
+          .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            padding: 40px 30px; 
+            text-align: center; 
+            position: relative;
+          }
+          .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 100" fill="white" opacity="0.1"><polygon points="0,0 1000,100 1000,0"/></svg>') repeat-x;
+            background-size: 100px 100px;
+          }
+          .header h1 { 
+            margin: 0; 
+            font-size: 28px; 
+            font-weight: 600;
+            position: relative;
+            z-index: 1;
+          }
+          .header p { 
+            margin: 10px 0 0 0; 
+            font-size: 16px; 
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+          }
+          .content { 
+            padding: 40px 30px; 
+            background: #ffffff;
+          }
+          .greeting {
+            font-size: 18px;
+            margin-bottom: 25px;
+            color: #2c3e50;
+          }
+          .custom-message {
+            background: #e8f4fd;
+            border-left: 4px solid #3498db;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+            color: #2c3e50;
+          }
+          .summary-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 25px 0;
+            border: 1px solid #e9ecef;
+          }
+          .summary-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+          }
+          .summary-title::before {
+            content: '📊';
+            margin-right: 10px;
+            font-size: 24px;
+          }
+          .summary-text {
+            font-size: 16px;
+            line-height: 1.7;
+            color: #6c757d;
+            text-align: justify;
+          }
+          .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin: 30px 0;
+          }
+          .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+          }
+          .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 5px;
+            display: block;
+          }
+          .metric-label {
+            font-size: 12px;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+          .pdf-notice {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            color: #2d3436;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 25px 0;
+            text-align: center;
+            font-weight: 500;
+          }
+          .pdf-notice::before {
+            content: '📎';
+            font-size: 24px;
+            margin-right: 10px;
+          }
+          .closing {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 2px solid #e9ecef;
+          }
+          .signature {
+            color: #495057;
+            font-weight: 500;
+          }
+          .footer { 
+            background: #2c3e50;
+            color: #bdc3c7;
+            text-align: center; 
+            padding: 20px 30px;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .footer a {
+            color: #74b9ff;
+            text-decoration: none;
+          }
+          @media (max-width: 600px) {
+            .metrics-grid {
+              grid-template-columns: repeat(2, 1fr);
+            }
+            .content, .header {
+              padding: 20px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📊 Meta Ads Performance Report</h1>
+            <p>${reportData.dateRange}</p>
+          </div>
+          
+          <div class="content">
+            <div class="greeting">
+              Dear ${clientName},
+            </div>
+            
+            <p>Here's your Meta Ads performance report for the period <strong>${reportData.dateRange}</strong>.</p>
+            
+            ${content.customMessage ? `
+            <div class="custom-message">
+              ${content.customMessage.replace(/\n/g, '<br>')}
+            </div>
+            ` : ''}
+            
+            ${content.summary ? `
+            <div class="summary-section">
+              <div class="summary-title">Podsumowanie</div>
+              <div class="summary-text">${content.summary}</div>
+            </div>
+            ` : ''}
+            
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <span class="metric-value">${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
+                <span class="metric-label">Total Spend</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-value">${reportData.totalImpressions.toLocaleString('pl-PL')}</span>
+                <span class="metric-label">Impressions</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-value">${reportData.totalClicks.toLocaleString('pl-PL')}</span>
+                <span class="metric-label">Clicks</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-value">${(reportData.ctr * 100).toFixed(2)}%</span>
+                <span class="metric-label">CTR</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-value">${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
+                <span class="metric-label">CPC</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-value">${reportData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
+                <span class="metric-label">CPM</span>
+              </div>
+            </div>
+            
+            <div class="pdf-notice">
+              <strong>Complete detailed report is attached as PDF</strong><br>
+              Open the PDF attachment for comprehensive analysis, charts, and campaign details.
+            </div>
+            
+            <p>If you have any questions about this report or would like to discuss optimization strategies, please don't hesitate to reach out to us.</p>
+            
+            <div class="closing">
+              <div class="signature">
+                Best regards,<br>
+                <strong>Your Meta Ads Team</strong>
+              </div>
+            </div>
+          </div>
+          
+          <div class="footer">
+            <p>This is an automated report generated by your Meta Ads management system.</p>
+            <p>For support, contact us at <a href="mailto:support@example.com">support@example.com</a></p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+Meta Ads Performance Report - ${reportData.dateRange}
+
+Dear ${clientName},
+
+Here's your Meta Ads performance report for the period ${reportData.dateRange}.
+
+${content.customMessage ? `
+Custom Message:
+${content.customMessage}
+
+` : ''}${content.summary ? `
+Podsumowanie:
+${content.summary}
+
+` : ''}Performance Metrics:
+- Total Spend: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+- Impressions: ${reportData.totalImpressions.toLocaleString('pl-PL')}
+- Clicks: ${reportData.totalClicks.toLocaleString('pl-PL')}
+- CTR: ${(reportData.ctr * 100).toFixed(2)}%
+- CPC: ${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+- CPM: ${reportData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+
+Complete detailed report is attached as PDF. Open the PDF attachment for comprehensive analysis, charts, and campaign details.
+
+If you have any questions about this report or would like to discuss optimization strategies, please don't hesitate to reach out to us.
+
+Best regards,
+Your Meta Ads Team
+
+---
+This is an automated report generated by your Meta Ads management system.
+For support, contact us at support@example.com
     `;
 
     return { subject, html, text };

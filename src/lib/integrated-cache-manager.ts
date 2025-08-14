@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getCurrentProfile } from './auth-optimized';
 import { getSmartCacheData, getCurrentMonthInfo } from './smart-cache-helper';
+import logger from './logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +43,7 @@ class IntegratedCacheManager {
     const startTime = performance.now();
     
     try {
-      console.log('🔄 IntegratedCacheManager: Starting smart data fetch...');
+      logger.info('🔄 IntegratedCacheManager: Starting smart data fetch...');
       
       // Step 1: Get profile (with optimized caching)
       const profile = await getCurrentProfile();
@@ -56,7 +57,7 @@ class IntegratedCacheManager {
       const periodId = isCurrentMonth ? currentMonth.periodId : dateRange.start.substring(0, 7);
       const cacheKey = this.getCacheKey(profile.id, clientId, periodId);
       
-      console.log(`📊 IntegratedCacheManager: Period analysis:`, {
+      logger.info(`📊 IntegratedCacheManager: Period analysis:`, {
         periodId,
         isCurrentMonth,
         cacheKey
@@ -68,7 +69,7 @@ class IntegratedCacheManager {
       
       if (cachedEntry && (now - cachedEntry.timestamp) < this.CACHE_DURATION) {
         const responseTime = performance.now() - startTime;
-        console.log(`✅ IntegratedCacheManager: Returning cached data (${responseTime.toFixed(2)}ms)`);
+        logger.info(`✅ IntegratedCacheManager: Returning cached data (${responseTime.toFixed(2)}ms)`);
         
         return {
           success: true,
@@ -84,7 +85,7 @@ class IntegratedCacheManager {
         };
       }
 
-      console.log('🔍 IntegratedCacheManager: Cache miss, fetching fresh data...');
+      logger.info('🔍 IntegratedCacheManager: Cache miss, fetching fresh data...');
 
       // Step 4: Smart data routing based on period
       let reportData;
@@ -92,32 +93,32 @@ class IntegratedCacheManager {
 
       if (isCurrentMonth) {
         // Current month: Use smart cache system
-        console.log('📅 IntegratedCacheManager: Current month - using smart cache');
+        logger.info('📅 IntegratedCacheManager: Current month - using smart cache');
         const smartCacheResult = await getSmartCacheData(clientId, false);
         
         if (smartCacheResult.success && smartCacheResult.data.campaigns?.length > 0) {
           reportData = smartCacheResult.data;
           dataSource = smartCacheResult.source as any;
-          console.log(`✅ Smart cache hit: ${smartCacheResult.data.campaigns.length} campaigns`);
+          logger.info(`✅ Smart cache hit: ${smartCacheResult.data.campaigns.length} campaigns`);
         } else {
           // Fallback to live API
-          console.log('⚠️ Smart cache miss, calling live API...');
+          logger.info('⚠️ Smart cache miss, calling live API...');
           const liveResult = await this.fetchLiveData(clientId, dateRange);
           reportData = liveResult.data;
           dataSource = 'live-api';
         }
       } else {
         // Previous month: Check database storage first
-        console.log('📚 IntegratedCacheManager: Previous month - checking database storage');
+        logger.info('📚 IntegratedCacheManager: Previous month - checking database storage');
         const databaseResult = await this.loadFromDatabase(clientId, dateRange);
         
         if (databaseResult) {
           reportData = databaseResult.data;
           dataSource = 'database';
-          console.log(`✅ Database hit: ${databaseResult.data.campaigns?.length || 0} campaigns`);
+          logger.info(`✅ Database hit: ${databaseResult.data.campaigns?.length || 0} campaigns`);
         } else {
           // Fallback to live API for historical data
-          console.log('⚠️ Database miss, calling live API for historical data...');
+          logger.info('⚠️ Database miss, calling live API for historical data...');
           const liveResult = await this.fetchLiveData(clientId, dateRange);
           reportData = liveResult.data;
           dataSource = 'live-api';
@@ -136,7 +137,7 @@ class IntegratedCacheManager {
       this.cache.set(cacheKey, integratedEntry);
       
       const responseTime = performance.now() - startTime;
-      console.log(`✅ IntegratedCacheManager: Data fetched and cached (${responseTime.toFixed(2)}ms)`);
+      logger.info(`✅ IntegratedCacheManager: Data fetched and cached (${responseTime.toFixed(2)}ms)`);
 
       return {
         success: true,
@@ -153,7 +154,7 @@ class IntegratedCacheManager {
 
     } catch (error) {
       const responseTime = performance.now() - startTime;
-      console.error('❌ IntegratedCacheManager error:', error);
+      logger.error('❌ IntegratedCacheManager error:', error);
       
       return {
         success: false,
@@ -168,7 +169,7 @@ class IntegratedCacheManager {
    */
   private async loadFromDatabase(clientId: string, dateRange: { start: string; end: string }) {
     try {
-      console.log('📊 Loading from database storage...');
+      logger.info('📊 Loading from database storage...');
       
       const { data: storedSummary, error } = await supabase
         .from('campaign_summaries')
@@ -179,7 +180,7 @@ class IntegratedCacheManager {
         .single();
 
       if (error || !storedSummary) {
-        console.log('📊 No stored summary found in database');
+        logger.info('📊 No stored summary found in database');
         return null;
       }
 
@@ -204,11 +205,11 @@ class IntegratedCacheManager {
         fromDatabase: true
       };
 
-      console.log(`✅ Database data loaded: ${transformedData.campaigns.length} campaigns`);
+      logger.info(`✅ Database data loaded: ${transformedData.campaigns.length} campaigns`);
       return { data: transformedData };
 
     } catch (error) {
-      console.error('❌ Database loading error:', error);
+      logger.error('❌ Database loading error:', error);
       return null;
     }
   }
@@ -218,7 +219,7 @@ class IntegratedCacheManager {
    */
   private async fetchLiveData(clientId: string, dateRange: { start: string; end: string }) {
     try {
-      console.log('🌐 Fetching live data from Meta API...');
+      logger.info('🌐 Fetching live data from Meta API...');
       
       // Get session token for API call
       const { data: { session } } = await supabase.auth.getSession();
@@ -249,11 +250,11 @@ class IntegratedCacheManager {
         throw new Error(result.error || 'API call returned error');
       }
 
-      console.log(`✅ Live data fetched: ${result.data.campaigns?.length || 0} campaigns`);
+      logger.info(`✅ Live data fetched: ${result.data.campaigns?.length || 0} campaigns`);
       return { data: result.data };
 
     } catch (error) {
-      console.error('❌ Live data fetch error:', error);
+      logger.error('❌ Live data fetch error:', error);
       throw error;
     }
   }
@@ -268,18 +269,18 @@ class IntegratedCacheManager {
         key.includes(`_${userId}_${clientId}_`)
       );
       keysToDelete.forEach(key => this.cache.delete(key));
-      console.log(`🗑️ Cleared ${keysToDelete.length} cache entries for user ${userId}, client ${clientId}`);
+      logger.info(`🗑️ Cleared ${keysToDelete.length} cache entries for user ${userId}, client ${clientId}`);
     } else if (userId) {
       // Clear all cache for user
       const keysToDelete = Array.from(this.cache.keys()).filter(key => 
         key.includes(`_${userId}_`)
       );
       keysToDelete.forEach(key => this.cache.delete(key));
-      console.log(`🗑️ Cleared ${keysToDelete.length} cache entries for user ${userId}`);
+      logger.info(`🗑️ Cleared ${keysToDelete.length} cache entries for user ${userId}`);
     } else {
       // Clear all cache
       this.cache.clear();
-      console.log('🗑️ Cleared all integrated cache entries');
+      logger.info('🗑️ Cleared all integrated cache entries');
     }
   }
 
@@ -288,7 +289,7 @@ class IntegratedCacheManager {
    */
   async forceRefreshCurrentMonth(clientId: string) {
     try {
-      console.log('🔄 Force refreshing current month data...');
+      logger.info('🔄 Force refreshing current month data...');
       
       const profile = await getCurrentProfile();
       if (!profile) {
@@ -304,11 +305,11 @@ class IntegratedCacheManager {
       // Clear smart cache
       const smartCacheResult = await getSmartCacheData(clientId, true); // Force refresh
       
-      console.log('✅ Force refresh completed');
+      logger.info('✅ Force refresh completed');
       return smartCacheResult;
 
     } catch (error) {
-      console.error('❌ Force refresh error:', error);
+      logger.error('❌ Force refresh error:', error);
       throw error;
     }
   }

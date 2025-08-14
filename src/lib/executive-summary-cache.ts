@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
+import logger from './logger';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,7 +27,7 @@ export class ExecutiveSummaryCacheService {
     dateRange: { start: string; end: string }
   ): Promise<ExecutiveSummaryCache | null> {
     try {
-      console.log(`🔍 Checking cache for executive summary: ${clientId} ${dateRange.start}-${dateRange.end}`);
+      logger.info(`🔍 Checking cache for executive summary: ${clientId} ${dateRange.start}-${dateRange.end}`);
       
       const { data, error } = await supabase
         .from('executive_summaries')
@@ -39,16 +40,16 @@ export class ExecutiveSummaryCacheService {
       if (error) {
         if (error.code === 'PGRST116') {
           // No rows returned - summary not found
-          console.log('❌ No cached executive summary found');
+          logger.info('❌ No cached executive summary found');
           return null;
         }
         throw error;
       }
 
-      console.log('✅ Found cached executive summary');
+      logger.info('✅ Found cached executive summary');
       return data;
     } catch (error) {
-      console.error('❌ Error checking executive summary cache:', error);
+      logger.error('❌ Error checking executive summary cache:', error);
       return null;
     }
   }
@@ -63,7 +64,7 @@ export class ExecutiveSummaryCacheService {
     isAiGenerated: boolean = true
   ): Promise<ExecutiveSummaryCache | null> {
     try {
-      console.log(`💾 Saving executive summary to cache: ${clientId} ${dateRange.start}-${dateRange.end}`);
+      logger.info(`💾 Saving executive summary to cache: ${clientId} ${dateRange.start}-${dateRange.end}`);
       
       const summaryData = {
         client_id: clientId,
@@ -85,14 +86,14 @@ export class ExecutiveSummaryCacheService {
         .single();
 
       if (error) {
-        console.error('❌ Error saving executive summary to cache:', error);
+        logger.error('❌ Error saving executive summary to cache:', error);
         return null;
       }
 
-      console.log('✅ Executive summary saved to cache');
+      logger.info('✅ Executive summary saved to cache');
       return data;
     } catch (error) {
-      console.error('❌ Error saving executive summary to cache:', error);
+      logger.error('❌ Error saving executive summary to cache:', error);
       return null;
     }
   }
@@ -102,7 +103,7 @@ export class ExecutiveSummaryCacheService {
    */
   async cleanupOldSummaries(): Promise<void> {
     try {
-      console.log('🧹 Cleaning up old executive summaries (older than 12 months)...');
+      logger.info('🧹 Cleaning up old executive summaries (older than 12 months)...');
       
       const now = new Date();
       const twelveMonthsAgo = new Date(now);
@@ -114,13 +115,13 @@ export class ExecutiveSummaryCacheService {
         .lt('date_range_start', twelveMonthsAgo.toISOString().split('T')[0]);
 
       if (error) {
-        console.error('❌ Error cleaning up old executive summaries:', error);
+        logger.error('❌ Error cleaning up old executive summaries:', error);
         return;
       }
 
-      console.log('✅ Old executive summaries cleaned up');
+      logger.info('✅ Old executive summaries cleaned up');
     } catch (error) {
-      console.error('❌ Error in cleanup:', error);
+      logger.error('❌ Error in cleanup:', error);
     }
   }
 
@@ -151,7 +152,7 @@ export class ExecutiveSummaryCacheService {
         .select('date_range_start, date_range_end');
 
       if (error) {
-        console.error('❌ Error getting cache stats:', error);
+        logger.error('❌ Error getting cache stats:', error);
         return {
           totalSummaries: 0,
           oldestDate: null,
@@ -188,7 +189,7 @@ export class ExecutiveSummaryCacheService {
         summariesInRetention
       };
     } catch (error) {
-      console.error('❌ Error getting cache stats:', error);
+      logger.error('❌ Error getting cache stats:', error);
       return {
         totalSummaries: 0,
         oldestDate: null,
@@ -206,7 +207,7 @@ export class ExecutiveSummaryCacheService {
     dateRange: { start: string; end: string }
   ): Promise<boolean> {
     try {
-      console.log(`🗑️ Deleting executive summary: ${clientId} ${dateRange.start}-${dateRange.end}`);
+      logger.info(`🗑️ Deleting executive summary: ${clientId} ${dateRange.start}-${dateRange.end}`);
       
       const { error } = await supabase
         .from('executive_summaries')
@@ -216,14 +217,14 @@ export class ExecutiveSummaryCacheService {
         .eq('date_range_end', dateRange.end);
 
       if (error) {
-        console.error('❌ Error deleting executive summary:', error);
+        logger.error('❌ Error deleting executive summary:', error);
         return false;
       }
 
-      console.log('✅ Executive summary deleted');
+      logger.info('✅ Executive summary deleted');
       return true;
     } catch (error) {
-      console.error('❌ Error deleting executive summary:', error);
+      logger.error('❌ Error deleting executive summary:', error);
       return false;
     }
   }
@@ -233,7 +234,7 @@ export class ExecutiveSummaryCacheService {
    */
   async clearAllSummaries(): Promise<boolean> {
     try {
-      console.log('🧹 Clearing all executive summaries (development mode)...');
+      logger.info('🧹 Clearing all executive summaries (development mode)...');
       
       const { error } = await supabase
         .from('executive_summaries')
@@ -241,14 +242,14 @@ export class ExecutiveSummaryCacheService {
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
 
       if (error) {
-        console.error('❌ Error clearing all executive summaries:', error);
+        logger.error('❌ Error clearing all executive summaries:', error);
         return false;
       }
 
-      console.log('✅ All executive summaries cleared');
+      logger.info('✅ All executive summaries cleared');
       return true;
     } catch (error) {
-      console.error('❌ Error clearing all executive summaries:', error);
+      logger.error('❌ Error clearing all executive summaries:', error);
       return false;
     }
   }

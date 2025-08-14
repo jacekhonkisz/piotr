@@ -3,6 +3,8 @@
  * Standardizes date range detection and formatting across the application
  */
 
+import logger from './logger';
+
 export interface DateRange {
   start: string;
   end: string;
@@ -146,12 +148,12 @@ export function validateDateRange(startDate: string, endDate: string): {
   isValid: boolean;
   error?: string;
 } {
-  console.log('🔍 Validating date range:', { startDate, endDate });
+  logger.info('🔍 Validating date range:', { startDate, endDate });
   
   const start = new Date(startDate);
   const end = new Date(endDate);
   
-  console.log('🔍 Parsed dates:', { 
+  logger.info('🔍 Parsed dates:', { 
     start: start.toISOString(), 
     end: end.toISOString(),
     startValid: !isNaN(start.getTime()),
@@ -163,20 +165,20 @@ export function validateDateRange(startDate: string, endDate: string): {
   
   // Check if dates are valid
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    console.log('❌ Invalid date format detected');
+    logger.info('❌ Invalid date format detected');
     return { isValid: false, error: 'Invalid date format' };
   }
   
   // Check if start is before end
   if (start >= end) {
-    console.log('❌ Start date is not before end date');
+    logger.info('❌ Start date is not before end date');
     return { isValid: false, error: 'Start date must be before end date' };
   }
   
   // Check if end date is not in the future (allow current month even if not ended)
   const currentMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
   
-  console.log('🔍 Date comparisons:', {
+  logger.info('🔍 Date comparisons:', {
     end: end.toISOString(),
     currentMonthEnd: currentMonthEnd.toISOString(),
     isEndInFuture: end > currentMonthEnd
@@ -184,7 +186,7 @@ export function validateDateRange(startDate: string, endDate: string): {
   
   // Allow the current month to be accessed even if it's not finished
   if (end > currentMonthEnd) {
-    console.log('❌ End date is in the future');
+    logger.info('❌ End date is in the future');
     return { isValid: false, error: 'End date cannot be in the future' };
   }
   
@@ -192,18 +194,18 @@ export function validateDateRange(startDate: string, endDate: string): {
   const maxPastDate = new Date(currentDate);
   maxPastDate.setMonth(maxPastDate.getMonth() - 37);
   
-  console.log('🔍 Meta API limit check:', {
+  logger.info('🔍 Meta API limit check:', {
     start: start.toISOString(),
     maxPastDate: maxPastDate.toISOString(),
     isStartTooFarBack: start < maxPastDate
   });
   
   if (start < maxPastDate) {
-    console.log('❌ Start date is too far in the past');
+    logger.info('❌ Start date is too far in the past');
     return { isValid: false, error: 'Start date is too far in the past (Meta API limit: 37 months)' };
   }
   
-  console.log('✅ Date range validation passed');
+  logger.info('✅ Date range validation passed');
   return { isValid: true };
 }
 

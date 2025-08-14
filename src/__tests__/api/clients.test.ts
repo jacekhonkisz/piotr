@@ -1,6 +1,5 @@
 import { createMocks } from 'node-mocks-http'
 import { GET, POST } from '../../app/api/clients/route'
-import { createClient } from '@supabase/supabase-js'
 
 // Mock Supabase
 const mockSupabase = {

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { EmailScheduler } from '../../../../lib/email-scheduler';
+import logger from '../../../../lib/logger';
 
 export async function POST() {
   try {
-    console.log('🚀 Automated email scheduler triggered');
+    logger.info('🚀 Automated email scheduler triggered');
     
     // Create scheduler instance
     const scheduler = new EmailScheduler();
@@ -44,7 +45,7 @@ export async function POST() {
 // Also support GET for manual testing
 export async function GET() {
   try {
-    console.log('🔍 Manual email scheduler check triggered');
+    logger.info('🔍 Manual email scheduler check triggered');
     
     const scheduler = new EmailScheduler();
     const result = await scheduler.checkAndSendScheduledEmails();

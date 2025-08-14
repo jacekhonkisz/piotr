@@ -1,5 +1,6 @@
 import { MetaAPIService } from './meta-api';
 import { supabase } from './supabase';
+import logger from './logger';
 
 interface DailyInsight {
   date: string;
@@ -42,8 +43,8 @@ export class DailyDataFetcher {
    */
   static async fetchRealDailyData(clientId: string): Promise<DailyAggregatedData[]> {
     try {
-      console.log('🔄 FETCHING REAL DAILY DATA FROM META API');
-      console.log('==========================================');
+      logger.info('🔄 FETCHING REAL DAILY DATA FROM META API');
+      logger.info('==========================================');
       
       // Get client data
       const { data: client, error: clientError } = await supabase
@@ -80,7 +81,7 @@ export class DailyDataFetcher {
       const dateStart = startDate.toISOString().split('T')[0];
       const dateEnd = endDate.toISOString().split('T')[0];
       
-      console.log(`📅 Fetching REAL daily data from ${dateStart} to ${dateEnd}`);
+      logger.info(`📅 Fetching REAL daily data from ${dateStart} to ${dateEnd}`);
 
       // Prepare ad account ID
       if (!client.ad_account_id) {
@@ -92,7 +93,7 @@ export class DailyDataFetcher {
         : (client.ad_account_id as string);
 
       // CRITICAL: Use time_increment=1 to get ACTUAL daily breakdowns
-      console.log('🎯 Using Meta API with time_increment=1 for REAL daily data');
+      logger.info('🎯 Using Meta API with time_increment=1 for REAL daily data');
       
       const dailyInsights = await metaService.getCampaignInsights(
         adAccountId,
@@ -101,20 +102,20 @@ export class DailyDataFetcher {
         1 // time_increment=1 means DAILY breakdowns
       );
 
-      console.log(`✅ Received ${dailyInsights.length} daily insight records from Meta API`);
+      logger.info(`✅ Received ${dailyInsights.length} daily insight records from Meta API`);
 
       // Group insights by date and aggregate
       const dailyAggregated = this.aggregateDailyInsights(dailyInsights);
       
-      console.log(`📊 Aggregated into ${dailyAggregated.length} daily data points:`);
+      logger.info(`📊 Aggregated into ${dailyAggregated.length} daily data points:`);
       dailyAggregated.forEach(day => {
-        console.log(`   ${day.date}: ${day.total_spend.toFixed(2)} PLN, ${day.total_clicks} clicks (${day.campaigns_count} campaigns)`);
+        logger.info(`   ${day.date}: ${day.total_spend.toFixed(2)} PLN, ${day.total_clicks} clicks (${day.campaigns_count} campaigns)`);
       });
 
       return dailyAggregated;
 
     } catch (error) {
-      console.error('❌ Error fetching real daily data:', error);
+      logger.error('❌ Error fetching real daily data:', error);
       throw error;
     }
   }
@@ -172,7 +173,7 @@ export class DailyDataFetcher {
    */
   static async storeRealDailyData(clientId: string, dailyData: DailyAggregatedData[]): Promise<void> {
     try {
-      console.log(`📊 Storing ${dailyData.length} REAL daily data records in database`);
+      logger.info(`📊 Storing ${dailyData.length} REAL daily data records in database`);
       
       for (const dayData of dailyData) {
         // Calculate derived metrics
@@ -218,14 +219,14 @@ export class DailyDataFetcher {
           });
 
         if (error) {
-          console.error(`❌ Error storing daily data for ${dayData.date}:`, error);
+          logger.error(`❌ Error storing daily data for ${dayData.date}:`, error);
         } else {
-          console.log(`✅ Stored REAL daily data for ${dayData.date}: ${dayData.total_spend.toFixed(2)} PLN`);
+          logger.info(`✅ Stored REAL daily data for ${dayData.date}: ${dayData.total_spend.toFixed(2)} PLN`);
         }
       }
 
     } catch (error) {
-      console.error('❌ Error storing real daily data:', error);
+      logger.error('❌ Error storing real daily data:', error);
       throw error;
     }
   }
@@ -235,7 +236,7 @@ export class DailyDataFetcher {
    */
   static async updateRealDailyData(clientId: string): Promise<DailyAggregatedData[]> {
     try {
-      console.log('🔄 UPDATING WITH REAL DAILY DATA FROM META API');
+      logger.info('🔄 UPDATING WITH REAL DAILY DATA FROM META API');
       
       // Fetch real daily data from Meta API
       const dailyData = await this.fetchRealDailyData(clientId);
@@ -243,11 +244,11 @@ export class DailyDataFetcher {
       // Store it in the database
       await this.storeRealDailyData(clientId, dailyData);
       
-      console.log('✅ REAL daily data update complete');
+      logger.info('✅ REAL daily data update complete');
       return dailyData;
       
     } catch (error) {
-      console.error('❌ Error updating real daily data:', error);
+      logger.error('❌ Error updating real daily data:', error);
       throw error;
     }
   }

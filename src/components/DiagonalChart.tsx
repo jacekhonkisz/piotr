@@ -43,7 +43,7 @@ export default function DiagonalChart({
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
+        if (entry?.isIntersecting) {
           setIsVisible(true);
           controls.start({ 
             scale: 1,

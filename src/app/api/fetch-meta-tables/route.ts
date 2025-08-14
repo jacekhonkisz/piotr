@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Client missing Meta Ads credentials', 400);
     }
     
-    console.log('✅ Fetching meta tables for client:', {
+    logger.info('Success', {
       id: client.id,
       name: client.name,
       dateRange
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       ? client.ad_account_id.substring(4)
       : client.ad_account_id;
     
-    console.log('📊 Fetching meta tables in parallel...');
+    logger.info('📊 Fetching meta tables in parallel...');
     
     let metaTables = null;
     let metaApiError: string | null = null;
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
       
       if (placementResult.status === 'fulfilled') {
         placementData = placementResult.value || [];
-        console.log('✅ Placement performance fetched:', placementData.length, 'records');
+        logger.info('Success', placementData.length, 'records');
       } else {
         console.error('❌ Placement performance failed:', placementResult.reason);
         partialErrors.push(`Placement: ${placementResult.reason}`);
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       
       if (demographicResult.status === 'fulfilled') {
         demographicData = demographicResult.value || [];
-        console.log('✅ Demographic performance fetched:', demographicData.length, 'records');
+        logger.info('Success', demographicData.length, 'records');
       } else {
         console.error('❌ Demographic performance failed:', demographicResult.reason);
         partialErrors.push(`Demographics: ${demographicResult.reason}`);
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       
       if (adRelevanceResult.status === 'fulfilled') {
         adRelevanceData = adRelevanceResult.value || [];
-        console.log('✅ Ad relevance results fetched:', adRelevanceData.length, 'records');
+        logger.info('Success', adRelevanceData.length, 'records');
       } else {
         console.error('❌ Ad relevance results failed:', adRelevanceResult.reason);
         partialErrors.push(`Ad Relevance: ${adRelevanceResult.reason}`);
@@ -124,9 +124,9 @@ export async function POST(request: NextRequest) {
       // Set error message if any partial failures occurred
       if (partialErrors.length > 0) {
         metaApiError = `Partial Meta API failures: ${partialErrors.join(', ')}`;
-        console.log('⚠️ Partial meta tables data available despite some API failures');
+        logger.info('⚠️ Partial meta tables data available despite some API failures');
       } else {
-        console.log('✅ All meta tables fetched successfully:', {
+        logger.info('Success', {
           placementCount: placementData.length,
           demographicCount: demographicData.length,
           adRelevanceCount: adRelevanceData.length

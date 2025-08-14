@@ -19,12 +19,42 @@ import WeeklyReportView from '../../components/WeeklyReportView';
 import InteractivePDFButton from '../../components/InteractivePDFButton';
 import MetaAdsTables from '../../components/MetaAdsTables';
 import ClientSelector from '../../components/ClientSelector';
+import SendCustomReportModal from '../../components/SendCustomReportModal';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
 import { getMonthBoundaries, getWeekBoundaries, getISOWeekStartDate, getWeeksInYear } from '../../lib/date-range-utils';
 
 type Client = Database['public']['Tables']['clients']['Row'];
+
+// Helper function to format date ranges for display
+const formatDateRange = (startDate: string, endDate: string): string => {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  
+  if (daysDiff === 7) {
+    return `Tydzień ${start.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })} - ${end.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
+  } else if (daysDiff >= 28 && daysDiff <= 31) {
+    return start.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+  } else {
+    return `${start.toLocaleDateString('pl-PL')} - ${end.toLocaleDateString('pl-PL')}`;
+  }
+};
+
+// Helper function to safely extract client email
+const getClientEmail = (client: any): string => {
+  // First try email field
+  if (client.email && typeof client.email === 'string') {
+    return client.email;
+  }
+  // Then try contact_emails array
+  if (Array.isArray(client.contact_emails) && client.contact_emails.length > 0) {
+    return client.contact_emails[0];
+  }
+  // Fallback
+  return 'brak@email.com';
+};
 
 interface Campaign {
   id: string;
@@ -100,7 +130,7 @@ const getWeekDateRange = (year: number, week: number) => {
   const formatDateForDisplay = (date: Date) => {
     // Use toISOString to get consistent formatting like API
     const isoString = date.toISOString().split('T')[0] || '';
-    const [yearStr, monthStr, dayStr] = isoString.split('-');
+    const [, monthStr, dayStr] = isoString.split('-');
     return `${dayStr}.${monthStr}`;
   };
   
@@ -147,6 +177,8 @@ function ReportsPageContent() {
     demographicPerformance: any[];
     adRelevanceResults: any[];
   } | null>(null);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [showCustomEmailModal, setShowCustomEmailModal] = useState(false);
   
   // Add refs to prevent duplicate calls
   const loadingRef = useRef(false);
@@ -2543,7 +2575,7 @@ function ReportsPageContent() {
                   />
               </div>
 
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 space-x-3 flex">
                 <button
                   onClick={() => {
                     if (customDateRange.start && customDateRange.end) {
@@ -2566,6 +2598,21 @@ function ReportsPageContent() {
                   )}
                   <span>{isGeneratingCustomReport ? 'Generowanie...' : 'Generuj Raport'}</span>
                 </button>
+                
+                {/* Email Button for Custom Range */}
+                {customDateRange.start && customDateRange.end && client && (
+                  <button
+                    onClick={() => setShowCustomEmailModal(true)}
+                    disabled={isGeneratingCustomReport}
+                    className="flex items-center space-x-2 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                    title="Send custom range report via email"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span>Send Email</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2617,16 +2664,29 @@ function ReportsPageContent() {
               )}
               
               {selectedReport && selectedReport.campaigns.length > 0 && (
-                <InteractivePDFButton
-                  clientId={client?.id || ''}
-                  dateStart={selectedReport?.date_range_start || ''}
-                  dateEnd={selectedReport?.date_range_end || ''}
-                  className="inline-block"
-                  campaigns={selectedReport?.campaigns || []}
-                  totals={getSelectedPeriodTotals()}
-                  client={client}
-                  metaTables={metaTablesData}
-                />
+                <>
+                  <InteractivePDFButton
+                    clientId={client?.id || ''}
+                    dateStart={selectedReport?.date_range_start || ''}
+                    dateEnd={selectedReport?.date_range_end || ''}
+                    className="inline-block"
+                    campaigns={selectedReport?.campaigns || []}
+                    totals={getSelectedPeriodTotals()}
+                    client={client}
+                    metaTables={metaTablesData}
+                  />
+                  <button
+                    onClick={() => setShowSendEmailModal(true)}
+                    disabled={loadingPeriod !== null || !client}
+                    className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm"
+                    title="Send report via email"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span>Send Email</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -2961,6 +3021,44 @@ function ReportsPageContent() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Send Custom Report Modal */}
+        {showSendEmailModal && selectedReport && client && (
+          <SendCustomReportModal
+            isOpen={showSendEmailModal}
+            onClose={() => setShowSendEmailModal(false)}
+            clientName={client.name}
+            clientEmail={getClientEmail(client)}
+            period={formatDateRange(selectedReport.date_range_start, selectedReport.date_range_end)}
+            dateRange={{
+              start: selectedReport.date_range_start,
+              end: selectedReport.date_range_end
+            }}
+            campaigns={selectedReport.campaigns}
+            totals={getSelectedPeriodTotals()}
+            client={client}
+            metaTables={metaTablesData}
+          />
+        )}
+
+        {/* Send Custom Date Range Report Modal */}
+        {showCustomEmailModal && customDateRange.start && customDateRange.end && client && (
+          <SendCustomReportModal
+            isOpen={showCustomEmailModal}
+            onClose={() => setShowCustomEmailModal(false)}
+            clientName={client.name}
+            clientEmail={getClientEmail(client)}
+            period={formatDateRange(customDateRange.start, customDateRange.end)}
+            dateRange={{
+              start: customDateRange.start,
+              end: customDateRange.end
+            }}
+            campaigns={[]} // Custom date range reports will generate campaigns automatically
+            totals={null} // Totals will be calculated automatically
+            client={client}
+            metaTables={null} // Meta tables will be fetched automatically
+          />
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { authenticateRequest } from '../../../lib/auth-middleware';
+import logger from '../../../lib/logger';
 
 // GET: Fetch daily KPI data for carousel
 export async function GET(request: NextRequest) {
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Database connection error' }, { status: 500 });
     }
 
-    console.log('🔍 API Request Headers:', {
+    logger.debug('Debug info', {
       authorization: request.headers.get('authorization'),
       contentType: request.headers.get('content-type'),
       userAgent: request.headers.get('user-agent'),
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Verify authentication
     const authResult = await authenticateRequest(request);
     if (!authResult.success) {
-      console.log('❌ Authentication failed:', {
+      logger.error('Error occurred', {
         error: authResult.error,
         statusCode: authResult.statusCode,
         hasAuthHeader: !!request.headers.get('authorization')
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('📊 Fetching FINISHED daily KPI data for previous week only, client:', clientId);
+    logger.info('Data processing', clientId);
 
     // Calculate date range for PREVIOUS 7 COMPLETED days only (excluding today)
     const today = new Date();
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
     const startDate = sevenDaysAgo.toISOString().split('T')[0];
     const endDate = yesterday.toISOString().split('T')[0];
 
-    console.log('📅 Date range for completed days:', {
+    logger.info('📅 Date range for completed days:', {
       startDate,
       endDate,
       today: today.toISOString().split('T')[0],
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Query ONLY stored daily KPI data from database (no live data)
-    console.log('🔍 About to query daily_kpi_data with:', {
+    logger.debug('Debug info', {
       client_id: clientId,
       startDate,
       endDate
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
       .lte('date', endDate)
       .order('date', { ascending: true });
 
-    console.log('📊 Database query result:', {
+    logger.info('Data processing', {
       error: error,
       dataLength: dailyData?.length || 0,
       rawData: dailyData
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
       day.data_source === 'api' || day.data_source === 'database'
     );
 
-    console.log('📊 Real daily data found:', {
+    logger.info('Data processing', {
       totalRecords: dailyData?.length || 0,
       realDataRecords: realDataOnly.length,
       dateRange: {
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString()
     };
 
-    console.log('✅ Returning only REAL completed daily data:', {
+    logger.info('Success', {
       clientId,
       totalDays: transformedData.metadata.totalDays,
       dateRange: transformedData.metadata.dateRange
@@ -160,7 +161,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Client ID and date are required' }, { status: 400 });
     }
 
-    console.log('📊 Storing daily KPI data for:', { clientId, date, dataSource });
+    logger.info('Data processing', { clientId, date, dataSource });
 
     // FIXED: Handle both campaign aggregation and direct daily values from MetaPerformanceLive
     const { estimatedDailyData } = body;
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
 
     if (estimatedDailyData && estimatedDailyData.calculationMethod === 'monthly_total_divided_by_days_elapsed') {
       // Use pre-calculated daily values from MetaPerformanceLive (FIXED VERSION)
-      console.log('📊 Using FIXED daily calculation from MetaPerformanceLive:', estimatedDailyData);
+      logger.info('Data processing', estimatedDailyData);
       
       aggregatedData = {
         total_clicks: Math.round(estimatedDailyData.avgDailyClicks || 0),
@@ -196,7 +197,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log('📊 Final aggregated daily data:', {
+    logger.info('Data processing', {
       date,
       method: estimatedDailyData?.calculationMethod || 'campaign_aggregation',
       ...aggregatedData
@@ -250,7 +251,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to store daily KPI data' }, { status: 500 });
     }
 
-    console.log('✅ Daily KPI data stored successfully:', {
+    logger.info('Success', {
       clientId,
       date,
       recordId: data?.[0]?.id,
@@ -285,7 +286,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 401 });
     }
 
-    console.log('🧹 Cleaning up old daily KPI data...');
+    logger.info('🧹 Cleaning up old daily KPI data...');
 
     // Calculate cutoff date (current month start - 7 days)
     const currentDate = new Date();
@@ -304,7 +305,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to clean up old data' }, { status: 500 });
     }
 
-    console.log('✅ Daily KPI data cleanup completed');
+    logger.info('✅ Daily KPI data cleanup completed');
 
     return NextResponse.json({
       success: true,

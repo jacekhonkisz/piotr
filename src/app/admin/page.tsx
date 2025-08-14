@@ -24,7 +24,7 @@ import {
   ChevronRight,
   Home,
   Users,
-  Activity
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -1098,15 +1098,7 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => router.push('/admin/token-health')}
-                className="group nav-premium-button hover:border-blue-300"
-              >
-                <div className="flex items-center">
-                  <Shield className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Stan tokenów</span>
-                </div>
-              </button>
+
               <button
                 onClick={() => router.push('/admin/reports')}
                 className="nav-premium-button-primary"
@@ -1117,14 +1109,15 @@ export default function AdminPage() {
                 </div>
               </button>
               <button
-                onClick={() => router.push('/admin/email-logs')}
-                className="group nav-premium-button"
+                onClick={() => router.push('/admin/calendar')}
+                className="group nav-premium-button hover:border-purple-300"
               >
                 <div className="flex items-center">
-                  <Mail className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700">Logi e-mail</span>
+                  <Calendar className="h-4 w-4 mr-2 text-gray-600 group-hover:text-purple-600 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">Kalendarz wysyłek</span>
                 </div>
               </button>
+
               <button
                 onClick={() => router.push('/admin/settings')}
                 className="group nav-premium-button"
@@ -1134,15 +1127,7 @@ export default function AdminPage() {
                   <span className="text-sm font-medium text-gray-700">Ustawienia</span>
                 </div>
               </button>
-              <button
-                onClick={() => router.push('/admin/monitoring')}
-                className="group nav-premium-button"
-              >
-                <div className="flex items-center">
-                  <Activity className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700">Monitorowanie</span>
-                </div>
-              </button>
+
               <button
                 onClick={() => setShowAddModal(true)}
                 className="btn-premium-success"

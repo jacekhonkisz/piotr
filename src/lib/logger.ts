@@ -1,23 +1,40 @@
-import winston from 'winston'
-
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.errors({ stack: true }),
-    winston.format.json()
-  ),
-  defaultMeta: { service: 'meta-ads-reporting' },
-  transports: [
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
-  ],
-})
-
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple()
-  }))
-}
+// Browser-safe logger that works in both client and server environments
+const logger = {
+  info: (message: string, ...args: any[]) => {
+    if (typeof window === 'undefined') {
+      // Server-side: use console for now (can be enhanced with winston later)
+      console.log(`[INFO] ${message}`, ...args);
+    } else {
+      // Client-side: use console
+      console.log(`[INFO] ${message}`, ...args);
+    }
+  },
+  
+  error: (message: string, ...args: any[]) => {
+    if (typeof window === 'undefined') {
+      console.error(`[ERROR] ${message}`, ...args);
+    } else {
+      console.error(`[ERROR] ${message}`, ...args);
+    }
+  },
+  
+  warn: (message: string, ...args: any[]) => {
+    if (typeof window === 'undefined') {
+      console.warn(`[WARN] ${message}`, ...args);
+    } else {
+      console.warn(`[WARN] ${message}`, ...args);
+    }
+  },
+  
+  debug: (message: string, ...args: any[]) => {
+    if (process.env.NODE_ENV !== 'production') {
+      if (typeof window === 'undefined') {
+        console.debug(`[DEBUG] ${message}`, ...args);
+      } else {
+        console.debug(`[DEBUG] ${message}`, ...args);
+      }
+    }
+  }
+};
 
 export default logger 

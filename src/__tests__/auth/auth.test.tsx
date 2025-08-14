@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AuthProvider, useAuth } from '../../components/AuthProvider'
 import { signIn, signUp, signOut, getCurrentProfile, isCurrentUserAdmin } from '../../lib/auth'
-import { createClient } from '@supabase/supabase-js'
 
 // Mock the supabase client
 const mockSupabase = {
@@ -59,7 +58,7 @@ describe('Authentication', () => {
         email: 'test@example.com',
         password: 'password123',
       })
-      expect(result.user).toEqual(mockUser)
+      expect(result.data?.user).toEqual(mockUser)
     })
 
     test('user cannot sign in with invalid credentials', async () => {
@@ -105,7 +104,7 @@ describe('Authentication', () => {
         error: null,
       })
 
-      const result = await signUp('new@example.com', 'password123', 'John Doe', 'client')
+      const result = await signUp('new@example.com', 'password123')
       
       expect(mockSupabase.auth.signUp).toHaveBeenCalledWith({
         email: 'new@example.com',
@@ -117,7 +116,7 @@ describe('Authentication', () => {
           },
         },
       })
-      expect(result.user).toEqual(mockUser)
+      expect(result.data?.user).toEqual(mockUser)
     })
 
     test('user can sign up as admin', async () => {
@@ -128,7 +127,7 @@ describe('Authentication', () => {
         error: null,
       })
 
-      await signUp('admin@example.com', 'password123', 'Admin User', 'admin')
+      await signUp('admin@example.com', 'password123')
       
       expect(mockSupabase.auth.signUp).toHaveBeenCalledWith({
         email: 'admin@example.com',
@@ -148,7 +147,7 @@ describe('Authentication', () => {
         error: { message: 'User already registered' },
       })
 
-      await expect(signUp('existing@example.com', 'password123', 'Existing User')).rejects.toThrow(
+      await expect(signUp('existing@example.com', 'password123')).rejects.toThrow(
         'User already registered'
       )
     })

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
     
     const user = authResult.user;
-    console.log('🔐 Smart cache request authenticated for user:', user.email);
+    logger.info('🔐 Smart cache request authenticated for user:', user.email);
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Client ID required', 400);
     }
     
-    console.log('📊 Smart cache request:', {
+    logger.info('Data processing', {
       clientId,
       forceRefresh,
       authenticatedUser: user.email

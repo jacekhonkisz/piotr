@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import logger from '../../../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,7 +40,7 @@ export async function POST(
     }
 
     if (profile?.role !== 'admin') {
-      console.log('Access denied for user:', user.email, 'Role:', profile?.role);
+      logger.info('Access denied for user:', user.email, 'Role:', profile?.role);
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -138,7 +139,7 @@ export async function POST(
       }, { status: 500 });
     }
 
-    console.log('✅ Logo uploaded successfully for client:', existingClient.name);
+    logger.info('Success', existingClient.name);
 
     return NextResponse.json({
       success: true,
@@ -233,7 +234,7 @@ export async function DELETE(
       }, { status: 500 });
     }
 
-    console.log('✅ Logo deleted successfully for client:', existingClient.name);
+    logger.info('Success', existingClient.name);
 
     return NextResponse.json({
       success: true,

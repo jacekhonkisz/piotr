@@ -21,7 +21,7 @@ export class DataLifecycleManager {
    * This runs when a month ends to preserve the cached data
    */
   async archiveCompletedMonths(): Promise<void> {
-    console.log('📅 Starting monthly data archival process...');
+    logger.info('📅 Starting monthly data archival process...');
     
     try {
       // Get current date info
@@ -34,7 +34,7 @@ export class DataLifecycleManager {
       const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
       const prevMonthPeriodId = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
       
-      console.log(`📊 Archiving completed month: ${prevMonthPeriodId}`);
+      logger.info(`📊 Archiving completed month: ${prevMonthPeriodId}`);
       
       // Get all clients with cache data for the previous month
       const { data: cacheData, error: cacheError } = await supabase
@@ -47,11 +47,11 @@ export class DataLifecycleManager {
       }
       
       if (!cacheData || cacheData.length === 0) {
-        console.log('📝 No monthly cache data found to archive');
+        logger.info('📝 No monthly cache data found to archive');
         return;
       }
       
-      console.log(`📦 Found ${cacheData.length} monthly cache entries to archive`);
+      logger.info(`📦 Found ${cacheData.length} monthly cache entries to archive`);
       
       // Archive each cache entry to campaign_summaries
       let archivedCount = 0;
@@ -62,12 +62,12 @@ export class DataLifecycleManager {
           await this.archiveMonthlyData(cacheEntry);
           archivedCount++;
         } catch (error) {
-          console.error(`❌ Failed to archive monthly data for client ${cacheEntry.client_id}:`, error);
+          logger.error(`❌ Failed to archive monthly data for client ${cacheEntry.client_id}:`, error);
           errorCount++;
         }
       }
       
-      console.log(`✅ Monthly archival completed: ${archivedCount} archived, ${errorCount} errors`);
+      logger.info(`✅ Monthly archival completed: ${archivedCount} archived, ${errorCount} errors`);
       
       // Clean up archived cache entries
       if (archivedCount > 0) {
@@ -75,7 +75,7 @@ export class DataLifecycleManager {
       }
       
     } catch (error) {
-      console.error('❌ Monthly data archival failed:', error);
+      logger.error('❌ Monthly data archival failed:', error);
       logger.error('Monthly data archival failed', { 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
@@ -88,7 +88,7 @@ export class DataLifecycleManager {
    * This runs when a week ends to preserve the cached data
    */
   async archiveCompletedWeeks(): Promise<void> {
-    console.log('📅 Starting weekly data archival process...');
+    logger.info('📅 Starting weekly data archival process...');
     
     try {
       // Get previous week info
@@ -112,7 +112,7 @@ export class DataLifecycleManager {
       
       const prevWeekPeriodId = `${date.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
       
-      console.log(`📊 Archiving completed week: ${prevWeekPeriodId}`);
+      logger.info(`📊 Archiving completed week: ${prevWeekPeriodId}`);
       
       // Get all clients with cache data for the previous week
       const { data: cacheData, error: cacheError } = await supabase
@@ -125,11 +125,11 @@ export class DataLifecycleManager {
       }
       
       if (!cacheData || cacheData.length === 0) {
-        console.log('📝 No weekly cache data found to archive');
+        logger.info('📝 No weekly cache data found to archive');
         return;
       }
       
-      console.log(`📦 Found ${cacheData.length} weekly cache entries to archive`);
+      logger.info(`📦 Found ${cacheData.length} weekly cache entries to archive`);
       
       // Archive each cache entry to campaign_summaries
       let archivedCount = 0;
@@ -140,12 +140,12 @@ export class DataLifecycleManager {
           await this.archiveWeeklyData(cacheEntry);
           archivedCount++;
         } catch (error) {
-          console.error(`❌ Failed to archive weekly data for client ${cacheEntry.client_id}:`, error);
+          logger.error(`❌ Failed to archive weekly data for client ${cacheEntry.client_id}:`, error);
           errorCount++;
         }
       }
       
-      console.log(`✅ Weekly archival completed: ${archivedCount} archived, ${errorCount} errors`);
+      logger.info(`✅ Weekly archival completed: ${archivedCount} archived, ${errorCount} errors`);
       
       // Clean up archived cache entries
       if (archivedCount > 0) {
@@ -153,7 +153,7 @@ export class DataLifecycleManager {
       }
       
     } catch (error) {
-      console.error('❌ Weekly data archival failed:', error);
+      logger.error('❌ Weekly data archival failed:', error);
       logger.error('Weekly data archival failed', { 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
@@ -167,7 +167,7 @@ export class DataLifecycleManager {
    * When in month 13, we need month 1 data for comparison (12 months back)
    */
   async cleanupOldData(): Promise<void> {
-    console.log('🧹 Starting old data cleanup process...');
+    logger.info('🧹 Starting old data cleanup process...');
     
     try {
       // Calculate cutoff date (13 months ago to preserve year-over-year comparison data)
@@ -176,7 +176,7 @@ export class DataLifecycleManager {
       cutoffDate.setMonth(cutoffDate.getMonth() - 13);
       const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
       
-      console.log(`🗑️ Removing data older than: ${cutoffDateStr} (13+ months retention for year-over-year comparisons)`);
+      logger.info(`🗑️ Removing data older than: ${cutoffDateStr} (13+ months retention for year-over-year comparisons)`);
       
       // Remove old monthly summaries
       const { data: deletedMonthly, error: monthlyError } = await supabase
@@ -206,10 +206,10 @@ export class DataLifecycleManager {
       const weeklyCount = deletedWeekly?.length || 0;
       const totalDeleted = monthlyCount + weeklyCount;
       
-      console.log(`✅ Old data cleanup completed:`);
-      console.log(`   Monthly records deleted: ${monthlyCount}`);
-      console.log(`   Weekly records deleted: ${weeklyCount}`);
-      console.log(`   Total records deleted: ${totalDeleted}`);
+      logger.info(`✅ Old data cleanup completed:`);
+      logger.info(`   Monthly records deleted: ${monthlyCount}`);
+      logger.info(`   Weekly records deleted: ${weeklyCount}`);
+      logger.info(`   Total records deleted: ${totalDeleted}`);
       
       logger.info('Old data cleanup completed', {
         monthlyDeleted: monthlyCount,
@@ -219,7 +219,7 @@ export class DataLifecycleManager {
       });
       
     } catch (error) {
-      console.error('❌ Old data cleanup failed:', error);
+      logger.error('❌ Old data cleanup failed:', error);
       logger.error('Old data cleanup failed', { 
         error: error instanceof Error ? error.message : 'Unknown error' 
       });
@@ -265,7 +265,7 @@ export class DataLifecycleManager {
       throw new Error(`Failed to archive monthly summary: ${error.message}`);
     }
 
-    console.log(`💾 Archived monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Archived monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
   }
 
   /**
@@ -307,7 +307,7 @@ export class DataLifecycleManager {
       ? conversionTotals.total_spend / conversionTotals.reservations 
       : 0;
 
-    console.log(`📊 Weekly archive conversion metrics calculated:`, {
+    logger.info(`📊 Weekly archive conversion metrics calculated:`, {
       client_id: cacheEntry.client_id,
       period: cacheEntry.period_id,
       conversionTotals,
@@ -353,8 +353,8 @@ export class DataLifecycleManager {
       throw new Error(`Failed to archive weekly summary: ${error.message}`);
     }
 
-    console.log(`💾 Archived weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
-    console.log(`💾 Conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value, ${roas.toFixed(2)} ROAS`);
+    logger.info(`💾 Archived weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value, ${roas.toFixed(2)} ROAS`);
   }
 
   /**
@@ -367,9 +367,9 @@ export class DataLifecycleManager {
       .eq('period_id', periodId);
 
     if (error) {
-      console.error(`⚠️ Failed to cleanup monthly cache for ${periodId}:`, error.message);
+      logger.error(`⚠️ Failed to cleanup monthly cache for ${periodId}:`, error.message);
     } else {
-      console.log(`🧹 Cleaned up monthly cache for period ${periodId}`);
+      logger.info(`🧹 Cleaned up monthly cache for period ${periodId}`);
     }
   }
 
@@ -383,9 +383,9 @@ export class DataLifecycleManager {
       .eq('period_id', periodId);
 
     if (error) {
-      console.error(`⚠️ Failed to cleanup weekly cache for ${periodId}:`, error.message);
+      logger.error(`⚠️ Failed to cleanup weekly cache for ${periodId}:`, error.message);
     } else {
-      console.log(`🧹 Cleaned up weekly cache for period ${periodId}`);
+      logger.info(`🧹 Cleaned up weekly cache for period ${periodId}`);
     }
   }
 
@@ -450,7 +450,7 @@ export class DataLifecycleManager {
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('❌ Failed to get lifecycle status:', error);
+      logger.error('❌ Failed to get lifecycle status:', error);
       return { error: 'Failed to get status' };
     }
   }

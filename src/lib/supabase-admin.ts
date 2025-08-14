@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
+import logger from './logger';
 
 // Server-side only admin client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -34,7 +35,7 @@ export const createUserProfile = async (userId: string, profileData: any) => {
     .single();
 
   if (error) {
-    console.error('Error creating user profile:', error);
+    logger.error('Error creating user profile:', error);
     throw error;
   }
 
@@ -50,7 +51,7 @@ export const updateUserProfile = async (userId: string, updates: any) => {
     .single();
 
   if (error) {
-    console.error('Error updating user profile:', error);
+    logger.error('Error updating user profile:', error);
     throw error;
   }
 
@@ -64,7 +65,7 @@ export const deleteUserProfile = async (userId: string) => {
     .eq('id', userId);
 
   if (error) {
-    console.error('Error deleting user profile:', error);
+    logger.error('Error deleting user profile:', error);
     throw error;
   }
 }; 

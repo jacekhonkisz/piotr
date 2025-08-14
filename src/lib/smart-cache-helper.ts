@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from './meta-api';
+import logger from './logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,7 +16,7 @@ export function isCacheFresh(lastUpdated: string): boolean {
   const cacheTime = new Date(lastUpdated).getTime();
   const age = now - cacheTime;
   
-  console.log('🕐 Cache age check:', {
+  logger.info('🕐 Cache age check:', {
     now: new Date(now).toISOString(),
     cacheTime: new Date(cacheTime).toISOString(),
     ageHours: (age / (60 * 60 * 1000)).toFixed(2),
@@ -45,7 +46,7 @@ export function getCurrentMonthInfo() {
 
 // Function to fetch fresh data from Meta API
 export async function fetchFreshCurrentMonthData(client: any) {
-  console.log('🔄 Fetching fresh current month data from Meta API...');
+  logger.info('🔄 Fetching fresh current month data from Meta API...');
   
   const currentMonth = getCurrentMonthInfo();
   const metaService = new MetaAPIService(client.meta_access_token);
@@ -66,7 +67,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
     // Get account info  
     const accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
 
-    console.log(`✅ Fetched ${campaignInsights.length} campaigns for caching`);
+    logger.info(`✅ Fetched ${campaignInsights.length} campaigns for caching`);
 
     // Calculate stats
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
@@ -212,15 +213,15 @@ export async function fetchFreshCurrentMonthData(client: any) {
           last_updated: new Date().toISOString()
         });
       
-      console.log('💾 Fresh data cached successfully');
+      logger.info('💾 Fresh data cached successfully');
     } catch (cacheError) {
-      console.error('⚠️ Failed to cache fresh data:', cacheError);
+      logger.error('⚠️ Failed to cache fresh data:', cacheError);
     }
 
     return cacheData;
 
   } catch (error) {
-    console.error('❌ Error fetching fresh current month data:', error);
+    logger.error('❌ Error fetching fresh current month data:', error);
     
     // 🔧 ULTIMATE FALLBACK: If Meta API completely fails, provide basic structure
     // This prevents the frontend from breaking with "Nie skonfigurowane"
@@ -257,7 +258,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
       error: error instanceof Error ? error.message : 'Unknown error'
     };
 
-    console.log('🔧 Returning fallback data to prevent "Nie skonfigurowane"');
+    logger.info('🔧 Returning fallback data to prevent "Nie skonfigurowane"');
     return fallbackData;
   }
 }
@@ -273,14 +274,14 @@ async function refreshCacheInBackground(clientId: string, periodId: string) {
   const lastRefresh = lastRefreshTime.get(key) || 0;
   
   if (now - lastRefresh < REFRESH_COOLDOWN) {
-    console.log('🚫 Background refresh cooldown active, skipping (last refresh:', new Date(lastRefresh).toLocaleTimeString(), ')');
+    logger.info('🚫 Background refresh cooldown active, skipping (last refresh:', new Date(lastRefresh).toLocaleTimeString(), ')');
     return;
   }
   
   lastRefreshTime.set(key, now);
   
   try {
-    console.log('🔄 Starting background cache refresh for:', { clientId, periodId });
+    logger.info('🔄 Starting background cache refresh for:', { clientId, periodId });
     
     // Get client data
     const { data: clientData, error: clientError } = await supabase
@@ -302,17 +303,17 @@ async function refreshCacheInBackground(clientId: string, periodId: string) {
       .single();
       
     if (currentCache && isCacheFresh(currentCache.last_updated)) {
-      console.log('✅ Cache became fresh during cooldown, skipping background refresh');
+      logger.info('✅ Cache became fresh during cooldown, skipping background refresh');
       return;
     }
 
     // Fetch fresh data in background (force refresh to bypass cache)
     const freshData = await fetchFreshCurrentMonthData(clientData);
     
-    console.log('✅ Background cache refresh completed for:', { clientId, periodId });
+    logger.info('✅ Background cache refresh completed for:', { clientId, periodId });
     
   } catch (error) {
-    console.error('❌ Background cache refresh failed:', error);
+    logger.error('❌ Background cache refresh failed:', error);
     // Reset cooldown on error to allow retry
     lastRefreshTime.delete(key);
     throw error;
@@ -327,7 +328,7 @@ export async function getSmartCacheData(clientId: string, forceRefresh: boolean 
   const currentMonth = getCurrentMonthInfo();
   const cacheKey = `${clientId}_${currentMonth.periodId}`;
   
-  console.log('📅 Smart cache request for current month:', {
+  logger.info('📅 Smart cache request for current month:', {
     clientId,
     periodId: currentMonth.periodId,
     forceRefresh
@@ -335,7 +336,7 @@ export async function getSmartCacheData(clientId: string, forceRefresh: boolean 
   
   // If same request is already in progress, return that promise (unless force refresh)
   if (!forceRefresh && globalRequestCache.has(cacheKey)) {
-    console.log('🔄 Reusing existing smart cache request for', cacheKey);
+    logger.info('🔄 Reusing existing smart cache request for', cacheKey);
     return await globalRequestCache.get(cacheKey);
   }
 
@@ -366,7 +367,7 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
 
       if (!cacheError && cachedData) {
         if (isCacheFresh(cachedData.last_updated)) {
-          console.log('✅ Returning fresh cached data');
+          logger.info('✅ Returning fresh cached data');
           
           return {
             success: true,
@@ -382,14 +383,14 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
           const ENABLE_BACKGROUND_REFRESH = false; // ⚠️ DISABLED to prevent API calls
           
           if (ENABLE_BACKGROUND_REFRESH) {
-            console.log('⚠️ Cache is stale, returning stale data instantly + refreshing in background');
+            logger.info('⚠️ Cache is stale, returning stale data instantly + refreshing in background');
             
             // Refresh in background (non-blocking)
             refreshCacheInBackground(clientId, currentMonth.periodId).catch((err: any) => 
-              console.log('⚠️ Background refresh failed:', err)
+              logger.info('⚠️ Background refresh failed:', err)
             );
           } else {
-            console.log('⚠️ Cache is stale, returning stale data (background refresh DISABLED)');
+            logger.info('⚠️ Cache is stale, returning stale data (background refresh DISABLED)');
           }
           
           // Return stale data instantly (don't wait!)
@@ -406,16 +407,16 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
           };
         }
       } else {
-        console.log('⚠️ No cache found, fetching new data');
+        logger.info('⚠️ No cache found, fetching new data');
         if (cacheError) {
-          console.log('⚠️ Cache query error:', cacheError.message);
+          logger.info('⚠️ Cache query error:', cacheError.message);
         }
       }
     } catch (dbError) {
-      console.log('⚠️ Database connection error, proceeding with live fetch:', dbError);
+      logger.info('⚠️ Database connection error, proceeding with live fetch:', dbError);
     }
   } else {
-    console.log('🔄 Force refresh requested, bypassing cache');
+    logger.info('🔄 Force refresh requested, bypassing cache');
   }
 
   // Get client data
@@ -442,9 +443,9 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
         last_updated: new Date().toISOString(),
         period_id: currentMonth.periodId
       });
-    console.log('✅ Fresh data cached successfully');
+    logger.info('✅ Fresh data cached successfully');
   } catch (cacheError) {
-    console.log('⚠️ Failed to cache fresh data:', cacheError);
+    logger.info('⚠️ Failed to cache fresh data:', cacheError);
   }
   
   return {
@@ -487,7 +488,7 @@ export function getCurrentWeekInfo() {
 
 // Function to fetch fresh weekly data from Meta API
 export async function fetchFreshCurrentWeekData(client: any) {
-  console.log('🔄 Fetching fresh current week data from Meta API...');
+  logger.info('🔄 Fetching fresh current week data from Meta API...');
   
   const currentWeek = getCurrentWeekInfo();
   const metaService = new MetaAPIService(client.meta_access_token);
@@ -508,7 +509,7 @@ export async function fetchFreshCurrentWeekData(client: any) {
     // Get account info  
     const accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
 
-    console.log(`✅ Fetched ${campaignInsights.length} campaigns for weekly caching`);
+    logger.info(`✅ Fetched ${campaignInsights.length} campaigns for weekly caching`);
 
     // Calculate stats (same logic as monthly)
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
@@ -602,7 +603,7 @@ export async function fetchFreshCurrentWeekData(client: any) {
     };
 
   } catch (error) {
-    console.error('❌ Failed to fetch weekly data from Meta API:', error);
+    logger.error('❌ Failed to fetch weekly data from Meta API:', error);
     throw error;
   }
 }
@@ -612,7 +613,7 @@ export async function getSmartWeekCacheData(clientId: string, forceRefresh: bool
   const currentWeek = getCurrentWeekInfo();
   const cacheKey = `${clientId}_${currentWeek.periodId}`;
   
-  console.log('📅 Smart weekly cache request:', {
+  logger.info('📅 Smart weekly cache request:', {
     clientId,
     periodId: currentWeek.periodId,
     forceRefresh
@@ -620,7 +621,7 @@ export async function getSmartWeekCacheData(clientId: string, forceRefresh: bool
   
   // If same request is already in progress, return that promise (unless force refresh)
   if (!forceRefresh && globalRequestCache.has(cacheKey)) {
-    console.log('🔄 Reusing existing weekly cache request for', cacheKey);
+    logger.info('🔄 Reusing existing weekly cache request for', cacheKey);
     return await globalRequestCache.get(cacheKey);
   }
 
@@ -651,7 +652,7 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
 
       if (!cacheError && cachedData) {
         if (isCacheFresh(cachedData.last_updated)) {
-          console.log('✅ Returning fresh weekly cached data');
+          logger.info('✅ Returning fresh weekly cached data');
           
           return {
             success: true,
@@ -667,14 +668,14 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
           const ENABLE_BACKGROUND_REFRESH = true; // ✅ ENABLED for proper caching
           
           if (ENABLE_BACKGROUND_REFRESH) {
-            console.log('⚠️ Weekly cache is stale, returning stale data + refreshing in background');
+            logger.info('⚠️ Weekly cache is stale, returning stale data + refreshing in background');
             
             // Refresh in background
             refreshWeeklyCacheInBackground(clientId, currentWeek.periodId).catch((err: any) => 
-              console.log('⚠️ Weekly background refresh failed:', err)
+              logger.info('⚠️ Weekly background refresh failed:', err)
             );
           } else {
-            console.log('⚠️ Weekly cache is stale, returning stale data (background refresh DISABLED)');
+            logger.info('⚠️ Weekly cache is stale, returning stale data (background refresh DISABLED)');
           }
           
           // Return stale data instantly
@@ -691,16 +692,16 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
           };
         }
       } else {
-        console.log('⚠️ No weekly cache found, fetching new data');
+        logger.info('⚠️ No weekly cache found, fetching new data');
         if (cacheError) {
-          console.log('⚠️ Weekly cache query error:', cacheError.message);
+          logger.info('⚠️ Weekly cache query error:', cacheError.message);
         }
       }
     } catch (dbError) {
-      console.log('⚠️ Weekly cache database error, proceeding with live fetch:', dbError);
+      logger.info('⚠️ Weekly cache database error, proceeding with live fetch:', dbError);
     }
   } else {
-    console.log('🔄 Force weekly refresh requested, bypassing cache');
+    logger.info('🔄 Force weekly refresh requested, bypassing cache');
   }
 
   // Get client data
@@ -727,9 +728,9 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
         last_updated: new Date().toISOString(),
         period_id: currentWeek.periodId
       });
-    console.log('✅ Fresh weekly data cached successfully');
+    logger.info('✅ Fresh weekly data cached successfully');
   } catch (cacheError) {
-    console.log('⚠️ Failed to cache fresh weekly data:', cacheError);
+    logger.info('⚠️ Failed to cache fresh weekly data:', cacheError);
   }
   
   return {
@@ -747,7 +748,7 @@ async function refreshWeeklyCacheInBackground(clientId: string, periodId: string
   if (lastRefreshTime.has(key)) {
     const timeSinceLastRefresh = Date.now() - lastRefreshTime.get(key)!;
     if (timeSinceLastRefresh < 5 * 60 * 1000) { // 5 minutes
-      console.log(`⏰ Weekly refresh cooldown active for ${key}, skipping`);
+      logger.info(`⏰ Weekly refresh cooldown active for ${key}, skipping`);
       return;
     }
   }
@@ -755,7 +756,7 @@ async function refreshWeeklyCacheInBackground(clientId: string, periodId: string
   lastRefreshTime.set(key, Date.now());
   
   try {
-    console.log(`🔄 Starting weekly background refresh for ${clientId}...`);
+    logger.info(`🔄 Starting weekly background refresh for ${clientId}...`);
     
     // Get client data
     const { data: clientData, error: clientError } = await supabase
@@ -781,10 +782,10 @@ async function refreshWeeklyCacheInBackground(clientId: string, periodId: string
         period_id: periodId
       });
 
-    console.log(`✅ Weekly background refresh completed for ${clientId}`);
+    logger.info(`✅ Weekly background refresh completed for ${clientId}`);
     
   } catch (error) {
-    console.error('❌ Weekly background cache refresh failed:', error);
+    logger.error('❌ Weekly background cache refresh failed:', error);
     // Reset cooldown on error to allow retry
     lastRefreshTime.delete(key);
     throw error;

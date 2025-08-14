@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, canAccessClient } from '../../../lib/auth-middleware';
 import { DailyDataFetcher } from '../../../lib/daily-data-fetcher';
 import { supabase } from '../../../lib/supabase';
+import logger from '../../../lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔄 REAL DAILY DATA FETCH API STARTED');
+    logger.info('🔄 REAL DAILY DATA FETCH API STARTED');
     
     // Authenticate the request
     const authResult = await authenticateRequest(request);
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Use the new DailyDataFetcher to get REAL daily data from Meta API
     const dailyData = await DailyDataFetcher.updateRealDailyData(clientId);
 
-    console.log('✅ REAL daily data fetch completed successfully');
+    logger.info('✅ REAL daily data fetch completed successfully');
 
     return NextResponse.json({
       success: true,

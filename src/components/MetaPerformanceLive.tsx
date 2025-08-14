@@ -59,13 +59,17 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
   const [isRequesting, setIsRequesting] = useState(false);
 
   const dateRange = useMemo(() => {
-    // Use the same date range logic as dashboard for consistency
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
+    // Calculate the last 7 days (excluding today) for daily chart data
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    
+    const sevenDaysAgo = new Date(yesterday);
+    sevenDaysAgo.setDate(yesterday.getDate() - 6); // 7 days total including yesterday
+    
     return {
-      start: `${year}-${String(month).padStart(2, '0')}-01`,
-      end: new Date(year, month, 0).toISOString().split('T')[0] // Last day of current month
+      start: sevenDaysAgo.toISOString().split('T')[0],
+      end: yesterday.toISOString().split('T')[0] // Exclude today
     };
   }, []);
 
@@ -364,6 +368,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       activeRequests.delete(cacheKey);
       globalComponentRequestCache.delete(cacheKey);
     }
+    return null; // Default return for async function
   }, [clientId]); // Add dependency array for useCallback
 
   // Store daily data for current day
@@ -483,14 +488,16 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
   const fetchDailyDataPoints = async () => {
     try {
       console.log('📊 Fetching daily data from DATABASE for clientId:', clientId);
+      console.log('📅 Date range:', dateRange);
       
-      // Get data directly from database - NO API CALLS
+      // Get data directly from database for the last 7 completed days
       const { data: dailyData, error } = await supabase
         .from('daily_kpi_data')
         .select('date, total_clicks, total_spend, total_conversions, average_ctr, data_source')
         .eq('client_id', clientId)
-        .order('date', { ascending: false })
-        .limit(7);
+        .gte('date', dateRange.start)
+        .lte('date', dateRange.end)
+        .order('date', { ascending: true }); // Chronological order
 
       if (error) {
         console.error('❌ Database error fetching daily data:', error);
@@ -503,6 +510,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
 
       if (!dailyData || dailyData.length === 0) {
         console.log('⚠️ No daily data found in database for client:', clientId);
+        console.log('📅 Expected date range:', dateRange);
         setClicksBars([]);
         setSpendBars([]);
         setConversionsBars([]);
@@ -512,14 +520,15 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
 
       console.log('✅ Found daily data in database:', {
         recordCount: dailyData.length,
-        latestDate: dailyData[0]?.date,
+        dateRange: {
+          start: dailyData[0]?.date,
+          end: dailyData[dailyData.length - 1]?.date
+        },
         sources: Array.from(new Set(dailyData.map(d => d.data_source)))
       });
 
-      // Create bars from database data (reverse order for chronological display)
-      const reversedData = dailyData.reverse();
-      
-      const clicksBarsData = reversedData.map((day: any, index: number) => {
+      // Data is already in chronological order, no need to reverse
+      const clicksBarsData = dailyData.map((day: any, index: number) => {
         const clicks = day.total_clicks || 0;
         const spend = day.total_spend || 0;
         const conversions = day.total_conversions || 0;
@@ -528,9 +537,9 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         return clicks;
       });
       
-      const spendBarsData = reversedData.map(day => day.total_spend || 0);
-      const conversionsBarsData = reversedData.map(day => day.total_conversions || 0);
-      const ctrBarsData = reversedData.map(day => day.average_ctr || 0);
+      const spendBarsData = dailyData.map(day => day.total_spend || 0);
+      const conversionsBarsData = dailyData.map(day => day.total_conversions || 0);
+      const ctrBarsData = dailyData.map(day => day.average_ctr || 0);
 
       console.log('📈 Using database daily data:', {
         totalDays: dailyData.length,
@@ -544,7 +553,8 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         },
         totalClicks: clicksBarsData.reduce((a: number, b: number) => a + b, 0),
         totalSpend: spendBarsData.reduce((a: number, b: number) => a + b, 0),
-        dataSource: 'database'
+        dataSource: 'database',
+        dates: dailyData.map(d => d.date)
       });
 
       setClicksBars(clicksBarsData);
@@ -556,8 +566,9 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       console.log('🔍 DEBUG: Data being stored in KPI arrays:');
       console.log('- clicksBars:', clicksBarsData);
       console.log('- spendBars:', spendBarsData);
-      console.log('- conversionsBars:', conversionsBarsData, '← Should be [9,12,6,7,8,635,223]');
+      console.log('- conversionsBars:', conversionsBarsData);
       console.log('- ctrBars:', ctrBarsData);
+      console.log('- dates:', dailyData.map(d => d.date));
 
       return true;
 

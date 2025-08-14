@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import EmailService from '../../../lib/email';
+import logger from '../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
     if (includePdf) {
       // In a real implementation, you would generate a PDF here
       // For now, we'll skip PDF generation
-      console.log('PDF generation would happen here');
+      logger.info('PDF generation would happen here');
     }
 
     // Send email to all contact emails

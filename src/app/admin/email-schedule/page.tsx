@@ -218,8 +218,27 @@ export default function EmailSchedulePage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Email Schedule Management</h1>
-          <p className="text-gray-600">Manage automated email reporting schedules for all clients</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Email Schedule Management</h1>
+              <p className="text-gray-600">Manage automated email reporting schedules for all clients</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => router.push('/admin/calendar')}
+                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 border border-transparent rounded-lg hover:bg-purple-700 transition-colors flex items-center"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Kalendarz wysyłek
+              </button>
+              <button
+                onClick={() => router.push('/admin')}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Powrót do klientów
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Summary Cards */}

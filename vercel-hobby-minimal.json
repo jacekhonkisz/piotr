@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/background/collect-weekly", 
+      "schedule": "1 0 * * *"
+    },
+    {
+      "path": "/api/automated/send-scheduled-reports",
+      "schedule": "0 9 * * *"
+    }
+  ]
+} 

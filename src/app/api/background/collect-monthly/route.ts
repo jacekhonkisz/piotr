@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { BackgroundDataCollector } from '../../../../lib/background-data-collector';
+import logger from '../../../../lib/logger';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,7 +9,7 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  console.log('📅 Monthly data collection request started');
+  logger.info('📅 Monthly data collection request started');
   
   try {
     // Extract the authorization header
