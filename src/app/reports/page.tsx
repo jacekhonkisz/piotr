@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { 
   Calendar,
   CalendarDays,
@@ -13,13 +14,17 @@ import {
   Clock,
   BarChart3,
   Database as DatabaseIcon,
-  Code
+  Code,
+  Target
 } from 'lucide-react';
 import WeeklyReportView from '../../components/WeeklyReportView';
 import InteractivePDFButton from '../../components/InteractivePDFButton';
+import AdsDataToggle from '../../components/AdsDataToggle';
+
+import GoogleAdsTables from '../../components/GoogleAdsTables';
 import MetaAdsTables from '../../components/MetaAdsTables';
 import ClientSelector from '../../components/ClientSelector';
-import SendCustomReportModal from '../../components/SendCustomReportModal';
+
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
@@ -28,33 +33,20 @@ import { getMonthBoundaries, getWeekBoundaries, getISOWeekStartDate, getWeeksInY
 type Client = Database['public']['Tables']['clients']['Row'];
 
 // Helper function to format date ranges for display
-const formatDateRange = (startDate: string, endDate: string): string => {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+const formatDateRange = (start: string, end: string): string => {
+  if (!start || !end) return '';
   
-  if (daysDiff === 7) {
-    return `Tydzień ${start.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })} - ${end.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
-  } else if (daysDiff >= 28 && daysDiff <= 31) {
-    return start.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
-  } else {
-    return `${start.toLocaleDateString('pl-PL')} - ${end.toLocaleDateString('pl-PL')}`;
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    return 'Nieprawidłowy zakres dat';
   }
+  
+  return `${startDate.toLocaleDateString('pl-PL')} - ${endDate.toLocaleDateString('pl-PL')}`;
 };
 
-// Helper function to safely extract client email
-const getClientEmail = (client: any): string => {
-  // First try email field
-  if (client.email && typeof client.email === 'string') {
-    return client.email;
-  }
-  // Then try contact_emails array
-  if (Array.isArray(client.contact_emails) && client.contact_emails.length > 0) {
-    return client.contact_emails[0];
-  }
-  // Fallback
-  return 'brak@email.com';
-};
+
 
 interface Campaign {
   id: string;
@@ -81,6 +73,7 @@ interface Campaign {
   reservations?: number;
   reservation_value?: number;
   booking_step_2?: number;
+  booking_step_3?: number;
 }
 
 interface MonthlyReport {
@@ -144,10 +137,10 @@ const getWeekDateRange = (year: number, week: number) => {
 
 // Loading Screen Component
 const LoadingScreen = () => (
-  <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+  <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
     <div className="text-center">
-      <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 mx-auto mb-4"></div>
-      <p className="text-lg text-gray-600">Ładowanie raportów...</p>
+      <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-white mb-4 mx-auto"></div>
+      <p className="text-white text-xl">Ładowanie raportów...</p>
     </div>
   </div>
 );
@@ -172,13 +165,81 @@ function ReportsPageContent() {
   });
   const [isGeneratingCustomReport, setIsGeneratingCustomReport] = useState(false);
   const [isGeneratingDevReport, setIsGeneratingDevReport] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [metaTablesData, setMetaTablesData] = useState<{
     placementPerformance: any[];
     demographicPerformance: any[];
     adRelevanceResults: any[];
   } | null>(null);
-  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
-  const [showCustomEmailModal, setShowCustomEmailModal] = useState(false);
+  const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('meta');
+
+  // Mock Google Ads report data
+  const createMockGoogleAdsReport = (originalReport: any) => {
+    if (!originalReport) return null;
+    
+    return {
+      ...originalReport,
+      // Mock Google Ads campaign data
+      campaigns: [
+        {
+          id: 'gads-camp-1',
+          campaign_id: '2385172329403015',
+          campaign_name: '[PBM] HOT | Remarketing | www i SM',
+          spend: 70,
+          clicks: 49,
+          impressions: 4756,
+          ctr: 1.03,
+          cpc: 1.43,
+          conversions: 8,
+          conversion_value: 2400
+        },
+        {
+          id: 'gads-camp-2',
+          campaign_id: '2385358331190015', 
+          campaign_name: '[PBM] Hot | Remarketing dynamiczny',
+          spend: 23,
+          clicks: 19,
+          impressions: 1348,
+          ctr: 1.41,
+          cpc: 1.21,
+          conversions: 3,
+          conversion_value: 890
+        },
+        {
+          id: 'gads-camp-3',
+          campaign_id: '2385762175720015',
+          campaign_name: '[PBM] Cold | Aktywność | Fani FB',
+          spend: 5,
+          clicks: 15,
+          impressions: 405,
+          ctr: 3.70,
+          cpc: 0.33,
+          conversions: 2,
+          conversion_value: 450
+        }
+      ],
+      // Mock Google Ads metrics
+      totalSpend: 98,
+      totalImpressions: 6509,
+      totalClicks: 83,
+      totalConversions: 13,
+      totalReach: 5892,
+      averageCtr: 1.27,
+      averageCpc: 1.18,
+      averageCpm: 15.06,
+      // Mock conversion metrics
+      click_to_call: 5,
+      email_contacts: 3,
+      booking_step_1: 13,
+      booking_step_2: 8,
+      booking_step_3: 6,
+      reservations: 4,
+      reservation_value: 3740,
+      roas: 38.16,
+      cost_per_reservation: 24.50
+    };
+  };
+
   
   // Add refs to prevent duplicate calls
   const loadingRef = useRef(false);
@@ -398,7 +459,9 @@ function ReportsPageContent() {
           start: startDate,
           end: endDate
         },
-        clientId: selectedClient.id
+        clientId: selectedClient.id,
+        forceFresh: true, // 🔧 TEMPORARY: Force fresh data for booking steps testing
+        reason: 'booking_steps_testing_all_time'
       };
       
       console.log(`📡 Making OPTIMIZED single API call for entire date range:`, requestBody);
@@ -441,6 +504,7 @@ function ReportsPageContent() {
           let reservation_value = 0;
           let booking_step_1 = 0;
           let booking_step_2 = 0;
+          let booking_step_3 = 0;
 
           if (campaign.actions && Array.isArray(campaign.actions)) {
             campaign.actions.forEach((action: any) => {
@@ -462,14 +526,23 @@ function ReportsPageContent() {
                 booking_step_1 += value;
               }
               
-              // 4. Rezerwacje (zakończone rezerwacje)
-              if (actionType === 'purchase' || actionType.includes('purchase') || actionType.includes('reservation')) {
+              // 4. Rezerwacje (zakończone rezerwacje) - Conservative: Specific purchase events only
+              if (actionType === 'purchase' || 
+                  actionType.includes('fb_pixel_purchase') ||
+                  actionType.includes('offsite_conversion.custom.fb_pixel_purchase')) {
                 reservations += value;
               }
               
-              // 8. Etap 2 rezerwacji
-              if (actionType.includes('booking_step_2') || actionType.includes('add_to_cart')) {
+              // 8. Etap 2 rezerwacji - Conservative: Only payment info (most accurate)
+              if (actionType.includes('booking_step_2') || 
+                  actionType.includes('add_payment_info')) {
                 booking_step_2 += value;
+              }
+              
+              // 9. Etap 3 rezerwacji - Conservative: Only checkout completion (most accurate)
+              if (actionType.includes('booking_step_3') || 
+                  actionType === 'complete_checkout') {
+                booking_step_3 += value;
               }
             });
           }
@@ -506,7 +579,8 @@ function ReportsPageContent() {
             reservations,
             reservation_value,
             booking_step_1,
-            booking_step_2
+            booking_step_2,
+            booking_step_3
           };
         });
         
@@ -684,6 +758,7 @@ function ReportsPageContent() {
         const reservation_value = campaign.reservation_value || 0;
         const booking_step_1 = campaign.booking_step_1 || 0;
         const booking_step_2 = campaign.booking_step_2 || 0;
+        const booking_step_3 = campaign.booking_step_3 || 0;
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,
@@ -708,7 +783,8 @@ function ReportsPageContent() {
           reservations,
           reservation_value,
           booking_step_1,
-          booking_step_2
+          booking_step_2,
+          booking_step_3
         };
       });
       
@@ -1073,6 +1149,8 @@ function ReportsPageContent() {
           end: periodEndDate
         },
         clientId: clientData.id, // Always send the client ID for real clients
+        forceFresh: true, // 🔧 TEMPORARY: Always force fresh data for booking steps testing
+        reason: 'booking_steps_testing', // Add reason for debugging
         ...(forceClearCache && { forceFresh: true }), // Add cache clearing if requested
         ...(forceWeeklyFresh && { forceFresh: true, reason: 'weekly_corruption_fix' }) // Force fresh for weekly reports
       };
@@ -1221,6 +1299,7 @@ function ReportsPageContent() {
           reservations: rawCampaigns[0]?.reservations,
           reservation_value: rawCampaigns[0]?.reservation_value,
           booking_step_2: rawCampaigns[0]?.booking_step_2,
+          booking_step_3: rawCampaigns[0]?.booking_step_3,
           allKeys: Object.keys(rawCampaigns[0] || {})
         });
       }
@@ -1235,6 +1314,7 @@ function ReportsPageContent() {
         const reservation_value = campaign.reservation_value || 0;
         const booking_step_1 = campaign.booking_step_1 || 0;
         const booking_step_2 = campaign.booking_step_2 || 0;
+        const booking_step_3 = campaign.booking_step_3 || 0;
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,
@@ -1259,7 +1339,8 @@ function ReportsPageContent() {
           reservations,
           reservation_value,
           booking_step_1,
-          booking_step_2
+          booking_step_2,
+          booking_step_3
         };
       });
       
@@ -1273,7 +1354,8 @@ function ReportsPageContent() {
           booking_step_1: campaigns[0]?.booking_step_1,
           reservations: campaigns[0]?.reservations,
           reservation_value: campaigns[0]?.reservation_value,
-          booking_step_2: campaigns[0]?.booking_step_2
+          booking_step_2: campaigns[0]?.booking_step_2,
+          booking_step_3: campaigns[0]?.booking_step_3
         });
         
         // 🔍 DATA FRESHNESS AUDIT
@@ -1788,6 +1870,7 @@ function ReportsPageContent() {
             const reservation_value = campaign.reservation_value || 0;
             const booking_step_1 = campaign.booking_step_1 || 0;
             const booking_step_2 = campaign.booking_step_2 || 0;
+            const booking_step_3 = campaign.booking_step_3 || 0;
 
             return {
               id: campaign.campaign_id || `campaign-${index}`,
@@ -1812,7 +1895,8 @@ function ReportsPageContent() {
               reservations,
               reservation_value,
               booking_step_1,
-              booking_step_2
+              booking_step_2,
+              booking_step_3
             };
           });
           
@@ -2317,10 +2401,11 @@ function ReportsPageContent() {
     };
   }, []);
 
-  // Monitor state changes
-  useEffect(() => {
-    console.log('🔄 State changed - reports:', Object.keys(reports), 'selectedPeriod:', selectedPeriod);
-  }, [reports, selectedPeriod]);
+  // DISABLED: Monitor state changes to prevent excessive logging
+  // This was causing console spam every time state changed
+  // useEffect(() => {
+  //   console.log('🔄 State changed - reports:', Object.keys(reports), 'selectedPeriod:', selectedPeriod);
+  // }, [reports, selectedPeriod]);
 
   // Update periods when view type changes
   useEffect(() => {
@@ -2364,14 +2449,62 @@ function ReportsPageContent() {
         }
       }
     }
-  }, [viewType, selectedClient, loading]);
+  }, [viewType, selectedClient]);
+
+  // Keyboard support for period navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return; // Don't interfere with form inputs
+      }
+
+      if ((viewType === 'monthly' || viewType === 'weekly') && selectedPeriod && availablePeriods.length > 0) {
+        const currentIndex = availablePeriods.indexOf(selectedPeriod);
+        
+        if (e.key === 'ArrowLeft' && currentIndex < availablePeriods.length - 1) {
+          e.preventDefault();
+          const nextPeriod = availablePeriods[currentIndex + 1];
+          if (nextPeriod) {
+            setSelectedPeriod(nextPeriod);
+            if (!reports[nextPeriod]) {
+              loadPeriodData(nextPeriod);
+            }
+          }
+        } else if (e.key === 'ArrowRight' && currentIndex > 0) {
+          e.preventDefault();
+          const prevPeriod = availablePeriods[currentIndex - 1];
+          if (prevPeriod) {
+            setSelectedPeriod(prevPeriod);
+            if (!reports[prevPeriod]) {
+              loadPeriodData(prevPeriod);
+            }
+          }
+        } else if ((e.key === 'Enter' || e.key === ' ') && !dropdownOpen) {
+          e.preventDefault();
+          setDropdownOpen(true);
+        } else if (e.key === 'Escape' && dropdownOpen) {
+          e.preventDefault();
+          setDropdownOpen(false);
+        }
+      }
+
+      // Dev mode shortcut
+      if (process.env.NODE_ENV === 'development' && e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        generateDevReport();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewType, selectedPeriod, availablePeriods, reports, dropdownOpen, generateDevReport]);
 
   if (loading) {
     return <LoadingScreen />;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ backgroundColor: '#F7F9FC' }}>
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
           <div className="flex">
@@ -2406,10 +2539,10 @@ function ReportsPageContent() {
                     viewType === 'weekly' ? 'Tygodniowe' :
                     viewType === 'all-time' ? 'Całego Okresu' :
                     'Własnego Zakresu'
-                  }
+                  } - {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
                 </h1>
                   <div className="flex items-center space-x-4 text-sm text-gray-600">
-                    <span>{selectedClient?.name} - Premium Analytics Dashboard</span>
+                    <span>{selectedClient?.name} - Premium Analytics Dashboard ({activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'})</span>
                     <div className="flex items-center space-x-1">
                       <Clock className="w-3 h-3" />
                       <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
@@ -2446,25 +2579,23 @@ function ReportsPageContent() {
           </div>
         </div>
 
-        {/* View Type Selector */}
-        <section className="mb-8">
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">Typ Widoku</h2>
-            <p className="text-sm text-gray-600">Wybierz sposób wyświetlania danych</p>
-          </div>
-
-          <div className="flex items-center justify-center space-x-3 flex-wrap">
+        {/* Premium Unified Toolbar - No Container */}
+        <div className="mb-8">
+          
+          {/* Desktop Layout (≥1280px) - Two Rows */}
+          <div className="hidden xl:block">
+            {/* First Row: Left and Right Controls */}
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-6 items-center mb-6">
+              
+              {/* Left: View Type Selector */}
+              <div className="flex items-center space-x-2">
             <button
               onClick={() => handleViewTypeChange('monthly')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'monthly'
-                  ? 'text-white shadow-sm'
-                  : 'text-gray-700 hover:shadow-sm'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
               }`}
-              style={viewType === 'monthly' 
-                ? { backgroundColor: '#244583' }
-                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
-              }
             >
               <Calendar className="w-4 h-4" />
               <span>Miesięczny</span>
@@ -2472,15 +2603,11 @@ function ReportsPageContent() {
 
             <button
               onClick={() => handleViewTypeChange('weekly')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'weekly'
-                  ? 'text-white shadow-sm'
-                  : 'text-gray-700 hover:shadow-sm'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
               }`}
-              style={viewType === 'weekly' 
-                ? { backgroundColor: '#244583' }
-                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
-              }
             >
               <CalendarDays className="w-4 h-4" />
               <span>Tygodniowy</span>
@@ -2488,15 +2615,11 @@ function ReportsPageContent() {
 
             <button
               onClick={() => handleViewTypeChange('all-time')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'all-time'
-                  ? 'text-white shadow-sm'
-                  : 'text-gray-700 hover:shadow-sm'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
               }`}
-              style={viewType === 'all-time' 
-                ? { backgroundColor: '#244583' }
-                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
-              }
               title="Pokaż dane z całego dostępnego okresu (od 2010 do dziś)"
             >
               <BarChart3 className="w-4 h-4" />
@@ -2505,21 +2628,692 @@ function ReportsPageContent() {
 
             <button
               onClick={() => handleViewTypeChange('custom')}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'custom'
-                  ? 'text-white shadow-sm'
-                  : 'text-gray-700 hover:shadow-sm'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
               }`}
-              style={viewType === 'custom' 
-                ? { backgroundColor: '#244583' }
-                : { backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB' }
-              }
             >
               <Calendar className="w-4 h-4" />
               <span>Własny Zakres</span>
             </button>
           </div>
-        </section>
+
+              {/* Center: Empty for spacing */}
+              <div></div>
+
+              {/* Right: Actions - Aligned with View Type Buttons */}
+              <div className="flex flex-col items-end space-y-4">
+              <div className="flex items-center space-x-3">
+                  <button
+                    onClick={handleRefresh}
+                    disabled={loadingPeriod !== null}
+                    className="flex items-center space-x-2 px-4 py-3 bg-white text-[#1F3D8A] border border-[#E7ECF2] rounded-xl hover:bg-gray-50 hover:border-[#1F3D8A] transition-all duration-200 disabled:opacity-50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#BFD2FF]"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
+                    <span>Odśwież</span>
+                  </button>
+                  
+                  {selectedReport && selectedReport.campaigns.length > 0 && (
+                    <InteractivePDFButton
+                      clientId={client?.id || ''}
+                      dateStart={selectedReport?.date_range_start || ''}
+                      dateEnd={selectedReport?.date_range_end || ''}
+                      className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all duration-200 text-sm font-semibold border border-orange-500"
+                      campaigns={selectedReport?.campaigns || []}
+                      totals={getSelectedPeriodTotals()}
+                      client={client}
+                      metaTables={metaTablesData}
+                    />
+                  )}
+              </div>
+
+
+              </div>
+              </div>
+
+            {/* Second Row: Period Picker and Ads Source Toggle - Centered */}
+            <div className="flex justify-center">
+              <div className="flex flex-col items-center space-y-4">
+                {(viewType === 'monthly' || viewType === 'weekly') ? (
+                  <div className="flex items-center space-x-4">
+                    {/* Previous Button */}
+                <button
+                  onClick={() => {
+                        if (selectedPeriod) {
+                          const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                          if (currentIndex < availablePeriods.length - 1) {
+                            const nextPeriod = availablePeriods[currentIndex + 1];
+                            if (nextPeriod) {
+                              setSelectedPeriod(nextPeriod);
+                              if (!reports[nextPeriod]) {
+                                loadPeriodData(nextPeriod);
+                              }
+                            }
+                          }
+                        }
+                      }}
+                      disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
+                      className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+                      aria-label="Poprzedni miesiąc"
+                    >
+                      <ChevronLeft className="w-6 h-6 text-[#707B8A] group-hover:text-[#0B1220]" />
+                </button>
+
+                    {/* Period Display - Much Bigger */}
+                    <div className="relative">
+                      <select
+                        value={selectedPeriod || ''}
+                        onChange={handlePeriodChange}
+                        disabled={loadingPeriod !== null}
+                        className="min-w-[280px] h-16 border-2 border-[#E7ECF2] rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-[#1F3D8A] disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
+                        role="group"
+                        aria-label="Wybierz okres"
+                      >
+                        {availablePeriods.map((periodId) => {
+                          if (viewType === 'monthly') {
+                            const [year, month] = periodId.split('-').map(Number);
+                            if (year && month) {
+                              const date = new Date(year, month - 1, 1);
+                              const displayText = formatDate(date.toISOString());
+                              return (
+                                <option key={periodId} value={periodId} className="text-[#0B1220] bg-white text-lg">
+                                  {displayText}
+                                </option>
+                              );
+                            }
+                          } else {
+                            const [year, weekStr] = periodId.split('-W');
+                            const week = parseInt(weekStr || '1');
+                            const displayText = getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week);
+                            return (
+                              <option key={periodId} value={periodId} className="text-[#0B1220] bg-white text-lg">
+                                {displayText}
+                              </option>
+                            );
+                          }
+                          return null;
+                        })}
+                      </select>
+                      
+                      <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                        <ChevronDown className="w-5 h-5 text-[#707B8A]" />
+            </div>
+
+                      {loadingPeriod && (
+                        <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#BFD2FF] border-t-[#1F3D8A]"></div>
+              </div>
+            )}
+                    </div>
+
+                    {/* Next Button */}
+                    <button
+                      onClick={() => {
+                        if (selectedPeriod) {
+                          const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                          if (currentIndex > 0) {
+                            const prevPeriod = availablePeriods[currentIndex - 1];
+                            if (prevPeriod) {
+                              setSelectedPeriod(prevPeriod);
+                              if (!reports[prevPeriod]) {
+                                loadPeriodData(prevPeriod);
+                              }
+                            }
+                          }
+                        }
+                      }}
+                      disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
+                      className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+                      aria-label="Następny miesiąc"
+                    >
+                      <ChevronRight className="w-6 h-6 text-[#707B8A] group-hover:text-[#0B1220]" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-16 flex items-center text-[#707B8A] text-lg font-medium">
+                    {viewType === 'all-time' ? 'Wszystkie dostępne dane' : 'Wybierz zakres dat poniżej'}
+          </div>
+        )}
+
+                {/* Ads Source Toggle - Below Period Picker */}
+                {selectedReport && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => setActiveAdsProvider('meta')}
+                      className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                        activeAdsProvider === 'meta'
+                          ? 'text-white shadow-sm'
+                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                      }`}
+                    >
+                      {activeAdsProvider === 'meta' && (
+                        <motion.div
+                          layoutId="activeAdsTab"
+                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                          initial={false}
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                      )}
+                      <span className="relative flex items-center space-x-2">
+                        <BarChart3 className="w-4 h-4" />
+                        <span>Meta Ads</span>
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveAdsProvider('google')}
+                      className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                        activeAdsProvider === 'google'
+                          ? 'text-white shadow-sm'
+                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                      }`}
+                    >
+                      {activeAdsProvider === 'google' && (
+                        <motion.div
+                          layoutId="activeAdsTab"
+                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                          initial={false}
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                      )}
+                      <span className="relative flex items-center space-x-2">
+                        <Target className="w-4 h-4" />
+                        <span>Google Ads</span>
+                      </span>
+                    </button>
+              </div>
+                )}
+              </div>
+              </div>
+            </div>
+            
+          {/* Tablet Layout (992-1279px) - Two Rows */}
+          <div className="hidden lg:block xl:hidden">
+            {/* First Row: Filters + Actions */}
+            <div className="flex items-center justify-between mb-4">
+              {/* Left: View Type Selector */}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleViewTypeChange('monthly')}
+                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    viewType === 'monthly'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Miesięczny</span>
+                </button>
+
+                <button
+                  onClick={() => handleViewTypeChange('weekly')}
+                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    viewType === 'weekly'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                  }`}
+                >
+                  <CalendarDays className="w-4 h-4" />
+                  <span>Tygodniowy</span>
+                </button>
+              
+              <button
+                  onClick={() => handleViewTypeChange('all-time')}
+                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    viewType === 'all-time'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Cały Okres</span>
+              </button>
+              
+                <button
+                  onClick={() => handleViewTypeChange('custom')}
+                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                    viewType === 'custom'
+                      ? 'bg-[#1F3D8A] text-white shadow-sm'
+                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Własny Zakres</span>
+                </button>
+              </div>
+            
+              {/* Right: Actions - Aligned with View Type Buttons */}
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={loadingPeriod !== null}
+                  className="flex items-center space-x-2 px-3 py-3 bg-white text-[#1F3D8A] border border-[#E7ECF2] rounded-lg hover:bg-gray-50 hover:border-[#1F3D8A] transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
+                  <span>Odśwież</span>
+                </button>
+              
+              {selectedReport && selectedReport.campaigns.length > 0 && (
+                  <InteractivePDFButton
+                    clientId={client?.id || ''}
+                    dateStart={selectedReport?.date_range_start || ''}
+                    dateEnd={selectedReport?.date_range_end || ''}
+                      className="px-3 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all duration-200 text-sm font-semibold border border-orange-500"
+                    campaigns={selectedReport?.campaigns || []}
+                    totals={getSelectedPeriodTotals()}
+                    client={client}
+                    metaTables={metaTablesData}
+                  />
+              )}
+            </div>
+          </div>
+
+            {/* Second Row: Period Picker and Ads Source Toggle - Centered */}
+            <div className="flex flex-col items-center space-y-4">
+              {(viewType === 'monthly' || viewType === 'weekly') ? (
+                <div className="flex items-center space-x-3">
+            <button
+              onClick={() => {
+                if (selectedPeriod) {
+                  const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                  if (currentIndex < availablePeriods.length - 1) {
+                    const nextPeriod = availablePeriods[currentIndex + 1];
+                    if (nextPeriod) {
+                      setSelectedPeriod(nextPeriod);
+                      if (!reports[nextPeriod]) {
+                        loadPeriodData(nextPeriod);
+                      }
+                    }
+                  }
+                }
+              }}
+              disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
+                    className="w-9 h-11 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+                    <ChevronLeft className="w-5 h-5 text-[#707B8A]" />
+            </button>
+
+              <div className="relative">
+                <select
+                  value={selectedPeriod || ''}
+                  onChange={handlePeriodChange}
+                  disabled={loadingPeriod !== null}
+                      className="min-w-[200px] h-11 border border-[#E7ECF2] rounded-xl px-4 text-base font-semibold text-center text-[#0B1220] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:border-[#1F3D8A] disabled:opacity-50 cursor-pointer appearance-none bg-white"
+                >
+                  {availablePeriods.map((periodId) => {
+                    if (viewType === 'monthly') {
+                      const [year, month] = periodId.split('-').map(Number);
+                      if (year && month) {
+                        const date = new Date(year, month - 1, 1);
+                        return (
+                              <option key={periodId} value={periodId}>
+                            {formatDate(date.toISOString())}
+                          </option>
+                        );
+                      }
+                    } else {
+                      const [year, weekStr] = periodId.split('-W');
+                      const week = parseInt(weekStr || '1');
+                      return (
+                            <option key={periodId} value={periodId}>
+                          {getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week)}
+                        </option>
+                      );
+                    }
+                    return null;
+                  })}
+                </select>
+                
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                      <ChevronDown className="w-4 h-4 text-[#707B8A]" />
+                          </div>
+                        </div>
+
+                  <button
+                    onClick={() => {
+                      if (selectedPeriod) {
+                        const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                        if (currentIndex > 0) {
+                          const prevPeriod = availablePeriods[currentIndex - 1];
+                          if (prevPeriod) {
+                            setSelectedPeriod(prevPeriod);
+                            if (!reports[prevPeriod]) {
+                              loadPeriodData(prevPeriod);
+                            }
+                          }
+                        }
+                      }
+                    }}
+                    disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
+                    className="w-9 h-11 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="w-5 h-5 text-[#707B8A]" />
+                  </button>
+                </div>
+              ) : (
+                <div className="h-11 flex items-center text-[#707B8A] text-sm font-medium">
+                  {viewType === 'all-time' ? 'Wszystkie dostępne dane' : 'Wybierz zakres dat poniżej'}
+                </div>
+              )}
+
+              {/* Ads Source Toggle - Below Period Picker */}
+              {selectedReport && (
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setActiveAdsProvider('meta')}
+                    className={`relative flex items-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                      activeAdsProvider === 'meta'
+                        ? 'text-white shadow-sm'
+                        : 'text-[#707B8A] hover:text-[#0B1220]'
+                    }`}
+                  >
+                    {activeAdsProvider === 'meta' && (
+                      <motion.div
+                        layoutId="activeAdsTabTablet"
+                        className="absolute inset-0 bg-[#1F3D8A] rounded-lg"
+                        initial={false}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative flex items-center space-x-2">
+                      <BarChart3 className="w-4 h-4" />
+                      <span>Meta Ads</span>
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveAdsProvider('google')}
+                    className={`relative flex items-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                      activeAdsProvider === 'google'
+                        ? 'text-white shadow-sm'
+                        : 'text-[#707B8A] hover:text-[#0B1220]'
+                    }`}
+                  >
+                    {activeAdsProvider === 'google' && (
+                      <motion.div
+                        layoutId="activeAdsTabTablet"
+                        className="absolute inset-0 bg-[#1F3D8A] rounded-lg"
+                        initial={false}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative flex items-center space-x-2">
+                      <Target className="w-4 h-4" />
+                      <span>Google Ads</span>
+                    </span>
+                  </button>
+                  </div>
+                )}
+            </div>
+              </div>
+              
+          {/* Mobile Layout (<768px) */}
+          <div className="block lg:hidden space-y-4">
+                        {/* Period Picker First - Much Bigger and Most Important */}
+            {(viewType === 'monthly' || viewType === 'weekly') && (
+              <div className="flex flex-col items-center space-y-4">
+                <div className="flex items-center space-x-4">
+                  <button
+                    onClick={() => {
+                      if (selectedPeriod) {
+                        const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                        if (currentIndex < availablePeriods.length - 1) {
+                          const nextPeriod = availablePeriods[currentIndex + 1];
+                          if (nextPeriod) {
+                            setSelectedPeriod(nextPeriod);
+                            if (!reports[nextPeriod]) {
+                              loadPeriodData(nextPeriod);
+                            }
+                          }
+                        }
+                      }
+                    }}
+                    disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
+                    className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="w-6 h-6 text-[#707B8A]" />
+                  </button>
+
+                  <div className="relative">
+                    <select
+                      value={selectedPeriod || ''}
+                      onChange={handlePeriodChange}
+                      disabled={loadingPeriod !== null}
+                      className="min-w-[240px] h-16 border-2 border-[#E7ECF2] rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-[#1F3D8A] disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
+                    >
+                      {availablePeriods.map((periodId) => {
+              if (viewType === 'monthly') {
+                const [year, month] = periodId.split('-').map(Number);
+                if (year && month) {
+                  const date = new Date(year, month - 1, 1);
+                            return (
+                              <option key={periodId} value={periodId}>
+                                {formatDate(date.toISOString())}
+                              </option>
+                            );
+                }
+              } else {
+                const [year, weekStr] = periodId.split('-W');
+                const week = parseInt(weekStr || '1');
+              return (
+                            <option key={periodId} value={periodId}>
+                              {getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week)}
+                            </option>
+                          );
+                        }
+                        return null;
+                      })}
+                    </select>
+                    
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                      <ChevronDown className="w-5 h-5 text-[#707B8A]" />
+            </div>
+          </div>
+
+                  <button
+                    onClick={() => {
+                      if (selectedPeriod) {
+                        const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                        if (currentIndex > 0) {
+                          const prevPeriod = availablePeriods[currentIndex - 1];
+                          if (prevPeriod) {
+                            setSelectedPeriod(prevPeriod);
+                            if (!reports[prevPeriod]) {
+                              loadPeriodData(prevPeriod);
+                            }
+                          }
+                        }
+                      }
+                    }}
+                    disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
+                    className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="w-6 h-6 text-[#707B8A]" />
+                  </button>
+        </div>
+
+                {/* Ads Source Toggle - Below Period Picker */}
+        {selectedReport && (
+                  <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setActiveAdsProvider('meta')}
+                      className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                    activeAdsProvider === 'meta'
+                      ? 'text-white shadow-sm'
+                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                  }`}
+                >
+                  {activeAdsProvider === 'meta' && (
+                    <motion.div
+                          layoutId="activeAdsTabMobile"
+                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative flex items-center space-x-2">
+                    <BarChart3 className="w-4 h-4" />
+                    <span>Meta Ads</span>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveAdsProvider('google')}
+                      className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                    activeAdsProvider === 'google'
+                      ? 'text-white shadow-sm'
+                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                  }`}
+                >
+                  {activeAdsProvider === 'google' && (
+                    <motion.div
+                          layoutId="activeAdsTabMobile"
+                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative flex items-center space-x-2">
+                    <Target className="w-4 h-4" />
+                    <span>Google Ads</span>
+                  </span>
+                </button>
+              </div>
+                )}
+          </div>
+        )}
+
+            {/* View Type Segments - Higher Positioned */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+                onClick={() => handleViewTypeChange('monthly')}
+                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  viewType === 'monthly'
+                    ? 'bg-[#1F3D8A] text-white shadow-sm'
+                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Miesięczny</span>
+            </button>
+
+            <button
+                onClick={() => handleViewTypeChange('weekly')}
+                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  viewType === 'weekly'
+                    ? 'bg-[#1F3D8A] text-white shadow-sm'
+                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span>Tygodniowy</span>
+              </button>
+
+              <button
+                onClick={() => handleViewTypeChange('all-time')}
+                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  viewType === 'all-time'
+                    ? 'bg-[#1F3D8A] text-white shadow-sm'
+                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Cały Okres</span>
+              </button>
+
+              <button
+                onClick={() => handleViewTypeChange('custom')}
+                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                  viewType === 'custom'
+                    ? 'bg-[#1F3D8A] text-white shadow-sm'
+                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Własny Zakres</span>
+            </button>
+          </div>
+
+
+
+            {/* Actions */}
+            <div className="flex flex-col items-center space-y-3">
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={handleRefresh}
+                  disabled={loadingPeriod !== null}
+                  className="flex items-center space-x-2 px-3 py-3 bg-white text-[#1F3D8A] border border-[#E7ECF2] rounded-lg hover:bg-gray-50 hover:border-[#1F3D8A] transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
+                  <span>Odśwież</span>
+                </button>
+
+                {selectedReport && selectedReport.campaigns.length > 0 && (
+                  <InteractivePDFButton
+                    clientId={client?.id || ''}
+                    dateStart={selectedReport?.date_range_start || ''}
+                    dateEnd={selectedReport?.date_range_end || ''}
+                    className="px-3 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all duration-200 text-sm font-semibold border border-orange-500"
+                    campaigns={selectedReport?.campaigns || []}
+                    totals={getSelectedPeriodTotals()}
+                    client={client}
+                    metaTables={metaTablesData}
+                  />
+                )}
+              </div>
+
+              {/* Dev Button - Below other actions */}
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={generateDevReport}
+                  disabled={loadingPeriod !== null || apiCallInProgress}
+                  className="flex items-center space-x-2 h-10 px-4 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition-all duration-200 disabled:opacity-50 text-sm font-medium border-2 border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  title="Generate fresh report and PDF bypassing cache (Dev only)"
+                >
+                  <Code className={`w-4 h-4 ${isGeneratingDevReport ? 'animate-spin' : ''}`} />
+                  <span>{isGeneratingDevReport ? 'Generating...' : 'DEV: Fresh Report + PDF'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+          </div>
+
+        {/* Live Data Status Strip - Outside toolbar to maintain center */}
+            {(() => {
+          if (viewType === 'monthly' && selectedPeriod) {
+                const [year, month] = selectedPeriod.split('-').map(Number);
+                const currentDate = new Date();
+                const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
+                
+            if (isCurrentMonth) {
+                  return (
+                <div className="flex justify-center mb-6">
+                  <div className="flex items-center space-x-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs font-medium text-green-800">Dane na żywo</span>
+                    <span className="text-xs text-green-600">• Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
+                  </div>
+                    </div>
+                  );
+                }
+              }
+              return null;
+            })()}
+
+        {/* Dev Panel - Hidden by default, accessible via keyboard shortcut */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="fixed top-4 right-4 z-50">
+            <button
+              onClick={generateDevReport}
+              disabled={loadingPeriod !== null || apiCallInProgress}
+              className="w-8 h-8 bg-orange-600 text-white rounded-full hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center shadow-lg"
+              title="DEV: Fresh Report + PDF (Ctrl+Shift+D)"
+            >
+              <Code className={`w-4 h-4 ${isGeneratingDevReport ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        )}
 
         {/* All Time Warning */}
         {viewType === 'all-time' && (
@@ -2533,8 +3327,8 @@ function ReportsPageContent() {
                   <strong>Uwaga:</strong> Widok &quot;Cały Okres&quot; pobiera dane od momentu uruchomienia biznesu klienta lub z ostatnich 37 miesięcy (ograniczenie Meta API) - w zależności od tego, która data jest późniejsza.
                 </p>
               </div>
-            </div>
           </div>
+        </div>
         )}
 
         {/* Custom Date Range Selector */}
@@ -2598,21 +3392,7 @@ function ReportsPageContent() {
                   )}
                   <span>{isGeneratingCustomReport ? 'Generowanie...' : 'Generuj Raport'}</span>
                 </button>
-                
-                {/* Email Button for Custom Range */}
-                {customDateRange.start && customDateRange.end && client && (
-                  <button
-                    onClick={() => setShowCustomEmailModal(true)}
-                    disabled={isGeneratingCustomReport}
-                    className="flex items-center space-x-2 bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                    title="Send custom range report via email"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <span>Send Email</span>
-                  </button>
-                )}
+
               </div>
             </div>
 
@@ -2626,311 +3406,7 @@ function ReportsPageContent() {
           </div>
         )}
 
-        {/* Period Selector - Only for Monthly and Weekly */}
-        {(viewType === 'monthly' || viewType === 'weekly') && (
-          <div className="bg-white rounded-lg p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <CalendarDays className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Wybór Okresu</h2>
-                <p className="text-sm text-gray-600">Wybierz {viewType === 'monthly' ? 'miesiąc' : 'tydzień'} do analizy</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={handleRefresh}
-                disabled={loadingPeriod !== null}
-                className="flex items-center space-x-2 bg-[#244583] text-white px-4 py-2 rounded-lg hover:bg-[#1a3366] transition-colors disabled:opacity-50 text-sm"
-              >
-                <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
-                <span>Odśwież</span>
-              </button>
-              
-              {/* Dev Button - Only show in development */}
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={generateDevReport}
-                  disabled={loadingPeriod !== null || apiCallInProgress}
-                  className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 text-sm border-2 border-orange-500"
-                  title="Generate fresh report and PDF bypassing cache (Dev only)"
-                >
-                  <Code className={`w-4 h-4 ${isGeneratingDevReport ? 'animate-spin' : ''}`} />
-                  <span>{isGeneratingDevReport ? 'DEV: Generating...' : 'DEV: Fresh Report + PDF'}</span>
-                </button>
-              )}
-              
-              {selectedReport && selectedReport.campaigns.length > 0 && (
-                <>
-                  <InteractivePDFButton
-                    clientId={client?.id || ''}
-                    dateStart={selectedReport?.date_range_start || ''}
-                    dateEnd={selectedReport?.date_range_end || ''}
-                    className="inline-block"
-                    campaigns={selectedReport?.campaigns || []}
-                    totals={getSelectedPeriodTotals()}
-                    client={client}
-                    metaTables={metaTablesData}
-                  />
-                  <button
-                    onClick={() => setShowSendEmailModal(true)}
-                    disabled={loadingPeriod !== null || !client}
-                    className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 text-sm"
-                    title="Send report via email"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <span>Send Email</span>
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
 
-          {/* Period Navigation - Ultra Clean Design */}
-          <div className="flex items-center justify-center space-x-6">
-            {/* Left Navigation Button */}
-            <button
-              onClick={() => {
-                if (selectedPeriod) {
-                  const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                  if (currentIndex < availablePeriods.length - 1) {
-                    const nextPeriod = availablePeriods[currentIndex + 1];
-                    if (nextPeriod) {
-                      setSelectedPeriod(nextPeriod);
-                      if (!reports[nextPeriod]) {
-                        loadPeriodData(nextPeriod);
-                      }
-                    }
-                  }
-                }
-              }}
-              disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-              className="p-2.5 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
-              title="Poprzedni miesiąc"
-            >
-              <ChevronLeft className="w-5 h-5 text-gray-500 group-hover:text-gray-700" />
-            </button>
-
-            {/* Center Period Display with Dropdown */}
-            <div className="relative flex-1 max-w-sm md:max-w-md">
-              <div className="relative">
-                <select
-                  value={selectedPeriod || ''}
-                  onChange={handlePeriodChange}
-                  disabled={loadingPeriod !== null}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 cursor-pointer appearance-none bg-white [&::-ms-expand]:hidden"
-                >
-                  {availablePeriods.map((periodId) => {
-                    if (viewType === 'monthly') {
-                      const [year, month] = periodId.split('-').map(Number);
-                      if (year && month) {
-                        const date = new Date(year, month - 1, 1);
-                        return (
-                          <option key={periodId} value={periodId}>
-                            {formatDate(date.toISOString())}
-                          </option>
-                        );
-                      }
-                    } else {
-                      const [year, weekStr] = periodId.split('-W');
-                      const week = parseInt(weekStr || '1');
-                      return (
-                        <option key={periodId} value={periodId}>
-                          {getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week)}
-                        </option>
-                      );
-                    }
-                    return null;
-                  })}
-                </select>
-                
-                {/* Minimalist dropdown arrow - only one, subtle */}
-                
-                {/* Live Data Indicator for Current Month */}
-                {(() => {
-                  if (viewType === 'monthly' && selectedPeriod) {
-                    const [year, month] = selectedPeriod.split('-').map(Number);
-                    const currentDate = new Date();
-                    const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
-                    
-                    if (isCurrentMonth) {
-                      return (
-                        <div className="absolute -top-8 left-1/2 transform -translate-x-1/2">
-                          <div className="flex items-center space-x-2 bg-green-100 border border-green-200 rounded-full px-3 py-1">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                            <span className="text-xs font-medium text-green-700">Dane na żywo</span>
-                          </div>
-                        </div>
-                      );
-                    }
-                  }
-                  return null;
-                })()}
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
-                </div>
-                
-                {/* Loading indicator */}
-                {loadingPeriod && (
-                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600"></div>
-                  </div>
-                )}
-              </div>
-              
-              {/* Period indicator dots */}
-              <div className="flex justify-center space-x-1.5 mt-3">
-                {availablePeriods.slice(0, 12).map((periodId) => {
-                  let periodName = '';
-                  
-                  if (viewType === 'monthly') {
-                    const [year, month] = periodId.split('-').map(Number);
-                    if (year && month) {
-                      const date = new Date(year, month - 1, 1);
-                      periodName = formatDate(date.toISOString());
-                    }
-                  } else {
-                    const [year, weekStr] = periodId.split('-W');
-                    const week = parseInt(weekStr || '1');
-                    periodName = getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week);
-                  }
-                  
-                  return (
-                    <div
-                      key={periodId}
-                      className={`w-1.5 h-1.5 rounded-full transition-all duration-300 cursor-pointer group relative ${
-                        selectedPeriod === periodId 
-                          ? 'bg-blue-600 scale-125' 
-                          : 'bg-gray-300 hover:bg-gray-400 hover:scale-110'
-                      }`}
-                      title={periodName}
-                    >
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                        {periodName}
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-gray-900"></div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {availablePeriods.length > 12 && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-gray-300 flex items-center justify-center">
-                    <span className="text-xs text-gray-500">+</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Navigation Button */}
-            <button
-              onClick={() => {
-                if (selectedPeriod) {
-                  const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                  if (currentIndex > 0) {
-                    const prevPeriod = availablePeriods[currentIndex - 1];
-                    if (prevPeriod) {
-                      setSelectedPeriod(prevPeriod);
-                      if (!reports[prevPeriod]) {
-                        loadPeriodData(prevPeriod);
-                      }
-                    }
-                  }
-                }
-              }}
-              disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-              className="p-2.5 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
-              title="Następny miesiąc"
-            >
-              <ChevronRight className="w-5 h-5 text-gray-500 group-hover:text-gray-700" />
-            </button>
-
-            {/* Refresh Button for Current Month */}
-            {(() => {
-              if (viewType === 'monthly' && selectedPeriod) {
-                const [year, month] = selectedPeriod.split('-').map(Number);
-                const currentDate = new Date();
-                const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
-                
-                if (isCurrentMonth) {
-                  return (
-                    <button
-                      onClick={async () => {
-                        if (selectedPeriod && selectedClient) {
-                          console.log('🔄 Force refreshing current month data...');
-                          await loadPeriodDataWithClient(selectedPeriod, selectedClient, true);
-                        }
-                      }}
-                      disabled={loadingPeriod !== null}
-                      className="p-2.5 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
-                      title="Odśwież dane bieżącego miesiąca (pobierz najnowsze dane z Meta API)"
-                    >
-                      <svg className="w-5 h-5 text-blue-600 group-hover:text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                    </button>
-                  );
-                }
-              }
-              return null;
-            })()}
-          </div>
-
-          {/* Period Navigation Info */}
-          <div className="text-center mt-3">
-            <p className="text-xs text-gray-400">
-              Użyj strzałek do nawigacji lub kliknij okres, aby wybrać z listy
-            </p>
-            
-            {/* Cache Status for Current Month */}
-            {(() => {
-              if (viewType === 'monthly' && selectedPeriod && selectedReport) {
-                const [year, month] = selectedPeriod.split('-').map(Number);
-                const currentDate = new Date();
-                const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
-                
-                if (isCurrentMonth && selectedReport.generated_at) {
-                  const lastUpdated = new Date(selectedReport.generated_at);
-                  const now = new Date();
-                  const ageMinutes = Math.floor((now.getTime() - lastUpdated.getTime()) / (1000 * 60));
-                  const ageHours = Math.floor(ageMinutes / 60);
-                  
-                  let ageText = '';
-                  let statusColor = '';
-                  
-                  if (ageMinutes < 5) {
-                    ageText = 'przed chwilą';
-                    statusColor = 'text-green-600';
-                  } else if (ageMinutes < 60) {
-                    ageText = `${ageMinutes} min temu`;
-                    statusColor = 'text-green-600';
-                  } else if (ageHours < 3) {
-                    ageText = `${ageHours}h ${ageMinutes % 60}min temu`;
-                    statusColor = 'text-blue-600';
-                  } else {
-                    ageText = `${ageHours}h ${ageMinutes % 60}min temu`;
-                    statusColor = 'text-orange-600';
-                  }
-                  
-                  return (
-                    <div className="mt-2">
-                      <p className={`text-xs ${statusColor} font-medium`}>
-                        📊 Dane aktualizowane {ageText}
-                        {ageHours >= 3 && ' • Kliknij odśwież dla najnowszych danych'}
-                      </p>
-                    </div>
-                  );
-                }
-              }
-              return null;
-            })()}
-          </div>
-        </div>
-        )}
 
         {/* Report Content */}
         {loadingPeriod && (
@@ -2951,56 +3427,58 @@ function ReportsPageContent() {
 
         {selectedReport && !loadingPeriod && (
           <>
+            
             {(() => {
               const totals = getSelectedPeriodTotals();
-              console.log('🎯 Rendering WeeklyReportView with:');
-              console.log('   selectedReport:', selectedReport);
-              console.log('   campaigns:', selectedReport.campaigns);
-              console.log('   totals:', totals);
+              
+              // Get the appropriate report data based on active provider
+              const reportData = activeAdsProvider === 'meta' 
+                ? selectedReport 
+                : createMockGoogleAdsReport(selectedReport);
               
               return (
                 <WeeklyReportView
                   reports={{ 
                     [viewType === 'all-time' ? 'all-time' : 
                      viewType === 'custom' ? 'custom' : 
-                     selectedPeriod]: selectedReport 
+                     selectedPeriod]: reportData 
                   }}
                   viewType={viewType}
+                  clientData={selectedClient ? {
+                    id: selectedClient.id,
+                    name: selectedClient.name,
+                    email: selectedClient.email
+                  } : undefined}
                 />
               );
             })()}
             
-            {/* Meta Ads Tables Section */}
-            <div className="bg-white rounded-lg p-6 mb-8">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <BarChart3 className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">Meta Ads Analytics</h2>
-                    <p className="text-sm text-gray-600">Szczegółowe analizy z Meta Ads API</p>
-                  </div>
-                </div>
-              </div>
-              
-              {selectedReport.date_range_start && selectedReport.date_range_end && (() => {
-                console.log('🔍 MetaAdsTables props:', {
-                  dateStart: selectedReport.date_range_start,
-                  dateEnd: selectedReport.date_range_end,
-                  clientId: client?.id,
-                  selectedReportId: selectedReport.id
-                });
-                return (
+            {/* Conditional Ads Tables Section */}
+            {selectedReport.date_range_start && selectedReport.date_range_end && (
+              <div className="mt-8">
+                {activeAdsProvider === 'meta' ? (
                   <MetaAdsTables
                     dateStart={selectedReport.date_range_start}
                     dateEnd={selectedReport.date_range_end}
                     clientId={client?.id || ''}
-                    onDataLoaded={setMetaTablesData}
+                    onDataLoaded={(data) => {
+                      setMetaTablesData(data);
+                      console.log('Meta Ads tables data loaded:', data);
+                    }}
                   />
-                );
-              })()}
-            </div>
+                ) : (
+                  <GoogleAdsTables
+                    dateStart={selectedReport.date_range_start}
+                    dateEnd={selectedReport.date_range_end}
+                    clientId={client?.id || ''}
+                    onDataLoaded={(data) => {
+                      console.log('Google Ads tables data loaded:', data);
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
           </>
         )}
 
@@ -3023,43 +3501,9 @@ function ReportsPageContent() {
           </div>
         )}
 
-        {/* Send Custom Report Modal */}
-        {showSendEmailModal && selectedReport && client && (
-          <SendCustomReportModal
-            isOpen={showSendEmailModal}
-            onClose={() => setShowSendEmailModal(false)}
-            clientName={client.name}
-            clientEmail={getClientEmail(client)}
-            period={formatDateRange(selectedReport.date_range_start, selectedReport.date_range_end)}
-            dateRange={{
-              start: selectedReport.date_range_start,
-              end: selectedReport.date_range_end
-            }}
-            campaigns={selectedReport.campaigns}
-            totals={getSelectedPeriodTotals()}
-            client={client}
-            metaTables={metaTablesData}
-          />
-        )}
 
-        {/* Send Custom Date Range Report Modal */}
-        {showCustomEmailModal && customDateRange.start && customDateRange.end && client && (
-          <SendCustomReportModal
-            isOpen={showCustomEmailModal}
-            onClose={() => setShowCustomEmailModal(false)}
-            clientName={client.name}
-            clientEmail={getClientEmail(client)}
-            period={formatDateRange(customDateRange.start, customDateRange.end)}
-            dateRange={{
-              start: customDateRange.start,
-              end: customDateRange.end
-            }}
-            campaigns={[]} // Custom date range reports will generate campaigns automatically
-            totals={null} // Totals will be calculated automatically
-            client={client}
-            metaTables={null} // Meta tables will be fetched automatically
-          />
-        )}
+
+
       </div>
     </div>
   );
