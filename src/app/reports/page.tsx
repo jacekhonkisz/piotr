@@ -1304,17 +1304,48 @@ function ReportsPageContent() {
         });
       }
       
+      // 🔧 ENHANCED: Check if we have conversionMetrics from the enhanced API
+      const hasEnhancedConversionMetrics = !!data.data?.conversionMetrics || !!data.conversionMetrics;
+      const enhancedConversionMetrics = data.data?.conversionMetrics || data.conversionMetrics;
+      
+      console.log(`🔧 Enhanced conversion metrics check:`, {
+        hasEnhancedConversionMetrics,
+        enhancedConversionMetrics: enhancedConversionMetrics ? Object.keys(enhancedConversionMetrics) : 'none',
+        source: data.debug?.source || 'unknown'
+      });
+      
       // Transform campaigns to match frontend interface
       const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
-        // Use already-parsed conversion tracking data from API response
-        // The Meta API service already processes the actions and action_values
-        const click_to_call = campaign.click_to_call || 0;
-        const email_contacts = campaign.email_contacts || 0;
-        const reservations = campaign.reservations || 0;
-        const reservation_value = campaign.reservation_value || 0;
-        const booking_step_1 = campaign.booking_step_1 || 0;
-        const booking_step_2 = campaign.booking_step_2 || 0;
-        const booking_step_3 = campaign.booking_step_3 || 0;
+        // 🔧 ENHANCED: Use conversionMetrics from enhanced API if available, otherwise fall back to campaign-level data
+        let click_to_call, email_contacts, reservations, reservation_value, booking_step_1, booking_step_2, booking_step_3;
+        
+        if (hasEnhancedConversionMetrics && enhancedConversionMetrics) {
+          // Use enhanced conversion metrics (more accurate)
+          click_to_call = enhancedConversionMetrics.click_to_call || 0;
+          email_contacts = enhancedConversionMetrics.email_contacts || 0;
+          reservations = enhancedConversionMetrics.reservations || 0;
+          reservation_value = enhancedConversionMetrics.reservation_value || 0;
+          booking_step_1 = enhancedConversionMetrics.booking_step_1 || 0;
+          booking_step_2 = enhancedConversionMetrics.booking_step_2 || 0;
+          booking_step_3 = enhancedConversionMetrics.booking_step_3 || 0;
+          
+          console.log(`🔧 Using enhanced conversion metrics for campaign ${index}:`, {
+            reservations,
+            reservation_value,
+            booking_step_1,
+            booking_step_2,
+            booking_step_3
+          });
+        } else {
+          // Fall back to campaign-level conversion data
+          click_to_call = campaign.click_to_call || 0;
+          email_contacts = campaign.email_contacts || 0;
+          reservations = campaign.reservations || 0;
+          reservation_value = campaign.reservation_value || 0;
+          booking_step_1 = campaign.booking_step_1 || 0;
+          booking_step_2 = campaign.booking_step_2 || 0;
+          booking_step_3 = campaign.booking_step_3 || 0;
+        }
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,
@@ -1345,6 +1376,19 @@ function ReportsPageContent() {
       });
       
       console.log(`📊 Transformed campaigns:`, campaigns.length, 'campaigns');
+      
+      // 🔧 ENHANCED: Log conversion metrics summary
+      if (hasEnhancedConversionMetrics && enhancedConversionMetrics) {
+        console.log(`🔧 ENHANCED CONVERSION METRICS SUMMARY:`, {
+          reservations: enhancedConversionMetrics.reservations || 0,
+          reservation_value: enhancedConversionMetrics.reservation_value || 0,
+          booking_step_1: enhancedConversionMetrics.booking_step_1 || 0,
+          booking_step_2: enhancedConversionMetrics.booking_step_2 || 0,
+          booking_step_3: enhancedConversionMetrics.booking_step_3 || 0,
+          source: data.debug?.source || 'unknown'
+        });
+      }
+      
       if (campaigns.length > 0) {
         console.log(`📊 Sample campaign:`, campaigns[0]);
         console.log(`🔍 CONVERSION DATA DEBUG - Sample campaign:`, {
@@ -2593,8 +2637,8 @@ function ReportsPageContent() {
               onClick={() => handleViewTypeChange('monthly')}
                   className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'monthly'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -2605,8 +2649,8 @@ function ReportsPageContent() {
               onClick={() => handleViewTypeChange('weekly')}
                   className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'weekly'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <CalendarDays className="w-4 h-4" />
@@ -2617,8 +2661,8 @@ function ReportsPageContent() {
               onClick={() => handleViewTypeChange('all-time')}
                   className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'all-time'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
               }`}
               title="Pokaż dane z całego dostępnego okresu (od 2010 do dziś)"
             >
@@ -2630,8 +2674,8 @@ function ReportsPageContent() {
               onClick={() => handleViewTypeChange('custom')}
                   className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 viewType === 'custom'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -2648,7 +2692,7 @@ function ReportsPageContent() {
                   <button
                     onClick={handleRefresh}
                     disabled={loadingPeriod !== null}
-                    className="flex items-center space-x-2 px-4 py-3 bg-white text-[#1F3D8A] border border-[#E7ECF2] rounded-xl hover:bg-gray-50 hover:border-[#1F3D8A] transition-all duration-200 disabled:opacity-50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#BFD2FF]"
+                    className="flex items-center space-x-2 px-4 py-3 bg-white text-slate-900 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-700 transition-all duration-200 disabled:opacity-50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#BFD2FF]"
                   >
                     <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
                     <span>Odśwież</span>
@@ -2659,7 +2703,7 @@ function ReportsPageContent() {
                       clientId={client?.id || ''}
                       dateStart={selectedReport?.date_range_start || ''}
                       dateEnd={selectedReport?.date_range_end || ''}
-                      className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all duration-200 text-sm font-semibold border border-orange-500"
+                      className="px-6 py-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all duration-200 text-sm font-medium shadow-sm"
                       campaigns={selectedReport?.campaigns || []}
                       totals={getSelectedPeriodTotals()}
                       client={client}
@@ -2694,10 +2738,10 @@ function ReportsPageContent() {
                         }
                       }}
                       disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                      className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+                      className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
                       aria-label="Poprzedni miesiąc"
                     >
-                      <ChevronLeft className="w-6 h-6 text-[#707B8A] group-hover:text-[#0B1220]" />
+                      <ChevronLeft className="w-6 h-6 text-slate-700 group-hover:text-slate-900" />
                 </button>
 
                     {/* Period Display - Much Bigger */}
@@ -2706,7 +2750,7 @@ function ReportsPageContent() {
                         value={selectedPeriod || ''}
                         onChange={handlePeriodChange}
                         disabled={loadingPeriod !== null}
-                        className="min-w-[280px] h-16 border-2 border-[#E7ECF2] rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-[#1F3D8A] disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
+                        className="min-w-[280px] h-16 border-2 border-slate-200 rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
                         role="group"
                         aria-label="Wybierz okres"
                       >
@@ -2737,7 +2781,7 @@ function ReportsPageContent() {
                       </select>
                       
                       <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                        <ChevronDown className="w-5 h-5 text-[#707B8A]" />
+                        <ChevronDown className="w-5 h-5 text-slate-700" />
             </div>
 
                       {loadingPeriod && (
@@ -2764,14 +2808,14 @@ function ReportsPageContent() {
                         }
                       }}
                       disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                      className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
+                      className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
                       aria-label="Następny miesiąc"
                     >
-                      <ChevronRight className="w-6 h-6 text-[#707B8A] group-hover:text-[#0B1220]" />
+                      <ChevronRight className="w-6 h-6 text-slate-700 group-hover:text-slate-900" />
                     </button>
                   </div>
                 ) : (
-                  <div className="h-16 flex items-center text-[#707B8A] text-lg font-medium">
+                  <div className="h-16 flex items-center text-slate-700 text-lg font-medium">
                     {viewType === 'all-time' ? 'Wszystkie dostępne dane' : 'Wybierz zakres dat poniżej'}
           </div>
         )}
@@ -2784,13 +2828,13 @@ function ReportsPageContent() {
                       className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
                         activeAdsProvider === 'meta'
                           ? 'text-white shadow-sm'
-                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                          : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
                       {activeAdsProvider === 'meta' && (
                         <motion.div
                           layoutId="activeAdsTab"
-                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                          className="absolute inset-0 bg-slate-900 rounded-xl"
                           initial={false}
                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
                         />
@@ -2806,13 +2850,13 @@ function ReportsPageContent() {
                       className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
                         activeAdsProvider === 'google'
                           ? 'text-white shadow-sm'
-                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                          : 'text-slate-700 hover:text-slate-900'
                       }`}
                     >
                       {activeAdsProvider === 'google' && (
                         <motion.div
                           layoutId="activeAdsTab"
-                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                          className="absolute inset-0 bg-slate-900 rounded-xl"
                           initial={false}
                           transition={{ type: "spring", stiffness: 500, damping: 30 }}
                         />
@@ -2838,8 +2882,8 @@ function ReportsPageContent() {
                   onClick={() => handleViewTypeChange('monthly')}
                   className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     viewType === 'monthly'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
                   <Calendar className="w-4 h-4" />
@@ -2850,8 +2894,8 @@ function ReportsPageContent() {
                   onClick={() => handleViewTypeChange('weekly')}
                   className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     viewType === 'weekly'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
                   <CalendarDays className="w-4 h-4" />
@@ -2862,8 +2906,8 @@ function ReportsPageContent() {
                   onClick={() => handleViewTypeChange('all-time')}
                   className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     viewType === 'all-time'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
                   <BarChart3 className="w-4 h-4" />
@@ -2874,8 +2918,8 @@ function ReportsPageContent() {
                   onClick={() => handleViewTypeChange('custom')}
                   className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                     viewType === 'custom'
-                      ? 'bg-[#1F3D8A] text-white shadow-sm'
-                      : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                   }`}
                 >
                   <Calendar className="w-4 h-4" />
@@ -2888,7 +2932,7 @@ function ReportsPageContent() {
                 <button
                   onClick={handleRefresh}
                   disabled={loadingPeriod !== null}
-                  className="flex items-center space-x-2 px-3 py-3 bg-white text-[#1F3D8A] border border-[#E7ECF2] rounded-lg hover:bg-gray-50 hover:border-[#1F3D8A] transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
+                  className="flex items-center space-x-2 px-3 py-3 bg-white text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-700 transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
                   <span>Odśwież</span>
@@ -2899,7 +2943,7 @@ function ReportsPageContent() {
                     clientId={client?.id || ''}
                     dateStart={selectedReport?.date_range_start || ''}
                     dateEnd={selectedReport?.date_range_end || ''}
-                      className="px-3 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all duration-200 text-sm font-semibold border border-orange-500"
+                      className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-all duration-200 text-sm font-medium shadow-sm"
                     campaigns={selectedReport?.campaigns || []}
                     totals={getSelectedPeriodTotals()}
                     client={client}
@@ -2929,9 +2973,9 @@ function ReportsPageContent() {
                 }
               }}
               disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                    className="w-9 h-11 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="w-9 h-11 flex items-center justify-center bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-                    <ChevronLeft className="w-5 h-5 text-[#707B8A]" />
+                    <ChevronLeft className="w-5 h-5 text-slate-700" />
             </button>
 
               <div className="relative">
@@ -2939,7 +2983,7 @@ function ReportsPageContent() {
                   value={selectedPeriod || ''}
                   onChange={handlePeriodChange}
                   disabled={loadingPeriod !== null}
-                      className="min-w-[200px] h-11 border border-[#E7ECF2] rounded-xl px-4 text-base font-semibold text-center text-[#0B1220] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:border-[#1F3D8A] disabled:opacity-50 cursor-pointer appearance-none bg-white"
+                      className="min-w-[200px] h-11 border border-slate-200 rounded-xl px-4 text-base font-semibold text-center text-[#0B1220] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white"
                 >
                   {availablePeriods.map((periodId) => {
                     if (viewType === 'monthly') {
@@ -2966,7 +3010,7 @@ function ReportsPageContent() {
                 </select>
                 
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                      <ChevronDown className="w-4 h-4 text-[#707B8A]" />
+                      <ChevronDown className="w-4 h-4 text-slate-700" />
                           </div>
                         </div>
 
@@ -2986,13 +3030,13 @@ function ReportsPageContent() {
                       }
                     }}
                     disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                    className="w-9 h-11 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="w-9 h-11 flex items-center justify-center bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    <ChevronRight className="w-5 h-5 text-[#707B8A]" />
+                    <ChevronRight className="w-5 h-5 text-slate-700" />
                   </button>
                 </div>
               ) : (
-                <div className="h-11 flex items-center text-[#707B8A] text-sm font-medium">
+                <div className="h-11 flex items-center text-slate-700 text-sm font-medium">
                   {viewType === 'all-time' ? 'Wszystkie dostępne dane' : 'Wybierz zakres dat poniżej'}
                 </div>
               )}
@@ -3005,13 +3049,13 @@ function ReportsPageContent() {
                     className={`relative flex items-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
                       activeAdsProvider === 'meta'
                         ? 'text-white shadow-sm'
-                        : 'text-[#707B8A] hover:text-[#0B1220]'
+                        : 'text-slate-700 hover:text-slate-900'
                     }`}
                   >
                     {activeAdsProvider === 'meta' && (
                       <motion.div
                         layoutId="activeAdsTabTablet"
-                        className="absolute inset-0 bg-[#1F3D8A] rounded-lg"
+                        className="absolute inset-0 bg-slate-900 rounded-lg"
                         initial={false}
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       />
@@ -3027,13 +3071,13 @@ function ReportsPageContent() {
                     className={`relative flex items-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
                       activeAdsProvider === 'google'
                         ? 'text-white shadow-sm'
-                        : 'text-[#707B8A] hover:text-[#0B1220]'
+                        : 'text-slate-700 hover:text-slate-900'
                     }`}
                   >
                     {activeAdsProvider === 'google' && (
                       <motion.div
                         layoutId="activeAdsTabTablet"
-                        className="absolute inset-0 bg-[#1F3D8A] rounded-lg"
+                        className="absolute inset-0 bg-slate-900 rounded-lg"
                         initial={false}
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       />
@@ -3070,9 +3114,9 @@ function ReportsPageContent() {
                       }
                     }}
                     disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                    className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    <ChevronLeft className="w-6 h-6 text-[#707B8A]" />
+                    <ChevronLeft className="w-6 h-6 text-slate-700" />
                   </button>
 
                   <div className="relative">
@@ -3080,7 +3124,7 @@ function ReportsPageContent() {
                       value={selectedPeriod || ''}
                       onChange={handlePeriodChange}
                       disabled={loadingPeriod !== null}
-                      className="min-w-[240px] h-16 border-2 border-[#E7ECF2] rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-[#1F3D8A] disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
+                      className="min-w-[240px] h-16 border-2 border-slate-200 rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
                     >
                       {availablePeriods.map((periodId) => {
               if (viewType === 'monthly') {
@@ -3107,7 +3151,7 @@ function ReportsPageContent() {
                     </select>
                     
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                      <ChevronDown className="w-5 h-5 text-[#707B8A]" />
+                      <ChevronDown className="w-5 h-5 text-slate-700" />
             </div>
           </div>
 
@@ -3127,9 +3171,9 @@ function ReportsPageContent() {
                       }
                     }}
                     disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                    className="w-12 h-16 flex items-center justify-center bg-white border border-[#E7ECF2] rounded-2xl hover:bg-gray-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    <ChevronRight className="w-6 h-6 text-[#707B8A]" />
+                    <ChevronRight className="w-6 h-6 text-slate-700" />
                   </button>
         </div>
 
@@ -3141,13 +3185,13 @@ function ReportsPageContent() {
                       className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
                     activeAdsProvider === 'meta'
                       ? 'text-white shadow-sm'
-                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                          : 'text-slate-700 hover:text-slate-900'
                   }`}
                 >
                   {activeAdsProvider === 'meta' && (
                     <motion.div
                           layoutId="activeAdsTabMobile"
-                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                          className="absolute inset-0 bg-slate-900 rounded-xl"
                       initial={false}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                     />
@@ -3163,13 +3207,13 @@ function ReportsPageContent() {
                       className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
                     activeAdsProvider === 'google'
                       ? 'text-white shadow-sm'
-                          : 'text-[#707B8A] hover:text-[#0B1220]'
+                          : 'text-slate-700 hover:text-slate-900'
                   }`}
                 >
                   {activeAdsProvider === 'google' && (
                     <motion.div
                           layoutId="activeAdsTabMobile"
-                          className="absolute inset-0 bg-[#1F3D8A] rounded-xl"
+                          className="absolute inset-0 bg-slate-900 rounded-xl"
                       initial={false}
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                     />
@@ -3190,8 +3234,8 @@ function ReportsPageContent() {
                 onClick={() => handleViewTypeChange('monthly')}
                 className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   viewType === 'monthly'
-                    ? 'bg-[#1F3D8A] text-white shadow-sm'
-                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <Calendar className="w-4 h-4" />
@@ -3202,8 +3246,8 @@ function ReportsPageContent() {
                 onClick={() => handleViewTypeChange('weekly')}
                 className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   viewType === 'weekly'
-                    ? 'bg-[#1F3D8A] text-white shadow-sm'
-                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <CalendarDays className="w-4 h-4" />
@@ -3214,8 +3258,8 @@ function ReportsPageContent() {
                 onClick={() => handleViewTypeChange('all-time')}
                 className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   viewType === 'all-time'
-                    ? 'bg-[#1F3D8A] text-white shadow-sm'
-                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <BarChart3 className="w-4 h-4" />
@@ -3226,8 +3270,8 @@ function ReportsPageContent() {
                 onClick={() => handleViewTypeChange('custom')}
                 className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
                   viewType === 'custom'
-                    ? 'bg-[#1F3D8A] text-white shadow-sm'
-                    : 'bg-white text-[#707B8A] border border-[#E7ECF2] hover:bg-gray-50 hover:text-[#0B1220]'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
                 <Calendar className="w-4 h-4" />
@@ -3243,7 +3287,7 @@ function ReportsPageContent() {
                 <button
                   onClick={handleRefresh}
                   disabled={loadingPeriod !== null}
-                  className="flex items-center space-x-2 px-3 py-3 bg-white text-[#1F3D8A] border border-[#E7ECF2] rounded-lg hover:bg-gray-50 hover:border-[#1F3D8A] transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
+                  className="flex items-center space-x-2 px-3 py-3 bg-white text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-700 transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
                   <span>Odśwież</span>
@@ -3254,7 +3298,7 @@ function ReportsPageContent() {
                     clientId={client?.id || ''}
                     dateStart={selectedReport?.date_range_start || ''}
                     dateEnd={selectedReport?.date_range_end || ''}
-                    className="px-3 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-all duration-200 text-sm font-semibold border border-orange-500"
+                    className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-all duration-200 text-sm font-medium shadow-sm"
                     campaigns={selectedReport?.campaigns || []}
                     totals={getSelectedPeriodTotals()}
                     client={client}

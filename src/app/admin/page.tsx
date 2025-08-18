@@ -24,7 +24,9 @@ import {
   ChevronRight,
   Home,
   Users,
-  Calendar
+  Calendar,
+  Target,
+  Facebook
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
@@ -55,27 +57,50 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     ad_account_id: '',
     meta_access_token: '',
     system_user_token: '',
+    // Google Ads fields
+    google_ads_customer_id: '',
+    google_ads_refresh_token: '',
+    google_ads_enabled: false,
     reporting_frequency: 'monthly' as const,
     notes: ''
   });
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationStatus, setValidationStatus] = useState<{
-    status: 'idle' | 'validating' | 'valid' | 'invalid';
-    message: string;
-  }>({ status: 'idle', message: '' });
+    meta: { status: 'idle' | 'validating' | 'valid' | 'invalid'; message: string; };
+    google: { status: 'idle' | 'validating' | 'valid' | 'invalid'; message: string; };
+  }>({ 
+    meta: { status: 'idle', message: '' },
+    google: { status: 'idle', message: '' }
+  });
   const [submitError, setSubmitError] = useState<string>('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState<('meta' | 'google')[]>(['meta']);
 
   const validateMetaCredentials = async () => {
+    // Check if Meta is selected
+    if (!selectedPlatforms.includes('meta')) {
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        meta: { status: 'idle', message: 'Meta Ads nie jest wybrane' }
+      }));
+      return;
+    }
+
     // Check if Ad Account ID is provided (required)
     if (!formData.ad_account_id) {
-      setValidationStatus({ status: 'invalid', message: 'Meta Ad Account ID jest wymagane' });
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        meta: { status: 'invalid', message: 'Meta Ad Account ID jest wymagane' }
+      }));
       return;
     }
     
     // Check if at least one token is provided
     if (!formData.meta_access_token && !formData.system_user_token) {
-      setValidationStatus({ status: 'invalid', message: 'Podaj token Meta Access (60 dni) lub System User Token (permanentny)' });
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        meta: { status: 'invalid', message: 'Podaj token Meta Access (60 dni) lub System User Token (permanentny)' }
+      }));
       return;
     }
     
@@ -84,7 +109,10 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     const tokenType = formData.system_user_token ? 'System User Token (Permanentny)' : 'Meta Access Token (60 dni)';
 
     setValidating(true);
-    setValidationStatus({ status: 'validating', message: `Walidacja ${tokenType}...` });
+    setValidationStatus(prev => ({ 
+      ...prev, 
+      meta: { status: 'validating', message: `Walidacja ${tokenType}...` }
+    }));
 
     try {
       const metaService = new MetaAPIService(tokenToUse);
@@ -104,10 +132,10 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           errorMessage += '\n💡 Wskazówka: Sprawdź, czy twój token zaczyna się od "EAA" i jest skopiowany poprawnie.';
         }
         
-        setValidationStatus({ 
-          status: 'invalid', 
-          message: errorMessage
-        });
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          meta: { status: 'invalid', message: errorMessage }
+        }));
         return;
       }
 
@@ -124,10 +152,10 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           errorMessage += '\n💡 Wskazówka: Upewnij się, że twój token ma dostęp do tego konta reklamowego.';
         }
         
-        setValidationStatus({ 
-          status: 'invalid', 
-          message: errorMessage
-        });
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          meta: { status: 'invalid', message: errorMessage }
+        }));
         return;
       }
 
@@ -135,7 +163,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
       try {
         const campaigns = await metaService.getCampaigns(formData.ad_account_id.replace('act_', ''));
         
-        let statusMessage = `✅ Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Znaleziono ${campaigns.length} kampanie.`;
+        let statusMessage = `✅ Meta Ads: Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Znaleziono ${campaigns.length} kampanie.`;
         
         // Enhanced token status information with user-friendly guidance
         if (tokenValidation.convertedToken) {
@@ -151,13 +179,13 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           }
         }
         
-        setValidationStatus({ 
-          status: 'valid', 
-          message: statusMessage
-        });
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          meta: { status: 'valid', message: statusMessage }
+        }));
       } catch (campaignError) {
         // Campaign fetch failed, but credentials are still valid
-        let statusMessage = `✅ Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Dostęp do kampanii może być ograniczony.`;
+        let statusMessage = `✅ Meta Ads: Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Dostęp do kampanii może być ograniczony.`;
         
         // Enhanced token status information with user-friendly guidance
         if (tokenValidation.convertedToken) {
@@ -173,17 +201,93 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           }
         }
         
-        setValidationStatus({ 
-          status: 'valid', 
-          message: statusMessage
-        });
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          meta: { status: 'valid', message: statusMessage }
+        }));
       }
 
     } catch (error) {
-      setValidationStatus({ 
-        status: 'invalid', 
-        message: `Błąd walidacji: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
-      });
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        meta: { 
+          status: 'invalid', 
+          message: `Błąd walidacji Meta: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
+        }
+      }));
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const validateGoogleAdsCredentials = async () => {
+    // Check if Google Ads is selected
+    if (!selectedPlatforms.includes('google')) {
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { status: 'idle', message: 'Google Ads nie jest wybrane' }
+      }));
+      return;
+    }
+
+    // Check if required fields are provided
+    if (!formData.google_ads_customer_id || !formData.google_ads_refresh_token) {
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { status: 'invalid', message: 'Google Ads Customer ID i Refresh Token są wymagane' }
+      }));
+      return;
+    }
+
+    setValidating(true);
+    setValidationStatus(prev => ({ 
+      ...prev, 
+      google: { status: 'validating', message: 'Walidacja Google Ads...' }
+    }));
+
+    try {
+      // For now, just validate format
+      const customerIdFormat = /^\d{3}-\d{3}-\d{4}$/.test(formData.google_ads_customer_id);
+      const refreshTokenFormat = formData.google_ads_refresh_token.startsWith('1//');
+      
+      if (!customerIdFormat) {
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          google: { 
+            status: 'invalid', 
+            message: 'Google Ads Customer ID powinien mieć format XXX-XXX-XXXX' 
+          }
+        }));
+        return;
+      }
+
+      if (!refreshTokenFormat) {
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          google: { 
+            status: 'invalid', 
+            message: 'Google Ads Refresh Token powinien zaczynać się od "1//"' 
+          }
+        }));
+        return;
+      }
+
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { 
+          status: 'valid', 
+          message: '✅ Google Ads: Format poprawny! Połączenie zostanie zweryfikowane podczas pierwszego użycia.' 
+        }
+      }));
+
+    } catch (error) {
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { 
+          status: 'invalid', 
+          message: `Błąd walidacji Google Ads: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
+        }
+      }));
     } finally {
       setValidating(false);
     }
@@ -195,14 +299,51 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     // Clear previous errors
     setSubmitError('');
     
-    if (validationStatus.status !== 'valid') {
-      setValidationStatus({ status: 'invalid', message: 'Proszę najpierw zweryfikować swoje poświadczenia Meta Ads.' });
+    // Check if at least one platform is selected
+    if (selectedPlatforms.length === 0) {
+      setSubmitError('Wybierz przynajmniej jedną platformę reklamową (Meta lub Google Ads)');
+      return;
+    }
+
+    // Validate selected platforms
+    if (selectedPlatforms.includes('meta') && validationStatus.meta.status !== 'valid') {
+      setSubmitError('Proszę najpierw zweryfikować poświadczenia Meta Ads');
+      return;
+    }
+
+    if (selectedPlatforms.includes('google') && validationStatus.google.status !== 'valid') {
+      setSubmitError('Proszę najpierw zweryfikować poświadczenia Google Ads');
       return;
     }
 
     setLoading(true);
     try {
-      await onAdd(formData);
+      // Prepare form data based on selected platforms
+      const clientData = {
+        ...formData,
+        // Only include Meta fields if Meta is selected
+        ...(selectedPlatforms.includes('meta') ? {
+          ad_account_id: formData.ad_account_id,
+          meta_access_token: formData.meta_access_token,
+          system_user_token: formData.system_user_token,
+        } : {
+          ad_account_id: '',
+          meta_access_token: '',
+          system_user_token: '',
+        }),
+        // Only include Google Ads fields if Google is selected
+        ...(selectedPlatforms.includes('google') ? {
+          google_ads_customer_id: formData.google_ads_customer_id,
+          google_ads_refresh_token: formData.google_ads_refresh_token,
+          google_ads_enabled: true,
+        } : {
+          google_ads_customer_id: '',
+          google_ads_refresh_token: '',
+          google_ads_enabled: false,
+        })
+      };
+
+      await onAdd(clientData);
       setFormData({
         name: '',
         email: '',
@@ -210,11 +351,18 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         ad_account_id: '',
         meta_access_token: '',
         system_user_token: '',
+        google_ads_customer_id: '',
+        google_ads_refresh_token: '',
+        google_ads_enabled: false,
         reporting_frequency: 'monthly',
         notes: ''
       });
-      setValidationStatus({ status: 'idle', message: '' });
+      setValidationStatus({ 
+        meta: { status: 'idle', message: '' },
+        google: { status: 'idle', message: '' }
+      });
       setSubmitError('');
+      setSelectedPlatforms(['meta']);
       onClose();
     } catch (error) {
       console.error('Error adding client:', error);
@@ -265,235 +413,281 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
               placeholder="contact@company.com"
             />
           </div>
-          
-                    {/* Meta API Setup Section */}
+
+          {/* Platform Selection */}
           <div className="border-t pt-4">
             <h3 className="text-lg font-semibold mb-4 flex items-center">
-              <Key className="h-5 w-5 mr-2 text-blue-600" />
-              Konfiguracja API Meta (Dostęp trwały)
+              <Target className="h-5 w-5 mr-2 text-purple-600" />
+              Wybierz platformy reklamowe
             </h3>
             
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="flex items-start">
-                <Shield className="h-5 w-5 mr-2 text-blue-600 mt-0.5" />
-                <div>
-                  <h4 className="font-medium text-blue-900 mb-1">💡 Zalecane: Token Systemowego Użytkownika</h4>
-                  <p className="text-sm text-blue-800 mb-2">
-                    Dla trwałego dostępu, który nigdy nie wygasa, użyj tokenu Systemowego Użytkownika z Business Manager klienta.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => window.open('https://business.facebook.com/', '_blank')}
-                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
-                  >
-                    Otwórz Business Manager
-                  </button>
+            <div className="space-y-3">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedPlatforms.includes('meta')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedPlatforms(prev => [...prev, 'meta']);
+                    } else {
+                      setSelectedPlatforms(prev => prev.filter(p => p !== 'meta'));
+                    }
+                  }}
+                  className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <div className="flex items-center">
+                  <Facebook className="h-5 w-5 mr-2 text-blue-600" />
+                  <span className="font-medium">Meta Ads (Facebook & Instagram)</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Required Ad Account ID */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                ID konta reklamowego Meta *
               </label>
-              <input
-                type="text"
-                required
-                value={formData.ad_account_id}
-                onChange={(e) => setFormData({...formData, ad_account_id: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="np. act_123456789"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Znajdź to w Ads Manager → Ustawienia konta
-              </p>
-            </div>
-
-            {/* Token Choice Section */}
-            <div className="mt-6">
-              <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                <Key className="h-4 w-4 mr-2" />
-                Wybierz typ tokenu (Wybierz jeden)
-              </h4>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Option 1: System User Token */}
-                <div className={`border-2 rounded-lg p-4 transition-colors ${
-                  formData.system_user_token ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                }`}>
-                  <div className="flex items-center mb-2">
-                    <Shield className="h-4 w-4 mr-2 text-blue-600" />
-                    <label className="text-sm font-medium text-gray-700">
-                      Token Systemowego Użytkownika (Zalecane)
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      value={formData.system_user_token}
-                      onChange={(e) => setFormData({...formData, system_user_token: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Wklej token Systemowego Użytkownika dla trwałego dostępu"
-                    />
-                    {formData.system_user_token && formData.system_user_token.startsWith('EAA') && (
-                      <div className="absolute right-2 top-2">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    ✅ Dostęp trwały, nigdy nie wygasa
-                  </p>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={selectedPlatforms.includes('google')}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedPlatforms(prev => [...prev, 'google']);
+                    } else {
+                      setSelectedPlatforms(prev => prev.filter(p => p !== 'google'));
+                    }
+                  }}
+                  className="mr-3 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                />
+                <div className="flex items-center">
+                  <Target className="h-5 w-5 mr-2 text-orange-600" />
+                  <span className="font-medium">Google Ads</span>
                 </div>
-
-                {/* Option 2: Meta Access Token */}
-                <div className={`border-2 rounded-lg p-4 transition-colors ${
-                  formData.meta_access_token && !formData.system_user_token ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'
-                }`}>
-                  <div className="flex items-center mb-2">
-                    <Clock className="h-4 w-4 mr-2 text-orange-600" />
-                    <label className="text-sm font-medium text-gray-700">
-                      Token Meta Access (60 dni)
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      value={formData.meta_access_token}
-                      onChange={(e) => setFormData({...formData, meta_access_token: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                      placeholder="EAA... (zaczyna się od EAA)"
-                    />
-                    {formData.meta_access_token && formData.meta_access_token.startsWith('EAA') && (
-                      <div className="absolute right-2 top-2">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    ⏰ Wygasa za 60 dni, wymaga odnowienia
-                  </p>
-                </div>
-              </div>
+              </label>
             </div>
-
-
-
-            {/* Token Choice Status */}
-            {(formData.meta_access_token || formData.system_user_token) && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-md">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Status wybranego tokenu:</h4>
-                <div className="space-y-2">
-                  {formData.system_user_token && (
-                    <div className={`flex items-center text-sm p-2 rounded ${
-                      formData.system_user_token.startsWith('EAA') 
-                        ? 'text-green-700 bg-green-50 border border-green-200' 
-                        : 'text-yellow-700 bg-yellow-50 border border-yellow-200'
-                    }`}>
-                      {formData.system_user_token.startsWith('EAA') ? (
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 mr-2" />
-                      )}
-                      <span>
-                        {formData.system_user_token.startsWith('EAA') 
-                          ? '✅ Token Systemowego Użytkownika wybrany (Dostęp trwały)' 
-                          : '⚠️ Token Systemowego Użytkownika powinien zaczynać się od "EAA" dla API Meta'
-                        }
-                      </span>
-                    </div>
-                  )}
-                  
-                  {formData.meta_access_token && !formData.system_user_token && (
-                    <div className={`flex items-center text-sm p-2 rounded ${
-                      formData.meta_access_token.startsWith('EAA') 
-                        ? 'text-green-700 bg-green-50' 
-                        : 'text-yellow-700 bg-yellow-50'
-                    }`}>
-                      {formData.meta_access_token.startsWith('EAA') ? (
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                      ) : (
-                        <AlertCircle className="h-4 w-4 mr-2" />
-                      )}
-                      <span>
-                        {formData.meta_access_token.startsWith('EAA') 
-                          ? '✅ Token Meta Access wybrany (dostęp 60-dniowy)' 
-                          : '⚠️ Token Meta Access powinien zaczynać się od "EAA" dla API Meta'
-                        }
-                      </span>
-                    </div>
-                  )}
+          </div>
+          
+          {/* Meta API Setup Section */}
+          {selectedPlatforms.includes('meta') && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-4 flex items-center">
+                <Key className="h-5 w-5 mr-2 text-blue-600" />
+                Konfiguracja API Meta (Dostęp trwały)
+              </h3>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start">
+                  <Shield className="h-5 w-5 mr-2 text-blue-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-900 mb-1">💡 Zalecane: Token Systemowego Użytkownika</h4>
+                    <p className="text-sm text-blue-800 mb-2">
+                      Dla trwałego dostępu, który nigdy nie wygasa, użyj tokenu Systemowego Użytkownika z Business Manager klienta.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => window.open('https://business.facebook.com/', '_blank')}
+                      className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
+                    >
+                      Otwórz Business Manager
+                    </button>
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* Validation Section */}
-            <div className="bg-gray-50 p-4 rounded-md mt-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-700 flex items-center">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Test połączenia i walidacja tokenu
-                </span>
-                <button
-                  type="button"
-                  onClick={validateMetaCredentials}
-                  disabled={validating || !formData.ad_account_id || (!formData.meta_access_token && !formData.system_user_token)}
-                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                >
-                  {validating ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Testowanie...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Test połączenia
-                    </>
-                  )}
-                </button>
+              {/* Required Ad Account ID */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  ID konta reklamowego Meta *
+                </label>
+                <input
+                  type="text"
+                  required={selectedPlatforms.includes('meta')}
+                  value={formData.ad_account_id}
+                  onChange={(e) => setFormData({...formData, ad_account_id: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="act_123456789"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Format: act_XXXXXXXXX (znajdź w Ads Manager → Settings → Ad Account ID)
+                </p>
               </div>
+
+              {/* Preferred: System User Token */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  System User Token (Zalecane - trwały dostęp)
+                </label>
+                <input
+                  type="password"
+                  value={formData.system_user_token}
+                  onChange={(e) => setFormData({...formData, system_user_token: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="EAA... (permanentny token)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  ✅ Najbezpieczniejszy - nigdy nie wygasa | Utwórz w Business Manager → Settings → System Users
+                </p>
+              </div>
+
+              {/* Alternative: Regular Meta Access Token */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Meta Access Token (Alternatywa - 60 dni)
+                </label>
+                <input
+                  type="password"
+                  value={formData.meta_access_token}
+                  onChange={(e) => setFormData({...formData, meta_access_token: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="EAA... (token 60-dniowy)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  ⏰ Wygasa co 60 dni | Pobierz z Graph API Explorer lub Apps → Twoja aplikacja → Token
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={validateMetaCredentials}
+                disabled={validating || (!formData.ad_account_id || (!formData.meta_access_token && !formData.system_user_token))}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {validating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Sprawdzanie Meta...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-4 w-4 mr-2" />
+                    Zweryfikuj poświadczenia Meta
+                  </>
+                )}
+              </button>
               
-              {validationStatus.status !== 'idle' && (
+              {validationStatus.meta.status !== 'idle' && (
                 <div className={`text-sm p-3 rounded-md border ${
-                  validationStatus.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
-                  validationStatus.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
+                  validationStatus.meta.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
+                  validationStatus.meta.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
                   'bg-yellow-50 text-yellow-800 border-yellow-200'
                 }`}>
                   <div className="flex items-start">
-                    {validationStatus.status === 'valid' ? (
+                    {validationStatus.meta.status === 'valid' ? (
                       <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
-                    ) : validationStatus.status === 'invalid' ? (
+                    ) : validationStatus.meta.status === 'invalid' ? (
                       <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
                     ) : (
                       <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
                     )}
                     <div>
-                      {validationStatus.message}
+                      {validationStatus.meta.message}
                     </div>
                   </div>
                 </div>
               )}
             </div>
+          )}
 
-                         {/* Quick Help */}
-             <div className="mt-4 p-3 bg-gray-50 rounded-md">
-               <h4 className="text-sm font-medium text-gray-700 mb-2">🔧 Przewodnik wyboru tokenu:</h4>
-               <div className="text-xs text-gray-600 space-y-1">
-                 <p>• <strong>ID konta reklamowego Meta</strong> (Wymagane): Twój identyfikator konta reklamowego</p>
-                 <p>• <strong>Wybierz jeden typ tokenu:</strong></p>
-                 <div className="ml-4 space-y-1">
-                   <p>🛡️ <strong>Token Systemowego Użytkownika:</strong> Dostęp trwały, nigdy nie wygasa (Zalecane)</p>
-                   <p>⏰ <strong>Token Meta Access:</strong> Dostęp 60-dniowy, wymaga odnowienia ręcznego</p>
-                 </div>
-               </div>
-               <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
-                 <strong>💡 Wskazówka:</strong> Tokeny Systemowego Użytkownika są preferowane dla dostępu trwałego. Jeśli masz jeden, użyj go!
-               </div>
-             </div>
-          </div>
-          
+          {/* Google Ads Setup Section */}
+          {selectedPlatforms.includes('google') && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-semibold mb-4 flex items-center">
+                <Target className="h-5 w-5 mr-2 text-orange-600" />
+                Konfiguracja Google Ads API
+              </h3>
+              
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start">
+                  <Shield className="h-5 w-5 mr-2 text-orange-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-orange-900 mb-1">🔑 Wymagane: Google Ads API Access</h4>
+                    <p className="text-sm text-orange-800 mb-2">
+                      Aby połączyć Google Ads, potrzebujesz Customer ID i Refresh Token z Google Ads API.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => window.open('https://developers.google.com/google-ads/api', '_blank')}
+                      className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700"
+                    >
+                      Otwórz Google Ads API Console
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Google Ads Customer ID */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Google Ads Customer ID *
+                </label>
+                <input
+                  type="text"
+                  required={selectedPlatforms.includes('google')}
+                  value={formData.google_ads_customer_id}
+                  onChange={(e) => setFormData({...formData, google_ads_customer_id: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="123-456-7890"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Format: XXX-XXX-XXXX (znajdź w Google Ads → Account Settings → Account Info)
+                </p>
+              </div>
+
+              {/* Google Ads Refresh Token */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Google Ads Refresh Token *
+                </label>
+                <input
+                  type="password"
+                  required={selectedPlatforms.includes('google')}
+                  value={formData.google_ads_refresh_token}
+                  onChange={(e) => setFormData({...formData, google_ads_refresh_token: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="1//..."
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Zaczyna się od "1//" | Uzyskaj z OAuth 2.0 flow dla Google Ads API
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={validateGoogleAdsCredentials}
+                disabled={validating || (!formData.google_ads_customer_id || !formData.google_ads_refresh_token)}
+                className="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              >
+                {validating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Sprawdzanie Google Ads...
+                  </>
+                ) : (
+                  <>
+                    <Target className="h-4 w-4 mr-2" />
+                    Zweryfikuj poświadczenia Google Ads
+                  </>
+                )}
+              </button>
+              
+              {validationStatus.google.status !== 'idle' && (
+                <div className={`text-sm p-3 rounded-md border ${
+                  validationStatus.google.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
+                  validationStatus.google.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
+                  'bg-yellow-50 text-yellow-800 border-yellow-200'
+                }`}>
+                  <div className="flex items-start">
+                    {validationStatus.google.status === 'valid' ? (
+                      <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
+                    ) : validationStatus.google.status === 'invalid' ? (
+                      <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
+                    ) : (
+                      <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
+                    )}
+                    <div>
+                      {validationStatus.google.message}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Submit Error Display */}
           {submitError && (
             <div className="bg-red-100 text-red-800 text-sm p-3 rounded-md">
@@ -542,7 +736,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
             </button>
             <button
               type="submit"
-              disabled={loading || validationStatus.status !== 'valid'}
+              disabled={loading || (selectedPlatforms.length === 0 || (selectedPlatforms.includes('meta') && validationStatus.meta.status !== 'valid') || (selectedPlatforms.includes('google') && validationStatus.google.status !== 'valid'))}
               className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
             >
               {loading ? 'Dodawanie...' : 'Dodaj klienta'}
@@ -560,6 +754,7 @@ export default function AdminPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [isHeaderCondensed, setIsHeaderCondensed] = useState(false);
 
   const [generatingReport] = useState<string | null>(null);
   const [showGenerateReportModal, setShowGenerateReportModal] = useState(false);
@@ -636,11 +831,27 @@ export default function AdminPage() {
     }
   }, [user, profile, authLoading, router]);
 
-  // Refetch clients when search/filter/sort changes
+  // Header condensation on scroll
   useEffect(() => {
-    if (user && profile) {
-      fetchClients(1); // Reset to first page when filters change
-    }
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsHeaderCondensed(scrollY >= 120);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Refetch clients when search/filter/sort changes - THROTTLED to prevent excessive refreshing
+  useEffect(() => {
+    // Add debouncing to prevent rapid API calls when typing in search
+    const timeoutId = setTimeout(() => {
+      if (user && profile) {
+        fetchClients(1); // Reset to first page when filters change
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
   }, [searchTerm, statusFilter, frequencyFilter, sortBy, sortOrder]);
 
   const fetchClients = async (page = 1) => {
@@ -1083,78 +1294,126 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-b from-[#F7F9FC] to-[#EEF2F7]">
       {/* Enhanced Header with Premium Styling */}
-      <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-gray-200/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+      <header className={`bg-white border-b border-[#E9EEF5] shadow-[0_6px_16px_rgba(16,24,40,0.06)] sticky top-0 z-40 transition-all duration-120 ease-out md:bg-white/70 md:backdrop-blur-[12px] md:border-[rgba(16,24,40,0.06)] ${
+        isHeaderCondensed ? 'h-16 md:h-16 lg:h-20' : 'h-20 md:h-16 lg:h-20'
+      }`}>
+        <div className="max-w-[1320px] mx-auto px-6 lg:px-8 h-full">
+          <div className="flex items-center justify-between h-full">
+            
+            {/* Left - Brand cluster */}
             <div className="flex items-center">
-              <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-3 rounded-2xl shadow-lg">
-                <BarChart3 className="h-8 w-8 text-white" />
+              <div className="bg-[#F4F6FB] p-2.5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] cursor-pointer">
+                {/* Analytics Spark Icon */}
+                <svg className="w-6 h-6 text-[#1F3D8A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1" ry="1"/>
+                  <rect x="14" y="3" width="7" height="7" rx="1" ry="1"/>
+                  <rect x="14" y="14" width="7" height="7" rx="1" ry="1"/>
+                  <rect x="3" y="14" width="7" height="7" rx="1" ry="1"/>
+                  <circle cx="8.5" cy="8.5" r="0.5" fill="#7EA5FF"/>
+                </svg>
               </div>
-              <div className="ml-4">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Zarządzanie klientami</h1>
-                <p className="text-gray-600">Zarządzaj kontami klientów i raportami</p>
+              <div className="ml-3">
+                <div className="flex items-center space-x-2">
+                  <h1 className={`font-bold text-[#101828] transition-all duration-120 ${
+                    isHeaderCondensed ? 'text-lg md:text-lg lg:text-xl' : 'text-xl md:text-lg lg:text-2xl'
+                  }`}>
+                    Reports
+                  </h1>
+                  {/* DEV badge - remove in production */}
+                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full border border-red-200">
+                    DEV
+                  </span>
+                </div>
+                <p className={`text-[#667085] transition-all duration-120 ${
+                  isHeaderCondensed ? 'text-xs opacity-0' : 'text-sm'
+                }`}>
+                  Google Ads and Meta Ads reports
+                </p>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
 
+            {/* Center - Meta strony */}
+            <div className="hidden lg:flex flex-col items-center text-center">
+              <h2 className={`font-bold text-[#101828] transition-all duration-120 ${
+                isHeaderCondensed ? 'text-base' : 'text-lg'
+              }`}>
+                Zarządzanie klientami
+              </h2>
+              <p className={`text-[#667085] transition-all duration-120 ${
+                isHeaderCondensed ? 'text-xs opacity-0' : 'text-sm'
+              }`}>
+                Panel › Klienci
+              </p>
+            </div>
+
+            {/* Right - Actions */}
+            <div className="flex items-center space-x-2">
+
+              {/* Primary CTAs */}
               <button
                 onClick={() => router.push('/admin/reports')}
-                className="nav-premium-button-primary"
+                className="h-10 px-4 bg-[#1F3D8A] text-white rounded-[9999px] hover:bg-[#1A2F6B] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
               >
-                <div className="flex items-center">
-                  <FileText className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Zobacz wszystkie raporty</span>
-                </div>
+                <FileText className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Raporty</span>
               </button>
+              
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="h-10 px-4 bg-[#7EA5FF] text-white rounded-[9999px] hover:bg-[#6B8FE6] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Dodaj</span>
+              </button>
+
+              {/* Utilities */}
               <button
                 onClick={() => router.push('/admin/calendar')}
-                className="group nav-premium-button hover:border-purple-300"
+                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#1F3D8A] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
               >
-                <div className="flex items-center">
-                  <Calendar className="h-4 w-4 mr-2 text-gray-600 group-hover:text-purple-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">Kalendarz wysyłek</span>
-                </div>
+                <Calendar className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Kalendarz</span>
               </button>
 
               <button
                 onClick={() => router.push('/admin/settings')}
-                className="group nav-premium-button"
+                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#1F3D8A] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
               >
-                <div className="flex items-center">
-                  <Settings className="h-4 w-4 mr-2 text-gray-600 group-hover:text-gray-800 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700">Ustawienia</span>
-                </div>
+                <Settings className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Ustawienia</span>
               </button>
 
               <button
-                onClick={() => setShowAddModal(true)}
-                className="btn-premium-success"
-              >
-                <div className="flex items-center">
-                  <Plus className="h-4 w-4 mr-2" />
-                  <span className="text-sm font-medium">Dodaj klienta</span>
-                </div>
-              </button>
-              <button
                 onClick={handleLogout}
-                className="group nav-premium-button hover:border-red-300"
+                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#D92D20] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
               >
-                <div className="flex items-center">
-                  <LogOut className="h-4 w-4 mr-2 text-gray-600 group-hover:text-red-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-red-700">Wyloguj się</span>
-                </div>
+                <LogOut className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Wyloguj</span>
               </button>
+
+              {/* Mobile overflow menu */}
+              <div className="lg:hidden">
+                <button className="h-10 w-10 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] transition-all duration-120 hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center justify-center">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
       {/* Sticky Sub-navigation */}
-      <div className="bg-white/60 backdrop-blur-sm border-b border-gray-200/50 sticky top-16 z-30">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex items-center py-3 space-x-6">
+      <div className={`bg-white/90 backdrop-blur-sm border-b border-[#E9EEF5] sticky z-30 transition-all duration-120 ease-out ${
+        isHeaderCondensed ? 'top-16 md:top-16 lg:top-20' : 'top-20 md:top-16 lg:top-20'
+      }`}>
+        <div className="max-w-[1320px] mx-auto px-6 lg:px-8">
+          <div className={`flex items-center space-x-6 transition-all duration-120 ${
+            isHeaderCondensed ? 'py-2' : 'py-3'
+          }`}>
             <div className="flex items-center text-sm text-gray-600">
               <Home className="h-4 w-4 mr-2" />
               <span>Panel</span>
@@ -1171,7 +1430,7 @@ export default function AdminPage() {
 
       <main className="max-w-6xl mx-auto px-6 lg:px-8 py-8">
         {/* Enhanced Search and Filters Section */}
-        <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8 mb-8">
+        <div className="bg-white rounded-[18px] shadow-[0_8px_30px_rgba(16,24,40,0.06)] border border-[#E9EEF5] p-8 mb-8 md:bg-white/78 md:backdrop-blur-[10px] md:shadow-[0_8px_30px_rgba(16,24,40,0.10)] md:border-[rgba(255,255,255,0.38)]">
           <SearchFilters
             onSearchChange={setSearchTerm}
             onStatusFilterChange={setStatusFilter}
@@ -1232,156 +1491,198 @@ export default function AdminPage() {
               </div>
             )}
             
-            {/* Premium Client Cards */}
+            {/* Redesigned Client Cards - Grid Layout */}
             <div className="space-y-4">
               {clients.map((client, index) => (
                 <div 
                   key={client.id}
-                  className="group bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6 hover:shadow-2xl hover:scale-[1.02] hover:-translate-y-1 transition-all duration-300 ease-out animate-fade-in"
+                  className="group bg-white rounded-[18px] shadow-[0_2px_10px_rgba(16,24,40,0.04)] hover:shadow-[0_6px_20px_rgba(16,24,40,0.06)] hover:translate-y-[-2px] transition-all duration-200 ease-out animate-fade-in min-h-[96px] sm:min-h-[120px] border border-[#E9EEF5] hover:border-[#E5EBF3] hover:bg-[#FAFBFF]"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  <div className="flex items-center justify-between">
-                    {/* Client Info */}
-                    <div className="flex items-center space-x-4">
+                  {/* Grid Layout: 12 columns with 16px gaps */}
+                  <div className="grid grid-cols-12 gap-4 p-5 items-center lg:grid-cols-12 md:grid-cols-6 sm:grid-cols-1">
+                    
+                    {/* Tożsamość (Identity) - Columns 1-5 */}
+                    <div className="col-span-5 lg:col-span-5 md:col-span-3 sm:col-span-1 flex items-center space-x-4 md:space-x-3">
+                      {/* Avatar/Monogram */}
                       <div className="relative">
-                        <div className="h-14 w-14 bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300">
-                          <span className="text-lg font-bold text-white">
-                            {client.name?.charAt(0) || 'C'}
-                          </span>
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 h-6 w-6 bg-white rounded-full border-2 border-white shadow-sm flex items-center justify-center">
-                          {client.api_status === 'valid' ? (
-                            <div className="h-3 w-3 bg-green-500 rounded-full"></div>
-                          ) : client.api_status === 'pending' ? (
-                            <div className="h-3 w-3 bg-yellow-500 rounded-full"></div>
-                          ) : (
-                            <div className="h-3 w-3 bg-red-500 rounded-full"></div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-gray-700 transition-colors">
-                          {client.name}
-                        </h3>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <div className="flex items-center">
-                            <Mail className="h-3 w-3 mr-1" />
-                            {client.email}
-                          </div>
-                          {client.company && (
-                            <div className="flex items-center">
-                              <Building className="h-3 w-3 mr-1" />
-                              {client.company}
+                        {client.logo_url ? (
+                          <div className="h-[52px] w-[52px] rounded-2xl shadow-lg overflow-hidden">
+                            <img 
+                              src={client.logo_url} 
+                              alt={`${client.name} logo`}
+                              className="w-full h-full object-contain p-1"
+                              onError={(e) => {
+                                // Fallback to initials if image fails to load
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                            {/* Fallback initials (hidden by default) */}
+                            <div className="h-[52px] w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg -mt-[52px] hidden">
+                              <span className="text-xl font-bold text-white">
+                                {client.name?.charAt(0) || 'C'}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Status Badges */}
-                    <div className="flex items-center space-x-3">
-                      <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border ${
-                        client.api_status === 'valid' 
-                          ? 'bg-green-100 text-green-800 border-green-200' 
-                          : client.api_status === 'pending'
-                          ? 'bg-yellow-100 text-yellow-800 border-yellow-200'
-                          : 'bg-red-100 text-red-800 border-red-200'
-                      }`}>
-                        {getStatusIcon(client.api_status || 'pending')}
-                        <span className="ml-1">
-                          {getStatusText(client.api_status || 'pending')}
-                        </span>
-                      </div>
-                      
-                      <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium border ${
-                        client.token_health_status === 'valid' 
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
-                          : client.token_health_status === 'expiring_soon'
-                          ? 'bg-orange-100 text-orange-800 border-orange-200'
-                          : client.token_health_status === 'expired' || client.token_health_status === 'invalid'
-                          ? 'bg-red-100 text-red-800 border-red-200'
-                          : 'bg-gray-100 text-gray-800 border-gray-200'
-                      }`}>
-                        {getTokenHealthIcon(client.token_health_status || 'unknown')}
-                        <span className="ml-1">
-                          {getTokenHealthText(client.token_health_status || 'unknown')}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Credentials & Last Report */}
-                    <div className="flex items-center space-x-6 text-sm">
-                      <div className="text-center">
-                        <div className="flex items-center justify-center text-gray-600 mb-1">
-                          <Key className="h-3 w-3 mr-1" />
-                          <span className={client.generated_username ? 'text-gray-900' : 'text-gray-400'}>
-                            {client.generated_username || 'Nie wygenerowano'}
-                          </span>
-                        </div>
-                        {client.credentials_generated_at && (
-                          <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                            {new Date(client.credentials_generated_at).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="text-center">
-                        <div className="text-gray-600 mb-1">Ostatni raport</div>
-                        {client.last_report_date ? (
-                          <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
-                            {new Date(client.last_report_date).toLocaleDateString()}
                           </div>
                         ) : (
-                          <span className="text-gray-400 bg-gray-100 px-3 py-1 rounded-full text-xs">Brak raportów</span>
+                          <div className="h-[52px] w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg">
+                            <span className="text-xl font-bold text-white">
+                              {client.name?.charAt(0) || 'C'}
+                            </span>
+                          </div>
                         )}
+                        {/* Status dot - only show when meaningful */}
+                        {client.api_status === 'valid' && (
+                          <div className="absolute -bottom-1 -right-1 h-3 w-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
+                        )}
+                      </div>
+                      
+                      {/* Client Name & Contact */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-[17px] font-semibold text-[#101828] hover:underline cursor-pointer transition-all duration-200 sm:text-base">
+                          {client.name}
+                        </h3>
+                        {/* Main email - always starts at column 6 */}
+                        <div className="flex items-center mt-1 sm:mt-2">
+                          <Mail className="h-4 w-4 mr-2 text-blue-600 flex-shrink-0" />
+                          <span className="text-sm text-[#475467] truncate max-w-[200px] sm:max-w-[150px]" title={client.email}>
+                            {client.email}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Enhanced Action Buttons */}
-                    <div className="flex items-center space-x-2">
-                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                    {/* Informacje & Statusy (Information & Statuses) - Columns 6-9 */}
+                    <div className="col-span-4 lg:col-span-4 md:col-span-3 sm:col-span-1 flex flex-col space-y-2">
+                      {/* Row A: Contact/Identification */}
+                      <div className="flex items-center space-x-3">
+                        {client.company && (
+                          <div className="flex items-center">
+                            <Building className="h-3 w-3 mr-1 text-[#667085]" />
+                            <span className="text-xs text-[#667085] truncate max-w-[120px]" title={client.company}>
+                              {client.company}
+                            </span>
+                          </div>
+                        )}
+                        {client.ad_account_id && (
+                          <div className="flex items-center">
+                            <svg className="h-3 w-3 mr-1 text-[#667085]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.900a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                            </svg>
+                            <span className="text-xs text-[#667085] truncate max-w-[100px]" title={client.ad_account_id}>
+                              {client.ad_account_id}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Row B: Statuses */}
+                      <div className="flex items-center space-x-2 sm:flex-wrap sm:gap-2">
+                        {/* API Status Badge */}
+                        <div 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-[9999px] text-xs font-medium h-7 sm:h-6 ${
+                            client.api_status === 'valid' 
+                              ? 'bg-[#E8F8EE] text-[#106B46]' 
+                              : client.api_status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-[#FFF1F0] text-red-800'
+                          }`}
+                          title={client.api_status === 'valid' ? 'Token ważny' : client.api_status === 'pending' ? 'Token w trakcie weryfikacji' : 'Token nieważny'}
+                        >
+                          {getStatusIcon(client.api_status || 'pending')}
+                          <span className="ml-1 hidden sm:inline">
+                            {getStatusText(client.api_status || 'pending')}
+                          </span>
+                        </div>
+                        
+                        {/* Token Health Badge */}
+                        <div 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-[9999px] text-xs font-medium h-7 sm:h-6 ${
+                            client.token_health_status === 'valid' 
+                              ? 'bg-[#E8F5FF] text-[#1F3D8A]' 
+                              : client.token_health_status === 'expiring_soon'
+                              ? 'bg-orange-100 text-orange-800'
+                              : client.token_health_status === 'expired' || client.token_health_status === 'invalid'
+                              ? 'bg-[#FFF7E6] text-red-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                          title={client.token_health_status === 'valid' ? 'Integracje OK' : client.token_health_status === 'expiring_soon' ? 'Integracje wygasają wkrótce' : 'Problem z integracjami'}
+                        >
+                          {getTokenHealthIcon(client.token_health_status || 'unknown')}
+                          <span className="ml-1 hidden sm:inline">
+                            {getTokenHealthText(client.token_health_status || 'unknown')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Użyteczności (Utilities) - Columns 10-12 */}
+                    <div className="col-span-3 lg:col-span-3 md:col-span-6 sm:col-span-1 flex items-center justify-end space-x-3 md:justify-start sm:justify-center">
+                      {/* Delicate divider */}
+                      <div className="w-px h-6 bg-[#E9EEF5] mx-3 hidden lg:block"></div>
+                      {/* Last Report Mini-widget */}
+                      <div className="flex-shrink-0">
+                        {client.last_report_date ? (
+                          <div 
+                            className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-200 transition-colors"
+                            title={`Ostatni raport: ${new Date(client.last_report_date).toLocaleDateString()}`}
+                            onClick={() => router.push(`/reports?clientId=${client.id}`)}
+                          >
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </div>
+                        ) : (
+                          <div 
+                            className="w-10 h-10 bg-gray-50 border border-gray-200 rounded-full flex items-center justify-center"
+                            title="Brak raportów"
+                          >
+                            <span className="text-gray-400 text-sm font-medium">—</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Action Bar - Icons with Tooltips */}
+                      <div className="flex items-center space-x-2 sm:flex-wrap sm:gap-2 sm:justify-center">
                         <button
+                          aria-label="Edytuj klienta"
                           title="Edytuj klienta"
                           onClick={() => {
                             setEditingClient(client);
                             setShowEditModal(true);
                           }}
-                          className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-105"
+                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none"
                         >
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          <svg className="h-4 w-4 text-[#667085] hover:text-[#1F3D8A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
-                      </div>
-                      
-                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        
                         <button
+                          aria-label="Zobacz raporty"
                           title="Zobacz raporty"
                           onClick={() => router.push(`/reports?clientId=${client.id}`)}
-                          className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all duration-200 hover:scale-105"
+                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4 text-[#667085]" />
                         </button>
-                      </div>
 
-                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
+                          aria-label="Generuj raport"
                           title="Generuj raport"
                           onClick={() => generateReport(client.id)}
                           disabled={generatingReport === client.id}
-                          className="p-2 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {generatingReport === client.id ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            <RefreshCw className="h-4 w-4 text-[#667085] animate-spin" />
                           ) : (
-                            <FileText className="h-4 w-4" />
+                            <FileText className="h-4 w-4 text-[#667085]" />
                           )}
                         </button>
-                      </div>
-                      
-                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
+                        
                         <button
+                          aria-label="Dane logowania"
                           title="Dane logowania"
                           onClick={() => setCredentialsModal({
                             isOpen: true,
@@ -1389,19 +1690,18 @@ export default function AdminPage() {
                             clientName: client.name,
                             clientEmail: client.email
                           })}
-                          className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-all duration-200 hover:scale-105"
+                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none"
                         >
-                          <UserPlus className="h-4 w-4" />
+                          <UserPlus className="h-4 w-4 text-[#667085]" />
                         </button>
-                      </div>
 
-                      <div className="bg-white border border-gray-200 rounded-xl p-1 shadow-sm hover:shadow-md transition-all duration-200">
                         <button
+                          aria-label="Usuń klienta"
                           title="Usuń klienta"
                           onClick={() => deleteClient(client.id)}
-                          className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200 hover:scale-105"
+                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-red-50 hover:border-red-300 transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-red-200 focus:outline-none ml-3"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 text-[#E54545]" />
                         </button>
                       </div>
                     </div>

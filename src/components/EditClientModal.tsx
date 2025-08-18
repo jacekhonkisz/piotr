@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield, Upload, Trash2, Image, Calendar, Mail } from 'lucide-react';
+import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield, Upload, Trash2, Image, Calendar, Mail, Facebook, Target } from 'lucide-react';
 import { MetaAPIService } from '../lib/meta-api';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/database.types';
@@ -29,6 +29,10 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     ad_account_id: '',
     meta_access_token: '',
     system_user_token: '',
+    // Google Ads fields
+    google_ads_customer_id: '',
+    google_ads_refresh_token: '',
+    google_ads_enabled: false,
     reporting_frequency: 'monthly' as Database['public']['Enums']['reporting_frequency'],
     send_day: 5,
     notes: '',
@@ -37,12 +41,16 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationStatus, setValidationStatus] = useState<{
-    status: 'idle' | 'validating' | 'valid' | 'invalid';
-    message: string;
-  }>({ status: 'idle', message: '' });
+    meta: { status: 'idle' | 'validating' | 'valid' | 'invalid'; message: string; };
+    google: { status: 'idle' | 'validating' | 'valid' | 'invalid'; message: string; };
+  }>({ 
+    meta: { status: 'idle', message: '' },
+    google: { status: 'idle', message: '' }
+  });
   const [submitError, setSubmitError] = useState<string>('');
   const [showTokenFields, setShowTokenFields] = useState(false);
   const [adAccountIdError, setAdAccountIdError] = useState<string>('');
+  const [selectedPlatform, setSelectedPlatform] = useState<'meta' | 'google'>('meta');
   
   // Logo upload states
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -79,6 +87,10 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
         ad_account_id: client.ad_account_id || '',
         meta_access_token: '', // Don't pre-fill tokens for security
         system_user_token: '', // Don't pre-fill tokens for security
+        // Google Ads fields
+        google_ads_customer_id: client.google_ads_customer_id || '',
+        google_ads_refresh_token: client.google_ads_refresh_token || '',
+        google_ads_enabled: client.google_ads_enabled || false,
         reporting_frequency: client.reporting_frequency || 'monthly',
         send_day: client.send_day || 5,
         notes: client.notes || '',
@@ -90,10 +102,14 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       setLogoFile(null);
       setLogoError('');
       
-      setValidationStatus({ status: 'idle', message: '' });
+      setValidationStatus({ 
+        meta: { status: 'idle', message: '' },
+        google: { status: 'idle', message: '' }
+      });
       setSubmitError('');
       setShowTokenFields(false);
       setAdAccountIdError('');
+      setSelectedPlatform('meta'); // Reset platform selection
     }
   }, [client]);
 
@@ -316,19 +332,19 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   const validateMetaCredentials = async () => {
     // Check if Ad Account ID is provided (required)
     if (!formData.ad_account_id) {
-      setValidationStatus({ status: 'invalid', message: 'Meta Ad Account ID is required' });
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: 'Meta Ad Account ID is required' } }));
       return;
     }
     
     // Validate Ad Account ID format
     if (!validateAdAccountIdFormat(formData.ad_account_id)) {
-      setValidationStatus({ status: 'invalid', message: 'Please fix the Ad Account ID format before validating' });
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: 'Please fix the Ad Account ID format before validating' } }));
       return;
     }
     
     // Check if at least one token is provided
     if (!formData.meta_access_token && !formData.system_user_token) {
-      setValidationStatus({ status: 'invalid', message: 'Please provide either a Meta Access Token (60 days) or System User Token (permanent)' });
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: 'Please provide either a Meta Access Token (60 days) or System User Token (permanent)' } }));
       return;
     }
     
@@ -337,7 +353,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     const tokenType = formData.system_user_token ? 'System User Token (Permanent)' : 'Meta Access Token (60 days)';
 
     setValidating(true);
-    setValidationStatus({ status: 'validating', message: `Validating ${tokenType}...` });
+    setValidationStatus(prev => ({ ...prev, meta: { status: 'validating', message: `Validating ${tokenType}...` } }));
 
     try {
       const metaService = new MetaAPIService(tokenToUse);
@@ -357,10 +373,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           errorMessage += '\n💡 Tip: Check that your token starts with "EAA" and is copied correctly.';
         }
         
-        setValidationStatus({ 
-          status: 'invalid', 
-          message: errorMessage
-        });
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: errorMessage } }));
         return;
       }
 
@@ -377,10 +390,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           errorMessage += '\n💡 Tip: Make sure your token has access to this ad account.';
         }
         
-        setValidationStatus({ 
-          status: 'invalid', 
-          message: errorMessage
-        });
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: errorMessage } }));
         return;
       }
 
@@ -404,10 +414,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           }
         }
         
-        setValidationStatus({ 
-          status: 'valid', 
-          message: statusMessage
-        });
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'valid', message: statusMessage } }));
       } catch (campaignError) {
         // Campaign fetch failed, but credentials are still valid
         let statusMessage = `✅ Connection successful! Account: ${accountValidation.account?.name || formData.ad_account_id}. Campaign access may be limited.`;
@@ -426,17 +433,75 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           }
         }
         
-        setValidationStatus({ 
-          status: 'valid', 
-          message: statusMessage
-        });
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'valid', message: statusMessage } }));
       }
 
     } catch (error) {
-      setValidationStatus({ 
-        status: 'invalid', 
-        message: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}` 
-      });
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}` } }));
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const validateGoogleAdsCredentials = async () => {
+    // Check if required fields are provided
+    if (!formData.google_ads_customer_id || !formData.google_ads_refresh_token) {
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { status: 'invalid', message: 'Google Ads Customer ID i Refresh Token są wymagane' }
+      }));
+      return;
+    }
+
+    setValidating(true);
+    setValidationStatus(prev => ({ 
+      ...prev, 
+      google: { status: 'validating', message: 'Walidacja Google Ads...' }
+    }));
+
+    try {
+      // For now, just validate format
+      const customerIdFormat = /^\d{3}-\d{3}-\d{4}$/.test(formData.google_ads_customer_id);
+      const refreshTokenFormat = formData.google_ads_refresh_token.startsWith('1//');
+      
+      if (!customerIdFormat) {
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          google: { 
+            status: 'invalid', 
+            message: 'Google Ads Customer ID powinien mieć format XXX-XXX-XXXX' 
+          }
+        }));
+        return;
+      }
+
+      if (!refreshTokenFormat) {
+        setValidationStatus(prev => ({ 
+          ...prev, 
+          google: { 
+            status: 'invalid', 
+            message: 'Google Ads Refresh Token powinien zaczynać się od "1//"' 
+          }
+        }));
+        return;
+      }
+
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { 
+          status: 'valid', 
+          message: '✅ Google Ads: Format poprawny! Połączenie zostanie zweryfikowane podczas pierwszego użycia.' 
+        }
+      }));
+
+    } catch (error) {
+      setValidationStatus(prev => ({ 
+        ...prev, 
+        google: { 
+          status: 'invalid', 
+          message: `Błąd walidacji Google Ads: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
+        }
+      }));
     } finally {
       setValidating(false);
     }
@@ -463,8 +528,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
     }
     
     // If token fields are shown and filled, validate them
-    if (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.status !== 'valid') {
-      setValidationStatus({ status: 'invalid', message: 'Proszę najpierw zweryfikować swoje poświadczenia Meta Ads' });
+    if (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.meta.status !== 'valid') {
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: 'Proszę najpierw zweryfikować swoje poświadczenia Meta Ads' } }));
       return;
     }
 
@@ -497,6 +562,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       
       // Only include tokens if they were changed
       if (showTokenFields) {
+        // Handle Meta tokens
         if (formData.system_user_token) {
           updates.system_user_token = formData.system_user_token;
           // Clear meta_access_token if system user token is provided
@@ -505,6 +571,17 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
           updates.meta_access_token = formData.meta_access_token;
           // Clear system_user_token if meta access token is provided
           updates.system_user_token = null;
+        }
+
+        // Handle Google Ads fields
+        if (formData.google_ads_customer_id !== client.google_ads_customer_id) {
+          updates.google_ads_customer_id = formData.google_ads_customer_id;
+        }
+        if (formData.google_ads_refresh_token && formData.google_ads_refresh_token !== client.google_ads_refresh_token) {
+          updates.google_ads_refresh_token = formData.google_ads_refresh_token;
+        }
+        if (formData.google_ads_enabled !== client.google_ads_enabled) {
+          updates.google_ads_enabled = formData.google_ads_enabled;
         }
       }
 
@@ -819,40 +896,10 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             </p>
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              ID konta reklamowego Meta *
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                required
-                value={formData.ad_account_id}
-                onChange={handleAdAccountIdChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
-                  adAccountIdError 
-                    ? 'border-red-300 focus:ring-red-500' 
-                    : formData.ad_account_id && !adAccountIdError
-                    ? 'border-green-300 focus:ring-green-500'
-                    : 'border-gray-300 focus:ring-primary-500'
-                }`}
-                placeholder="act_123456789"
-              />
-              {formData.ad_account_id && !adAccountIdError && (
-                <div className="absolute right-2 top-2">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                </div>
-              )}
-            </div>
-            {adAccountIdError && (
-              <p className="text-xs text-red-600 mt-1">{adAccountIdError}</p>
-            )}
-          </div>
-          
           {/* Token Management Section */}
-          <div className="bg-gray-50 p-3 rounded-md">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Tokeny API Meta</span>
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-medium text-gray-700">Zarządzanie tokenami API</span>
               <button
                 type="button"
                 onClick={() => setShowTokenFields(!showTokenFields)}
@@ -864,170 +911,343 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             
             {showTokenFields ? (
               <div className="space-y-4">
-                {/* Token Choice Section */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
-                    <Key className="h-4 w-4 mr-2" />
-                    Wybierz typ tokenu (Wybierz jeden)
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 gap-4">
-                    {/* Option 1: System User Token */}
-                    <div className={`border-2 rounded-lg p-4 transition-colors ${
-                      formData.system_user_token ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
-                    }`}>
-                      <div className="flex items-center mb-2">
-                        <Shield className="h-4 w-4 mr-2 text-blue-600" />
-                        <label className="text-sm font-medium text-gray-700">
-                          Token Systemowego Użytkownika (Zalecane)
-                        </label>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="password"
-                          value={formData.system_user_token}
-                          onChange={(e) => setFormData({...formData, system_user_token: e.target.value, meta_access_token: ''})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Wklej token Systemowego Użytkownika dla trwałego dostępu"
-                        />
-                        {formData.system_user_token && formData.system_user_token.startsWith('EAA') && (
-                          <div className="absolute right-2 top-2">
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-600 mt-2">
-                        ✅ Dostęp trwały, nigdy nie wygasa
-                      </p>
+                {/* Debug indicator */}
+                <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                  ✅ Debug: Platform tabs should be visible (selectedPlatform: {selectedPlatform})
+                </div>
+                
+                {/* Platform Selection Tabs */}
+                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlatform('meta')}
+                    className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+                      selectedPlatform === 'meta'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <Facebook className="h-4 w-4 mr-2" />
+                      Meta Ads
                     </div>
-
-                    {/* Option 2: Meta Access Token */}
-                    <div className={`border-2 rounded-lg p-4 transition-colors ${
-                      formData.meta_access_token && !formData.system_user_token ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'
-                    }`}>
-                      <div className="flex items-center mb-2">
-                        <Clock className="h-4 w-4 mr-2 text-orange-600" />
-                        <label className="text-sm font-medium text-gray-700">
-                          Token Meta Access (60 dni)
-                        </label>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type="password"
-                          value={formData.meta_access_token}
-                          onChange={(e) => setFormData({...formData, meta_access_token: e.target.value, system_user_token: ''})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          placeholder="EAA... (zaczyna się od EAA)"
-                        />
-                        {formData.meta_access_token && formData.meta_access_token.startsWith('EAA') && (
-                          <div className="absolute right-2 top-2">
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-600 mt-2">
-                        ⏰ Wygasa za 60 dni, wymaga odnowienia
-                      </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlatform('google')}
+                    className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors ${
+                      selectedPlatform === 'google'
+                        ? 'bg-orange-600 text-white shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center">
+                      <Target className="h-4 w-4 mr-2" />
+                      Google Ads
                     </div>
-                  </div>
+                  </button>
                 </div>
 
-                {/* Token Choice Status */}
-                {(formData.meta_access_token || formData.system_user_token) && (
-                  <div className="p-3 bg-gray-50 rounded-md">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Status wybranego tokenu:</h4>
-                    <div className="space-y-2">
-                      {formData.system_user_token && (
-                        <div className={`flex items-center text-sm p-2 rounded ${
-                          formData.system_user_token.startsWith('EAA') 
-                            ? 'text-green-700 bg-green-50 border border-green-200' 
-                            : 'text-yellow-700 bg-yellow-50 border border-yellow-200'
-                        }`}>
-                          {formData.system_user_token.startsWith('EAA') ? (
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                          ) : (
-                            <AlertCircle className="h-4 w-4 mr-2" />
-                          )}
-                          <span>
-                            {formData.system_user_token.startsWith('EAA') 
-                              ? '✅ Token Systemowego Użytkownika wybrany (Dostęp trwały)' 
-                              : '⚠️ Token Systemowego Użytkownika powinien zaczynać się od "EAA" dla API Meta'
-                            }
-                          </span>
-                        </div>
-                      )}
+                {/* Meta Platform Configuration */}
+                {selectedPlatform === 'meta' && (
+                  <div className="space-y-4">
+                    {/* Ad Account ID */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ID konta reklamowego Meta *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.ad_account_id}
+                        onChange={(e) => setFormData({...formData, ad_account_id: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="act_123456789"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Format: act_XXXXXXXXX (znajdź w Ads Manager → Settings → Ad Account ID)
+                      </p>
+                    </div>
+
+                    {/* Token Choice Section */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                        <Key className="h-4 w-4 mr-2" />
+                        Wybierz typ tokenu (Wybierz jeden)
+                      </h4>
                       
-                      {formData.meta_access_token && !formData.system_user_token && (
-                        <div className={`flex items-center text-sm p-2 rounded ${
-                          formData.meta_access_token.startsWith('EAA') 
-                            ? 'text-green-700 bg-green-50' 
-                            : 'text-yellow-700 bg-yellow-50'
+                      <div className="grid grid-cols-1 gap-4">
+                        {/* Option 1: System User Token */}
+                        <div className={`border-2 rounded-lg p-4 transition-colors ${
+                          formData.system_user_token ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
                         }`}>
-                          {formData.meta_access_token.startsWith('EAA') ? (
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                          ) : (
-                            <AlertCircle className="h-4 w-4 mr-2" />
+                          <div className="flex items-center mb-2">
+                            <Shield className="h-4 w-4 mr-2 text-blue-600" />
+                            <label className="text-sm font-medium text-gray-700">
+                              Token Systemowego Użytkownika (Zalecane)
+                            </label>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="password"
+                              value={formData.system_user_token}
+                              onChange={(e) => setFormData({...formData, system_user_token: e.target.value, meta_access_token: ''})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="Wklej token Systemowego Użytkownika dla trwałego dostępu"
+                            />
+                            {formData.system_user_token && formData.system_user_token.startsWith('EAA') && (
+                              <div className="absolute right-2 top-2">
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-2">
+                            ✅ Dostęp trwały, nigdy nie wygasa
+                          </p>
+                        </div>
+
+                        {/* Option 2: Meta Access Token */}
+                        <div className={`border-2 rounded-lg p-4 transition-colors ${
+                          formData.meta_access_token && !formData.system_user_token ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'
+                        }`}>
+                          <div className="flex items-center mb-2">
+                            <Clock className="h-4 w-4 mr-2 text-orange-600" />
+                            <label className="text-sm font-medium text-gray-700">
+                              Token Meta Access (60 dni)
+                            </label>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="password"
+                              value={formData.meta_access_token}
+                              onChange={(e) => setFormData({...formData, meta_access_token: e.target.value, system_user_token: ''})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                              placeholder="EAA... (zaczyna się od EAA)"
+                            />
+                            {formData.meta_access_token && formData.meta_access_token.startsWith('EAA') && (
+                              <div className="absolute right-2 top-2">
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-2">
+                            ⏰ Wygasa za 60 dni, wymaga odnowienia
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Token Choice Status */}
+                    {(formData.meta_access_token || formData.system_user_token) && (
+                      <div className="p-3 bg-gray-50 rounded-md">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Status wybranego tokenu:</h4>
+                        <div className="space-y-2">
+                          {formData.system_user_token && (
+                            <div className={`flex items-center text-sm p-2 rounded ${
+                              formData.system_user_token.startsWith('EAA') 
+                                ? 'text-green-700 bg-green-50 border border-green-200' 
+                                : 'text-yellow-700 bg-yellow-50 border border-yellow-200'
+                            }`}>
+                              {formData.system_user_token.startsWith('EAA') ? (
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                              ) : (
+                                <AlertCircle className="h-4 w-4 mr-2" />
+                              )}
+                              <span>
+                                {formData.system_user_token.startsWith('EAA') 
+                                  ? '✅ Token Systemowego Użytkownika wybrany (Dostęp trwały)' 
+                                  : '⚠️ Token Systemowego Użytkownika powinien zaczynać się od "EAA" dla API Meta'
+                                }
+                              </span>
+                            </div>
                           )}
-                          <span>
-                            {formData.meta_access_token.startsWith('EAA') 
-                              ? '✅ Token Meta Access wybrany (dostęp 60-dniowy)' 
-                              : '⚠️ Token Meta Access powinien zaczynać się od "EAA" dla API Meta'
-                            }
-                          </span>
+                          
+                          {formData.meta_access_token && !formData.system_user_token && (
+                            <div className={`flex items-center text-sm p-2 rounded ${
+                              formData.meta_access_token.startsWith('EAA') 
+                                ? 'text-green-700 bg-green-50' 
+                                : 'text-yellow-700 bg-yellow-50'
+                            }`}>
+                              {formData.meta_access_token.startsWith('EAA') ? (
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                              ) : (
+                                <AlertCircle className="h-4 w-4 mr-2" />
+                              )}
+                              <span>
+                                {formData.meta_access_token.startsWith('EAA') 
+                                  ? '✅ Token Meta Access wybrany (dostęp 60-dniowy)' 
+                                  : '⚠️ Token Meta Access powinien zaczynać się od "EAA" dla API Meta'
+                                }
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Validation Section */}
+                    <div className="bg-gray-50 p-4 rounded-md">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-700 flex items-center">
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Test połączenia i walidacja tokenu
+                        </span>
+                        <button
+                          type="button"
+                          onClick={validateMetaCredentials}
+                          disabled={validating || !formData.ad_account_id || (!formData.meta_access_token && !formData.system_user_token)}
+                          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                        >
+                          {validating ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              Testowanie...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Test połączenia
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      
+                      {validationStatus.meta.status !== 'idle' && (
+                        <div className={`text-sm p-3 rounded-md border ${
+                          validationStatus.meta.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
+                          validationStatus.meta.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
+                          'bg-yellow-50 text-yellow-800 border-yellow-200'
+                        }`}>
+                          <div className="flex items-start">
+                            {validationStatus.meta.status === 'valid' ? (
+                              <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
+                            ) : validationStatus.meta.status === 'invalid' ? (
+                              <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
+                            ) : (
+                              <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
+                            )}
+                            <div>
+                              {validationStatus.meta.message}
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Validation Section */}
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-gray-700 flex items-center">
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Test połączenia i walidacja tokenu
-                    </span>
-                    <button
-                      type="button"
-                      onClick={validateMetaCredentials}
-                      disabled={validating || !formData.ad_account_id || (!formData.meta_access_token && !formData.system_user_token)}
-                      className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-                    >
-                      {validating ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Testowanie...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Test połączenia
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  
-                  {validationStatus.status !== 'idle' && (
-                    <div className={`text-sm p-3 rounded-md border ${
-                      validationStatus.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
-                      validationStatus.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
-                      'bg-yellow-50 text-yellow-800 border-yellow-200'
-                    }`}>
+                {/* Google Ads Platform Configuration */}
+                {selectedPlatform === 'google' && (
+                  <div className="space-y-4">
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                       <div className="flex items-start">
-                        {validationStatus.status === 'valid' ? (
-                          <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
-                        ) : validationStatus.status === 'invalid' ? (
-                          <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
-                        ) : (
-                          <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
-                        )}
+                        <Shield className="h-5 w-5 mr-2 text-orange-600 mt-0.5" />
                         <div>
-                          {validationStatus.message}
+                          <h4 className="font-medium text-orange-900 mb-1">🔑 Google Ads API Configuration</h4>
+                          <p className="text-sm text-orange-800">
+                            Configure Google Ads API access for this client. Customer ID and Refresh Token are required.
+                          </p>
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Google Ads Customer ID */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Google Ads Customer ID *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.google_ads_customer_id}
+                        onChange={(e) => setFormData({...formData, google_ads_customer_id: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="123-456-7890"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Format: XXX-XXX-XXXX (znajdź w Google Ads → Account Settings → Account Info)
+                      </p>
+                    </div>
+
+                    {/* Google Ads Refresh Token */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Google Ads Refresh Token *
+                      </label>
+                      <input
+                        type="password"
+                        value={formData.google_ads_refresh_token}
+                        onChange={(e) => setFormData({...formData, google_ads_refresh_token: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        placeholder="1//..."
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Zaczyna się od "1//" | Uzyskaj z OAuth 2.0 flow dla Google Ads API
+                      </p>
+                    </div>
+
+                    {/* Google Ads Enable Toggle */}
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="google_ads_enabled"
+                        checked={formData.google_ads_enabled}
+                        onChange={(e) => setFormData({...formData, google_ads_enabled: e.target.checked})}
+                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
+                      />
+                      <label htmlFor="google_ads_enabled" className="ml-2 block text-sm text-gray-900">
+                        Włącz raportowanie Google Ads dla tego klienta
+                      </label>
+                    </div>
+
+                    {/* Validation Section for Google Ads */}
+                    <div className="bg-gray-50 p-4 rounded-md">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-700 flex items-center">
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Test połączenia Google Ads
+                        </span>
+                        <button
+                          type="button"
+                          onClick={validateGoogleAdsCredentials}
+                          disabled={validating || !formData.google_ads_customer_id || !formData.google_ads_refresh_token}
+                          className="px-4 py-2 text-sm bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                        >
+                          {validating ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              Testowanie...
+                            </>
+                          ) : (
+                            <>
+                              <Target className="h-4 w-4 mr-2" />
+                              Test połączenia
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      
+                      {validationStatus.google.status !== 'idle' && (
+                        <div className={`text-sm p-3 rounded-md border ${
+                          validationStatus.google.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
+                          validationStatus.google.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
+                          'bg-yellow-50 text-yellow-800 border-yellow-200'
+                        }`}>
+                          <div className="flex items-start">
+                            {validationStatus.google.status === 'valid' ? (
+                              <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
+                            ) : validationStatus.google.status === 'invalid' ? (
+                              <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
+                            ) : (
+                              <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
+                            )}
+                            <div>
+                              {validationStatus.google.message}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-sm text-gray-600">
@@ -1165,7 +1385,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             </button>
             <button
               type="submit"
-              disabled={loading || (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.status !== 'valid') || false}
+              disabled={loading || (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.meta.status !== 'valid') || false}
               className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
             >
               {loading ? 'Updating...' : 'Update Client'}
