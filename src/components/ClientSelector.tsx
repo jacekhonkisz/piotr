@@ -60,23 +60,23 @@ export default function ClientSelector({ currentClient, onClientChange, userRole
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-xl px-4 py-2 shadow-sm border border-slate-200/50 hover:shadow-md transition-all duration-200"
+        className="flex items-center space-x-2 bg-bg/80 backdrop-blur-sm rounded-xl px-4 py-2 shadow-sm border border-stroke/50 hover:shadow-md transition-all duration-200"
       >
-        <Building className="h-4 w-4 text-slate-600" />
-        <span className="text-sm font-medium text-slate-900">
+        <Building className="h-4 w-4 text-muted" />
+        <span className="text-sm font-medium text-text">
           {currentClient?.name || 'Select Client'}
         </span>
-        <ChevronDown className={`h-4 w-4 text-slate-600 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-muted transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-lg rounded-xl shadow-xl border border-slate-200/50 z-50 max-h-64 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-bg/95 backdrop-blur-lg rounded-xl shadow-xl border border-stroke/50 z-50 max-h-64 overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-center text-sm text-slate-600">
+            <div className="p-4 text-center text-sm text-muted">
               Loading clients...
             </div>
           ) : clients.length === 0 ? (
-            <div className="p-4 text-center text-sm text-slate-600">
+            <div className="p-4 text-center text-sm text-muted">
               No clients available
             </div>
           ) : (
@@ -88,21 +88,21 @@ export default function ClientSelector({ currentClient, onClientChange, userRole
                     onClientChange(client);
                     setIsOpen(false);
                   }}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors duration-150 flex items-center space-x-3 ${
-                    currentClient?.id === client.id ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
+                  className={`w-full px-4 py-3 text-left hover:bg-page transition-colors duration-150 flex items-center space-x-3 ${
+                    currentClient?.id === client.id ? 'bg-navy/10 text-navy' : 'text-text'
                   }`}
                 >
-                  <div className="h-8 w-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg flex items-center justify-center">
+                  <div className="h-8 w-8 bg-gradient-to-br from-navy to-navy/80 rounded-lg flex items-center justify-center">
                     <span className="text-white text-sm font-semibold">
                       {client.name?.charAt(0) || 'C'}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{client.name}</div>
-                    <div className="text-xs text-slate-500 truncate">{client.email}</div>
+                    <div className="text-xs text-muted truncate">{client.email}</div>
                   </div>
                   {currentClient?.id === client.id && (
-                    <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
+                    <div className="h-2 w-2 bg-navy rounded-full"></div>
                   )}
                 </button>
               ))}

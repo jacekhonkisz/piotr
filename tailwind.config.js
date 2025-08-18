@@ -8,6 +8,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // New redesign color tokens
+        navy: '#1F3380',
+        'navy-30': 'rgba(31, 51, 128, 0.30)',
+        orange: '#FF6A00',
+        text: '#0F172A',
+        muted: '#64748B',
+        stroke: '#E9EDF3',
+        bg: '#FFFFFF',
+        page: '#F8FAFC',
+        
         primary: {
           50: '#eff6ff',
           100: '#dbeafe',
@@ -63,9 +73,18 @@ module.exports = {
           textSub: '#475569',
           tick: '#CBD5E1',
         },
+        // Enhanced contrast colors
+        contrast: {
+          'light-bg': '#ffffff',
+          'light-text': '#0f172a',
+          'light-text-muted': '#475569',
+          'dark-bg': '#1e293b',
+          'dark-text': '#ffffff',
+          'dark-text-muted': '#cbd5e1',
+        },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'DM Sans', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       spacing: {
@@ -76,6 +95,11 @@ module.exports = {
         'fade-in': 'fadeIn 0.5s ease-in-out',
         'slide-up': 'slideUp 0.3s ease-out',
         'pulse-slow': 'pulse 3s infinite',
+        // New redesign animations
+        'hairline-reveal': 'hairlineReveal 0.18s ease-out',
+        'count-up': 'countUp 0.6s ease-out',
+        'tick-stagger': 'tickStagger 0.24s ease-out',
+        'chart-reveal': 'chartReveal 0.24s ease-out',
       },
       keyframes: {
         fadeIn: {
@@ -83,9 +107,33 @@ module.exports = {
           '100%': { opacity: '1' },
         },
         slideUp: {
-          '0%': { transform: 'translateY(10px)', opacity: '0' },
+          '0%': { transform: 'translateY(20px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
+        // New redesign keyframes
+        hairlineReveal: {
+          '0%': { transform: 'scaleX(0)' },
+          '100%': { transform: 'scaleX(1)' },
+        },
+        countUp: {
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        tickStagger: {
+          '0%': { opacity: '0', transform: 'scaleY(0)' },
+          '100%': { opacity: '1', transform: 'scaleY(1)' },
+        },
+        chartReveal: {
+          '0%': { clipPath: 'inset(0 100% 0 0)' },
+          '100%': { clipPath: 'inset(0 0% 0 0)' },
+        },
+      },
+      // Enhanced text color utilities for better contrast
+      textColor: {
+        'auto-light': 'var(--text-on-light)',
+        'auto-dark': 'var(--text-on-dark)',
+        'auto-muted-light': 'var(--text-muted-on-light)',
+        'auto-muted-dark': 'var(--text-muted-on-dark)',
       },
       boxShadow: {
         'soft': '0 2px 15px 0 rgba(0, 0, 0, 0.1)',
@@ -97,8 +145,20 @@ module.exports = {
       },
     },
   },
-  plugins: [
-    require('@tailwindcss/forms'),
-    require('@tailwindcss/typography'),
+  plugins: [],
+  // Add safelist for dynamic classes
+  safelist: [
+    'text-contrast-light',
+    'text-contrast-dark',
+    'text-contrast-muted-light',
+    'text-contrast-muted-dark',
+    'text-on-light',
+    'text-on-dark',
+    'text-muted-on-light',
+    'text-muted-on-dark',
+    'bg-light',
+    'bg-light-alt',
+    'bg-dark',
+    'bg-dark-alt',
   ],
 }; 

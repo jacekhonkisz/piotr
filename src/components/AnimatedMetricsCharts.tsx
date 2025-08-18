@@ -33,12 +33,19 @@ export default function AnimatedMetricsCharts({
     reservationValue: 0
   });
 
+  const [hairlineVisible, setHairlineVisible] = useState(false);
+  const [ticksVisible, setTicksVisible] = useState(false);
+
   // Animate values on mount and when data changes
   useEffect(() => {
     let cleanup: (() => void) | undefined;
 
     if (!isLoading) {
-      const duration = 1500;
+      // Hairline animation
+      setTimeout(() => setHairlineVisible(true), 100);
+      
+      // Number count-up animation
+      const duration = 600;
       const steps = 60;
       const stepDuration = duration / steps;
 
@@ -68,6 +75,9 @@ export default function AnimatedMetricsCharts({
         animateValue(0, reservationValue.current, (value) => setAnimatedValues(prev => ({ ...prev, reservationValue: value })))
       ];
 
+      // Ticks animation after numbers
+      setTimeout(() => setTicksVisible(true), duration + 200);
+
       cleanup = () => intervals.forEach(clearInterval);
     }
 
@@ -96,129 +106,158 @@ export default function AnimatedMetricsCharts({
     return Math.min((current / previous) * 100, 100);
   };
 
-  // Create thin vertical bars for progress indicator (like the image)
-  const createProgressBar = (current: number, previous: number, color: string, maxBars: number = 40) => {
+  // Create tick-rail progress indicator
+  const createTickRail = (current: number, previous: number, color: string, maxTicks: number = 36) => {
     const percentage = getProgressPercentage(current, previous);
-    const filledBars = Math.round((percentage / 100) * maxBars);
+    const filledTicks = Math.round((percentage / 100) * maxTicks);
     
     return (
-      <div className="flex space-x-0.5 h-3">
-        {Array.from({ length: maxBars }, (_, index) => (
-          <div 
-            key={index}
-            className={`w-1 rounded-sm transition-all duration-1000 ease-out ${
-              index < filledBars 
-                ? color
-                : 'bg-gray-300'
-            }`}
-          />
-        ))}
+      <div className="relative">
+        <div className="flex space-x-0.5 h-5 mb-2">
+          {Array.from({ length: maxTicks }, (_, index) => (
+            <div 
+              key={index}
+              className={`w-1 rounded-sm transition-all duration-300 ease-out ${
+                index < filledTicks 
+                  ? color
+                  : 'bg-navy-30'
+              }`}
+              style={{
+                animationDelay: `${index * 8}ms`,
+                animation: ticksVisible ? 'tick-stagger 0.24s ease-out forwards' : 'none',
+                opacity: ticksVisible ? 1 : 0,
+                transform: ticksVisible ? 'scaleY(1)' : 'scaleY(0)'
+              }}
+            />
+          ))}
+        </div>
+        <div className="flex justify-between text-xs text-muted">
+          <span>0</span>
+          <span>{formatNumber(previous)}</span>
+        </div>
       </div>
     );
+  };
+
+  const getChangeIcon = (change: number) => {
+    if (change > 0) return '▲';
+    if (change < 0) return '▼';
+    return '—';
+  };
+
+  const getChangeColor = (change: number) => {
+    // Use monochromatic navy for all changes (ultra-clean editorial look)
+    return 'text-navy';
   };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {/* Pozyskane leady */}
-      <div className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-medium text-gray-900">
+      <div className="bg-bg rounded-2xl p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default" style={{ width: '340px' }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted">
             Pozyskane leady
           </h3>
-          <span className="text-sm text-gray-500">Bieżący miesiąc</span>
+          <span className="text-xs text-muted opacity-60">sierpień &apos;25</span>
         </div>
         
-        <div className="border-b border-gray-300 mb-6"></div>
+        {/* Hairline */}
+        <div 
+          className="hairline mb-3 transition-all duration-180 ease-out"
+          style={{
+            transform: hairlineVisible ? 'scaleX(1)' : 'scaleX(0)',
+            transformOrigin: 'left'
+          }}
+        />
 
         <div className="mb-6">
-          <div className="text-5xl font-bold text-gray-900 tracking-tight mb-2">
+          <div className="text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
             {isLoading ? (
-              <div className="h-16 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-16 bg-stroke rounded animate-pulse"></div>
             ) : (
               formatNumber(animatedValues.leads)
             )}
           </div>
-          <div className="text-sm text-gray-500">
-            vs {formatNumber(leads.previous)} poprzedni miesiąc
+          <div className={`text-sm ${getChangeColor(leads.change)} flex items-center space-x-1`}>
+            <span>vs {formatNumber(leads.previous)} poprzedni miesiąc</span>
+            <span className="text-xs">{leads.change > 0 ? '+' : leads.change < 0 ? '-' : ''}{getChangeIcon(leads.change)}</span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="relative">
-          {createProgressBar(leads.current, leads.previous, 'bg-blue-600')}
-          <div className="flex justify-between text-xs text-gray-500 mt-2">
-            <span>0</span>
-            <span>{formatNumber(leads.previous)}</span>
-          </div>
-        </div>
+        {/* Tick-rail */}
+        {createTickRail(leads.current, leads.previous, 'bg-navy')}
       </div>
 
       {/* Rezerwacje */}
-      <div className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-medium text-gray-900">
+      <div className="bg-bg rounded-2xl p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default" style={{ width: '340px' }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted">
             Rezerwacje
           </h3>
-          <span className="text-sm text-gray-500">Bieżący miesiąc</span>
+          <span className="text-xs text-muted opacity-60">sierpień &apos;25</span>
         </div>
         
-        <div className="border-b border-gray-300 mb-6"></div>
+        {/* Hairline */}
+        <div 
+          className="hairline mb-3 transition-all duration-180 ease-out"
+          style={{
+            transform: hairlineVisible ? 'scaleX(1)' : 'scaleX(0)',
+            transformOrigin: 'left'
+          }}
+        />
 
         <div className="mb-6">
-          <div className="text-5xl font-bold text-gray-900 tracking-tight mb-2">
+          <div className="text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
             {isLoading ? (
-              <div className="h-16 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-16 bg-stroke rounded animate-pulse"></div>
             ) : (
               formatNumber(animatedValues.reservations)
             )}
           </div>
-          <div className="text-sm text-gray-500">
-            vs {formatNumber(reservations.previous)} poprzedni miesiąc
+          <div className={`text-sm ${getChangeColor(reservations.change)} flex items-center space-x-1`}>
+            <span>vs {formatNumber(reservations.previous)} poprzedni miesiąc</span>
+            <span className="text-xs">{reservations.change > 0 ? '+' : reservations.change < 0 ? '-' : ''}{getChangeIcon(reservations.change)}</span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="relative">
-          {createProgressBar(reservations.current, reservations.previous, 'bg-green-600')}
-          <div className="flex justify-between text-xs text-gray-500 mt-2">
-            <span>0</span>
-            <span>{formatNumber(reservations.previous)}</span>
-          </div>
-        </div>
+        {/* Tick-rail */}
+        {createTickRail(reservations.current, reservations.previous, 'bg-navy')}
       </div>
 
       {/* Wartość rezerwacji */}
-      <div className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-medium text-gray-900">
+      <div className="bg-bg rounded-2xl p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default" style={{ width: '340px' }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-muted">
             Wartość rezerwacji
           </h3>
-          <span className="text-sm text-gray-500">Bieżący miesiąc</span>
+          <span className="text-xs text-muted opacity-60">sierpień &apos;25</span>
         </div>
         
-        <div className="border-b border-gray-300 mb-6"></div>
+        {/* Hairline */}
+        <div 
+          className="hairline mb-3 transition-all duration-180 ease-out"
+          style={{
+            transform: hairlineVisible ? 'scaleX(1)' : 'scaleX(0)',
+            transformOrigin: 'left'
+          }}
+        />
 
         <div className="mb-6">
-          <div className="text-5xl font-bold text-gray-900 tracking-tight mb-2">
+          <div className="text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
             {isLoading ? (
-              <div className="h-16 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-16 bg-stroke rounded animate-pulse"></div>
             ) : (
               formatCurrency(animatedValues.reservationValue)
             )}
           </div>
-          <div className="text-sm text-gray-500">
-            vs {formatCurrency(reservationValue.previous)} poprzedni miesiąc
+          <div className={`text-sm ${getChangeColor(reservationValue.change)} flex items-center space-x-1`}>
+            <span>vs {formatCurrency(reservationValue.previous)} poprzedni miesiąc</span>
+            <span className="text-xs">{reservationValue.change > 0 ? '+' : reservationValue.change < 0 ? '-' : ''}{getChangeIcon(reservationValue.change)}</span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="relative">
-          {createProgressBar(reservationValue.current, reservationValue.previous, 'bg-orange-600')}
-          <div className="flex justify-between text-xs text-gray-500 mt-2">
-            <span>0 zł</span>
-            <span>{formatCurrency(reservationValue.previous)}</span>
-          </div>
-        </div>
+        {/* Tick-rail with orange color for value */}
+        {createTickRail(reservationValue.current, reservationValue.previous, 'bg-orange')}
       </div>
     </div>
   );

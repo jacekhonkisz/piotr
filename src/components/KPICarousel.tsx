@@ -40,6 +40,7 @@ export default function KPICarousel({ items, variant = "light", autoMs = 8000 }:
   const next = () => setIndex((i) => (i + 1) % items.length);
   const prev = () => setIndex((i) => (i - 1 + items.length) % items.length);
 
+  // RESTORED: Auto-advance carousel for KPI cards (this is good UX)
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
@@ -142,22 +143,22 @@ function KpiSlide({ kpi, variant = "light" }: { kpi: KPI; variant?: "light" | "d
 
   return (
     <div
-      className={`relative grid grid-cols-12 gap-0 rounded-lg border shadow-sm p-0 md:p-0 hover:shadow-md transition-all duration-200 ${
-        variant === "dark" ? "bg-secondary-800 border-secondary-700" : "bg-slate-50 border-slate-200"
+      className={`relative grid grid-cols-12 gap-0 rounded-2xl border shadow-sm p-0 md:p-0 hover:shadow-md transition-all duration-200 ${
+        variant === "dark" ? "bg-navy border-navy" : "bg-bg border-stroke"
       }`}
       aria-label={`${kpi.label}: ${String(kpi.value)}`}
     >
       {/* left navy panel */}
-      <div className="col-span-12 md:col-span-5 bg-secondary-600 text-white rounded-t-lg md:rounded-l-lg md:rounded-tr-none flex items-center justify-center p-6 md:p-8">
+      <div className="col-span-12 md:col-span-5 bg-navy text-white rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none flex items-center justify-center p-6 md:p-8">
         <div className="text-center md:text-left w-full">
           <div className="text-sm md:text-base opacity-90">{kpi.label}</div>
-          <div className="mt-2 text-5xl md:text-6xl font-semibold leading-none">{displayValue}</div>
+          <div className="mt-2 text-5xl md:text-6xl font-semibold leading-none tabular-nums">{displayValue}</div>
           {kpi.sublabel && <div className="mt-3 text-xs md:text-sm opacity-80">{kpi.sublabel}</div>}
         </div>
       </div>
 
       {/* right chart area */}
-      <div className="col-span-12 md:col-span-7 rounded-b-lg md:rounded-r-lg md:rounded-bl-none bg-slate-50 p-4 md:p-6 h-44 relative">
+      <div className="col-span-12 md:col-span-7 rounded-b-2xl md:rounded-r-2xl md:rounded-bl-none bg-page p-4 md:p-6 h-44 relative">
         <DailyBarCarousel data={kpi.bars} kpi={kpi} />
       </div>
     </div>
@@ -180,19 +181,27 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
     return normalizeBars(validData);
   }, [validData]);
 
-  // Auto-advance through days
+  // DISABLED: Auto-advance through days to prevent auto-refresh
+  // This was causing cards to refresh every 3 seconds when switching
+  // useEffect(() => {
+  //   if (normalizedData.length <= 1) return;
+  //   
+  //   if (timerRef.current) clearInterval(timerRef.current);
+  //   timerRef.current = setInterval(() => {
+  //     setHighlightedDayIndex(prev => (prev + 1) % normalizedData.length);
+  //   }, autoAdvanceMs);
+  //   
+  //   return () => {
+  //     if (timerRef.current) clearInterval(timerRef.current);
+  //   };
+  // }, [normalizedData.length, autoAdvanceMs]);
+
+  // Manual advance only - no auto-refresh
   useEffect(() => {
-    if (normalizedData.length <= 1) return;
-    
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setHighlightedDayIndex(prev => (prev + 1) % normalizedData.length);
-    }, autoAdvanceMs);
-    
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [normalizedData.length, autoAdvanceMs]);
+  }, []);
 
   // Format value based on KPI type
   const formatValue = useCallback((value: number, kpiId: string) => {
@@ -211,7 +220,7 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
   // Early return for no data
   if (!validData || validData.length === 0) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">
+      <div className="w-full h-full flex items-center justify-center text-muted text-sm">
         Brak danych historycznych
       </div>
     );
@@ -258,10 +267,10 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
           transition={{ duration: 0.4, delay: 0.2 }}
           className="text-right"
         >
-          <div className="text-2xl font-bold text-slate-900">
+          <div className="text-2xl font-bold text-text tabular-nums">
             {formatValue(highlightedValue, kpi.id)}
           </div>
-          <div className="text-sm text-slate-500 mt-1">
+          <div className="text-sm text-muted mt-1">
             {getDateForDay(highlightedDayIndex).replace('sie', 'sierpnia')}
           </div>
         </motion.div>
@@ -279,8 +288,8 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
               <motion.div
                 className={`rounded-full transition-all duration-500 cursor-pointer relative z-30 ${
                   isHighlighted 
-                    ? 'bg-slate-900' 
-                    : 'bg-slate-300'
+                    ? 'bg-navy' 
+                    : 'bg-stroke'
                 }`}
                 style={{ 
                   width: isHighlighted ? '14px' : '10px',
@@ -301,7 +310,7 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
                     initial={{ opacity: 0, y: -3 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: 0.1 }}
-                    className="text-xs font-medium text-slate-900 whitespace-nowrap"
+                    className="text-xs font-medium text-text whitespace-nowrap"
                   >
                     {getDateForDay(index)}
                   </motion.div>
@@ -319,7 +328,7 @@ const DailyBarCarousel = React.memo(function DailyBarCarousel({ data, kpi }: { d
             <motion.div
               key={index}
               className={`rounded-full transition-all duration-300 ${
-                index === highlightedDayIndex ? 'bg-slate-900' : 'bg-slate-300'
+                index === highlightedDayIndex ? 'bg-navy' : 'bg-stroke'
               }`}
               animate={{
                 width: index === highlightedDayIndex ? '16px' : '6px',

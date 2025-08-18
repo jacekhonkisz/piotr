@@ -29,8 +29,13 @@ interface Stats {
 interface ConversionMetrics {
   click_to_call: number;
   email_contacts: number;
+  booking_step_1: number;
+  booking_step_2: number;
+  booking_step_3: number;
   reservations: number;
   reservation_value: number;
+  roas: number;
+  cost_per_reservation: number;
 }
 
 // Smart cache response format - data comes directly from the API
@@ -210,7 +215,8 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
           body: JSON.stringify({
             clientId,
             dateRange: currentMonth,
-            forceRefresh
+            forceFresh: true, // 🔧 TEMPORARY: Force fresh data for booking steps testing
+            reason: 'booking_steps_testing_live_component'
           })
         });
 
@@ -295,8 +301,13 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       const cm: ConversionMetrics = json.data.conversionMetrics || {
         click_to_call: 0,
         email_contacts: 0,
+        booking_step_1: 0,
+        booking_step_2: 0,
+        booking_step_3: 0,
         reservations: 0,
-        reservation_value: 0
+        reservation_value: 0,
+        roas: 0,
+        cost_per_reservation: 0
       };
       
       // Log what we're actually getting
@@ -439,7 +450,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     }
   };
 
-  // Use shared data if available, otherwise fetch independently
+  // Use shared data if available, otherwise fetch independently - DISABLE AUTO-REFRESH
   useEffect(() => {
     if (sharedData) {
       console.log('🔄 MetaPerformanceLive: Using shared data from dashboard', {
@@ -455,13 +466,15 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       setCacheAge(sharedData.debug?.cacheAge || null);
       setLoading(false);
       
-      // Fetch ONLY real daily data - no estimates
-      fetchDailyDataPoints().then((hasRealData) => {
-        if (!hasRealData) {
-          console.log('ℹ️ No real daily data available from shared data - showing empty chart');
-          // Old setBars removed
-        }
-      });
+      // DISABLED: Fetch daily data only once, not on every shared data change
+      // This prevents auto-refresh when switching between cards
+      if (clicksBars.length === 0) {
+        fetchDailyDataPoints().then((hasRealData) => {
+          if (!hasRealData) {
+            console.log('ℹ️ No real daily data available from shared data - showing empty chart');
+          }
+        });
+      }
       
     } else if (!isRequesting && !requestInProgress.current && clientId) {
       console.log('🔄 MetaPerformanceLive: No shared data, fetching independently');
@@ -594,32 +607,32 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     <div>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-xl font-semibold text-slate-900">Wydajność kampanii Meta Ads</h3>
-          <p className="text-sm text-slate-600">Dane z inteligentnego cache (aktualizacja co 3h)</p>
+          <h3 className="text-xl font-semibold text-text">Wydajność kampanii Meta Ads</h3>
+          <p className="text-sm text-muted">Dane z inteligentnego cache (aktualizacja co 3h)</p>
         </div>
         <div className="flex items-center space-x-3">
           {/* Data Source Indicator */}
           <div className="flex items-center space-x-2 text-xs">
             {dataSource === 'cache' && (
-              <div className="flex items-center space-x-1 text-green-600">
+              <div className="flex items-center space-x-1 text-success-500">
                 <Database className="w-3 h-3" />
                 <span>Cache</span>
               </div>
             )}
             {dataSource === 'stale-cache' && (
-              <div className="flex items-center space-x-1 text-orange-500">
+              <div className="flex items-center space-x-1 text-warning-500">
                 <Clock className="w-3 h-3" />
                 <span>Odświeżanie</span>
               </div>
             )}
             {dataSource === 'force-refresh' && (
-              <div className="flex items-center space-x-1 text-secondary-600">
+              <div className="flex items-center space-x-1 text-navy">
                 <RefreshCw className="w-3 h-3" />
                 <span>Świeże</span>
               </div>
             )}
             {cacheAge && (
-              <div className="flex items-center space-x-1 text-slate-500">
+              <div className="flex items-center space-x-1 text-muted">
                 <Clock className="w-3 h-3" />
                 <span>{formatCacheAge(cacheAge)}</span>
               </div>
@@ -630,14 +643,14 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+            className="p-2 text-muted hover:text-text hover:bg-page rounded-lg transition-colors disabled:opacity-50"
             title="Odśwież dane"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           
           {/* Last Updated */}
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-muted">
             {lastUpdated ? `Ostatnia aktualizacja: ${lastUpdated}` : 'Ładowanie...'}
           </div>
         </div>
@@ -674,20 +687,6 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
           variant="light"
         />
       )}
-
-      {/* Cache Information */}
-      <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-        <div className="text-xs text-slate-600">
-          <div className="flex items-center justify-between">
-            <span>💡 Inteligentny cache: Dane są aktualizowane co 3 godziny automatycznie</span>
-            <span className="text-green-600 font-medium">✓ Brak niepotrzebnych API wywołań</span>
-          </div>
-          <div className="mt-1 text-slate-500">
-            Źródło: {dataSource === 'cache' ? 'Cache (szybkie)' : dataSource === 'force-refresh' ? 'Meta API (świeże)' : 'Baza danych'}
-            {cacheAge && ` • Wiek: ${formatCacheAge(cacheAge)}`}
-          </div>
-        </div>
-      </div>
     </div>
   );
 } 

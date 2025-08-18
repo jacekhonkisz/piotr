@@ -21,6 +21,8 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 
 import AnimatedMetricsCharts from '../../components/AnimatedMetricsCharts';
 import MetaPerformanceLive from '../../components/MetaPerformanceLive';
+import GoogleAdsPerformanceLive from '../../components/GoogleAdsPerformanceLive';
+
 
 import ClientSelector from '../../components/ClientSelector';
 
@@ -50,6 +52,7 @@ interface ClientDashboardData {
     roas: number;
     cost_per_reservation: number;
     booking_step_2: number;
+    booking_step_3: number;
   };
   debug?: any;
   lastUpdated?: string;
@@ -70,6 +73,56 @@ export default function DashboardPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('Ładowanie dashboardu...');
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('meta');
+
+  // Mock Google Ads campaigns data
+  const mockGoogleAdsCampaigns = [
+    {
+      id: 'gads-1',
+      campaign_name: '[PBM] HOT | Remarketing | www i SM',
+      campaign_id: '2385172329403015',
+      spend: 70,
+      clicks: 49,
+      ctr: 1.03,
+      impressions: 4756
+    },
+    {
+      id: 'gads-2', 
+      campaign_name: '[PBM] Hot | Remarketing dynamiczny',
+      campaign_id: '2385358331190015',
+      spend: 23,
+      clicks: 19,
+      ctr: 1.41,
+      impressions: 1348
+    },
+    {
+      id: 'gads-3',
+      campaign_name: '[PBM] Cold | Aktywność | Fani FB', 
+      campaign_id: '2385762175720015',
+      spend: 5,
+      clicks: 15,
+      ctr: 3.70,
+      impressions: 405
+    },
+    {
+      id: 'gads-4',
+      campaign_name: '[PBM] Kampania Advantage+ | Ogólna | Lux V3 - 30% Kampania',
+      campaign_id: '1202021372357001016',
+      spend: 109,
+      clicks: 334,
+      ctr: 2.77,
+      impressions: 12050
+    },
+    {
+      id: 'gads-5',
+      campaign_name: '[PBM] Ruch | Profil Instagramowy',
+      campaign_id: '1202161348620101016',
+      spend: 5,
+      clicks: 7,
+      ctr: 2.54,
+      impressions: 276
+    }
+  ];
 
   const { user, profile, authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -432,6 +485,7 @@ export default function DashboardPage() {
         acc.reservations += campaign.reservations || 0;
         acc.reservation_value += campaign.reservation_value || 0;
         acc.booking_step_2 += campaign.booking_step_2 || 0;
+        acc.booking_step_3 += campaign.booking_step_3 || 0;
         acc.roas += campaign.roas || 0;
         acc.cost_per_reservation += campaign.cost_per_reservation || 0;
         return acc;
@@ -443,7 +497,8 @@ export default function DashboardPage() {
         reservation_value: 0,
         roas: 0,
         cost_per_reservation: 0,
-        booking_step_2: 0
+        booking_step_2: 0,
+        booking_step_3: 0
       });
 
       const finalDashboardData = {
@@ -568,7 +623,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           clientId: currentClient.id,
           dateRange: dateRange,
-          forceFresh: false  // Let smart caching handle this
+          forceFresh: true  // 🔧 TEMPORARY: Force live data for booking steps testing
         }),
         signal: controller.signal
       });
@@ -660,6 +715,7 @@ export default function DashboardPage() {
           reservation_value: campaign.reservation_value || 0,
           booking_step_1: campaign.booking_step_1 || 0,
           booking_step_2: campaign.booking_step_2 || 0,
+          booking_step_3: campaign.booking_step_3 || 0,
           roas: campaign.roas || 0,
           cost_per_reservation: campaign.cost_per_reservation || 0
         }));
@@ -683,7 +739,8 @@ export default function DashboardPage() {
           reservation_value: 0,
           roas: 0,
           cost_per_reservation: 0,
-          booking_step_2: 0
+          booking_step_2: 0,
+          booking_step_3: 0
         };
 
         return {
@@ -723,7 +780,8 @@ export default function DashboardPage() {
             reservation_value: 0,
             roas: 0,
             cost_per_reservation: 0,
-            booking_step_2: 0
+            booking_step_2: 0,
+            booking_step_3: 0
           },
           debug: {
             campaigns: [], // Add empty campaigns to debug
@@ -751,7 +809,8 @@ export default function DashboardPage() {
           reservation_value: 0,
           roas: 0,
           cost_per_reservation: 0,
-          booking_step_2: 0
+          booking_step_2: 0,
+          booking_step_3: 0
         },
         debug: {
           campaigns: [], // Add empty campaigns to debug
@@ -797,7 +856,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-page flex items-center justify-center">
         <LoadingSpinner text={loadingMessage} progress={loadingProgress} />
       </div>
     );
@@ -805,29 +864,31 @@ export default function DashboardPage() {
 
   if (!clientData) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-page flex items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-rose-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">Nie znaleziono klienta</h3>
-          <p className="text-slate-600">Skontaktuj się z administratorem.</p>
+          <AlertCircle className="h-12 w-12 text-error-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-text mb-2">Nie znaleziono klienta</h3>
+          <p className="text-muted">Skontaktuj się z administratorem.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-page">
       {/* Modern Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <header className="bg-bg border-b border-stroke sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center space-x-4">
-                              <div className="w-10 h-10 bg-secondary-600 rounded-lg flex items-center justify-center shadow-sm">
+              <div className="w-10 h-10 bg-navy rounded-lg flex items-center justify-center shadow-sm">
                 <BarChart3 className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-                <p className="text-sm text-slate-600">Meta Ads Analytics</p>
+                <h1 className="text-xl font-semibold text-text">Dashboard</h1>
+                <p className="text-sm text-muted">
+                  {activeAdsProvider === 'meta' ? 'Meta Ads Analytics' : 'Google Ads Analytics'}
+                </p>
               </div>
               
               {/* Client Selector for Admin Users */}
@@ -844,13 +905,13 @@ export default function DashboardPage() {
             
             <div className="flex items-center space-x-4">
               {/* Data Status */}
-              <div className="flex items-center space-x-3 px-4 py-2 bg-slate-100 rounded-lg">
+              <div className="flex items-center space-x-3 px-4 py-2 bg-page rounded-lg">
                 <div className={`w-2 h-2 rounded-full ${
-                  dataSource === 'cache' ? 'bg-emerald-500' : 
-                  dataSource === 'stale-cache' ? 'bg-orange-500 animate-pulse' :
-                  dataSource === 'live-api-cached' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                  dataSource === 'cache' ? 'bg-success-500' : 
+                  dataSource === 'stale-cache' ? 'bg-warning-500 animate-pulse' :
+                  dataSource === 'live-api-cached' ? 'bg-success-500 animate-pulse' : 'bg-muted'
                 }`}></div>
-                <span className="text-sm text-slate-700">
+                <span className="text-sm text-text">
                   {dataSource === 'cache' ? 'Cache (świeże)' : 
                    dataSource === 'stale-cache' ? 'Cache (odświeżanie)' :
                    dataSource === 'live-api-cached' ? 'Na żywo' : 'Baza danych'}
@@ -861,7 +922,7 @@ export default function DashboardPage() {
               <button
                 onClick={refreshLiveData}
                 disabled={refreshingData}
-                className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200"
+                className="p-2 text-muted hover:text-text hover:bg-page rounded-lg transition-all duration-200"
                 title="Odśwież dane"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshingData ? 'animate-spin' : ''}`} />
@@ -871,7 +932,7 @@ export default function DashboardPage() {
               {user?.role === 'admin' && (
                 <button
                   onClick={clearAllClientCaches}
-                  className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all duration-200"
+                  className="p-2 text-error-500 hover:text-error-700 hover:bg-error-50 rounded-lg transition-all duration-200"
                   title="Wyczyść wszystkie cache"
                 >
                   <Trash2 className="h-5 w-5" />
@@ -880,12 +941,12 @@ export default function DashboardPage() {
 
               {/* User Menu */}
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-secondary-600 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-navy rounded-lg flex items-center justify-center">
                   <User className="h-4 w-4 text-white" />
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-200"
+                  className="p-2 text-muted hover:text-text hover:bg-page rounded-lg transition-all duration-200"
                 >
                   <LogOut className="h-5 w-5" />
                 </button>
@@ -895,7 +956,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8 bg-page min-h-screen">
         {/* Welcome Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -906,21 +967,23 @@ export default function DashboardPage() {
                   <img 
                     src={clientData.client.logo_url} 
                     alt={`${clientData.client.name} logo`}
-                    className="h-16 w-16 object-contain rounded-lg border border-slate-200 bg-white p-2"
+                    className="h-16 w-16 object-contain rounded-lg border border-stroke bg-bg p-2"
                   />
                 </div>
               )}
               <div>
-                <h2 className="text-3xl font-bold text-slate-900 mb-2">
+                <h2 className="text-3xl font-bold text-text mb-2">
                   Witaj, {clientData.client.name} 👋
                 </h2>
-                <p className="text-slate-600">Oto podsumowanie Twoich kampanii Meta Ads</p>
+                <p className="text-muted">
+                  Oto podsumowanie Twoich kampanii {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+                </p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
               <button 
                 onClick={() => router.push('/reports')}
-                className="px-6 py-3 bg-secondary-600 text-white rounded-lg font-medium hover:bg-secondary-700 hover:shadow-md transition-all duration-200 flex items-center space-x-2"
+                className="px-6 py-3 bg-navy text-white rounded-lg font-medium hover:bg-navy/90 hover:shadow-md transition-all duration-200 flex items-center space-x-2"
               >
                 <Download className="h-4 w-4" />
                 <span>Zobacz pełne raporty</span>
@@ -929,94 +992,178 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Ads Provider Toggle - Simple without container */}
+        <div className="flex justify-center mb-8">
+          <div className="relative bg-stroke p-1 rounded-lg">
+            <div className="flex space-x-1">
+              {/* Meta Ads Tab */}
+              <button
+                onClick={() => setActiveAdsProvider('meta')}
+                className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  activeAdsProvider === 'meta'
+                    ? 'text-white shadow-sm'
+                    : 'text-muted hover:text-text'
+                }`}
+              >
+                {activeAdsProvider === 'meta' && (
+                  <div className="absolute inset-0 bg-navy rounded-md" />
+                )}
+                <span className="relative flex items-center space-x-2">
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Meta Ads</span>
+                </span>
+              </button>
+
+              {/* Google Ads Tab */}
+              <button
+                onClick={() => setActiveAdsProvider('google')}
+                className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  activeAdsProvider === 'google'
+                    ? 'text-white shadow-sm'
+                    : 'text-muted hover:text-text'
+                }`}
+              >
+                {activeAdsProvider === 'google' && (
+                  <div className="absolute inset-0 bg-orange rounded-md" />
+                )}
+                <span className="relative flex items-center space-x-2">
+                  <Target className="w-4 h-4" />
+                  <span>Google Ads</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Modern Bar Chart - Main Metrics */}
         <div className="mb-8">
-          <MetaPerformanceLive
-            clientId={clientData.client.id}
-            sharedData={{
-              stats: clientData.stats,
-              conversionMetrics: clientData.conversionMetrics,
-              debug: clientData.debug,
-              lastUpdated: clientData.lastUpdated || new Date().toISOString()
-            }}
-          />
+          {activeAdsProvider === 'meta' ? (
+            <MetaPerformanceLive
+              clientId={clientData.client.id}
+              sharedData={{
+                stats: clientData.stats,
+                conversionMetrics: clientData.conversionMetrics,
+                debug: clientData.debug,
+                lastUpdated: clientData.lastUpdated || new Date().toISOString()
+              }}
+            />
+          ) : (
+            <GoogleAdsPerformanceLive
+              clientId={clientData.client.id}
+            />
+          )}
         </div>
 
         {/* Performance Metrics - 3 Animated Cards */}
         <div className="mb-8">
           <AnimatedMetricsCharts
             leads={{
-              current: (clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0),
-              previous: Math.round((((clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)) * 0.85)),
-              change: 15.0
+              current: activeAdsProvider === 'meta' 
+                ? (clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)
+                : 28, // Mock Google Ads leads data
+              previous: activeAdsProvider === 'meta'
+                ? Math.round((((clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)) * 0.85))
+                : 24,
+              change: activeAdsProvider === 'meta' ? 15.0 : 16.7
             }}
             reservations={{
-              current: clientData.conversionMetrics?.reservations || 0,
-              previous: Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92)),
-              change: 8.7
+              current: activeAdsProvider === 'meta'
+                ? clientData.conversionMetrics?.reservations || 0
+                : 8, // Mock Google Ads reservations
+              previous: activeAdsProvider === 'meta'
+                ? Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92))
+                : 7,
+              change: activeAdsProvider === 'meta' ? 8.7 : 14.3
             }}
             reservationValue={{
-              current: clientData.conversionMetrics?.reservation_value || 0,
-              previous: Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88)),
-              change: 12.5
+              current: activeAdsProvider === 'meta'
+                ? clientData.conversionMetrics?.reservation_value || 0
+                : 12500, // Mock Google Ads reservation value
+              previous: activeAdsProvider === 'meta'
+                ? Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88))
+                : 11000,
+              change: activeAdsProvider === 'meta' ? 12.5 : 13.6
             }}
             isLoading={loading}
           />
         </div>
 
         {/* Recent Campaigns - Modern Card Design */}
-        <div className="bg-white rounded-lg p-6 shadow-sm border border-slate-200">
+        <div className="bg-bg rounded-2xl p-6 shadow-sm border border-stroke">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-slate-900">Ostatnie kampanie</h3>
-            <button className="text-secondary-600 hover:text-secondary-700 text-sm font-medium flex items-center space-x-1 hover:bg-slate-50 px-3 py-1 rounded-lg transition-all duration-200">
+            <h3 className="text-lg font-semibold text-text">
+              Ostatnie kampanie {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+            </h3>
+            <button className="text-navy hover:text-navy/80 text-sm font-medium flex items-center space-x-1 hover:bg-page px-3 py-1 rounded-lg transition-all duration-200">
               <span>Zobacz wszystkie</span>
               <ArrowUpRight className="h-4 w-4" />
             </button>
           </div>
           
-          {clientData.campaigns.length === 0 ? (
-            <div className="text-center py-12">
-              <Target className="h-16 w-16 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 mb-2">Brak kampanii</h3>
-              <p className="text-slate-600">Dane kampanii pojawią się tutaj po wygenerowaniu raportów.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {clientData.campaigns.slice(0, 5).map((campaign) => (
-                <div key={campaign.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-all duration-200 border border-transparent hover:border-slate-200">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-secondary-100 rounded-lg flex items-center justify-center">
-                      <Target className="h-5 w-5 text-secondary-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-slate-900">{campaign.campaign_name || 'Unnamed Campaign'}</div>
-                      <div className="text-sm text-slate-500">ID: {campaign.campaign_id || 'N/A'}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-6">
-                    <div className="text-right">
-                      <div className="font-medium text-slate-900">
-                        {formatCurrency(campaign.spend || 0, 'PLN')}
-                      </div>
-                      <div className="text-sm text-slate-500">Wydatki</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium text-slate-900">
-                        {campaign.clicks?.toLocaleString() || '0'}
-                      </div>
-                      <div className="text-sm text-slate-500">Kliknięcia</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium text-slate-900">
-                        {campaign.ctr ? `${campaign.ctr.toFixed(2)}%` : '0%'}
-                      </div>
-                      <div className="text-sm text-slate-500">CTR</div>
-                    </div>
-                  </div>
+          {(() => {
+            const campaigns = activeAdsProvider === 'meta' ? clientData.campaigns : mockGoogleAdsCampaigns;
+            
+            if (campaigns.length === 0) {
+              return (
+                <div className="text-center py-12">
+                  <Target className="h-16 w-16 text-stroke mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-text mb-2">Brak kampanii</h3>
+                  <p className="text-muted">
+                    Dane kampanii {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'} pojawią się tutaj po wygenerowaniu raportów.
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }
+            
+            return (
+              <div className="space-y-3">
+                {campaigns.slice(0, 5).map((campaign) => (
+                  <div key={campaign.id} className="flex items-center justify-between p-4 bg-page rounded-xl hover:bg-stroke/30 transition-all duration-200 border border-transparent hover:border-stroke group">
+                    <div className="flex items-center space-x-4">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        activeAdsProvider === 'meta' 
+                          ? 'bg-navy/10' 
+                          : 'bg-orange/10'
+                      }`}>
+                        <Target className={`h-5 w-5 ${
+                          activeAdsProvider === 'meta'
+                            ? 'text-navy'
+                            : 'text-orange'
+                        }`} />
+                      </div>
+                      <div>
+                        <div className="font-medium text-text">{campaign.campaign_name || 'Unnamed Campaign'}</div>
+                        <div className="text-sm text-muted">ID: {campaign.campaign_id || 'N/A'}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-6">
+                      <div className="text-right">
+                        <div className="font-medium text-text tabular-nums">
+                          {formatCurrency(campaign.spend || 0, 'PLN')}
+                        </div>
+                        <div className="text-sm text-muted">Wydatki</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-text tabular-nums">
+                          {campaign.clicks?.toLocaleString() || '0'}
+                        </div>
+                        <div className="text-sm text-muted">Kliknięcia</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-text tabular-nums">
+                          {campaign.ctr ? `${campaign.ctr.toFixed(2)}%` : '0%'}
+                        </div>
+                        <div className="text-sm text-muted">CTR</div>
+                      </div>
+                      <div className="text-muted group-hover:text-text transition-colors duration-200">
+                        <ArrowUpRight className="h-4 w-4 transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </main>
     </div>

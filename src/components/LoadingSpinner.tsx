@@ -21,18 +21,18 @@ export default function LoadingSpinner({
 
   return (
     <div className={`flex flex-col items-center justify-center ${className}`}>
-      <div className={`${sizeClasses[size]} border-4 border-primary-600 border-t-transparent rounded-full animate-spin mb-4`}></div>
-      {text && <p className="text-gray-600 mb-2">{text}</p>}
+      <div className={`${sizeClasses[size]} border-4 border-navy border-t-transparent rounded-full animate-spin mb-4`}></div>
+      {text && <p className="text-muted mb-2">{text}</p>}
       {progress !== undefined && (
-        <div className="w-64 bg-gray-200 rounded-full h-2 mb-2">
+        <div className="w-64 bg-stroke rounded-full h-2 mb-2">
           <div 
-            className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+            className="bg-navy h-2 rounded-full transition-all duration-300 ease-out"
             style={{ width: `${progress}%` }}
           ></div>
         </div>
       )}
       {progress !== undefined && (
-        <p className="text-sm text-gray-500">{progress}%</p>
+        <p className="text-sm text-muted">{progress}%</p>
       )}
     </div>
   );
