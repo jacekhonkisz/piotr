@@ -1149,8 +1149,8 @@ function ReportsPageContent() {
           end: periodEndDate
         },
         clientId: clientData.id, // Always send the client ID for real clients
-        forceFresh: true, // 🔧 TEMPORARY: Always force fresh data for booking steps testing
-        reason: 'booking_steps_testing', // Add reason for debugging
+        forceFresh: true, // 🔧 ENHANCED: Force fresh for ALL periods to get real booking steps with custom conversions
+        reason: isCurrentMonth ? 'current_month_live_data' : 'historical_real_booking_steps', // Add reason for debugging
         ...(forceClearCache && { forceFresh: true }), // Add cache clearing if requested
         ...(forceWeeklyFresh && { forceFresh: true, reason: 'weekly_corruption_fix' }) // Force fresh for weekly reports
       };
@@ -1167,6 +1167,17 @@ function ReportsPageContent() {
         actuallyIsAugust: periodStartDate.includes('2025-08'),
         forceWeeklyFresh,
         forceFresh: forceWeeklyFresh
+      });
+      
+            // 🎯 DATA SOURCE DECISION DEBUG
+      const willForceFresh = true; // Always force fresh for real booking steps
+      console.log('🎯 DATA SOURCE DECISION:', {
+        periodId,
+        isCurrentMonth,
+        willForceFresh,
+        expectedSource: 'LIVE META API',
+        reason: isCurrentMonth ? 'Current period needs fresh data' : 'Historical period needs real booking steps from custom conversions',
+        expectedValues: 'REAL booking steps 2&3 from custom conversions for all periods'
       });
       
       console.log('📡 Making API call with request body:', requestBody);
@@ -1316,36 +1327,15 @@ function ReportsPageContent() {
       
       // Transform campaigns to match frontend interface
       const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
-        // 🔧 ENHANCED: Use conversionMetrics from enhanced API if available, otherwise fall back to campaign-level data
-        let click_to_call, email_contacts, reservations, reservation_value, booking_step_1, booking_step_2, booking_step_3;
-        
-        if (hasEnhancedConversionMetrics && enhancedConversionMetrics) {
-          // Use enhanced conversion metrics (more accurate)
-          click_to_call = enhancedConversionMetrics.click_to_call || 0;
-          email_contacts = enhancedConversionMetrics.email_contacts || 0;
-          reservations = enhancedConversionMetrics.reservations || 0;
-          reservation_value = enhancedConversionMetrics.reservation_value || 0;
-          booking_step_1 = enhancedConversionMetrics.booking_step_1 || 0;
-          booking_step_2 = enhancedConversionMetrics.booking_step_2 || 0;
-          booking_step_3 = enhancedConversionMetrics.booking_step_3 || 0;
-          
-          console.log(`🔧 Using enhanced conversion metrics for campaign ${index}:`, {
-            reservations,
-            reservation_value,
-            booking_step_1,
-            booking_step_2,
-            booking_step_3
-          });
-        } else {
-          // Fall back to campaign-level conversion data
-          click_to_call = campaign.click_to_call || 0;
-          email_contacts = campaign.email_contacts || 0;
-          reservations = campaign.reservations || 0;
-          reservation_value = campaign.reservation_value || 0;
-          booking_step_1 = campaign.booking_step_1 || 0;
-          booking_step_2 = campaign.booking_step_2 || 0;
-          booking_step_3 = campaign.booking_step_3 || 0;
-        }
+        // 🔧 FIXED: Always use campaign-level data, enhanced metrics are applied separately
+        // The bug was applying enhanced totals to EACH campaign instead of using them as totals
+        const click_to_call = campaign.click_to_call || 0;
+        const email_contacts = campaign.email_contacts || 0;
+        const reservations = campaign.reservations || 0;
+        const reservation_value = campaign.reservation_value || 0;
+        const booking_step_1 = campaign.booking_step_1 || 0;
+        const booking_step_2 = campaign.booking_step_2 || 0;
+        const booking_step_3 = campaign.booking_step_3 || 0;
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,

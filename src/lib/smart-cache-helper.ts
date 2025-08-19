@@ -239,6 +239,29 @@ export async function fetchFreshCurrentMonthData(client: any) {
       }
     }
 
+    // 🔧 NEW: Fetch meta tables data for current month cache
+    let metaTables = null;
+    try {
+      logger.info('📊 Fetching meta tables data for current month cache...');
+      
+      const [placementData, demographicData, adRelevanceData] = await Promise.all([
+        metaService.getPlacementPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
+        metaService.getDemographicPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
+        metaService.getAdRelevanceResults(adAccountId, currentMonth.startDate!, currentMonth.endDate!)
+      ]);
+      
+      metaTables = {
+        placementPerformance: placementData,
+        demographicPerformance: demographicData,
+        adRelevanceResults: adRelevanceData
+      };
+      
+      logger.info('✅ Meta tables data fetched for current month cache');
+    } catch (metaError) {
+      logger.warn('⚠️ Failed to fetch meta tables for current month cache:', metaError);
+      metaTables = null; // Will fallback to live API calls
+    }
+
     const cacheData = {
       client: {
         id: client.id,
@@ -255,6 +278,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
         averageCpc
       },
       conversionMetrics,
+      metaTables, // ✅ ENHANCED: Include meta tables in current month cache
       accountInfo,
       fetchedAt: new Date().toISOString(),
       fromCache: false,
@@ -311,6 +335,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
         booking_step_2: 1,
         booking_step_3: 1
       },
+      metaTables: null, // ✅ ENHANCED: Include metaTables field in fallback
       accountInfo: null,
       fetchedAt: new Date().toISOString(),
       fromCache: false,

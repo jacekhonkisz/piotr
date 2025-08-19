@@ -50,6 +50,7 @@ interface CampaignInsights {
   roas?: number;
   cost_per_reservation?: number;
   booking_step_2?: number;
+  booking_step_3?: number;
 }
 
 interface AdAccount {
@@ -635,6 +636,7 @@ export class MetaAPIService {
           let reservations = 0;
           let reservation_value = 0;
           let booking_step_2 = 0;
+          let booking_step_3 = 0;
 
           // Extract action data if available (support both nested insights and fields payloads)
           const actionsArray = (insight.actions && Array.isArray(insight.actions))
@@ -650,6 +652,18 @@ export class MetaAPIService {
           if (actionsArray.length > 0) {
             logger.info('🔍 MetaAPI: Found actions array for campaign', insight.campaign_name, 'with', actionsArray.length, 'actions');
             logger.info('🔍 MetaAPI: Action types found:', actionsArray.map((a: any) => a.action_type || a.type));
+            
+            // 🔧 ENHANCED LOGGING: Show ALL action details for July 2025 debugging
+            const dateStart = insight.date_start || '';
+            if (dateStart.includes('2025-07')) {
+              logger.info('🔍 JULY 2025 DEBUG - ALL ACTIONS for', insight.campaign_name, ':', 
+                actionsArray.map((a: any) => ({
+                  action_type: a.action_type || a.type,
+                  value: a.value || a.count || 0,
+                  raw: a
+                }))
+              );
+            }
             
             actionsArray.forEach((action: any) => {
               const actionType = String(action.action_type || action.type || '').toLowerCase();
@@ -679,13 +693,21 @@ export class MetaAPIService {
               if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
                 reservations += valueNum;
               }
-              // 8. Etap 2 rezerwacji - Fixed to prevent funnel inversion
+              // 8. Etap 2 rezerwacji - Proper mapping based on funnel analysis
               if (actionType.includes('booking_step_2') || 
-                  actionType.includes('add_to_cart') ||
-                  actionType.includes('add_to_basket') ||
-                  actionType.includes('checkout_step_2') ||
-                  actionType.includes('add_payment_info')) {
+                  actionType.includes('add_payment_info') ||
+                  actionType.includes('offsite_conversion.custom.1150356839010935')) {
                 booking_step_2 += valueNum;
+                // 🔧 ENHANCED LOGGING: Track when booking_step_2 is found
+                logger.info('✅ FOUND booking_step_2:', { actionType, valueNum, campaign: insight.campaign_name });
+              }
+              // 9. Etap 3 rezerwacji - Proper mapping based on funnel analysis
+              if (actionType.includes('booking_step_3') || 
+                  actionType === 'complete_checkout' ||
+                  actionType.includes('offsite_conversion.custom.3490904591193350')) {
+                booking_step_3 += valueNum;
+                // 🔧 ENHANCED LOGGING: Track when booking_step_3 is found
+                logger.info('✅ FOUND booking_step_3:', { actionType, valueNum, campaign: insight.campaign_name });
               }
             });
           }
@@ -714,6 +736,15 @@ export class MetaAPIService {
           logger.info(`   💵 Reservation Value: ${reservation_value} zł`);
           logger.info(`   📈 ROAS: ${roas.toFixed(2)}x`);
           logger.info(`   💲 Cost per Reservation: ${cost_per_reservation.toFixed(2)} zł`);
+          
+          // 🔧 ENHANCED LOGGING: Show booking steps for July 2025
+          const dateStart = insight.date_start || '';
+          if (dateStart.includes('2025-07')) {
+            logger.info(`🎯 JULY 2025 BOOKING STEPS for ${insight.campaign_name}:`);
+            logger.info(`   📋 booking_step_1: ${booking_step_1}`);
+            logger.info(`   📋 booking_step_2: ${booking_step_2} ← SHOULD NOT BE 0 IF TRACKED`);
+            logger.info(`   📋 booking_step_3: ${booking_step_3} ← SHOULD NOT BE 0 IF TRACKED`);
+          }
 
           // Validate conversion funnel logic (Etap 1 should be >= Etap 2)
           if (booking_step_2 > booking_step_1 && booking_step_1 > 0) {
@@ -748,6 +779,7 @@ export class MetaAPIService {
             roas,
             cost_per_reservation,
             booking_step_2,
+            booking_step_3,
           } as CampaignInsights;
         });
 
@@ -849,6 +881,7 @@ export class MetaAPIService {
         let reservations = 0;
         let reservation_value = 0;
         let booking_step_2 = 0;
+        let booking_step_3 = 0; // Initialize booking_step_3
 
         // Extract action data (using the same logic as getCampaignInsights)
         const actionsArray = (insight.actions && Array.isArray(insight.actions))
@@ -882,13 +915,15 @@ export class MetaAPIService {
             if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
               reservations += valueNum;
             }
-            // 8. Etap 2 rezerwacji - Fixed to prevent funnel inversion
+            // 8. Etap 2 rezerwacji - Conservative: Only payment info (most accurate)
             if (actionType.includes('booking_step_2') || 
-                actionType.includes('add_to_cart') ||
-                actionType.includes('add_to_basket') ||
-                actionType.includes('checkout_step_2') ||
                 actionType.includes('add_payment_info')) {
               booking_step_2 += valueNum;
+            }
+            // 9. Etap 3 rezerwacji - Conservative: Only checkout completion (most accurate)
+            if (actionType.includes('booking_step_3') || 
+                actionType === 'complete_checkout') {
+              booking_step_3 += valueNum;
             }
           });
         }
@@ -908,13 +943,16 @@ export class MetaAPIService {
         const roas = spend > 0 && reservation_value > 0 ? reservation_value / spend : 0;
         const cost_per_reservation = reservations > 0 ? spend / reservations : 0;
 
-        // Validate conversion funnel logic (Etap 1 should be >= Etap 2)
+        // Validate conversion funnel logic (Etap 1 should be >= Etap 2 >= Etap 3)
         if (booking_step_2 > booking_step_1 && booking_step_1 > 0) {
           logger.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
         }
+        if (booking_step_3 > booking_step_2 && booking_step_2 > 0) {
+          logger.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 3 (${booking_step_3}) > Etap 2 (${booking_step_2}). This may indicate misconfigured action types.`);
+        }
 
         // Calculate total conversions from all tracked conversion types
-        const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2;
+        const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2 + booking_step_3;
         
         // Calculate CTR and CPC if not provided
         const impressions = parseInt(insight.impressions || '0');
@@ -947,6 +985,7 @@ export class MetaAPIService {
           roas,
           cost_per_reservation,
           booking_step_2,
+          booking_step_3, // Include booking_step_3 in return object
         } as CampaignInsights;
       });
 
@@ -994,6 +1033,16 @@ export class MetaAPIService {
             cpc: 0,
             date_start: startDate,
             date_stop: endDate,
+            // Initialize conversion tracking fields
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            booking_step_2: 0,
+            booking_step_3: 0,
+            reservations: 0,
+            reservation_value: 0,
+            roas: 0,
+            cost_per_reservation: 0,
           });
         }
         
@@ -1002,6 +1051,14 @@ export class MetaAPIService {
         campaign.clicks += insight.clicks;
         campaign.spend += insight.spend;
         campaign.conversions += insight.conversions;
+        // Aggregate conversion tracking fields
+        campaign.click_to_call = (campaign.click_to_call || 0) + (insight.click_to_call || 0);
+        campaign.email_contacts = (campaign.email_contacts || 0) + (insight.email_contacts || 0);
+        campaign.booking_step_1 = (campaign.booking_step_1 || 0) + (insight.booking_step_1 || 0);
+        campaign.booking_step_2 = (campaign.booking_step_2 || 0) + (insight.booking_step_2 || 0);
+        campaign.booking_step_3 = (campaign.booking_step_3 || 0) + (insight.booking_step_3 || 0);
+        campaign.reservations = (campaign.reservations || 0) + (insight.reservations || 0);
+        campaign.reservation_value = (campaign.reservation_value || 0) + (insight.reservation_value || 0);
       });
       
       // Calculate aggregated metrics
@@ -1009,6 +1066,8 @@ export class MetaAPIService {
         ...campaign,
         ctr: campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0,
         cpc: campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0,
+        roas: campaign.spend > 0 && (campaign.reservation_value || 0) > 0 ? (campaign.reservation_value || 0) / campaign.spend : 0,
+        cost_per_reservation: (campaign.reservations || 0) > 0 ? campaign.spend / (campaign.reservations || 0) : 0,
       }));
       
       logger.info(`✅ Aggregated ${aggregatedInsights.length} campaigns for ${year}-${month.toString().padStart(2, '0')}`);
@@ -1378,6 +1437,7 @@ export class MetaAPIService {
 
   /**
    * Get demographic performance data for Demographic Performance table
+   * Enhanced with reservations, wartość rezerwacji, ROAS, and booking steps
    */
   async getDemographicPerformance(
     adAccountId: string,
@@ -1391,7 +1451,11 @@ export class MetaAPIService {
         'clicks',
         'ctr',
         'cpc',
-        'cpp'
+        'cpp',
+        'actions',
+        'action_values',
+        'conversions',
+        'conversion_values'
       ].join(',');
 
       const params = new URLSearchParams({
@@ -1409,7 +1473,7 @@ export class MetaAPIService {
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       
-      logger.info('🔗 Meta API Demographic Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API Enhanced Demographic Performance URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
 
       // Add timeout for meta tables (shorter timeout since these are less critical)
       const timeoutPromise = new Promise((_, reject) => {
@@ -1427,24 +1491,130 @@ export class MetaAPIService {
       }
 
       if (data.data) {
-        const demographics = data.data.map(insight => ({
-          age: insight.age || 'Unknown',
-          gender: insight.gender || 'Unknown',
-          spend: parseFloat(insight.spend || '0'),
-          impressions: parseInt(insight.impressions || '0'),
-          clicks: parseInt(insight.clicks || '0'),
-          ctr: parseFloat(insight.ctr || '0'),
-          cpc: parseFloat(insight.cpc || '0'),
-          cpp: insight.cpp ? parseFloat(insight.cpp) : null,
-        }));
+        const demographics = data.data.map(insight => {
+          // Basic demographic data
+          const age = insight.age || 'Unknown';
+          const gender = insight.gender || 'Unknown';
+          const spend = parseFloat(insight.spend || '0');
+          const impressions = parseInt(insight.impressions || '0');
+          const clicks = parseInt(insight.clicks || '0');
+          const ctr = parseFloat(insight.ctr || '0');
+          const cpc = parseFloat(insight.cpc || '0');
+          const cpp = insight.cpp ? parseFloat(insight.cpp) : null;
 
-        logger.info('✅ Parsed demographic performance:', demographics.length, 'demographics');
+          // Initialize conversion metrics
+          let reservations = 0;
+          let booking_step_1 = 0;
+          let booking_step_2 = 0;
+          let booking_step_3 = 0;
+          let click_to_call = 0;
+          let email_contacts = 0;
+          let reservation_value = 0;
+
+          // Parse conversion actions by demographics
+          const actionsArray = (insight.actions && Array.isArray(insight.actions)) ? insight.actions : [];
+          actionsArray.forEach((action: any) => {
+            const actionType = String(action.action_type || '').toLowerCase();
+            const valueNum = Number(action.value || 0);
+
+            // 1. Click to call events
+            if (actionType.includes('phone_number_clicks') || 
+                actionType.includes('call') || 
+                actionType.includes('phone_call')) {
+              click_to_call += valueNum;
+            }
+
+            // 2. Email contact events  
+            if (actionType.includes('email') || 
+                actionType.includes('contact') || 
+                actionType.includes('lead')) {
+              email_contacts += valueNum;
+            }
+
+            // 3. Booking Step 1 - Initial interest
+            if (actionType.includes('initiate_checkout') ||
+                actionType.includes('begin_checkout') ||
+                actionType.includes('view_content') ||
+                actionType.includes('landing_page_view')) {
+              booking_step_1 += valueNum;
+            }
+
+            // 4. Reservations (Conservative: Only specific purchase events)
+            if (actionType === 'purchase' ||
+                actionType.includes('fb_pixel_purchase') ||
+                actionType.includes('offsite_conversion.custom.fb_pixel_purchase')) {
+              reservations += valueNum;
+            }
+
+            // 5. Booking Step 2 - Conservative: Only payment info (most accurate)
+            if (actionType.includes('booking_step_2') ||
+                actionType.includes('add_payment_info')) {
+              booking_step_2 += valueNum;
+            }
+
+            // 6. Booking Step 3 - Conservative: Only checkout completion (most accurate)
+            if (actionType.includes('booking_step_3') ||
+                actionType === 'complete_checkout') {
+              booking_step_3 += valueNum;
+            }
+          });
+
+          // Parse conversion values by demographics (wartość rezerwacji)
+          const actionValuesArray = (insight.action_values && Array.isArray(insight.action_values)) ? insight.action_values : [];
+          actionValuesArray.forEach((actionValue: any) => {
+            const actionType = String(actionValue.action_type || '').toLowerCase();
+            const value = Number(actionValue.value || 0);
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+              reservation_value += value;
+            }
+          });
+
+          // Calculate derived metrics by demographics
+          const roas = spend > 0 && reservation_value > 0 ? reservation_value / spend : 0;
+          const cost_per_reservation = reservations > 0 ? spend / reservations : 0;
+          const conversion_rate = clicks > 0 ? (reservations / clicks) * 100 : 0;
+
+          // Log demographic conversion data for debugging
+          logger.info(`📊 Demographic conversion data for ${age} ${gender}:`, {
+            spend,
+            reservations,
+            reservation_value,
+            roas: roas.toFixed(2),
+            booking_step_1,
+            booking_step_2,
+            booking_step_3
+          });
+
+          return {
+            age,
+            gender,
+            spend,
+            impressions,
+            clicks,
+            ctr,
+            cpc,
+            cpp,
+            // Enhanced conversion metrics by demographics
+            reservations,
+            reservation_value,
+            roas,
+            cost_per_reservation,
+            conversion_rate,
+            booking_step_1,
+            booking_step_2, 
+            booking_step_3,
+            click_to_call,
+            email_contacts
+          };
+        });
+
+        logger.info('✅ Parsed enhanced demographic performance with conversions:', demographics.length, 'demographics');
         return demographics;
       }
 
       return [];
     } catch (error) {
-      logger.error('💥 Error fetching demographic performance:', error);
+      logger.error('💥 Error fetching enhanced demographic performance:', error);
       throw error;
     }
   }
@@ -1514,6 +1684,160 @@ export class MetaAPIService {
     } catch (error) {
       logger.error('💥 Error fetching ad relevance results:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Get Facebook Page insights for organic social metrics
+   */
+  async getPageInsights(
+    pageId: string,
+    startDate: string,
+    endDate: string,
+    metrics: string[] = ['page_fan_adds', 'page_fans', 'page_views'],
+    period: 'day' | 'week' | 'days_28' = 'day'
+  ): Promise<any> {
+    try {
+      const url = `${this.baseUrl}/${pageId}/insights?` +
+        `metric=${metrics.join(',')}&` +
+        `since=${startDate}&` +
+        `until=${endDate}&` +
+        `period=${period}&` +
+        `access_token=${this.accessToken}`;
+
+      logger.info('📘 Fetching Facebook Page insights:', { pageId, startDate, endDate, metrics, period });
+      
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+
+      if (data.error) {
+        logger.error('Facebook Page Insights API error:', data.error);
+        throw new Error(`Page Insights Error: ${data.error.message} (Code: ${data.error.code})`);
+      }
+
+      return data.data || [];
+
+    } catch (error) {
+      logger.error('💥 Error fetching Facebook Page insights:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Instagram Business Account insights
+   */
+  async getInstagramInsights(
+    instagramAccountId: string,
+    startDate: string,
+    endDate: string,
+    metrics: string[] = ['follower_count', 'profile_views', 'reach'],
+    period: 'day' | 'week' | 'days_28' = 'day'
+  ): Promise<any> {
+    try {
+      const url = `${this.baseUrl}/${instagramAccountId}/insights?` +
+        `metric=${metrics.join(',')}&` +
+        `since=${startDate}&` +
+        `until=${endDate}&` +
+        `period=${period}&` +
+        `access_token=${this.accessToken}`;
+
+      logger.info('📷 Fetching Instagram insights:', { instagramAccountId, startDate, endDate, metrics, period });
+      
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+
+      if (data.error) {
+        logger.error('Instagram Insights API error:', data.error);
+        throw new Error(`Instagram Insights Error: ${data.error.message} (Code: ${data.error.code})`);
+      }
+
+      return data.data || [];
+
+    } catch (error) {
+      logger.error('💥 Error fetching Instagram insights:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Facebook Pages connected to the access token
+   */
+  async getPages(): Promise<any[]> {
+    try {
+      const url = `${this.baseUrl}/me/accounts?access_token=${this.accessToken}`;
+      const response = await fetch(url);
+      const data: MetaAPIResponse = await response.json();
+
+      if (data.error) {
+        logger.error('Error getting Facebook Pages:', data.error);
+        throw new Error(`Pages Error: ${data.error.message} (Code: ${data.error.code})`);
+      }
+
+      return data.data || [];
+
+    } catch (error) {
+      logger.error('💥 Error fetching Facebook Pages:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Instagram Business Account connected to a Facebook Page
+   */
+  async getInstagramAccount(pageId: string): Promise<string | null> {
+    try {
+      const url = `${this.baseUrl}/${pageId}?fields=instagram_business_account&access_token=${this.accessToken}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        logger.error('Error getting Instagram account:', data.error);
+        return null;
+      }
+
+      return data.instagram_business_account?.id || null;
+
+    } catch (error) {
+      logger.error('💥 Error fetching Instagram account:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check token permissions for social insights
+   */
+  async checkSocialPermissions(): Promise<{ valid: boolean; permissions: string[]; missing: string[] }> {
+    try {
+      const url = `${this.baseUrl}/me/permissions?access_token=${this.accessToken}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.error) {
+        return { valid: false, permissions: [], missing: [] };
+      }
+
+      const grantedPermissions = data.data
+        .filter((perm: any) => perm.status === 'granted')
+        .map((perm: any) => perm.permission);
+
+      const requiredPermissions = [
+        'pages_read_engagement',
+        'pages_show_list',
+        'instagram_basic',
+        'instagram_manage_insights'
+      ];
+
+      const missing = requiredPermissions.filter(perm => !grantedPermissions.includes(perm));
+
+      return {
+        valid: missing.length === 0,
+        permissions: grantedPermissions,
+        missing
+      };
+
+    } catch (error) {
+      logger.error('💥 Error checking social permissions:', error);
+      return { valid: false, permissions: [], missing: [] };
     }
   }
 }

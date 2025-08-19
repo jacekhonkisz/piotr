@@ -156,7 +156,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       cost_per_reservation: storedSummary.cost_per_reservation || 0
     };
     
-    console.log(`📊 Using pre-aggregated conversion metrics from database:`, conversionMetrics);
+    console.log(`📊 Using real conversion metrics from database:`, conversionMetrics);
   } else {
     // Fallback: Calculate from campaign data (legacy support)
     conversionMetrics = {
@@ -183,6 +183,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     campaigns,
     stats: totals,
     conversionMetrics,
+    metaTables: storedSummary.meta_tables, // ✅ RESTORED: Include stored meta tables data
     dateRange: {
       start: startDate,
       end: endDate
@@ -345,23 +346,121 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         'Will check database cache': isCurrentMonthRequest && !forceFresh
       });
       
-      if (!forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest) {
-        // Previous periods: Use database lookup (data doesn't change)
-        logger.info('📊 Checking database for previous period data...');
-        const databaseResult = await loadFromDatabase(clientId, startDate, endDate);
-        
-        if (databaseResult) {
+      if (!isCurrentMonthRequest && !isCurrentWeekRequest) {
+        // Previous periods: Use database lookup OR force fresh if requested
+        if (!forceFresh) {
+          logger.info('📊 Checking database for previous period data...');
+          const databaseResult = await loadFromDatabase(clientId, startDate, endDate);
+          
+          if (databaseResult) {
+            const responseTime = Date.now() - startTime;
+            console.log(`🚀 Database lookup completed in ${responseTime}ms`);
+            
+            return NextResponse.json({
+              success: true,
+              data: databaseResult,
+              debug: {
+                source: 'database',
+                responseTime,
+                authenticatedUser: user.email,
+                currency: 'PLN'
+              }
+            });
+          }
+        } else {
+          // Force fresh for historical period - fetch from Meta API
+          logger.info('🔄 FORCE FRESH REQUESTED FOR HISTORICAL PERIOD - FETCHING FROM META API');
+          
+          // Get client data for Meta API call
+          const { data: clientData, error: clientError } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('id', clientId)
+            .single();
+            
+          if (clientError || !clientData) {
+            throw new Error('Client not found for Meta API call');
+          }
+          
+          // Import MetaAPIService dynamically
+          const { MetaAPIService } = await import('../../../lib/meta-api');
+          const metaService = new MetaAPIService(clientData.meta_access_token);
+          
+          const adAccountId = clientData.ad_account_id.startsWith('act_') 
+            ? clientData.ad_account_id.substring(4)
+            : clientData.ad_account_id;
+          
+          logger.info(`🔄 Fetching fresh historical data from Meta API for ${startDate} to ${endDate}`);
+          
+          // Fetch fresh campaign data from Meta API
+          const freshCampaigns = await metaService.getCampaignInsights(
+            adAccountId,
+            startDate,
+            endDate,
+            0 // No time increment
+          );
+          
+          logger.info(`✅ Fetched ${freshCampaigns.length} fresh campaigns with real booking steps`);
+          
+          // Calculate totals from fresh data
+          const totalSpend = freshCampaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
+          const totalImpressions = freshCampaigns.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
+          const totalClicks = freshCampaigns.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
+          const totalConversions = freshCampaigns.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+          const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+          const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+          
+          // Calculate conversion metrics from fresh data
+          const freshConversionMetrics = {
+            click_to_call: freshCampaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0),
+            email_contacts: freshCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0),
+            booking_step_1: freshCampaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0),
+            booking_step_2: freshCampaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0),
+            booking_step_3: freshCampaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0),
+            reservations: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
+            reservation_value: freshCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0),
+            roas: totalSpend > 0 ? freshCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0) / totalSpend : 0,
+            cost_per_reservation: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) > 0 ? 
+              totalSpend / freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) : 0
+          };
+          
+          logger.info('📊 Fresh conversion metrics with real booking steps:', freshConversionMetrics);
+          
+          const freshData = {
+            client: { id: clientId, currency: 'PLN' },
+            campaigns: freshCampaigns,
+            stats: {
+              totalSpend,
+              totalImpressions,
+              totalClicks,
+              totalConversions,
+              averageCtr,
+              averageCpc
+            },
+            conversionMetrics: freshConversionMetrics,
+            metaTables: null, // Could fetch this too if needed
+            dateRange: { start: startDate, end: endDate },
+            accountInfo: {
+              currency: 'PLN',
+              timezone: 'Europe/Warsaw',
+              status: 'ACTIVE'
+            },
+            fromDatabase: false,
+            freshData: true
+          };
+          
           const responseTime = Date.now() - startTime;
-          console.log(`🚀 Database lookup completed in ${responseTime}ms`);
+          console.log(`🚀 Fresh Meta API lookup completed in ${responseTime}ms`);
           
           return NextResponse.json({
             success: true,
-            data: databaseResult,
+            data: freshData,
             debug: {
-              source: 'database',
+              source: 'meta-api-fresh-historical',
               responseTime,
               authenticatedUser: user.email,
-              currency: 'PLN'
+              currency: 'PLN',
+              reason: 'Force fresh historical data with real booking steps'
             }
           });
         }
@@ -462,27 +561,83 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
               lastUpdated: cachedData.last_updated
             });
 
+            // 🔧 ENHANCED: Check if cache has conversion metrics, if not, enhance with campaign_summaries data
+            let enhancedCacheData = { ...cachedData.cache_data };
+            let needsConversionEnhancement = false;
+            
+            // Check if conversion metrics are missing or zero
+            if (!enhancedCacheData.conversionMetrics || 
+                (enhancedCacheData.conversionMetrics.reservations === 0 && 
+                 enhancedCacheData.conversionMetrics.booking_step_1 === 0)) {
+              needsConversionEnhancement = true;
+              logger.info('🔧 Cache missing conversion metrics - will enhance with campaign_summaries data');
+            }
+
             if (isCacheFresh) {
               logger.info('Success', {
                 cacheAgeMinutes: Math.round(cacheAge / 1000 / 60),
-                lastUpdated: cachedData.last_updated
+                lastUpdated: cachedData.last_updated,
+                needsConversionEnhancement
               });
+
+              // If conversion metrics are missing, enhance the cache data
+              if (needsConversionEnhancement) {
+                try {
+                  logger.info('🔧 Enhancing cache with conversion metrics from campaign_summaries...');
+                  
+                  // Get current month data from campaign_summaries
+                  const now = new Date();
+                  const currentYear = now.getFullYear();
+                  const currentMonth = now.getMonth() + 1;
+                  const monthStartDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                  
+                  const { data: summaryData, error: summaryError } = await supabase
+                    .from('campaign_summaries')
+                    .select('*')
+                    .eq('client_id', clientId)
+                    .eq('summary_date', monthStartDate)
+                    .eq('summary_type', 'monthly')
+                    .maybeSingle();
+                  
+                  if (summaryData && !summaryError) {
+                    // Enhance cache data with conversion metrics
+                    enhancedCacheData.conversionMetrics = {
+                      click_to_call: summaryData.click_to_call || 0,
+                      email_contacts: summaryData.email_contacts || 0,
+                      booking_step_1: summaryData.booking_step_1 || 0,
+                      reservations: summaryData.reservations || 0,
+                      reservation_value: summaryData.reservation_value || 0,
+                      booking_step_2: summaryData.booking_step_2 || 0,
+                      booking_step_3: summaryData.booking_step_3 || 0,
+                      roas: summaryData.roas || 0,
+                      cost_per_reservation: summaryData.cost_per_reservation || 0
+                    };
+                    
+                    logger.info('✅ Successfully enhanced cache with conversion metrics:', enhancedCacheData.conversionMetrics);
+                  } else {
+                    logger.warn('⚠️ Could not enhance cache - no campaign_summaries data found');
+                  }
+                } catch (enhanceError) {
+                  logger.error('❌ Error enhancing cache with conversion metrics:', enhanceError);
+                }
+              }
 
               const responseTime = Date.now() - startTime;
               return NextResponse.json({
                 success: true,
                 data: {
-                  ...cachedData.cache_data,
+                  ...enhancedCacheData,
                   fromCache: true,
-                  cacheAge: cacheAge
+                  cacheAge: cacheAge,
+                  enhancedWithConversionMetrics: needsConversionEnhancement
                 },
                 debug: {
-                  source: 'database-cache',
+                  source: 'database-cache-enhanced',
                   responseTime,
                   cacheAge: cacheAge,
                   authenticatedUser: user.email,
                   currency: 'PLN',
-                  cacheInfo: `Fresh cache (${Math.round(cacheAge / 1000 / 60)} minutes old)`
+                  cacheInfo: `Fresh cache (${Math.round(cacheAge / 1000 / 60)} minutes old)${needsConversionEnhancement ? ' + enhanced conversion metrics' : ''}`
                 }
               });
             } else {
@@ -490,25 +645,69 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
               logger.warn('Warning', {
                 cacheAgeHours: Math.round(cacheAgeHours * 10) / 10,
                 lastUpdated: cachedData.last_updated,
-                policy: 'database-first'
+                policy: 'database-first',
+                needsConversionEnhancement
               });
+
+              // If conversion metrics are missing, enhance the stale cache data too
+              if (needsConversionEnhancement) {
+                try {
+                  logger.info('🔧 Enhancing stale cache with conversion metrics from campaign_summaries...');
+                  
+                  // Get current month data from campaign_summaries
+                  const now = new Date();
+                  const currentYear = now.getFullYear();
+                  const currentMonth = now.getMonth() + 1;
+                  const monthStartDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+                  
+                  const { data: summaryData, error: summaryError } = await supabase
+                    .from('campaign_summaries')
+                    .select('*')
+                    .eq('client_id', clientId)
+                    .eq('summary_date', monthStartDate)
+                    .eq('summary_type', 'monthly')
+                    .maybeSingle();
+                  
+                  if (summaryData && !summaryError) {
+                    // Enhance cache data with conversion metrics
+                    enhancedCacheData.conversionMetrics = {
+                      click_to_call: summaryData.click_to_call || 0,
+                      email_contacts: summaryData.email_contacts || 0,
+                      booking_step_1: summaryData.booking_step_1 || 0,
+                      reservations: summaryData.reservations || 0,
+                      reservation_value: summaryData.reservation_value || 0,
+                      booking_step_2: summaryData.booking_step_2 || 0,
+                      booking_step_3: summaryData.booking_step_3 || 0,
+                      roas: summaryData.roas || 0,
+                      cost_per_reservation: summaryData.cost_per_reservation || 0
+                    };
+                    
+                    logger.info('✅ Successfully enhanced stale cache with conversion metrics:', enhancedCacheData.conversionMetrics);
+                  } else {
+                    logger.warn('⚠️ Could not enhance stale cache - no campaign_summaries data found');
+                  }
+                } catch (enhanceError) {
+                  logger.error('❌ Error enhancing stale cache with conversion metrics:', enhanceError);
+                }
+              }
 
               const responseTime = Date.now() - startTime;
               return NextResponse.json({
                 success: true,
                 data: {
-                  ...cachedData.cache_data,
+                  ...enhancedCacheData,
                   fromCache: true,
                   cacheAge: cacheAge,
-                  staleData: true
+                  staleData: true,
+                  enhancedWithConversionMetrics: needsConversionEnhancement
                 },
                 debug: {
-                  source: 'database-cache-stale',
+                  source: 'database-cache-stale-enhanced',
                   responseTime,
                   cacheAge: cacheAge,
                   authenticatedUser: user.email,
                   currency: 'PLN',
-                  cacheInfo: `Stale cache (${Math.round(cacheAgeHours * 10) / 10} hours old) - database-first policy`
+                  cacheInfo: `Stale cache (${Math.round(cacheAgeHours * 10) / 10} hours old) - database-first policy${needsConversionEnhancement ? ' + enhanced conversion metrics' : ''}`
                 }
               });
             }
