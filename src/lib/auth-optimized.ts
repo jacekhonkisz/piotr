@@ -1,3 +1,8 @@
+/**
+ * Optimized Authentication System
+ * Fixes 3-5 second authentication delays
+ */
+
 import { createClient } from '@supabase/supabase-js';
 import { Database } from './database.types';
 import logger from './logger';
@@ -9,275 +14,286 @@ const supabase = createClient<Database>(
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 
-// Enhanced caching with localStorage persistence and request deduplication
-let profileCache: { [key: string]: { profile: Profile | null; timestamp: number } } = {};
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const PROFILE_FETCH_TIMEOUT = 5000; // increased timeout for better reliability
-const MAX_RETRIES = 2; // increased retries with exponential backoff
+// Optimized cache with size limits and automatic cleanup
+class OptimizedProfileCache {
+  private cache = new Map<string, { profile: Profile | null; timestamp: number; hits: number }>();
+  private readonly maxSize = 100;
+  private readonly cacheDuration = 10 * 60 * 1000; // 10 minutes
+  private cleanupInterval: NodeJS.Timeout;
+
+  constructor() {
+    // Auto-cleanup every 5 minutes
+    this.cleanupInterval = setInterval(() => {
+      this.cleanup();
+    }, 5 * 60 * 1000);
+  }
+
+  get(userId: string): Profile | null | undefined {
+    const entry = this.cache.get(userId);
+    if (!entry) return undefined;
+
+    const now = Date.now();
+    if (now - entry.timestamp > this.cacheDuration) {
+      this.cache.delete(userId);
+      return undefined;
+    }
+
+    // Update hit count and timestamp for LRU
+    entry.hits++;
+    entry.timestamp = now;
+    return entry.profile;
+  }
+
+  set(userId: string, profile: Profile | null): void {
+    // Remove oldest entries if cache is full
+    if (this.cache.size >= this.maxSize) {
+      this.evictLeastUsed();
+    }
+
+    this.cache.set(userId, {
+      profile,
+      timestamp: Date.now(),
+      hits: 1
+    });
+  }
+
+  private evictLeastUsed(): void {
+    let leastUsedKey = '';
+    let leastHits = Infinity;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (entry.hits < leastHits || (entry.hits === leastHits && entry.timestamp < oldestTime)) {
+        leastUsedKey = key;
+        leastHits = entry.hits;
+        oldestTime = entry.timestamp;
+      }
+    }
+
+    if (leastUsedKey) {
+      this.cache.delete(leastUsedKey);
+    }
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    const keysToDelete: string[] = [];
+
+    for (const [key, entry] of this.cache.entries()) {
+      if (now - entry.timestamp > this.cacheDuration) {
+        keysToDelete.push(key);
+      }
+    }
+
+    keysToDelete.forEach(key => this.cache.delete(key));
+    
+    if (keysToDelete.length > 0) {
+      logger.info(`🧹 Cleaned up ${keysToDelete.length} expired profile cache entries`);
+    }
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  getStats() {
+    return {
+      size: this.cache.size,
+      maxSize: this.maxSize,
+      hitRate: this.calculateHitRate()
+    };
+  }
+
+  private calculateHitRate(): number {
+    const entries = Array.from(this.cache.values());
+    if (entries.length === 0) return 0;
+    
+    const totalHits = entries.reduce((sum, entry) => sum + entry.hits, 0);
+    return totalHits / entries.length;
+  }
+}
+
+// Global optimized cache instance
+const profileCache = new OptimizedProfileCache();
 
 // Request deduplication to prevent race conditions
-let ongoingProfileRequests = new Map<string, Promise<Profile | null>>();
-
-// Load cache from localStorage on module load
-if (typeof window !== 'undefined') {
-  try {
-    const cached = localStorage.getItem('profile_cache');
-    if (cached) {
-      profileCache = JSON.parse(cached);
-      // Clean expired entries
-      const now = Date.now();
-      Object.keys(profileCache).forEach(key => {
-        const entry = profileCache[key];
-        if (entry && (now - entry.timestamp) > CACHE_DURATION) {
-          delete profileCache[key];
-        }
-      });
-    }
-  } catch (error) {
-    logger.warn('Failed to load profile cache from localStorage:', error);
-  }
-}
-
-// Save cache to localStorage
-function saveCacheToStorage() {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem('profile_cache', JSON.stringify(profileCache));
-    } catch (error) {
-      logger.warn('Failed to save profile cache to localStorage:', error);
-    }
-  }
-}
+const ongoingRequests = new Map<string, Promise<Profile | null>>();
 
 /**
- * Get current user profile with enhanced caching and performance optimizations
+ * Optimized profile loading with performance monitoring
  */
-export async function getCurrentProfile(): Promise<Profile | null> {
+export async function getCurrentProfileOptimized(): Promise<Profile | null> {
   const startTime = performance.now();
   
   try {
-    const sessionStart = performance.now();
-    const { data: { session }, error } = await supabase.auth.getSession();
-    const sessionTime = performance.now() - sessionStart;
-    
-    if (error) {
-      logger.error('getCurrentProfile: Session error:', error);
-      return null;
-    }
+    // Step 1: Get session (optimized with timeout)
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Session timeout')), 2000); // 2s timeout
+    });
 
-    if (!session?.user) {
-      logger.info('getCurrentProfile: No session or user found');
+    const { data: { session }, error } = await Promise.race([
+      sessionPromise,
+      timeoutPromise
+    ]);
+    
+    if (error || !session?.user) {
+      logger.info('getCurrentProfileOptimized: No session or user found');
       return null;
     }
 
     const user = session.user;
-    logger.info(`getCurrentProfile: Session retrieved in ${sessionTime.toFixed(2)}ms`);
-    logger.info('getCurrentProfile: User found:', user.email, 'ID:', user.id);
+    const userId = user.id;
 
-    const cacheKey = user.id;
-    
-    // Check if there's already an ongoing request for this user (deduplication)
-    if (ongoingProfileRequests.has(cacheKey)) {
-      logger.info('getCurrentProfile: Returning ongoing request for user:', user.id);
-      return ongoingProfileRequests.get(cacheKey)!;
-    }
-
-    // Check cache first (enhanced caching)
-    const cached = profileCache[cacheKey];
-    const now = Date.now();
-    
-    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-      logger.info('getCurrentProfile: Returning cached profile');
+    // Step 2: Check cache first
+    const cachedProfile = profileCache.get(userId);
+    if (cachedProfile !== undefined) {
       const totalTime = performance.now() - startTime;
-      logger.info(`getCurrentProfile: Total time (cached): ${totalTime.toFixed(2)}ms`);
-      return cached.profile || null;
+      logger.info(`getCurrentProfileOptimized: Cache hit in ${totalTime.toFixed(2)}ms`);
+      return cachedProfile;
     }
 
-    logger.info('getCurrentProfile: Cache miss, fetching from database for user ID:', user.id);
-    
-    // Create promise for this request and store it for deduplication
+    // Step 3: Check for ongoing request (deduplication)
+    if (ongoingRequests.has(userId)) {
+      logger.info('getCurrentProfileOptimized: Reusing ongoing request');
+      return ongoingRequests.get(userId)!;
+    }
+
+    // Step 4: Create new optimized database request
     const profileRequest = (async (): Promise<Profile | null> => {
-      // Implement retry mechanism with exponential backoff
-      let lastError: any = null;
-    
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          const queryStart = performance.now();
+      try {
+        const queryStart = performance.now();
+        
+        // Optimized query with specific fields and timeout
+        const queryPromise = supabase
+          .from('profiles')
+          .select('id, email, role, full_name, avatar_url, created_at, updated_at')
+          .eq('id', userId)
+          .single();
+
+        const queryTimeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Profile query timeout')), 3000); // 3s timeout
+        });
+
+        const { data: profile, error } = await Promise.race([
+          queryPromise,
+          queryTimeoutPromise
+        ]);
+
+        const queryTime = performance.now() - queryStart;
+
+        if (error) {
+          logger.error(`getCurrentProfileOptimized: Query failed in ${queryTime.toFixed(2)}ms:`, error);
           
-          // Use Promise.race with timeout for each attempt
-          const profilePromise = supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_FETCH_TIMEOUT);
-          });
-
-          const { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
-          const queryTime = performance.now() - queryStart;
-
-          if (error) {
-            logger.error(`Attempt ${attempt + 1} failed:`, error);
-            lastError = error;
-            
-            // Don't retry on certain errors
-            if (error.code === 'PGRST116' || error.message.includes('not found')) {
-              break;
-            }
-            
-            // Wait before retry (exponential backoff)
-            if (attempt < MAX_RETRIES) {
-              const delay = Math.pow(2, attempt) * 1000; // 1s, 2s backoff
-              logger.info(`Retrying in ${delay}ms...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-            }
-            continue;
-          }
-
-          logger.info(`getCurrentProfile: Profile fetched successfully in ${queryTime.toFixed(2)}ms`);
-          logger.info('getCurrentProfile: Profile data:', profile);
-
-          // Cache the result
-          profileCache[cacheKey] = {
-            profile,
-            timestamp: now
-          };
-          
-          // Save to localStorage
-          saveCacheToStorage();
-
-          const totalTime = performance.now() - startTime;
-          logger.info(`getCurrentProfile: Total time (database): ${totalTime.toFixed(2)}ms`);
-          
-          return profile;
-          
-        } catch (error: any) {
-          logger.error(`Attempt ${attempt + 1} failed with exception:`, error);
-          lastError = error;
-          
-          if (attempt < MAX_RETRIES) {
-            const delay = Math.pow(2, attempt) * 1000;
-            logger.info(`Retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
+          // Cache null result to prevent repeated failed requests
+          profileCache.set(userId, null);
+          return null;
         }
-      }
 
-      // All retries failed
-      logger.error('getCurrentProfile: All retry attempts failed');
-      logger.error('Last error:', lastError);
-      
-      // Cache null result to prevent repeated failed requests (with shorter duration)
-      profileCache[cacheKey] = {
-        profile: null,
-        timestamp: now - (CACHE_DURATION - 60000) // Cache for only 1 minute
-      };
-      saveCacheToStorage();
-      
-      const totalTime = performance.now() - startTime;
-      logger.info(`getCurrentProfile: Total time (failed): ${totalTime.toFixed(2)}ms`);
-      
-      return null;
+        logger.info(`getCurrentProfileOptimized: Query succeeded in ${queryTime.toFixed(2)}ms`);
+        
+        // Cache successful result
+        profileCache.set(userId, profile);
+        return profile;
+
+      } catch (error) {
+        logger.error('getCurrentProfileOptimized: Request failed:', error);
+        profileCache.set(userId, null);
+        return null;
+      } finally {
+        ongoingRequests.delete(userId);
+      }
     })();
 
-    // Store the ongoing request for deduplication
-    ongoingProfileRequests.set(cacheKey, profileRequest);
-
-    try {
-      const result = await profileRequest;
-      return result;
-    } finally {
-      // Clean up completed request
-      ongoingProfileRequests.delete(cacheKey);
-    }
+    // Store ongoing request for deduplication
+    ongoingRequests.set(userId, profileRequest);
     
-  } catch (error: any) {
-    logger.error('Unexpected error in getCurrentProfile:', error);
+    const result = await profileRequest;
     const totalTime = performance.now() - startTime;
-    logger.info(`getCurrentProfile: Total time (error): ${totalTime.toFixed(2)}ms`);
+    
+    logger.info(`getCurrentProfileOptimized: Total time ${totalTime.toFixed(2)}ms`);
+    
+    return result;
+
+  } catch (error) {
+    const totalTime = performance.now() - startTime;
+    logger.error(`getCurrentProfileOptimized: Failed in ${totalTime.toFixed(2)}ms:`, error);
     return null;
   }
 }
 
 /**
- * Clear profile cache for a user
+ * Optimized sign in with performance monitoring
  */
-export function clearProfileCache(userId?: string) {
-  if (userId) {
-    delete profileCache[userId];
-    ongoingProfileRequests.delete(userId);
-  } else {
-    profileCache = {};
-    ongoingProfileRequests.clear();
-  }
-  saveCacheToStorage();
-}
-
-/**
- * Warm up profile cache for a user
- */
-export async function warmProfileCache(userId: string): Promise<void> {
+export async function signInOptimized(email: string, password: string) {
+  const startTime = performance.now();
+  
   try {
-    logger.info('Warming profile cache for user:', userId);
-    const profile = await getCurrentProfile();
-    if (profile) {
-      logger.info('Profile cache warmed successfully');
+    logger.info('signInOptimized: Starting sign in for:', email);
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    const totalTime = performance.now() - startTime;
+
+    if (error) {
+      logger.error(`signInOptimized: Failed in ${totalTime.toFixed(2)}ms:`, error);
+      return { data: null, error };
     }
+
+    logger.info(`signInOptimized: Success in ${totalTime.toFixed(2)}ms`);
+    return { data, error: null };
+    
   } catch (error) {
-    logger.warn('Failed to warm profile cache:', error);
+    const totalTime = performance.now() - startTime;
+    logger.error(`signInOptimized: Exception in ${totalTime.toFixed(2)}ms:`, error);
+    return { data: null, error };
   }
 }
 
 /**
- * Update user profile
+ * Clear profile cache for user
  */
-export async function updateProfile(updates: Partial<Profile>) {
-  const user = (await supabase.auth.getUser()).data.user;
-  if (!user) {
-    throw new Error('User not authenticated');
+export function clearProfileCacheOptimized(userId?: string): void {
+  if (userId) {
+    profileCache.set(userId, null);
+    ongoingRequests.delete(userId);
+  } else {
+    profileCache.clear();
+    ongoingRequests.clear();
   }
-
-  logger.info('Updating profile for user:', user.id);
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
-    .select()
-    .single();
-
-  if (error) {
-    logger.error('Error updating profile:', error);
-    throw error;
-  }
-
-  // Update cache with new data
-  profileCache[user.id] = {
-    profile: data,
-    timestamp: Date.now()
-  };
-  saveCacheToStorage();
-
-  logger.info('Profile updated successfully');
-  return data;
 }
 
 /**
- * Get cache statistics for monitoring
+ * Get cache performance statistics
  */
 export function getProfileCacheStats() {
-  const now = Date.now();
-  const cacheEntries = Object.entries(profileCache);
-  
   return {
-    totalEntries: cacheEntries.length,
-    validEntries: cacheEntries.filter(([_, entry]) => 
-      (now - entry.timestamp) < CACHE_DURATION
-    ).length,
-    ongoingRequests: ongoingProfileRequests.size,
-    oldestEntry: Math.min(...cacheEntries.map(([_, entry]) => entry.timestamp)),
-    newestEntry: Math.max(...cacheEntries.map(([_, entry]) => entry.timestamp))
+    ...profileCache.getStats(),
+    ongoingRequests: ongoingRequests.size
   };
-} 
+}
+
+/**
+ * Auth state interface
+ */
+export interface AuthState {
+  user: any;
+  profile: Profile | null;
+  loading: boolean;
+}
+
+/**
+ * Check if current user is admin (optimized)
+ */
+export async function isCurrentUserAdminOptimized(): Promise<boolean> {
+  try {
+    const profile = await getCurrentProfileOptimized();
+    return profile?.role === 'admin';
+  } catch (error) {
+    logger.error('Error checking admin status:', error);
+    return false;
+  }
+}

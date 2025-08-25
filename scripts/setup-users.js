@@ -20,7 +20,10 @@ async function setupUsers() {
     console.log('Creating admin user...');
     const { data: adminData, error: adminError } = await supabase.auth.admin.createUser({
       email: 'admin@example.com',
-      password: 'password123',
+      password: process.env.ADMIN_PASSWORD || (() => {
+        console.error('❌ CRITICAL: ADMIN_PASSWORD not set! Using insecure default.');
+        return 'password123';
+      })(),
       email_confirm: true,
       user_metadata: {
         full_name: 'Admin User',
@@ -42,7 +45,10 @@ async function setupUsers() {
     console.log('Creating client user...');
     const { data: clientData, error: clientError } = await supabase.auth.admin.createUser({
       email: 'client@example.com',
-      password: 'password123',
+      password: process.env.CLIENT_PASSWORD || (() => {
+        console.error('❌ CRITICAL: CLIENT_PASSWORD not set! Using insecure default.');
+        return 'password123';
+      })(),
       email_confirm: true,
       user_metadata: {
         full_name: 'Client User',

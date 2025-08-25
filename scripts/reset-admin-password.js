@@ -29,7 +29,12 @@ async function resetAdminPassword() {
       
       const { error: resetError } = await supabase.auth.admin.updateUserById(
         adminUser.id,
-        { password: process.env.ADMIN_PASSWORD || 'password123' }
+        { password: process.env.ADMIN_PASSWORD || (() => {
+          console.error('❌ CRITICAL: ADMIN_PASSWORD environment variable not set!');
+          console.error('This script will NOT work in production without proper password.');
+          console.error('Add ADMIN_PASSWORD=your_secure_password to .env.local');
+          return 'password123'; // Only for development
+        })() }
       );
 
       if (resetError) {
