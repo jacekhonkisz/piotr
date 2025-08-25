@@ -14,9 +14,11 @@ export async function GET(request: NextRequest) {
     const periodStart = searchParams.get('periodStart');
     const periodEnd = searchParams.get('periodEnd');
 
-    // Check authentication
+    // Check authentication (allow public access for calendar preview)
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const isPublicAccess = !authHeader;
+    
+    if (!isPublicAccess && (!authHeader || !authHeader.startsWith('Bearer '))) {
       return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
     }
 

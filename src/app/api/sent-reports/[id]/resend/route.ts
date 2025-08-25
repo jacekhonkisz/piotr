@@ -9,9 +9,12 @@ const supabase = createClient(
 // POST - Resend a report to the client
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -51,7 +54,7 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied - admin only' }, { status: 403 });
     }
 
-    const sentReportId = params.id;
+    const sentReportId = id;
 
     // Get the sent report with client information
     const { data: sentReport, error } = await supabase

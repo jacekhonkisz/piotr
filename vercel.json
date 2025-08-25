@@ -10,11 +10,11 @@
     },
     {
       "path": "/api/background/cleanup-old-data",
-      "schedule": "0 2 * * 6"
+      "schedule": "0 4 * * 0"
     },
     {
       "path": "/api/background/cleanup-executive-summaries",
-      "schedule": "0 3 * * 6"
+      "schedule": "0 5 * * 0"
     },
     {
       "path": "/api/automated/send-scheduled-reports",
@@ -22,27 +22,27 @@
     },
     {
       "path": "/api/automated/refresh-current-month-cache",
-      "schedule": "0 */3 * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/automated/refresh-current-week-cache",
-      "schedule": "15 */3 * * *"
+      "schedule": "30 */6 * * *"
     },
     {
       "path": "/api/automated/archive-completed-months",
-      "schedule": "0 1 1 * *"
+      "schedule": "0 2 1 * *"
     },
     {
       "path": "/api/automated/archive-completed-weeks",
-      "schedule": "0 2 * * 1"
+      "schedule": "0 3 * * 1"
     },
     {
       "path": "/api/automated/cleanup-old-data",
-      "schedule": "0 4 1 * *"
+      "schedule": "0 6 1 * *"
     },
     {
       "path": "/api/automated/daily-kpi-collection",
-      "schedule": "0 1 * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 } 
