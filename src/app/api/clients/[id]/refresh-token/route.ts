@@ -9,9 +9,12 @@ const supabase = createClient(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -38,7 +41,7 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const clientId = params.id;
+    const clientId = id;
 
     // Get client information
     const { data: client, error: clientError } = await supabase

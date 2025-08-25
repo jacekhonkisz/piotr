@@ -84,7 +84,9 @@ export default function IndividualReportPage() {
             dateRange: {
               start: '2024-01-01', // Get all historical data
               end: new Date().toISOString().split('T')[0]
-            }
+            },
+            forceFresh: true, // 🔧 TEMPORARY: Force fresh data for booking steps testing
+            reason: 'booking_steps_testing'
           })
         });
 
@@ -133,7 +135,15 @@ export default function IndividualReportPage() {
               reach: Math.floor(campaign.reach / 6), // Distribute across months
               status: 'ACTIVE',
               created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
+              // Add booking step fields
+              click_to_call: Math.floor((campaign.click_to_call || 0) / 6),
+              email_contacts: Math.floor((campaign.email_contacts || 0) / 6),
+              booking_step_1: Math.floor((campaign.booking_step_1 || 0) / 6),
+              booking_step_2: Math.floor((campaign.booking_step_2 || 0) / 6),
+              booking_step_3: Math.floor((campaign.booking_step_3 || 0) / 6),
+              reservations: Math.floor((campaign.reservations || 0) / 6),
+              reservation_value: (campaign.reservation_value || 0) / 6
             }))
           };
 

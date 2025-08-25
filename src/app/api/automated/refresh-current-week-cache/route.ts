@@ -29,6 +29,11 @@ function getCurrentWeekInfo() {
   };
 }
 
+export async function GET() {
+  // For Vercel cron jobs - they only support GET requests
+  return await POST();
+}
+
 export async function POST() {
   const startTime = Date.now();
   
@@ -38,30 +43,30 @@ export async function POST() {
     // Get current week info
     const currentWeek = getCurrentWeekInfo();
     
-    // Get all active clients that need weekly cache refresh
+    // Get all active clients that need cache refresh
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
-      .select('id, name, email, meta_access_token, ad_account_id')
-      .not('meta_access_token', 'is', null)
-      .not('ad_account_id', 'is', null);
+      .select('id, name, email, meta_access_token, ad_account_id, api_status')
+      .eq('api_status', 'valid'); // Include ALL valid clients
     
     if (clientsError) {
       throw new Error(`Failed to get clients: ${clientsError.message}`);
     }
     
     if (!clients || clients.length === 0) {
-      logger.info('No clients found for weekly cache refresh');
+      logger.info('No active clients found for weekly cache refresh');
       return NextResponse.json({
         success: true,
-        message: 'No clients found for weekly cache refresh',
+        message: 'No active clients found for weekly cache refresh',
         processed: 0
       });
     }
     
-    console.log(`🔄 Starting automated weekly cache refresh for ${clients.length} clients`);
+    console.log(`🔄 Starting automated weekly cache refresh for ${clients.length} active clients`);
     
     let successCount = 0;
     let errorCount = 0;
+    let skippedCount = 0;
     const results: any[] = [];
     
     // Process clients in batches to avoid overwhelming the system
@@ -70,73 +75,101 @@ export async function POST() {
       const batch = clients.slice(i, i + batchSize);
       
       const batchPromises = batch.map(async (client) => {
-        try {
-          console.log(`📊 Refreshing weekly cache for client: ${client.name} (${client.id})`);
-          
-          // Check if weekly cache needs refresh (older than 2.5 hours to be safe)
-          const { data: cachedData } = await supabase
-            .from('current_week_cache')
-            .select('last_updated')
-            .eq('client_id', client.id)
-            .eq('period_id', currentWeek.periodId)
-            .single();
-          
-          const now = new Date().getTime();
-          const cacheTime = cachedData ? new Date(cachedData.last_updated).getTime() : 0;
-          const ageHours = (now - cacheTime) / (1000 * 60 * 60);
-          
-          if (cachedData && ageHours < 2.5) {
-            console.log(`⏭️ Skipping ${client.name} - weekly cache is still fresh (${ageHours.toFixed(1)}h old)`);
-            return {
-              clientId: client.id,
-              clientName: client.name,
-              status: 'skipped',
-              reason: 'weekly-cache-fresh'
-            };
-          }
-          
-          // Call weekly smart cache API to refresh
-          const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')}/api/smart-weekly-cache`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
-            },
-            body: JSON.stringify({ 
-              clientId: client.id,
-              forceRefresh: true 
-            })
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              console.log(`✅ Successfully refreshed weekly cache for ${client.name}`);
-              successCount++;
-              return {
-                clientId: client.id,
-                clientName: client.name,
-                status: 'success',
-                campaignCount: data.data?.campaigns?.length || 0,
-                period: 'weekly'
-              };
-            } else {
-              throw new Error(data.error || 'Unknown error');
-            }
-          } else {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-          
-        } catch (error) {
-          console.error(`❌ Failed to refresh weekly cache for ${client.name}:`, error);
-          errorCount++;
+        // Skip clients without required Meta credentials
+        if (!client.meta_access_token || !client.ad_account_id) {
+          console.log(`⏭️ Skipping ${client.name} - missing Meta credentials`);
+          skippedCount++;
           return {
             clientId: client.id,
             clientName: client.name,
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Unknown error'
+            status: 'skipped',
+            reason: 'missing-credentials'
           };
         }
+        
+        // Add retry logic for each client
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            console.log(`📊 Refreshing weekly cache for client: ${client.name} (${client.id}) - attempt ${attempt}`);
+            
+            // Check if cache needs refresh (older than 2.5 hours to be safe)
+            const { data: cachedData } = await supabase
+              .from('current_week_cache')
+              .select('last_updated')
+              .eq('client_id', client.id)
+              .eq('period_id', currentWeek.periodId)
+              .single();
+            
+            const now = new Date().getTime();
+            const cacheTime = cachedData ? new Date(cachedData.last_updated).getTime() : 0;
+            const ageHours = (now - cacheTime) / (1000 * 60 * 60);
+            
+            if (cachedData && ageHours < 2.5) {
+              console.log(`⏭️ Skipping ${client.name} - cache is still fresh (${ageHours.toFixed(1)}h old)`);
+              skippedCount++;
+              return {
+                clientId: client.id,
+                clientName: client.name,
+                status: 'skipped',
+                reason: 'cache-fresh'
+              };
+            }
+            
+            // Call smart weekly cache API to refresh
+            const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')}/api/smart-weekly-cache`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+              },
+              body: JSON.stringify({ 
+                clientId: client.id,
+                forceRefresh: true 
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success) {
+                console.log(`✅ Successfully refreshed weekly cache for ${client.name}`);
+                successCount++;
+                return {
+                  clientId: client.id,
+                  clientName: client.name,
+                  status: 'success',
+                  campaignCount: data.data?.campaigns?.length || 0
+                };
+              } else {
+                throw new Error(data.error || 'Unknown error');
+              }
+            } else {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+          } catch (error) {
+            console.error(`❌ Attempt ${attempt} failed for ${client.name}:`, error);
+            
+            if (attempt === maxRetries) {
+              errorCount++;
+              return {
+                clientId: client.id,
+                clientName: client.name,
+                status: 'error',
+                error: error instanceof Error ? error.message : 'Unknown error',
+                attempts: maxRetries
+              };
+            } else {
+              // Wait before retry with exponential backoff
+              const delayMs = Math.pow(2, attempt) * 1000;
+              console.log(`⏳ Waiting ${delayMs}ms before retry for ${client.name}`);
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+          }
+        }
+        
+        // This should never be reached, but TypeScript requires it
+        throw new Error(`Unexpected end of retry loop for ${client.name}`);
       });
       
       const batchResults = await Promise.all(batchPromises);
@@ -160,13 +193,12 @@ export async function POST() {
     
     return NextResponse.json({
       success: true,
-      message: `Weekly cache refresh completed for ${clients.length} clients`,
+      message: `Weekly cache refresh completed for ${clients.length} active clients`,
       summary: {
         totalClients: clients.length,
         successCount,
         errorCount,
-        skippedCount: results.filter(r => r.status === 'skipped').length,
-        period: 'weekly'
+        skippedCount
       },
       results,
       responseTime

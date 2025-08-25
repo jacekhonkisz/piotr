@@ -156,37 +156,64 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const requestData = await request.json();
 
-    // Validate and convert Meta access token to long-lived token
-    logger.info('🔐 Validating and converting Meta access token...');
-    const metaService = new MetaAPIService(requestData.meta_access_token);
-    const tokenValidation = await metaService.validateAndConvertToken();
+    // Determine which platforms are enabled
+    const hasMetaData = requestData.ad_account_id && (requestData.meta_access_token || requestData.system_user_token);
+    const hasGoogleAdsData = requestData.google_ads_enabled && requestData.google_ads_customer_id && requestData.google_ads_refresh_token;
 
-    if (!tokenValidation.valid) {
+    if (!hasMetaData && !hasGoogleAdsData) {
       return NextResponse.json({ 
-        error: `Meta API token validation failed: ${tokenValidation.error}` 
+        error: 'At least one platform (Meta Ads or Google Ads) must be configured' 
       }, { status: 400 });
     }
 
-    // Use the converted long-lived token if available
-    const finalToken = tokenValidation.convertedToken || requestData.meta_access_token;
-    
-    if (tokenValidation.convertedToken) {
-      logger.info('✅ Token successfully converted to long-lived token');
-    } else {
-      logger.info('ℹ️ Token appears to already be long-lived or conversion not needed');
-    }
+    let finalMetaToken = null;
+    let tokenValidation: any = null;
+    let accountValidation: any = null;
 
-    // Validate the specific ad account ID with the final token
-    logger.info('🏢 Validating ad account access...');
-    const accountValidation = await metaService.validateAdAccount(requestData.ad_account_id);
-    
-    if (!accountValidation.valid) {
-      return NextResponse.json({ 
-        error: `Ad account validation failed: ${accountValidation.error}` 
-      }, { status: 400 });
-    }
+    // Validate Meta credentials if provided
+    if (hasMetaData) {
+      logger.info('🔐 Validating Meta credentials...');
+      
+      // Use system_user_token if provided, otherwise use meta_access_token
+      const tokenToUse = requestData.system_user_token || requestData.meta_access_token;
+      const metaService = new MetaAPIService(tokenToUse);
+      
+      // Only validate and convert if it's not a system user token
+      if (requestData.meta_access_token && !requestData.system_user_token) {
+        tokenValidation = await metaService.validateAndConvertToken();
+        
+        if (!tokenValidation.valid) {
+          return NextResponse.json({ 
+            error: `Meta API token validation failed: ${tokenValidation.error}` 
+          }, { status: 400 });
+        }
+        
+        finalMetaToken = tokenValidation.convertedToken || requestData.meta_access_token;
+        
+        if (tokenValidation.convertedToken) {
+          logger.info('✅ Token successfully converted to long-lived token');
+        } else {
+          logger.info('ℹ️ Token appears to already be long-lived or conversion not needed');
+        }
+      } else {
+        // System user token - no conversion needed
+        finalMetaToken = requestData.system_user_token;
+        tokenValidation = { valid: true, isLongLived: true };
+        logger.info('✅ Using system user token (permanent access)');
+      }
 
-    logger.info('✅ Ad account validation successful');
+      // Validate the specific ad account ID with the final token
+      logger.info('🏢 Validating ad account access...');
+      accountValidation = await metaService.validateAdAccount(requestData.ad_account_id);
+      
+      if (!accountValidation.valid) {
+        return NextResponse.json({ 
+          error: `Ad account validation failed: ${accountValidation.error}` 
+        }, { status: 400 });
+      }
+
+      logger.info('✅ Ad account validation successful');
+    }
 
     // Check if user already exists in auth
     try {
@@ -281,30 +308,45 @@ export async function POST(request: NextRequest) {
     }
 
     // Add client to clients table with the long-lived token and enhanced token info
+    const clientInsertData: any = {
+      name: requestData.name,
+      email: requestData.email,
+      admin_id: user.id,
+      api_status: 'valid',
+      company: requestData.company || null,
+      reporting_frequency: requestData.reporting_frequency || 'monthly',
+      notes: requestData.notes || null,
+      generated_password: generatedPassword,
+      generated_username: generatedUsername,
+      credentials_generated_at: new Date().toISOString(),
+      // Contact emails - initialize with main email
+      contact_emails: [requestData.email],
+      last_token_validation: new Date().toISOString()
+    };
+
+    // Add Meta fields if Meta is configured
+    if (hasMetaData) {
+      clientInsertData.ad_account_id = requestData.ad_account_id;
+      clientInsertData.meta_access_token = finalMetaToken;
+      clientInsertData.system_user_token = requestData.system_user_token || null;
+      clientInsertData.token_expires_at = tokenValidation?.expiresAt?.toISOString() || null;
+      clientInsertData.token_refresh_count = tokenValidation?.convertedToken ? 1 : 0;
+      clientInsertData.token_health_status = tokenValidation?.isLongLived ? 'valid' : 
+        (tokenValidation?.expiresAt && tokenValidation?.expiresAt > new Date()) ? 'valid' : 'expired';
+    }
+
+    // Add Google Ads fields if Google Ads is configured
+    if (hasGoogleAdsData) {
+      clientInsertData.google_ads_customer_id = requestData.google_ads_customer_id;
+      clientInsertData.google_ads_refresh_token = requestData.google_ads_refresh_token;
+      clientInsertData.google_ads_enabled = true;
+    } else {
+      clientInsertData.google_ads_enabled = false;
+    }
+
     const { data: newClient, error: clientError } = await supabase
       .from('clients')
-      .insert({
-        name: requestData.name,
-        email: requestData.email,
-        ad_account_id: requestData.ad_account_id,
-        meta_access_token: finalToken, // Use the converted long-lived token
-        admin_id: user.id,
-        api_status: 'valid',
-        company: requestData.company || null,
-        reporting_frequency: requestData.reporting_frequency || 'monthly',
-        notes: requestData.notes || null,
-        generated_password: generatedPassword,
-        generated_username: generatedUsername,
-        credentials_generated_at: new Date().toISOString(),
-        // Contact emails - initialize with main email
-        contact_emails: [requestData.email],
-        // Enhanced token management fields
-        token_expires_at: tokenValidation.expiresAt?.toISOString() || null,
-        token_refresh_count: tokenValidation.convertedToken ? 1 : 0,
-        last_token_validation: new Date().toISOString(),
-        token_health_status: tokenValidation.isLongLived ? 'valid' : 
-          (tokenValidation.expiresAt && tokenValidation.expiresAt > new Date()) ? 'valid' : 'expired'
-      })
+      .insert(clientInsertData)
       .select()
       .single();
 
@@ -316,8 +358,8 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('Success', newClient.id);
-    console.log(`📊 Ad Account: ${accountValidation.account?.name || requestData.ad_account_id}`);
-    console.log(`🔑 Token Status: ${tokenValidation.convertedToken ? 'Converted to long-lived' : 'Already long-lived'}`);
+    console.log(`📊 Ad Account: ${accountValidation?.account?.name || requestData.ad_account_id}`);
+    console.log(`🔑 Token Status: ${tokenValidation?.convertedToken ? 'Converted to long-lived' : 'Already long-lived'}`);
 
     return NextResponse.json({
       success: true,
@@ -327,8 +369,8 @@ export async function POST(request: NextRequest) {
         password: generatedPassword
       },
       tokenInfo: {
-        converted: !!tokenValidation.convertedToken,
-        isLongLived: tokenValidation.isLongLived
+        converted: !!tokenValidation?.convertedToken,
+        isLongLived: tokenValidation?.isLongLived
       }
     });
 

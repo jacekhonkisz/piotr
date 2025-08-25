@@ -338,6 +338,7 @@ export class DataLifecycleManager {
       reservations: conversionTotals.reservations,
       reservation_value: conversionTotals.reservation_value,
       booking_step_2: conversionTotals.booking_step_2,
+      booking_step_3: conversionTotals.booking_step_3,
       roas: roas,
       cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()

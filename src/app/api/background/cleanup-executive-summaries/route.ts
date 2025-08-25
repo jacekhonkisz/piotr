@@ -8,6 +8,37 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export async function GET() {
+  // For Vercel cron jobs - bypass authentication
+  logger.info('🧹 Executive summaries cleanup triggered by cron job');
+  
+  try {
+    console.log(`🧹 Starting executive summaries cleanup via cron job`);
+
+    // Start background cleanup (don't await to avoid timeout)
+    const cacheService = ExecutiveSummaryCacheService.getInstance();
+    cacheService.cleanupOldSummaries().catch((error: any) => {
+      console.error('❌ Background executive summaries cleanup failed:', error);
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Executive summaries cleanup started in background via cron job',
+      startedAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Error starting executive summaries cleanup via cron:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to start executive summaries cleanup',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   logger.info('🧹 Cleanup executive summaries request started');
   

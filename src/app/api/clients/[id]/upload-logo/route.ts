@@ -9,9 +9,12 @@ const supabase = createClient(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -48,7 +51,7 @@ export async function POST(
     const { data: existingClient, error: fetchError } = await supabase
       .from('clients')
       .select('id, name, logo_url')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('admin_id', user.id)
       .single();
 
@@ -83,12 +86,15 @@ export async function POST(
 
     // Generate unique filename
     const fileExt = file.name.split('.').pop();
-    const fileName = `${params.id}/logo-${Date.now()}.${fileExt}`;
+    const fileName = `${id}/logo-${Date.now()}.${fileExt}`;
 
     // Delete old logo if exists
     if (existingClient.logo_url) {
       try {
-        const oldPath = existingClient.logo_url.split('/client-logos/')[1];
+        
+    // Await params before using
+    const { id } = await params;
+    const oldPath = existingClient.logo_url.split('/client-logos/')[1];
         if (oldPath) {
           await supabase.storage
             .from('client-logos')
@@ -124,7 +130,7 @@ export async function POST(
     const { data: updatedClient, error: updateError } = await supabase
       .from('clients')
       .update({ logo_url: publicUrl })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -158,9 +164,12 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -196,7 +205,7 @@ export async function DELETE(
     const { data: existingClient, error: fetchError } = await supabase
       .from('clients')
       .select('id, name, logo_url')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('admin_id', user.id)
       .single();
 
@@ -207,7 +216,10 @@ export async function DELETE(
     // Delete logo from storage if exists
     if (existingClient.logo_url) {
       try {
-        const logoPath = existingClient.logo_url.split('/client-logos/')[1];
+        
+    // Await params before using
+    const { id } = await params;
+    const logoPath = existingClient.logo_url.split('/client-logos/')[1];
         if (logoPath) {
           await supabase.storage
             .from('client-logos')
@@ -223,7 +235,7 @@ export async function DELETE(
     const { data: updatedClient, error: updateError } = await supabase
       .from('clients')
       .update({ logo_url: null })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 

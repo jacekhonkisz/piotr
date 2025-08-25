@@ -24,11 +24,22 @@ interface DemographicPerformance {
   ctr: number;
   cpc: number;
   cpp?: number;
+  // Enhanced conversion metrics by demographics
+  reservations: number;
+  reservation_value: number;
+  roas: number;
+  cost_per_reservation: number;
+  conversion_rate: number;
+  booking_step_1: number;
+  booking_step_2: number;
+  booking_step_3: number;
+  click_to_call: number;
+  email_contacts: number;
 }
 
 interface DemographicPieChartsProps {
   data: DemographicPerformance[];
-  metric: 'impressions' | 'clicks';
+  metric: 'impressions' | 'clicks' | 'reservations' | 'roas' | 'reservation_value';
 }
 
 export default function DemographicPieCharts({ data, metric }: DemographicPieChartsProps) {
@@ -165,15 +176,15 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     <div ref={containerRef} className="space-y-8">
       {/* Header */}
       <div className="text-center">
-        <div className="inline-flex items-center space-x-3 bg-gradient-to-r from-purple-50 to-pink-50 px-6 py-3 rounded-2xl border border-purple-100">
-          <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+        <div className="inline-flex items-center space-x-3 bg-slate-50 px-6 py-3 rounded-xl border border-slate-200">
+          <div className="p-2 bg-slate-900 rounded-lg">
             <MetricIcon className="h-5 w-5 text-white" />
           </div>
-          <h3 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <h3 className="text-xl font-semibold text-slate-900">
             Podział {getMetricLabel()} według Demografii
           </h3>
         </div>
-        <p className="text-gray-600 mt-2">Analiza skuteczności reklam według płci i grup wiekowych</p>
+        <p className="text-slate-600 mt-2">Analiza skuteczności reklam według płci i grup wiekowych</p>
       </div>
 
       {/* Charts Grid */}
@@ -304,25 +315,25 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
       </div>
 
       {/* Summary Stats */}
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-100">
+      <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
           <div>
-            <div className="text-2xl font-bold text-purple-600">
+            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
               {formatValue(genderData.total)}
             </div>
-            <div className="text-sm text-gray-600">Łączne {getMetricLabel().toLowerCase()}</div>
+            <div className="text-sm text-slate-600">Łączne {getMetricLabel().toLowerCase()}</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-pink-600">
+            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
               {genderData.labels.length}
             </div>
-            <div className="text-sm text-gray-600">Kategorie płci</div>
+            <div className="text-sm text-slate-600">Kategorie płci</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-indigo-600">
+            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
               {ageData.labels.length}
             </div>
-            <div className="text-sm text-gray-600">Grupy wiekowe</div>
+            <div className="text-sm text-slate-600">Grupy wiekowe</div>
           </div>
         </div>
       </div>

@@ -268,6 +268,11 @@ export type Database = {
           email_send_count: number | null
           generated_password: string | null
           generated_username: string | null
+          google_ads_access_token: string | null
+          google_ads_customer_id: string | null
+          google_ads_enabled: boolean | null
+          google_ads_refresh_token: string | null
+          google_ads_token_expires_at: string | null
           id: string
           last_report_date: string | null
           last_report_sent_at: string | null
@@ -297,6 +302,11 @@ export type Database = {
           email_send_count?: number | null
           generated_password?: string | null
           generated_username?: string | null
+          google_ads_access_token?: string | null
+          google_ads_customer_id?: string | null
+          google_ads_enabled?: boolean | null
+          google_ads_refresh_token?: string | null
+          google_ads_token_expires_at?: string | null
           id?: string
           last_report_date?: string | null
           last_report_sent_at?: string | null
@@ -326,6 +336,11 @@ export type Database = {
           email_send_count?: number | null
           generated_password?: string | null
           generated_username?: string | null
+          google_ads_access_token?: string | null
+          google_ads_customer_id?: string | null
+          google_ads_enabled?: boolean | null
+          google_ads_refresh_token?: string | null
+          google_ads_token_expires_at?: string | null
           id?: string
           last_report_date?: string | null
           last_report_sent_at?: string | null
@@ -949,6 +964,151 @@ export type Database = {
           value?: Json
         }
         Relationships: []
+      }
+      google_ads_campaigns: {
+        Row: {
+          booking_step_1: number
+          booking_step_2: number
+          booking_step_3: number
+          campaign_id: string
+          campaign_name: string
+          clicks: number
+          client_id: string
+          cpc: number
+          ctr: number
+          created_at: string
+          date_range_end: string
+          date_range_start: string
+          demographics: Json | null
+          email_clicks: number
+          form_submissions: number
+          id: string
+          impressions: number
+          phone_calls: number
+          phone_clicks: number
+          reservation_value: number
+          reservations: number
+          roas: number
+          spend: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          booking_step_1?: number
+          booking_step_2?: number
+          booking_step_3?: number
+          campaign_id: string
+          campaign_name: string
+          clicks?: number
+          client_id: string
+          cpc?: number
+          ctr?: number
+          created_at?: string
+          date_range_end: string
+          date_range_start: string
+          demographics?: Json | null
+          email_clicks?: number
+          form_submissions?: number
+          id?: string
+          impressions?: number
+          phone_calls?: number
+          phone_clicks?: number
+          reservation_value?: number
+          reservations?: number
+          roas?: number
+          spend?: number
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          booking_step_1?: number
+          booking_step_2?: number
+          booking_step_3?: number
+          campaign_id?: string
+          campaign_name?: string
+          clicks?: number
+          client_id?: string
+          cpc?: number
+          ctr?: number
+          created_at?: string
+          date_range_end?: string
+          date_range_start?: string
+          demographics?: Json | null
+          email_clicks?: number
+          form_submissions?: number
+          id?: string
+          impressions?: number
+          phone_calls?: number
+          phone_clicks?: number
+          reservation_value?: number
+          reservations?: number
+          roas?: number
+          spend?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_ads_campaigns_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_ads_tables_data: {
+        Row: {
+          client_id: string
+          created_at: string
+          data_source: string | null
+          date_range_end: string
+          date_range_start: string
+          demographic_performance: Json | null
+          device_performance: Json | null
+          hourly_performance: Json | null
+          id: string
+          keywords_performance: Json | null
+          last_updated: string | null
+          placement_performance: Json | null
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          data_source?: string | null
+          date_range_end: string
+          date_range_start: string
+          demographic_performance?: Json | null
+          device_performance?: Json | null
+          hourly_performance?: Json | null
+          id?: string
+          keywords_performance?: Json | null
+          last_updated?: string | null
+          placement_performance?: Json | null
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          data_source?: string | null
+          date_range_end?: string
+          date_range_start?: string
+          demographic_performance?: Json | null
+          device_performance?: Json | null
+          hourly_performance?: Json | null
+          id?: string
+          keywords_performance?: Json | null
+          last_updated?: string | null
+          placement_performance?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_ads_tables_data_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

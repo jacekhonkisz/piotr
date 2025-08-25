@@ -8,9 +8,12 @@ const supabase = createClient(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -49,7 +52,7 @@ export async function GET(
         updated_at,
         admin:profiles!client_notes_admin_id_fkey(name)
       `)
-      .eq('client_id', params.id)
+      .eq('client_id', id)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -70,9 +73,12 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -109,7 +115,7 @@ export async function POST(
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (clientError || !client) {
@@ -120,7 +126,7 @@ export async function POST(
     const { data: note, error: insertError } = await supabase
       .from('client_notes')
       .insert({
-        client_id: params.id,
+        client_id: id,
         admin_id: user.id,
         content,
         note_type: noteType,

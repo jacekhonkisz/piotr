@@ -37,6 +37,17 @@ interface DemographicPerformance {
   ctr: number;
   cpc: number;
   cpp?: number;
+  // Enhanced conversion metrics by demographics
+  reservations: number;
+  reservation_value: number;
+  roas: number;
+  cost_per_reservation: number;
+  conversion_rate: number;
+  booking_step_1: number;
+  booking_step_2: number;
+  booking_step_3: number;
+  click_to_call: number;
+  email_contacts: number;
 }
 
 interface AdRelevanceResult {
@@ -65,7 +76,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
-  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks'>('impressions');
+  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'reservations' | 'roas' | 'reservation_value'>('roas');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
@@ -270,8 +281,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <RefreshCw className="h-8 w-8 text-gray-400 animate-spin" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Ładowanie danych z Meta Ads</h3>
-          <p className="text-gray-600">Pobieranie najnowszych informacji o kampaniach...</p>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">Ładowanie danych z Meta Ads</h3>
+          <p className="text-slate-600">Pobieranie najnowszych informacji o kampaniach...</p>
         </div>
       </div>
     );
@@ -283,12 +294,11 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <AlertCircle className="h-10 w-10 text-red-600" />
         </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-3">Błąd podczas ładowania danych</h3>
-        <p className="text-gray-600 mb-6 max-w-md mx-auto">{error}</p>
+        <h3 className="text-xl font-bold text-slate-900 mb-3">Błąd podczas ładowania danych</h3>
+        <p className="text-slate-600 mb-6 max-w-md mx-auto">{error}</p>
         <button
           onClick={fetchMetaTablesData}
-          className="bg-blue-600 text-white px-6 py-3 rounded-2xl hover:bg-blue-700 transition-all duration-200 font-medium shadow-sm hover:shadow-md"
-          style={{ borderRadius: '16px' }}
+          className="bg-slate-900 text-white px-6 py-3 rounded-xl hover:bg-slate-800 transition-all duration-200 font-medium shadow-sm"
         >
           Spróbuj ponownie
         </button>
@@ -305,8 +315,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <BarChart3 className="h-10 w-10 text-gray-400" />
         </div>
-        <h3 className="text-xl font-bold text-gray-900 mb-3">Brak danych dla tego okresu</h3>
-        <p className="text-gray-600 mb-6 max-w-md mx-auto">
+        <h3 className="text-xl font-bold text-slate-900 mb-3">Brak danych dla tego okresu</h3>
+        <p className="text-slate-600 mb-6 max-w-md mx-auto">
           Nie znaleziono danych z Meta Ads API dla wybranego okresu ({dateStart} - {dateEnd}). 
           Sprawdź czy masz aktywne kampanie w tym czasie.
         </p>
@@ -319,72 +329,67 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
   return (
     <div className="space-y-8">
-      {/* Tab Navigation - Clean Design */}
-      <div className="flex space-x-2 bg-white p-2 rounded-2xl" style={{ border: '1px solid #E7EAF3' }}>
+      {/* Tab Navigation - Premium Design */}
+      <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl">
         <button
           onClick={() => setActiveTab('placement')}
-          className={`flex items-center space-x-3 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
             activeTab === 'placement'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
-          style={{ borderRadius: '16px' }}
         >
           <BarChart3 className="h-4 w-4" />
           <span>Top Placement Performance</span>
         </button>
         <button
           onClick={() => setActiveTab('demographic')}
-          className={`flex items-center space-x-3 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
             activeTab === 'demographic'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
-          style={{ borderRadius: '16px' }}
         >
           <Users className="h-4 w-4" />
           <span>Demographic Performance</span>
         </button>
         <button
           onClick={() => setActiveTab('adRelevance')}
-          className={`flex items-center space-x-3 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
             activeTab === 'adRelevance'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
-          style={{ borderRadius: '16px' }}
         >
           <Award className="h-4 w-4" />
           <span>Ad Relevance & Results</span>
         </button>
       </div>
 
-      {/* Table Content - Clean Card Design */}
+      {/* Table Content - Premium Card Design */}
       <motion.div
         key={activeTab}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="bg-white rounded-2xl overflow-hidden"
-        style={{ border: '1px solid #E7EAF3' }}
+        className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
       >
         {activeTab === 'placement' && (
           <div>
-            <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">Top Placement Performance</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Top Placement Performance</h3>
+                <p className="text-sm text-slate-600">
                   Skuteczność reklam według placementów
                   {placementData.length > 5 && !expandedSections['placement'] && ` • Pokazano top 5`}
                 </p>
               </div>
               <button
                 onClick={() => exportToCSV(placementData, 'placement-performance')}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                style={{ borderRadius: '16px' }}
+                className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium"
               >
                 <FileSpreadsheet className="h-4 w-4" />
-                <span className="font-medium">Export CSV</span>
+                <span>Export CSV</span>
               </button>
             </div>
             
@@ -392,64 +397,63 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
               <div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-sm font-medium text-slate-700">
                           Placement
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           Spend
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           Impressions
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           Clicks
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           CTR
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           CPC
                         </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           CPA (CPP)
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white">
+                    <tbody className="bg-white divide-y divide-slate-200">
                       {placementData
                         .sort((a, b) => b.spend - a.spend)
                         .slice(0, expandedSections['placement'] ? undefined : 5)
                         .map((placement, index) => (
                           <tr 
                             key={index} 
-                            className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
-                            style={{ borderColor: '#E7EAF3', height: '56px' }}
+                            className={`hover:bg-slate-50 transition-colors ${index % 2 === 1 ? 'bg-slate-50/30' : ''}`}
                           >
                             <td className="px-6 py-4">
                               <div className="flex items-center">
                                 <RankingBadge rank={index + 1} index={index} />
-                                <span className="text-sm font-medium text-gray-900">{placement.placement}</span>
+                                <span className="text-sm font-medium text-slate-900">{placement.placement}</span>
                               </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm font-semibold text-gray-900">{formatCurrency(placement.spend)}</span>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatCurrency(placement.spend)}</span>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{formatNumber(placement.impressions)}</span>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{formatNumber(placement.impressions)}</span>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{formatNumber(placement.clicks)}</span>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{formatNumber(placement.clicks)}</span>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{formatPercentage(placement.ctr)}</span>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{formatPercentage(placement.ctr)}</span>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{formatCurrency(placement.cpc)}</span>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{formatCurrency(placement.cpc)}</span>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{placement.cpp ? formatCurrency(placement.cpp) : 'N/A'}</span>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{placement.cpp ? formatCurrency(placement.cpp) : 'N/A'}</span>
                             </td>
                           </tr>
                         ))}
@@ -482,8 +486,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             ) : (
               <div className="text-center py-12">
                 <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych o placementach</h3>
-                <p className="text-gray-600">Nie znaleziono danych o placementach dla wybranego okresu.</p>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o placementach</h3>
+                <p className="text-slate-600">Nie znaleziono danych o placementach dla wybranego okresu.</p>
               </div>
             )}
           </div>
@@ -491,40 +495,67 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         {activeTab === 'demographic' && (
           <div>
-            <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">Demographic Performance</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Demographic Performance</h3>
+                <p className="text-sm text-slate-600">
                   Skuteczność reklam według demografii
                   {demographicData.length > 5 && !expandedSections['demographic'] && ` • Pokazano top 5`}
                 </p>
 
               </div>
               <div className="flex items-center space-x-4">
-                {/* Metric Selector */}
-                <div className="flex items-center space-x-2 bg-gray-50 rounded-xl p-1" style={{ border: '1px solid #E7EAF3' }}>
+                {/* Enhanced Metric Selector */}
+                <div className="flex items-center space-x-2 bg-slate-100 rounded-xl p-1">
                   <button
-                    onClick={() => setDemographicMetric('impressions')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'impressions'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+                    onClick={() => setDemographicMetric('roas')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      demographicMetric === 'roas'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
-                    style={{ borderRadius: '16px' }}
                   >
                     <div className="flex items-center space-x-2">
-                      <Eye className="h-4 w-4" />
-                      <span>Wyświetlenia</span>
+                      <BarChart3 className="h-4 w-4" />
+                      <span>ROAS</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setDemographicMetric('reservations')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      demographicMetric === 'reservations'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                    }`}
+                    
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Award className="h-4 w-4" />
+                      <span>Rezerwacje</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setDemographicMetric('reservation_value')}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      demographicMetric === 'reservation_value'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                    }`}
+                    
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Users className="h-4 w-4" />
+                      <span>Wartość</span>
                     </div>
                   </button>
                   <button
                     onClick={() => setDemographicMetric('clicks')}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                       demographicMetric === 'clicks'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
-                    style={{ borderRadius: '16px' }}
+                    
                   >
                     <div className="flex items-center space-x-2">
                       <MousePointer className="h-4 w-4" />
@@ -534,11 +565,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 </div>
                 <button
                   onClick={() => exportToCSV(demographicData, 'demographic-performance')}
-                  className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                  style={{ borderRadius: '16px' }}
+                  className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
-                  <span className="font-medium">Export CSV</span>
+                  <span>Export CSV</span>
                 </button>
               </div>
             </div>
@@ -546,7 +576,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             {demographicData.length > 0 ? (
               <div>
                 {/* Demographic Charts Section */}
-                <div className="p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
+                <div className="p-6 border-b border-slate-100">
                   {(() => {
                     console.log('🔍 Rendering DemographicPieCharts with:', {
                       dataLength: demographicData.length,
@@ -561,40 +591,52 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 {/* Detailed Table Section */}
                 <div className="p-6">
                   <div className="mb-6">
-                    <h4 className="text-lg font-bold text-gray-900 mb-2">Szczegółowe Dane Demograficzne</h4>
-                    <p className="text-sm text-gray-600">Tabela z wszystkimi danymi demograficznymi</p>
+                    <h4 className="text-lg font-bold text-slate-900 mb-2">Szczegółowe Dane Demograficzne</h4>
+                    <p className="text-sm text-slate-600">Tabela z wszystkimi danymi demograficznymi</p>
                   </div>
                   
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                             Wiek
                           </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                             Płeć
                           </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                             Spend
                           </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Impressions
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                             Clicks
                           </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            CTR
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Rezerwacje
                           </th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            CPC
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Wartość Rezerwacji
+                          </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            ROAS
+                          </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Koszt/Rezerwacja
+                          </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Etap 1
+                          </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Etap 2
+                          </th>
+                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Etap 3
                           </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white">
                         {demographicData
-                          .sort((a, b) => b[demographicMetric] - a[demographicMetric])
+                          .sort((a, b) => b.roas - a.roas) // Sort by ROAS (best performing first)
                           .slice(0, expandedSections['demographic'] ? undefined : 5)
                           .map((demographic, index) => (
                             <tr 
@@ -602,29 +644,45 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                               className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
                               style={{ borderColor: '#E7EAF3', height: '56px' }}
                             >
-                              <td className="px-6 py-4">
+                              <td className="px-4 py-4">
                                 <div className="flex items-center">
                                   <RankingBadge rank={index + 1} index={index} />
-                                  <span className="text-sm font-medium text-gray-900">{demographic.age}</span>
+                                  <span className="text-sm font-medium text-slate-900">{demographic.age}</span>
                                 </div>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className="text-sm text-gray-900">{demographic.gender}</span>
+                              <td className="px-4 py-4">
+                                <span className="text-sm text-slate-900">{demographic.gender}</span>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className="text-sm font-semibold text-gray-900">{formatCurrency(demographic.spend)}</span>
+                              <td className="px-4 py-4">
+                                <span className="text-sm font-semibold text-slate-900">{formatCurrency(demographic.spend)}</span>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className="text-sm text-gray-900">{formatNumber(demographic.impressions)}</span>
+                              <td className="px-4 py-4">
+                                <span className="text-sm text-slate-900">{formatNumber(demographic.clicks)}</span>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className="text-sm text-gray-900">{formatNumber(demographic.clicks)}</span>
+                              <td className="px-4 py-4">
+                                <span className="text-sm font-bold text-blue-600">{formatNumber(demographic.reservations)}</span>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className="text-sm text-gray-900">{formatPercentage(demographic.ctr)}</span>
+                              <td className="px-4 py-4">
+                                <span className="text-sm font-bold text-green-600">{formatCurrency(demographic.reservation_value)}</span>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className="text-sm text-gray-900">{formatCurrency(demographic.cpc)}</span>
+                              <td className="px-4 py-4">
+                                <span className={`text-sm font-semibold tabular-nums ${demographic.roas > 2 ? 'text-slate-900' : demographic.roas > 1 ? 'text-slate-700' : 'text-orange-600'}`}>
+                                  {demographic.roas > 0 ? `${demographic.roas.toFixed(2)}x` : '-'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className="text-sm text-slate-900">
+                                  {demographic.cost_per_reservation > 0 ? formatCurrency(demographic.cost_per_reservation) : '-'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className="text-sm text-gray-700">{formatNumber(demographic.booking_step_1)}</span>
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className="text-sm text-gray-700">{formatNumber(demographic.booking_step_2)}</span>
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className="text-sm text-gray-700">{formatNumber(demographic.booking_step_3)}</span>
                               </td>
                             </tr>
                           ))}
@@ -658,8 +716,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             ) : (
               <div className="text-center py-12">
                 <Users className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych demograficznych</h3>
-                <p className="text-gray-600">Nie znaleziono danych demograficznych dla wybranego okresu.</p>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych demograficznych</h3>
+                <p className="text-slate-600">Nie znaleziono danych demograficznych dla wybranego okresu.</p>
               </div>
             )}
           </div>
@@ -667,21 +725,20 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         {activeTab === 'adRelevance' && (
           <div>
-            <div className="flex items-center justify-between p-6" style={{ borderBottom: '1px solid #E7EAF3' }}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">Ad Relevance & Results</h3>
-                <p className="text-sm text-gray-600">
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Ad Relevance & Results</h3>
+                <p className="text-sm text-slate-600">
                   Skuteczność reklam według relevance
                   {adRelevanceData.length > 5 && !expandedSections['adRelevance'] && ` • Pokazano top 5`}
                 </p>
               </div>
               <button
                 onClick={() => exportToCSV(adRelevanceData, 'ad-relevance-results')}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-2xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                style={{ borderRadius: '16px' }}
+                className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
               >
                 <FileSpreadsheet className="h-4 w-4" />
-                <span className="font-medium">Export CSV</span>
+                <span>Export CSV</span>
               </button>
             </div>
             
@@ -721,20 +778,20 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                             <td className="px-6 py-4">
                               <div className="flex items-center">
                                 <RankingBadge rank={index + 1} index={index} />
-                                <span className="text-sm font-medium text-gray-900">{ad.ad_name}</span>
+                                <span className="text-sm font-medium text-slate-900">{ad.ad_name}</span>
                               </div>
                             </td>
                             <td className="px-6 py-4">
-                              <span className="text-sm font-semibold text-gray-900">{formatCurrency(ad.spend)}</span>
+                              <span className="text-sm font-semibold text-slate-900">{formatCurrency(ad.spend)}</span>
                             </td>
                             <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{formatNumber(ad.impressions)}</span>
+                              <span className="text-sm text-slate-900">{formatNumber(ad.impressions)}</span>
                             </td>
                             <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{formatNumber(ad.clicks)}</span>
+                              <span className="text-sm text-slate-900">{formatNumber(ad.clicks)}</span>
                             </td>
                             <td className="px-6 py-4">
-                              <span className="text-sm text-gray-900">{ad.cpp ? formatCurrency(ad.cpp) : 'N/A'}</span>
+                              <span className="text-sm text-slate-900">{ad.cpp ? formatCurrency(ad.cpp) : 'N/A'}</span>
                             </td>
                           </tr>
                         ))}
@@ -767,8 +824,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             ) : (
               <div className="text-center py-12">
                 <Award className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych o relevance</h3>
-                <p className="text-gray-600">Nie znaleziono danych o relevance reklam dla wybranego okresu.</p>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o relevance</h3>
+                <p className="text-slate-600">Nie znaleziono danych o relevance reklam dla wybranego okresu.</p>
               </div>
             )}
           </div>

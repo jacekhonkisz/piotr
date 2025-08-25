@@ -285,15 +285,29 @@ export class EmailScheduler {
   private async sendScheduledReport(client: Client, period: ReportPeriod): Promise<void> {
     logger.info(`📤 Sending scheduled report to ${client.name} for ${period.start} to ${period.end}`);
 
-    // Generate report data
+    // First, ensure the report has been generated (trigger if needed)
+    await this.ensureReportGenerated(client, period);
+
+    // Get the generated report with real data and Polish summary
+    const generatedReport = await this.getGeneratedReport(client.id, period);
+    
+    if (!generatedReport) {
+      throw new Error('Generated report not found - may need to wait for report generation to complete');
+    }
+
+    // Prepare real report data from generated report
     const reportData = {
       dateRange: `${period.start} to ${period.end}`,
-      totalSpend: 0, // Will be calculated from actual data
-      totalImpressions: 0,
-      totalClicks: 0,
-      ctr: 0,
-      cpc: 0,
-      cpm: 0
+      totalSpend: generatedReport.total_spend,
+      totalImpressions: generatedReport.total_impressions,
+      totalClicks: generatedReport.total_clicks,
+      totalConversions: generatedReport.total_conversions,
+      ctr: generatedReport.ctr,
+      cpc: generatedReport.cpc,
+      cpm: generatedReport.cpm,
+      polishSummary: generatedReport.polish_summary,
+      polishSubject: generatedReport.polish_subject,
+      pdfUrl: generatedReport.pdf_url
     };
 
     // Send to all contact emails
@@ -301,10 +315,32 @@ export class EmailScheduler {
     
     for (const email of contactEmails) {
       try {
+        // Download PDF if available
+        let pdfBuffer: Buffer | undefined;
+        if (generatedReport.pdf_url) {
+          try {
+            const pdfResponse = await fetch(generatedReport.pdf_url);
+            if (pdfResponse.ok) {
+              pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+            }
+          } catch (error) {
+            logger.warn('Could not download PDF for email attachment:', error);
+          }
+        }
+
         const emailResult = await this.emailService.sendReportEmail(
           email,
           client.name,
-          reportData
+          {
+            dateRange: reportData.dateRange,
+            totalSpend: reportData.totalSpend,
+            totalImpressions: reportData.totalImpressions,
+            totalClicks: reportData.totalClicks,
+            ctr: reportData.ctr,
+            cpc: reportData.cpc,
+            cpm: reportData.cpm
+          },
+          pdfBuffer
         );
 
         if (!emailResult.success) {
@@ -320,6 +356,48 @@ export class EmailScheduler {
         throw error;
       }
     }
+  }
+
+  /**
+   * Ensure a report has been generated for the period
+   */
+  private async ensureReportGenerated(client: Client, period: ReportPeriod): Promise<void> {
+    const reportType = client.reporting_frequency === 'monthly' ? 'monthly' : 'weekly';
+    
+    // Check if report already exists
+    const existingReport = await this.getGeneratedReport(client.id, period);
+    if (existingReport && existingReport.status === 'completed') {
+      logger.info(`✅ Report already generated for ${client.name} - ${period.start} to ${period.end}`);
+      return;
+    }
+
+    // Import the automated report generator
+    const { generateReportForPeriod } = await import('./automated-report-generator');
+    
+    // Trigger report generation
+    logger.info(`🚀 Triggering report generation for ${client.name} - ${period.start} to ${period.end}`);
+    await generateReportForPeriod(client.id, reportType, period.start, period.end);
+  }
+
+  /**
+   * Get generated report for a client and period
+   */
+  private async getGeneratedReport(clientId: string, period: ReportPeriod): Promise<any | null> {
+    const { data, error } = await this.supabase
+      .from('generated_reports')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('period_start', period.start)
+      .eq('period_end', period.end)
+      .order('generated_at', { ascending: false })
+      .maybeSingle();
+
+    if (error) {
+      logger.error('Error fetching generated report:', error);
+      return null;
+    }
+
+    return data;
   }
 
   /**

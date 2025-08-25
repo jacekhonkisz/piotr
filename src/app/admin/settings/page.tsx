@@ -77,6 +77,14 @@ interface SecurityConfig {
   lockout_duration_minutes: number;
 }
 
+interface GoogleAdsConfig {
+  google_ads_developer_token: string;
+  google_ads_manager_customer_id: string;
+  google_ads_client_id: string;
+  google_ads_client_secret: string;
+  google_ads_enabled: boolean;
+}
+
 interface BulkEmailLog {
   id: string;
   operation_type: string;
@@ -134,6 +142,14 @@ export default function AdminSettingsPage() {
     lockout_duration_minutes: 30
   });
   
+  const [googleAdsConfig, setGoogleAdsConfig] = useState<GoogleAdsConfig>({
+    google_ads_developer_token: '',
+    google_ads_manager_customer_id: '',
+    google_ads_client_id: '',
+    google_ads_client_secret: '',
+    google_ads_enabled: true
+  });
+  
   const [showPassword, setShowPassword] = useState(false);
   const [emailTestStatus, setEmailTestStatus] = useState<'not_configured' | 'testing' | 'success' | 'error'>('not_configured');
   const [emailTestMessage, setEmailTestMessage] = useState('');
@@ -186,6 +202,7 @@ export default function AdminSettingsPage() {
       const reportingSettings = settingsData?.filter(s => s.key.startsWith('default_') || s.key.startsWith('bulk_') || s.key.startsWith('auto_') || s.key.startsWith('report_'));
       const clientSettings = settingsData?.filter(s => s.key.startsWith('default_client_') || s.key.startsWith('auto_assign_') || s.key.startsWith('client_') || s.key.startsWith('max_clients_'));
       const securitySettings = settingsData?.filter(s => s.key.startsWith('session_') || s.key.startsWith('require_') || s.key.startsWith('max_login_') || s.key.startsWith('lockout_'));
+      const googleAdsSettings = settingsData?.filter(s => s.key.startsWith('google_ads_'));
       
       // Update email config
       emailSettings?.forEach(setting => {
@@ -225,6 +242,17 @@ export default function AdminSettingsPage() {
         const key = setting.key as keyof SecurityConfig;
         if (key in securityConfig) {
           setSecurityConfig(prev => ({
+            ...prev,
+            [key]: setting.value
+          }));
+        }
+      });
+      
+      // Update Google Ads config
+      googleAdsSettings?.forEach(setting => {
+        const key = setting.key as keyof GoogleAdsConfig;
+        if (key in googleAdsConfig) {
+          setGoogleAdsConfig(prev => ({
             ...prev,
             [key]: setting.value
           }));
@@ -378,6 +406,16 @@ export default function AdminSettingsPage() {
             { key: 'require_password_change_days', value: securityConfig.require_password_change_days },
             { key: 'max_login_attempts', value: securityConfig.max_login_attempts },
             { key: 'lockout_duration_minutes', value: securityConfig.lockout_duration_minutes }
+          ];
+          break;
+          
+        case 'google_ads':
+          settingsToUpdate = [
+            { key: 'google_ads_developer_token', value: googleAdsConfig.google_ads_developer_token },
+            { key: 'google_ads_manager_customer_id', value: googleAdsConfig.google_ads_manager_customer_id },
+            { key: 'google_ads_client_id', value: googleAdsConfig.google_ads_client_id },
+            { key: 'google_ads_client_secret', value: googleAdsConfig.google_ads_client_secret },
+            { key: 'google_ads_enabled', value: googleAdsConfig.google_ads_enabled }
           ];
           break;
       }
@@ -1129,6 +1167,118 @@ export default function AdminSettingsPage() {
               >
                 <Save className="w-4 h-4" />
                 {saving ? 'Saving...' : 'Save Security Settings'}
+              </button>
+            </div>
+          </div>
+
+          {/* Google Ads Configuration */}
+          <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8 hover:shadow-3xl transition-all duration-300 ease-out">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="bg-gradient-to-br from-blue-500 to-cyan-600 p-3 rounded-2xl shadow-lg">
+                <TrendingUp className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Google Ads API</h2>
+                <p className="text-sm text-gray-600">Configure Google Ads API credentials and settings</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                <input
+                  type="checkbox"
+                  id="google_ads_enabled"
+                  checked={googleAdsConfig.google_ads_enabled}
+                  onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_enabled: e.target.checked }))}
+                  className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                />
+                <label htmlFor="google_ads_enabled" className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-blue-500" />
+                  Enable Google Ads integration
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-blue-500" />
+                  Developer Token
+                </label>
+                <input
+                  type="password"
+                  value={googleAdsConfig.google_ads_developer_token}
+                  onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_developer_token: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  placeholder="Your Google Ads Developer Token"
+                />
+                <p className="text-xs text-gray-500 mt-1">Your Google Ads API developer token for API access</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  Manager Customer ID
+                </label>
+                <input
+                  type="text"
+                  value={googleAdsConfig.google_ads_manager_customer_id}
+                  onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_manager_customer_id: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  placeholder="XXX-XXX-XXXX"
+                />
+                <p className="text-xs text-gray-500 mt-1">Manager account Customer ID (format: XXX-XXX-XXXX)</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-blue-500" />
+                    OAuth Client ID
+                  </label>
+                  <input
+                    type="text"
+                    value={googleAdsConfig.google_ads_client_id}
+                    onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_client_id: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    placeholder="OAuth Client ID"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-blue-500" />
+                    OAuth Client Secret
+                  </label>
+                  <input
+                    type="password"
+                    value={googleAdsConfig.google_ads_client_secret}
+                    onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_client_secret: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    placeholder="OAuth Client Secret"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
+                <h4 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-blue-600" />
+                  Setup Instructions
+                </h4>
+                <div className="text-xs text-blue-700 space-y-1">
+                  <p>1. Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-800">Google Cloud Console</a></p>
+                  <p>2. Create or select a project</p>
+                  <p>3. Enable the Google Ads API</p>
+                  <p>4. Create OAuth 2.0 credentials</p>
+                  <p>5. Add your domain to authorized origins</p>
+                  <p>6. Copy Client ID and Client Secret here</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => saveSettings('google_ads')}
+                disabled={saving}
+                className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+              >
+                                <Save className="w-4 h-4" />
+                {saving ? 'Saving...' : 'Save Google Ads Settings'}
               </button>
             </div>
           </div>

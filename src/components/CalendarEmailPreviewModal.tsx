@@ -59,14 +59,16 @@ export default function CalendarEmailPreviewModal({
 
   const currentReport = reportsForDate[currentReportIndex];
 
+  // OPTIMIZED: Load clients data only once when modal opens, not on every report change
   useEffect(() => {
-    if (isOpen && reportsForDate.length > 0) {
+    if (isOpen && reportsForDate.length > 0 && Object.keys(clients).length === 0) {
       loadClientsData();
     }
   }, [isOpen, reportsForDate]);
 
+  // OPTIMIZED: Load report data only when current report changes and data not already loaded
   useEffect(() => {
-    if (currentReport) {
+    if (currentReport && !reportData[currentReport.id]) {
       loadReportData(currentReport);
     }
   }, [currentReport]);

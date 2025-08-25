@@ -5,9 +5,12 @@ import logger from '../../../../lib/logger';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params before using
+    const { id } = await params;
+    
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -43,7 +46,7 @@ export async function GET(
     const { data: client, error: fetchError } = await supabase
       .from('clients')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('admin_id', user.id)
       .single();
 
@@ -70,9 +73,12 @@ const supabase = createClient(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params before using
+    const { id } = await params;
+    
     // Extract the authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -113,7 +119,7 @@ export async function PUT(
     const { data: existingClient, error: fetchError } = await supabase
       .from('clients')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('admin_id', user.id)
       .single();
 
@@ -143,6 +149,11 @@ export async function PUT(
     if (requestData.reporting_frequency !== undefined) updates.reporting_frequency = requestData.reporting_frequency;
     if (requestData.notes !== undefined) updates.notes = requestData.notes;
     if (requestData.contact_emails !== undefined) updates.contact_emails = requestData.contact_emails;
+
+    // Handle Google Ads fields if provided
+    if (requestData.google_ads_customer_id !== undefined) updates.google_ads_customer_id = requestData.google_ads_customer_id;
+    if (requestData.google_ads_refresh_token !== undefined) updates.google_ads_refresh_token = requestData.google_ads_refresh_token;
+    if (requestData.google_ads_enabled !== undefined) updates.google_ads_enabled = requestData.google_ads_enabled;
 
     // Handle token update if provided
     let tokenValidation: any = null;
@@ -189,6 +200,18 @@ export async function PUT(
       updates.api_status = 'valid';
     }
 
+    // Handle system user token if provided (no validation needed, it's permanent)
+    if (requestData.system_user_token) {
+      logger.info('🔐 Updating system user token...');
+      updates.system_user_token = requestData.system_user_token;
+      updates.last_token_validation = new Date().toISOString();
+      updates.token_health_status = 'valid';
+      updates.api_status = 'valid';
+      // Clear the regular meta_access_token if system token is provided
+      updates.meta_access_token = null;
+      updates.token_expires_at = null;
+    }
+
     // If email is being changed, check for conflicts
     if (requestData.email && requestData.email !== existingClient.email) {
       const { data: emailConflict } = await supabase
@@ -196,7 +219,7 @@ export async function PUT(
         .select('id')
         .eq('admin_id', user.id)
         .eq('email', requestData.email)
-        .neq('id', params.id)
+        .neq('id', id)
         .single();
 
       if (emailConflict) {
@@ -210,7 +233,7 @@ export async function PUT(
     const { data: updatedClient, error: updateError } = await supabase
       .from('clients')
       .update(updates)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single();
 
@@ -243,9 +266,12 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  logger.info('DELETE request received for client ID:', params.id);
+  // Await params before using
+  const { id } = await params;
+  
+  logger.info('DELETE request received for client ID:', id);
   
   try {
     // Get the authorization header
@@ -308,7 +334,7 @@ export async function DELETE(
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('id, name, email')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('admin_id', user.id) // Ensure admin owns this client
       .single();
 
@@ -367,7 +393,7 @@ export async function DELETE(
     const { error: deleteClientError } = await supabase
       .from('clients')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (deleteClientError) {
       console.error('Error deleting client record:', deleteClientError);

@@ -34,9 +34,9 @@ export default function MonitoringPage() {
   useEffect(() => {
     setMounted(true);
     loadMonitoringData();
-    // Refresh every 5 minutes
-    const interval = setInterval(loadMonitoringData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    // DISABLED: Auto-refresh every 5 minutes to prevent unnecessary polling
+    // const interval = setInterval(loadMonitoringData, 5 * 60 * 1000);
+    // return () => clearInterval(interval);
   }, []);
 
   const loadMonitoringData = async () => {

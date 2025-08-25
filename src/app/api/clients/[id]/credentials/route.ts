@@ -9,9 +9,12 @@ const supabase = createClient(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params before using
+    const { id } = await params;
+    
     // Verify admin authentication
     const authResult = await authenticateRequest(request);
     if (!authResult.success) {
@@ -39,7 +42,7 @@ export async function GET(
     const { data: client, error } = await supabase
       .from('clients')
       .select('email, generated_username, generated_password')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (error) {

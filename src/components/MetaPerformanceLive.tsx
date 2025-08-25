@@ -47,6 +47,25 @@ const activeRequests = new Set<string>(); // Track active requests to prevent ra
 const componentInstances = new Set<number>(); // Track component instances for debugging
 const COMPONENT_CACHE_DURATION = 10000; // 10 seconds cache for component level
 
+
+    // Safe conversion helper function
+    const safeConversion = (value: any): number => {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') return parseFloat(value) || 0;
+      if (Array.isArray(value)) return value.reduce((sum, item) => sum + safeConversion(item), 0);
+      if (typeof value === 'object' && value !== null) {
+        // Try to extract numeric values from object
+        const keys = ['total', 'count', 'value', 'amount'];
+        for (const key of keys) {
+          if (value[key] !== undefined) {
+            return safeConversion(value[key]);
+          }
+        }
+        return 0;
+      }
+      return 0;
+    };
+    
 export default function MetaPerformanceLive({ clientId, currency = 'PLN', sharedData }: MetaPerformanceLiveProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [metrics, setMetrics] = useState<ConversionMetrics | null>(null);
@@ -678,7 +697,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
             {
               id: 'conversions',
               label: 'Konwersje',
-              value: stats.totalConversions.toLocaleString('pl-PL'),
+              value: safeConversion(stats.totalConversions).toLocaleString('pl-PL'),
               sublabel: 'Bieżący miesiąc',
               bars: conversionsBars,
               dateForMarker: new Date().toISOString()

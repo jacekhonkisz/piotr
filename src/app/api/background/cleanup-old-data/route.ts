@@ -8,6 +8,37 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export async function GET() {
+  // For Vercel cron jobs - bypass authentication
+  logger.info('🧹 Old data cleanup triggered by cron job');
+  
+  try {
+    console.log(`🧹 Starting old data cleanup via cron job`);
+
+    // Start background cleanup (don't await to avoid timeout)
+    const smartLoader = SmartDataLoader.getInstance();
+    smartLoader.cleanupOldData().catch((error: any) => {
+      console.error('❌ Background old data cleanup failed:', error);
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Old data cleanup started in background via cron job',
+      startedAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Error starting old data cleanup via cron:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to start old data cleanup',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   logger.info('🧹 Cleanup old data request started');
   

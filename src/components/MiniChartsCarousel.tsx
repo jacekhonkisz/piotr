@@ -30,14 +30,23 @@ export default function MiniChartsCarousel({ bars, ctrPercent, spend }: MiniChar
     return arr;
   }, [bars]);
 
+  // DISABLED: Auto-advance mini charts to prevent constant switching
+  // This was causing mini charts to auto-switch every 6 seconds
+  // useEffect(() => {
+  //   if (timerRef.current) clearInterval(timerRef.current);
+  //   timerRef.current = setInterval(() => {
+  //     setActive((prev): SlideKey => {
+  //       const idx = slides.indexOf(prev);
+  //       return slides[(idx + 1) % slides.length] as SlideKey;
+  //     });
+  //   }, 6000);
+  //   return () => {
+  //     if (timerRef.current) clearInterval(timerRef.current);
+  //   };
+  // }, []);
+
+  // Manual navigation only - no auto-advance
   useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setActive((prev): SlideKey => {
-        const idx = slides.indexOf(prev);
-        return slides[(idx + 1) % slides.length] as SlideKey;
-      });
-    }, 6000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -51,7 +60,7 @@ export default function MiniChartsCarousel({ bars, ctrPercent, spend }: MiniChar
   };
 
   return (
-    <div className="relative bg-white/60 rounded-xl border border-slate-200/60 p-4 overflow-hidden">
+    <div className="relative bg-white/90 rounded-xl border border-slate-200/60 p-4 overflow-hidden text-slate-800">
       <div className="absolute top-2 right-2 flex gap-1">
         {slides.map((s) => (
           <button

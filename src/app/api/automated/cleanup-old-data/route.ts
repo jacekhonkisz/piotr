@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { DataLifecycleManager } from '../../../../lib/data-lifecycle-manager';
 import logger from '../../../../lib/logger';
 
+export async function GET() {
+  // For Vercel cron jobs - they only support GET requests
+  return await POST();
+}
+
 export async function POST() {
   const startTime = Date.now();
   

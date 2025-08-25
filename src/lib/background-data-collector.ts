@@ -312,41 +312,9 @@ export class BackgroundDataCollector {
    * Store monthly summary in database
    */
   private async storeMonthlySummary(clientId: string, data: any): Promise<void> {
-    const summary = {
-      client_id: clientId,
-      summary_type: 'monthly',
-      summary_date: data.summary_date,
-      total_spend: data.totals.spend || 0,
-      total_impressions: data.totals.impressions || 0,
-      total_clicks: data.totals.clicks || 0,
-      total_conversions: data.totals.conversions || 0,
-      average_ctr: data.totals.ctr || 0,
-      average_cpc: data.totals.cpc || 0,
-      average_cpa: data.totals.cpa || 0,
-      active_campaigns: data.activeCampaignCount || data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
-      total_campaigns: data.campaigns.length,
-      campaign_data: data.campaigns,
-      meta_tables: data.metaTables,
-      data_source: 'meta_api',
-      last_updated: new Date().toISOString()
-    };
+    logger.info(`💾 Storing monthly summary for client ${clientId} on ${data.summary_date}`);
 
-    const { error } = await supabase
-      .from('campaign_summaries')
-      .upsert(summary, {
-        onConflict: 'client_id,summary_type,summary_date'
-      });
-
-    if (error) {
-      throw new Error(`Failed to store monthly summary: ${error.message}`);
-    }
-  }
-
-  /**
-   * Store weekly summary in database
-   */
-  private async storeWeeklySummary(clientId: string, data: any): Promise<void> {
-    // Calculate conversion metrics from campaign data
+    // Aggregate conversion metrics from campaigns
     const campaigns = data.campaigns || [];
     const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
       click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
@@ -366,21 +334,234 @@ export class BackgroundDataCollector {
       total_spend: 0
     });
 
+    // 🔧 ENHANCED: If Meta API didn't return conversion metrics, try to get them from daily_kpi_data
+    let enhancedConversionMetrics = { ...conversionTotals };
+    
+    if (conversionTotals.reservations === 0 && conversionTotals.booking_step_1 === 0) {
+      logger.info(`🔧 No conversion metrics from Meta API for ${data.summary_date}, trying daily_kpi_data fallback...`);
+      
+      try {
+        // Get the month start and end dates
+        const monthStart = data.summary_date;
+        const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().split('T')[0];
+        
+        // Query daily_kpi_data for this month
+        const { data: dailyKpiData, error: kpiError } = await supabase
+          .from('daily_kpi_data')
+          .select('*')
+          .eq('client_id', clientId)
+          .gte('date', monthStart)
+          .lte('date', monthEnd);
+        
+        if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
+          logger.info(`🔧 Found ${dailyKpiData.length} daily KPI records for ${data.summary_date}, aggregating conversion metrics...`);
+          
+          // Aggregate conversion metrics from daily_kpi_data
+          const dailyConversionTotals = dailyKpiData.reduce((acc: any, record: any) => ({
+            click_to_call: acc.click_to_call + (record.click_to_call || 0),
+            email_contacts: acc.email_contacts + (record.email_contacts || 0),
+            booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
+            reservations: acc.reservations + (record.reservations || 0),
+            reservation_value: acc.reservation_value + (record.reservation_value || 0),
+            booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
+            booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0)
+          }), {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            booking_step_2: 0,
+            booking_step_3: 0
+          });
+          
+          // Use daily_kpi_data conversion metrics as fallback
+          enhancedConversionMetrics = {
+            click_to_call: dailyConversionTotals.click_to_call,
+            email_contacts: dailyConversionTotals.email_contacts,
+            booking_step_1: dailyConversionTotals.booking_step_1,
+            reservations: dailyConversionTotals.reservations,
+            reservation_value: dailyConversionTotals.reservation_value,
+            booking_step_2: dailyConversionTotals.booking_step_2,
+            booking_step_3: dailyConversionTotals.booking_step_3
+          };
+          
+          logger.info(`✅ Enhanced conversion metrics from daily_kpi_data:`, enhancedConversionMetrics);
+        } else {
+          logger.warn(`⚠️ No daily_kpi_data found for ${data.summary_date}, keeping zero conversion metrics`);
+        }
+      } catch (fallbackError) {
+        logger.error(`❌ Error getting daily_kpi_data fallback for ${data.summary_date}:`, fallbackError);
+      }
+    } else {
+      logger.info(`✅ Using conversion metrics from Meta API:`, enhancedConversionMetrics);
+    }
+
     // Calculate derived conversion metrics
-    const roas = conversionTotals.total_spend > 0 && conversionTotals.reservation_value > 0 
-      ? conversionTotals.reservation_value / conversionTotals.total_spend 
+    const roas = enhancedConversionMetrics.reservation_value > 0 && (data.totals.spend || 0) > 0 
+      ? enhancedConversionMetrics.reservation_value / (data.totals.spend || 0)
       : 0;
     
-    const cost_per_reservation = conversionTotals.reservations > 0 
-      ? conversionTotals.total_spend / conversionTotals.reservations 
+    const cost_per_reservation = enhancedConversionMetrics.reservations > 0 && (data.totals.spend || 0) > 0
+      ? (data.totals.spend || 0) / enhancedConversionMetrics.reservations
+      : 0;
+
+    logger.info(`📊 Background monthly collection conversion metrics:`, {
+      clientId,
+      summary_date: data.summary_date,
+      enhancedConversionMetrics,
+      roas,
+      cost_per_reservation,
+      source: enhancedConversionMetrics.reservations > 0 ? 'daily_kpi_data_fallback' : 'meta_api'
+    });
+
+    const summary = {
+      client_id: clientId,
+      summary_type: 'monthly',
+      summary_date: data.summary_date,
+      total_spend: data.totals.spend || 0,
+      total_impressions: data.totals.impressions || 0,
+      total_clicks: data.totals.clicks || 0,
+      total_conversions: data.totals.conversions || 0,
+      average_ctr: data.totals.ctr || 0,
+      average_cpc: data.totals.cpc || 0,
+      average_cpa: cost_per_reservation,
+      active_campaigns: data.activeCampaignCount || data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
+      total_campaigns: data.campaigns.length,
+      campaign_data: data.campaigns,
+      meta_tables: data.metaTables,
+      data_source: 'meta_api',
+      // Add enhanced conversion metrics (either from Meta API or daily_kpi_data fallback)
+      click_to_call: enhancedConversionMetrics.click_to_call,
+      email_contacts: enhancedConversionMetrics.email_contacts,
+      booking_step_1: enhancedConversionMetrics.booking_step_1,
+      reservations: enhancedConversionMetrics.reservations,
+      reservation_value: enhancedConversionMetrics.reservation_value,
+      booking_step_2: enhancedConversionMetrics.booking_step_2,
+      booking_step_3: enhancedConversionMetrics.booking_step_3,
+      roas: roas,
+      cost_per_reservation: cost_per_reservation,
+      last_updated: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date'
+      });
+
+    if (error) {
+      throw new Error(`Failed to store monthly summary: ${error.message}`);
+    }
+
+    logger.info(`💾 Stored monthly summary with enhanced conversion metrics: ${enhancedConversionMetrics.reservations} reservations, ${enhancedConversionMetrics.reservation_value} value`);
+  }
+
+  /**
+   * Store weekly summary in database
+   */
+  private async storeWeeklySummary(clientId: string, data: any): Promise<void> {
+    logger.info(`💾 Storing weekly summary for client ${clientId} on ${data.summary_date}`);
+
+    // Aggregate conversion metrics from campaigns
+    const campaigns = data.campaigns || [];
+    const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      total_spend: acc.total_spend + (campaign.spend || 0)
+    }), {
+      click_to_call: 0,
+      email_contacts: 0,
+      booking_step_1: 0,
+      reservations: 0,
+      reservation_value: 0,
+      booking_step_2: 0,
+      total_spend: 0
+    });
+
+    // 🔧 ENHANCED: If Meta API didn't return conversion metrics, try to get them from daily_kpi_data
+    let enhancedConversionMetrics = { ...conversionTotals };
+    
+    if (conversionTotals.reservations === 0 && conversionTotals.booking_step_1 === 0) {
+      logger.info(`🔧 No conversion metrics from Meta API for week ${data.summary_date}, trying daily_kpi_data fallback...`);
+      
+      try {
+        // Get the week start and end dates
+        const weekStart = data.summary_date;
+        const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        // Query daily_kpi_data for this week
+        const { data: dailyKpiData, error: kpiError } = await supabase
+          .from('daily_kpi_data')
+          .select('*')
+          .eq('client_id', clientId)
+          .gte('date', weekStart)
+          .lte('date', weekEnd);
+        
+        if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
+          logger.info(`🔧 Found ${dailyKpiData.length} daily KPI records for week ${data.summary_date}, aggregating conversion metrics...`);
+          
+          // Aggregate conversion metrics from daily_kpi_data
+          const dailyConversionTotals = dailyKpiData.reduce((acc: any, record: any) => ({
+            click_to_call: acc.click_to_call + (record.click_to_call || 0),
+            email_contacts: acc.email_contacts + (record.email_contacts || 0),
+            booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
+            reservations: acc.reservations + (record.reservations || 0),
+            reservation_value: acc.reservation_value + (record.reservation_value || 0),
+            booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
+            booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0)
+          }), {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            booking_step_2: 0,
+            booking_step_3: 0
+          });
+          
+          // Use daily_kpi_data conversion metrics as fallback
+          enhancedConversionMetrics = {
+            click_to_call: dailyConversionTotals.click_to_call,
+            email_contacts: dailyConversionTotals.email_contacts,
+            booking_step_1: dailyConversionTotals.booking_step_1,
+            reservations: dailyConversionTotals.reservations,
+            reservation_value: dailyConversionTotals.reservation_value,
+            booking_step_2: dailyConversionTotals.booking_step_2,
+            booking_step_3: dailyConversionTotals.booking_step_3
+          };
+          
+          logger.info(`✅ Enhanced conversion metrics from daily_kpi_data:`, enhancedConversionMetrics);
+        } else {
+          logger.warn(`⚠️ No daily_kpi_data found for week ${data.summary_date}, keeping zero conversion metrics`);
+        }
+      } catch (fallbackError) {
+        logger.error(`❌ Error getting daily_kpi_data fallback for week ${data.summary_date}:`, fallbackError);
+      }
+    } else {
+      logger.info(`✅ Using conversion metrics from Meta API:`, enhancedConversionMetrics);
+    }
+
+    // Calculate derived conversion metrics
+    const roas = enhancedConversionMetrics.reservation_value > 0 && (data.totals.spend || 0) > 0 
+      ? enhancedConversionMetrics.reservation_value / (data.totals.spend || 0)
+      : 0;
+    
+    const cost_per_reservation = enhancedConversionMetrics.reservations > 0 && (data.totals.spend || 0) > 0
+      ? (data.totals.spend || 0) / enhancedConversionMetrics.reservations
       : 0;
 
     logger.info(`📊 Background weekly collection conversion metrics:`, {
       clientId,
       summary_date: data.summary_date,
-      conversionTotals,
+      enhancedConversionMetrics,
       roas,
-      cost_per_reservation
+      cost_per_reservation,
+      source: enhancedConversionMetrics.reservations > 0 ? 'daily_kpi_data_fallback' : 'meta_api'
     });
 
     const summary = {
@@ -399,13 +580,14 @@ export class BackgroundDataCollector {
       campaign_data: data.campaigns,
       meta_tables: data.metaTables,
       data_source: 'meta_api',
-      // Add aggregated conversion metrics
-      click_to_call: conversionTotals.click_to_call,
-      email_contacts: conversionTotals.email_contacts,
-      booking_step_1: conversionTotals.booking_step_1,
-      reservations: conversionTotals.reservations,
-      reservation_value: conversionTotals.reservation_value,
-      booking_step_2: conversionTotals.booking_step_2,
+      // Add enhanced conversion metrics (either from Meta API or daily_kpi_data fallback)
+      click_to_call: enhancedConversionMetrics.click_to_call,
+      email_contacts: enhancedConversionMetrics.email_contacts,
+      booking_step_1: enhancedConversionMetrics.booking_step_1,
+      reservations: enhancedConversionMetrics.reservations,
+      reservation_value: enhancedConversionMetrics.reservation_value,
+      booking_step_2: enhancedConversionMetrics.booking_step_2,
+      booking_step_3: enhancedConversionMetrics.booking_step_3,
       roas: roas,
       cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()
@@ -421,7 +603,7 @@ export class BackgroundDataCollector {
       throw new Error(`Failed to store weekly summary: ${error.message}`);
     }
 
-    logger.info(`💾 Stored weekly summary with conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value`);
+    logger.info(`💾 Stored weekly summary with enhanced conversion metrics: ${enhancedConversionMetrics.reservations} reservations, ${enhancedConversionMetrics.reservation_value} value`);
   }
 
   /**

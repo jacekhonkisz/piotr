@@ -139,6 +139,7 @@ export default function DashboardPage() {
   };
 
   const handleClientChange = async (client: Client) => {
+    console.log('🚀 DASHBOARD: handleClientChange called for client:', client.id);
     setSelectedClient(client);
     setLoading(true);
     setLoadingMessage('Ładowanie danych klienta...');
@@ -270,26 +271,37 @@ export default function DashboardPage() {
   }, [user, profile, dashboardInitialized, authLoading]);
 
   const loadClientDashboardWithCache = async () => {
-    if (loadingRef.current) return;
+    console.log('🚀 DASHBOARD: loadClientDashboardWithCache called');
+    if (loadingRef.current) {
+      console.log('⚠️ DASHBOARD: Loading already in progress, returning');
+      return;
+    }
     
     loadingRef.current = true;
     setLoading(true);
     
     try {
       // Check if we have cached data
+      console.log('🔍 DASHBOARD: Checking localStorage cache...');
       const cached = localStorage.getItem(getCacheKey());
+      console.log('📦 DASHBOARD: Cache found:', !!cached);
       if (cached) {
         try {
           const cacheData: CachedData = JSON.parse(cached);
           const cacheAge = Date.now() - cacheData.timestamp;
           const maxCacheAge = 5 * 60 * 1000; // 5 minutes
           
+          console.log('⏰ DASHBOARD: Cache age:', Math.round(cacheAge / 1000), 'seconds');
+          console.log('⏰ DASHBOARD: Max cache age:', Math.round(maxCacheAge / 1000), 'seconds');
           if (cacheAge < maxCacheAge) {
-            console.log('📦 Using cached dashboard data');
+            console.log('✅ DASHBOARD: Using cached dashboard data');
+            console.log('📊 DASHBOARD: Cached data stats:', cacheData.data?.stats);
             setClientData(cacheData.data);
             setDataSource(cacheData.dataSource);
             setLoading(false);
             return;
+          } else {
+            console.log('❌ DASHBOARD: Cache expired, will load fresh data');
           }
         } catch (error) {
           console.error('Error parsing cached data:', error);
@@ -297,6 +309,7 @@ export default function DashboardPage() {
       }
       
       // No valid cache, load fresh data
+      console.log('🔄 DASHBOARD: No valid cache, loading fresh data');
       await loadClientDashboard();
     } catch (error) {
       console.error('Error loading dashboard with cache:', error);
@@ -307,6 +320,7 @@ export default function DashboardPage() {
   };
 
   const loadClientDashboard = async () => {
+    console.log('🚀 DASHBOARD: loadClientDashboard called');
     try {
       if (!user!.email) {
         return;
@@ -569,6 +583,7 @@ export default function DashboardPage() {
   };
 
   const loadMainDashboardData = async (currentClient: any) => {
+    console.log('🚀 DASHBOARD: loadMainDashboardData called for client:', currentClient?.id);
     try {
       // Use the same date range logic as smart cache helper to ensure proper cache detection
       const now = new Date();
@@ -614,6 +629,13 @@ export default function DashboardPage() {
       }, 30000);
       
       // Use fetch-live-data with smart caching enabled (no force refresh)
+      console.log('📡 DASHBOARD: Making API call to /api/fetch-live-data');
+      console.log('📡 API Request body:', {
+        clientId: currentClient.id,
+        dateRange: dateRange,
+        forceFresh: false
+      });
+      
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
@@ -623,7 +645,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           clientId: currentClient.id,
           dateRange: dateRange,
-          forceFresh: true  // 🔧 TEMPORARY: Force live data for booking steps testing
+          forceFresh: false  // ✅ FIXED: Use smart caching
         }),
         signal: controller.signal
       });
@@ -695,38 +717,98 @@ export default function DashboardPage() {
         });
       }
       
-      if (monthData.success && monthData.data?.campaigns) {
-        const campaigns = monthData.data.campaigns.map((campaign: any) => ({
-          id: campaign.campaign_id,
-          campaign_name: campaign.campaign_name,
-          campaign_id: campaign.campaign_id,
-          spend: campaign.spend || 0,
-          impressions: campaign.impressions || 0,
-          clicks: campaign.clicks || 0,
-          conversions: campaign.conversions || 0,
-          ctr: campaign.ctr || 0,
-          cpc: campaign.cpc || 0,
-          date_range_start: dateRange.start,
-          date_range_end: dateRange.end,
-          // Conversion tracking data - use correct field names
-          click_to_call: campaign.click_to_call || 0,
-          email_contacts: campaign.email_contacts || 0,
-          reservations: campaign.reservations || 0,
-          reservation_value: campaign.reservation_value || 0,
-          booking_step_1: campaign.booking_step_1 || 0,
-          booking_step_2: campaign.booking_step_2 || 0,
-          booking_step_3: campaign.booking_step_3 || 0,
-          roas: campaign.roas || 0,
-          cost_per_reservation: campaign.cost_per_reservation || 0
-        }));
-
-        const totalSpend = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
-        const totalImpressions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
-        const totalClicks = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
-        const totalConversions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0);
+      if (monthData.success && (monthData.data?.campaigns || monthData.data?.stats)) {
+        // If we have cached stats, use them directly (more accurate)
+        let stats = {
+          totalSpend: 0,
+          totalImpressions: 0,
+          totalClicks: 0,
+          totalConversions: 0,
+          averageCtr: 0,
+          averageCpc: 0
+        };
+        let campaigns = [];
         
-        const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-        const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+        if (monthData.data?.stats) {
+          console.log('✅ Using cached stats directly:', monthData.data.stats);
+          console.log('💰 Cached totalSpend:', monthData.data.stats.totalSpend);
+          stats = {
+            totalSpend: monthData.data.stats.totalSpend || 0,
+            totalImpressions: monthData.data.stats.totalImpressions || 0,
+            totalClicks: monthData.data.stats.totalClicks || 0,
+            totalConversions: monthData.data.stats.totalConversions || 0,
+            averageCtr: monthData.data.stats.averageCtr || 0,
+            averageCpc: monthData.data.stats.averageCpc || 0
+          };
+          // Also process campaigns if they exist in cached response
+          if (monthData.data?.campaigns) {
+            campaigns = monthData.data.campaigns.map((campaign: any) => ({
+              id: campaign.campaign_id,
+              campaign_name: campaign.campaign_name,
+              campaign_id: campaign.campaign_id,
+              spend: campaign.spend || 0,
+              impressions: campaign.impressions || 0,
+              clicks: campaign.clicks || 0,
+              conversions: campaign.conversions || 0,
+              ctr: campaign.ctr || 0,
+              cpc: campaign.cpc || 0,
+              date_range_start: dateRange.start,
+              date_range_end: dateRange.end,
+              click_to_call: campaign.click_to_call || 0,
+              email_contacts: campaign.email_contacts || 0,
+              reservations: campaign.reservations || 0,
+              reservation_value: campaign.reservation_value || 0,
+              booking_step_1: campaign.booking_step_1 || 0,
+              booking_step_2: campaign.booking_step_2 || 0,
+              booking_step_3: campaign.booking_step_3 || 0,
+              roas: campaign.roas || 0,
+              cost_per_reservation: campaign.cost_per_reservation || 0
+            }));
+          }
+        } else if (monthData.data?.campaigns) {
+          // Fallback: calculate from campaigns if no cached stats
+          console.log('📊 Calculating stats from campaigns');
+          campaigns = monthData.data.campaigns.map((campaign: any) => ({
+            id: campaign.campaign_id,
+            campaign_name: campaign.campaign_name,
+            campaign_id: campaign.campaign_id,
+            spend: campaign.spend || 0,
+            impressions: campaign.impressions || 0,
+            clicks: campaign.clicks || 0,
+            conversions: campaign.conversions || 0,
+            ctr: campaign.ctr || 0,
+            cpc: campaign.cpc || 0,
+            date_range_start: dateRange.start,
+            date_range_end: dateRange.end,
+            // Conversion tracking data - use correct field names
+            click_to_call: campaign.click_to_call || 0,
+            email_contacts: campaign.email_contacts || 0,
+            reservations: campaign.reservations || 0,
+            reservation_value: campaign.reservation_value || 0,
+            booking_step_1: campaign.booking_step_1 || 0,
+            booking_step_2: campaign.booking_step_2 || 0,
+            booking_step_3: campaign.booking_step_3 || 0,
+            roas: campaign.roas || 0,
+            cost_per_reservation: campaign.cost_per_reservation || 0
+          }));
+
+          const totalSpend = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
+          const totalImpressions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
+          const totalClicks = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
+          const totalConversions = campaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0);
+          
+          const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+          const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+          
+          stats = {
+            totalSpend,
+            totalImpressions,
+            totalClicks,
+            totalConversions,
+            averageCtr,
+            averageCpc
+          };
+        }
         
         console.log('📊 API conversion metrics:', monthData.data?.conversionMetrics);
         
@@ -743,16 +825,12 @@ export default function DashboardPage() {
           booking_step_3: 0
         };
 
+        console.log('🎯 Final stats being returned:', stats);
+        console.log('💰 Final totalSpend:', stats.totalSpend);
+        
         return {
           campaigns,
-          stats: {
-            totalSpend,
-            totalImpressions,
-            totalClicks,
-            totalConversions,
-            averageCtr,
-            averageCpc
-          },
+          stats,
           conversionMetrics,
           debug: {
             ...monthData.debug,
@@ -1151,7 +1229,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium text-text tabular-nums">
-                          {campaign.ctr ? `${campaign.ctr.toFixed(2)}%` : '0%'}
+                          {campaign.ctr ? `${(Number(campaign.ctr) || 0).toFixed(2)}%` : '0%'}
                         </div>
                         <div className="text-sm text-muted">CTR</div>
                       </div>

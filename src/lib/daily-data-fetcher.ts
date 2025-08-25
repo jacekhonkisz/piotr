@@ -34,6 +34,7 @@ interface DailyAggregatedData {
   reservations: number;
   reservation_value: number;
   booking_step_2: number;
+  booking_step_3: number;
 }
 
 export class DailyDataFetcher {
@@ -142,7 +143,8 @@ export class DailyDataFetcher {
           booking_step_1: 0,
           reservations: 0,
           reservation_value: 0,
-          booking_step_2: 0
+          booking_step_2: 0,
+          booking_step_3: 0
         });
       }
 
@@ -162,6 +164,7 @@ export class DailyDataFetcher {
       dayData.reservations += Number(insight.reservations || 0);
       dayData.reservation_value += Number(insight.reservation_value || 0);
       dayData.booking_step_2 += Number(insight.booking_step_2 || 0);
+      dayData.booking_step_3 += Number(insight.booking_step_3 || 0);
     });
 
     // Convert to array and sort by date
@@ -209,6 +212,7 @@ export class DailyDataFetcher {
             reservations: dayData.reservations,
             reservation_value: dayData.reservation_value,
             booking_step_2: dayData.booking_step_2,
+            booking_step_3: dayData.booking_step_3,
             average_ctr: average_ctr,
             average_cpc: average_cpc,
             roas: roas,

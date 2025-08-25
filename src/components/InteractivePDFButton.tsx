@@ -124,11 +124,10 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         onClick={generateInteractivePDF}
         disabled={isGenerating}
         className={`
-          ${className}
-          flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 text-sm
+          flex items-center space-x-2 transition-all duration-200
           ${isGenerating 
-            ? 'bg-gray-400 text-white cursor-not-allowed' 
-            : 'bg-orange-600 text-white hover:bg-orange-700 border border-orange-500'
+            ? 'bg-gray-400 text-white cursor-not-allowed opacity-75' 
+            : className || 'px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-medium shadow-sm'
           }
         `}
       >

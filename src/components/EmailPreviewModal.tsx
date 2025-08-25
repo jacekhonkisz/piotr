@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, FileText, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Eye, FileText } from 'lucide-react';
 
 interface EmailPreviewModalProps {
   isOpen: boolean;
@@ -10,10 +10,10 @@ interface EmailPreviewModalProps {
   clientName: string;
   dateRange: { start: string; end: string };
   customMessage: string;
-  campaigns?: any[];
-  totals?: any;
-  client?: any;
-  metaTables?: any;
+  campaigns: any[];
+  totals: any;
+  client: any;
+  metaTables: any;
 }
 
 interface PreviewData {
@@ -48,12 +48,24 @@ export default function EmailPreviewModal({
   const [loading, setLoading] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [error, setError] = useState('');
+  const [editableText, setEditableText] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
+      // Force regeneration on every open to avoid caching issues
+      setPreviewData(null);
+      setEditableText('');
       generatePreview();
     }
   }, [isOpen, clientId, dateRange, customMessage]);
+
+  useEffect(() => {
+    if (previewData && !isEditing) {
+      setEditableText(previewData.text);
+    }
+  }, [previewData, isEditing]);
 
   const generatePreview = async () => {
     setLoading(true);
@@ -82,17 +94,40 @@ export default function EmailPreviewModal({
       const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
       const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
 
-      // Generate Polish summary (will be replaced with actual PDF summary when available)
-      const summary = generatePolishReportSummary({
-        dateRange,
-        totalSpend,
-        totalImpressions,
-        totalClicks,
-        totalConversions,
-        ctr,
-        cpc,
-        campaigns: finalCampaigns
-      });
+      // Check if period has ended and try to get real summary from generated report
+      const now = new Date();
+      const endDate = new Date(dateRange.end);
+      const isPeriodEnded = endDate < now;
+      
+      let summary = '';
+      if (isPeriodEnded) {
+        // Try to get real summary from generated report
+        try {
+          const response = await fetch(`/api/generated-reports?clientId=${clientId}&periodStart=${dateRange.start}&periodEnd=${dateRange.end}`);
+          if (response.ok) {
+            const { report } = await response.json();
+            if (report && report.polish_summary) {
+              summary = report.polish_summary;
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch generated report summary, using fallback');
+        }
+      }
+      
+      // Fallback to generated summary if no real one available
+      if (!summary) {
+        summary = generatePolishReportSummary({
+          dateRange,
+          totalSpend,
+          totalImpressions,
+          totalClicks,
+          totalConversions,
+          ctr,
+          cpc,
+          campaigns: finalCampaigns
+        });
+      }
 
       const reportData = {
         dateRange: `${dateRange.start} to ${dateRange.end}`,
@@ -105,17 +140,13 @@ export default function EmailPreviewModal({
         cpm
       };
 
-      // Generate Polish email template (fully editable)
+      // Generate Polish email template (fully editable) - Updated to show only podsumowanie
       const emailTemplate = generatePolishEmailTemplate(clientName, reportData, {
         summary,
         customMessage
       });
       
       // Add note about PDF for pending reports
-      const now = new Date();
-      const endDate = new Date(dateRange.end);
-      const isPeriodEnded = endDate < now;
-      
       let finalText = emailTemplate.text;
       if (!isPeriodEnded) {
         finalText += `\n\n📎 Uwaga: Raport PDF zostanie dołączony po wygenerowaniu (po zakończeniu okresu ${endDate.toLocaleDateString('pl-PL')}).`;
@@ -134,6 +165,39 @@ export default function EmailPreviewModal({
       setError('Failed to generate email preview');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    setIsSaving(true);
+    try {
+      // Update the preview data with edited text
+      if (previewData) {
+        setPreviewData({
+          ...previewData,
+          text: editableText
+        });
+      }
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving changes:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    // Revert to original text
+    if (previewData) {
+      setEditableText(previewData.text);
+    }
+    setIsEditing(false);
+  };
+
+  const resetToOriginal = () => {
+    if (previewData) {
+      setEditableText(previewData.text);
+      setIsEditing(false);
     }
   };
 
@@ -168,22 +232,13 @@ export default function EmailPreviewModal({
     // Generate subject in Polish
     const subject = `Raport Meta Ads - ${periodDisplay}`;
 
-    // Generate Polish email content
+    // Generate Polish email content - show only the podsumowanie
     const textContent = `Szanowni Państwo ${clientName},
 
 ${content.customMessage ? content.customMessage + '\n\n' : ''}Przesyłamy raport wyników kampanii Meta Ads za okres ${periodDisplay}.
 
 Podsumowanie:
 ${content.summary}
-
-Główne wskaźniki:
-- Łączne wydatki: ${formatPolishCurrency(reportData.totalSpend)}
-- Wyświetlenia: ${formatPolishNumber(reportData.totalImpressions)}
-- Kliknięcia: ${formatPolishNumber(reportData.totalClicks)}
-- Konwersje: ${formatPolishNumber(reportData.totalConversions || 0)}
-- CTR: ${formatPolishPercentage(reportData.ctr)}
-- CPC: ${formatPolishCurrency(reportData.cpc)}
-- CPM: ${formatPolishCurrency(reportData.cpm)}
 
 Kompletny szczegółowy raport znajduje się w załączeniu PDF. Prosimy o otwarcie załącznika w celu zapoznania się z pełną analizą, wykresami i szczegółami kampanii.
 
@@ -634,9 +689,13 @@ For support, contact us at support@example.com
 
               {/* Email Content */}
               <div className="border rounded-lg overflow-hidden">
-                <pre className="whitespace-pre-wrap p-6 text-sm font-mono bg-gray-50 min-h-[400px] leading-relaxed">
-                  {previewData.text}
-                </pre>
+                <textarea
+                  className="w-full h-full p-6 text-sm font-mono bg-gray-50 min-h-[400px] leading-relaxed"
+                  value={editableText}
+                  onChange={(e) => setEditableText(e.target.value)}
+                  onBlur={() => setIsEditing(false)}
+                  onFocus={() => setIsEditing(true)}
+                />
               </div>
 
               {/* Summary Display */}
@@ -649,8 +708,39 @@ For support, contact us at support@example.com
             </div>
           )}
 
+          {/* Editing Controls */}
+          {isEditing && (
+            <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+              <div className="flex items-center text-blue-700">
+                <Eye className="w-4 h-4 mr-2" />
+                <span className="text-sm font-medium">Edytujesz treść emaila</span>
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleSaveChanges}
+                  disabled={isSaving}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isSaving ? 'Zapisywanie...' : 'Zapisz zmiany'}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+                >
+                  Anuluj
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+            <button
+              onClick={resetToOriginal}
+              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+            >
+              Przywróć oryginalną treść
+            </button>
             <button
               onClick={onClose}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-colors"

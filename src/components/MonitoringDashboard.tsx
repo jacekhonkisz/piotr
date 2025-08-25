@@ -67,13 +67,14 @@ export default function MonitoringDashboard() {
     checkHealth();
     getPerformanceMetrics();
     
-    // Set up periodic health checks
-    const interval = setInterval(() => {
-      checkHealth();
-      getPerformanceMetrics();
-    }, 30000); // Check every 30 seconds
+    // DISABLED: Periodic health checks to prevent auto-refresh
+    // This was causing monitoring dashboard to refresh every 30 seconds
+    // const interval = setInterval(() => {
+    //   checkHealth();
+    //   getPerformanceMetrics();
+    // }, 30000); // Check every 30 seconds
 
-    return () => clearInterval(interval);
+    // return () => clearInterval(interval);
   }, []);
 
   const getStatusIcon = (status: string) => {

@@ -1,15 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
-import { 
-  BarChart3, 
-  HelpCircle,
-  Calendar,
-  Clock,
-  ChevronUp,
-  ChevronDown
-} from 'lucide-react';
-import ConversionMetricsCards from './ConversionMetricsCards';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Clock, ChevronDown, ChevronUp, Download, Eye, EyeOff, BarChart3, HelpCircle, MousePointer, PhoneCall, Mail, DollarSign, Percent, Target } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 
 
@@ -38,11 +31,12 @@ interface Campaign {
   click_to_call?: number;
   email_contacts?: number;
   booking_step_1?: number;
+  booking_step_2?: number;
+  booking_step_3?: number;
   reservations?: number;
   reservation_value?: number;
   roas?: number;
   cost_per_reservation?: number;
-  booking_step_2?: number;
 }
 
 interface WeeklyReport {
@@ -56,6 +50,11 @@ interface WeeklyReport {
 interface WeeklyReportViewProps {
   reports: { [key: string]: WeeklyReport };
   viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom';
+  clientData?: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
 
 const formatCurrency = (amount: number) => {
@@ -96,9 +95,6 @@ const formatDate = (dateString: string) => {
 
 // Helper function to get week start and end dates using proper ISO week calculation
 const getWeekDateRange = (year: number, week: number) => {
-  console.log(`🔍 getWeekDateRange called with year=${year}, week=${week}`);
-  
-  // 🔧 EXACT COPY of API logic from reports/page.tsx lines 899-912
   const yearNum = year;
   
   // January 4th is always in week 1 of the ISO year (SAME AS API)
@@ -124,8 +120,6 @@ const getWeekDateRange = (year: number, week: number) => {
   };
   
   const result = `${formatDateForDisplay(weekStartDate)} - ${formatDateForDisplay(endDate)}.${year}`;
-  console.log(`🔍 getWeekDateRange result: ${result} (startDate: ${weekStartDate.toISOString().split('T')[0]}, endDate: ${endDate.toISOString().split('T')[0]})`);
-  console.log(`🔧 API MATCH: Using exact same logic as reports/page.tsx`);
   
   return result;
 };
@@ -166,44 +160,97 @@ const MetricCard = ({
   title, 
   value, 
   subtitle, 
-  tooltip
+  tooltip,
+  icon,
+  change,
+  miniSpark
 }: {
   title: string;
   value: string | number;
   subtitle?: string;
   tooltip?: string;
+  icon?: React.ReactNode;
+  change?: {
+    value: number;
+    period: string;
+    type: 'increase' | 'decrease';
+  };
+  miniSpark?: number[];
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
   const card = (
     <div 
-      className="relative p-5 transition-all duration-200"
-      style={{
-        backgroundColor: '#FFFFFF',
-        border: '1px solid #F0F0F0',
-        borderRadius: '8px',
-        boxShadow: isHovered ? '0 2px 8px rgba(36, 69, 131, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.02)'
-      }}
+      className="relative bg-white border border-slate-200 rounded-2xl p-6 transition-all duration-200 shadow-sm hover:shadow-md"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">{title}</span>
+      {/* Icon and Title */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-3">
+          {icon && (
+            <div className="p-2 bg-slate-100 rounded-lg">
+              {icon}
+            </div>
+          )}
+          <span className="text-sm font-medium text-slate-600">{title}</span>
+        </div>
         {tooltip && (
           <Tooltip content={tooltip}>
-            <HelpCircle className="w-3 h-3 text-gray-400 hover:text-gray-600 transition-colors" />
+            <HelpCircle className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
           </Tooltip>
         )}
       </div>
       
-      <div className="mb-2">
-        <p className="text-xl text-gray-900" style={{ fontWeight: 600 }}>
+      {/* Main Value */}
+      <div className="mb-4">
+        <p className="text-3xl font-semibold text-slate-900 tabular-nums tracking-tight">
           {value}
         </p>
         {subtitle && (
-          <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
+          <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
         )}
       </div>
+
+      {/* Mini Spark Chart */}
+      {miniSpark && miniSpark.length > 0 && (
+        <div className="mb-4">
+          <div className="flex items-end space-x-1 h-8">
+            {miniSpark.map((val, idx) => {
+              const maxVal = Math.max(...miniSpark);
+              const height = maxVal > 0 ? (val / maxVal) * 32 : 2;
+              return (
+                <div
+                  key={idx}
+                  className="bg-slate-900 rounded-sm flex-1 transition-all duration-200"
+                  style={{ height: `${height}px`, minHeight: '2px' }}
+                />
+              );
+            })}
+          </div>
+          <div className="flex justify-between text-xs text-slate-400 mt-1">
+            <span>0</span>
+            <span>cel</span>
+          </div>
+        </div>
+      )}
+
+      {/* Change Indicator */}
+      {change && (
+        <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium ${
+          change.type === 'increase' 
+            ? 'bg-slate-900/8 text-slate-900' 
+            : 'bg-orange-500/10 text-orange-700'
+        }`}>
+          <span className="mr-1">vs {change.period}</span>
+          <span className={`${change.type === 'increase' ? 'text-slate-900' : 'text-orange-600'}`}>
+            {change.type === 'increase' ? '+' : '−'}{Math.abs(change.value).toFixed(1)}%
+          </span>
+          <span className="ml-1">
+            {change.type === 'increase' ? '▲' : '▼'}
+          </span>
+        </div>
+      )}
     </div>
   );
 
@@ -212,49 +259,168 @@ const MetricCard = ({
 
 
 
-export default function WeeklyReportView({ reports, viewType = 'weekly' }: WeeklyReportViewProps) {
-  console.log('🔍 WeeklyReportView: Component called with:', { reports, viewType });
-  console.log('🔍 WeeklyReportView: Reports keys:', Object.keys(reports));
-  console.log('🔍 WeeklyReportView: Reports data:', reports);
-  
-  // Add detailed campaign data logging
-  Object.keys(reports).forEach(reportId => {
-    const report = reports[reportId];
-    if (report?.campaigns) {
-      console.log(`🔍 WeeklyReportView: Report ${reportId} has ${report.campaigns.length} campaigns`);
-      report.campaigns.forEach((campaign, idx) => {
-        console.log(`🔍 WeeklyReportView: Campaign ${idx}:`, {
-          name: campaign.campaign_name,
-          spend: campaign.spend,
-          conversions: campaign.conversions,
-          click_to_call: campaign.click_to_call,
-          email_contacts: campaign.email_contacts,
-          booking_step_1: campaign.booking_step_1,
-          reservations: campaign.reservations,
-          reservation_value: campaign.reservation_value,
-          booking_step_2: campaign.booking_step_2
-        });
-      });
-    }
-  });
+export default function WeeklyReportView({ reports, viewType = 'weekly', clientData }: WeeklyReportViewProps) {
   
   const [expandedCampaigns, setExpandedCampaigns] = useState<{ [key: string]: boolean }>({});
+  const [socialInsights, setSocialInsights] = useState<{
+    facebookNewFollowers: number | string;
+    instagramFollowers: number;
+    instagramReach: number;
+    instagramProfileViews: number;
+  } | null>(null);
+  
+  // DEBUG: Track state changes
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialError, setSocialError] = useState<string | null>(null);
+  
+  // Fetch social insights when component mounts - MOVED BEFORE EARLY RETURN
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchSocialInsights = async () => {
+      if (socialLoading === false) {
+        return;
+      }
+
+      setSocialLoading(true);
+
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        const session = sessionData.session;
+        if (!session?.access_token) {
+          throw new Error('No access token available');
+        }
+
+        const effectiveClientId = clientData?.id || session.user?.id;
+        if (!effectiveClientId) {
+          throw new Error('No client ID available');
+        }
+
+        const reportIds = Object.keys(reports);
+        if (reportIds.length === 0) {
+          if (mounted) {
+            setSocialInsights({
+              facebookNewFollowers: 0,
+              instagramFollowers: 0,
+              instagramReach: 0,
+              instagramProfileViews: 0
+            });
+            setSocialLoading(false);
+          }
+          return;
+        }
+
+        const firstReportId = reportIds[0];
+        const dateRange = firstReportId;
+
+        const requestBody = {
+          clientId: effectiveClientId,
+          dateRange: dateRange
+        };
+
+        const maxAttempts = 3;
+        let attempts = 0;
+        let response: Response | null = null;
+
+        while (attempts < maxAttempts && mounted) {
+          attempts++;
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+          try {
+            response = await fetch('/api/fetch-social-insights', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify(requestBody),
+              signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              break;
+            }
+          } catch (fetchError: any) {
+            clearTimeout(timeoutId);
+            
+            if (attempts < maxAttempts && mounted) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              continue;
+            }
+            throw fetchError;
+          }
+        }
+
+        if (!response || !mounted) {
+          return;
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.data?.metrics) {
+          const facebook = data.data.metrics.facebook || {};
+          const instagram = data.data.metrics.instagram || {};
+
+          const socialInsightsData = {
+            facebookNewFollowers: typeof facebook.page_fan_adds === 'number' ? facebook.page_fan_adds : 0,
+            instagramFollowers: typeof instagram.follower_count === 'number' ? instagram.follower_count : 0,
+            instagramReach: typeof instagram.reach === 'number' ? instagram.reach : 0,
+            instagramProfileViews: typeof instagram.profile_views === 'number' ? instagram.profile_views : 0
+          };
+
+          if (mounted) {
+            setSocialInsights(socialInsightsData);
+            setSocialLoading(false);
+          }
+        } else {
+          if (mounted) {
+            setSocialInsights({
+              facebookNewFollowers: 0,
+              instagramFollowers: 0,
+              instagramReach: 0,
+              instagramProfileViews: 0
+            });
+            setSocialLoading(false);
+          }
+        }
+      } catch (error: any) {
+        if (mounted) {
+          setSocialInsights({
+            facebookNewFollowers: 0,
+            instagramFollowers: 0,
+            instagramReach: 0,
+            instagramProfileViews: 0
+          });
+          setSocialLoading(false);
+        }
+      }
+    };
+
+    fetchSocialInsights();
+
+    return () => {
+      mounted = false;
+    };
+  }, [reports, clientData]);
 
   const reportIds = Object.keys(reports);
-  console.log('🔍 WeeklyReportView: Report IDs:', reportIds);
   
   if (reportIds.length === 0) {
-    console.log('🔍 WeeklyReportView: No report IDs, returning empty state');
     return (
-      <div className="text-center py-12">
-        <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Brak Raportów</h3>
-        <p className="text-gray-600">Nie znaleziono żadnych raportów do wyświetlenia.</p>
+      <div className="text-center py-8">
+        <p className="text-gray-500">Brak danych do wyświetlenia</p>
       </div>
     );
   }
-
-  console.log('🔍 WeeklyReportView: About to render with reportIds:', reportIds);
 
   const toggleCampaignExpansion = (reportId: string) => {
     setExpandedCampaigns(prev => ({
@@ -270,23 +436,15 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         if (!report) return null;
         const campaigns = report.campaigns || [];
         
-        console.log('🔍 WeeklyReportView processing report:', reportId);
-        console.log('🔍 Report object:', report);
-        console.log('🔍 Campaigns count:', campaigns.length);
-        console.log('🔍 Campaigns data:', campaigns);
-        
         // Calculate campaign performance totals
         const campaignTotals = campaigns.reduce((acc, campaign) => {
-          console.log('🔍 Processing campaign for totals:', campaign);
-          const result = {
+          return {
             spend: acc.spend + (campaign.spend || 0),
             impressions: acc.impressions + (campaign.impressions || 0),
             clicks: acc.clicks + (campaign.clicks || 0),
             reach: acc.reach + (campaign.reach || 0),
             status: campaign.status || 'UNKNOWN'
           };
-          console.log('🔍 Accumulator after this campaign:', result);
-          return result;
         }, { 
           spend: 0, 
           impressions: 0, 
@@ -295,8 +453,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
           status: 'UNKNOWN'
         });
         
-        console.log('🔍 Final campaignTotals:', campaignTotals);
-
         // Calculate derived campaign metrics
         const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
         const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
@@ -322,9 +478,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
           const weekNum = parseInt(weekStr || '1');
           const yearNum = parseInt(year || new Date().getFullYear().toString());
           
-          console.log(`🔧 TITLE FIX: Using reportId ${reportId} instead of corrupted date_range_start ${report.date_range_start}`);
-          console.log(`   Extracted: year=${yearNum}, week=${weekNum}`);
-          
           reportTitle = `Raport - ${getWeekDateRange(yearNum, weekNum)}`;
         }
 
@@ -333,39 +486,15 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
         const campaignsToShow = isExpanded ? campaigns : campaigns.slice(0, 5);
         const hasMoreCampaigns = campaigns.length > 5;
 
-        console.log('🔍 WeeklyReportView: About to render report:', reportId, 'with campaigns:', campaigns.length, 'totals:', campaignTotals);
-        
-        // Add detailed debugging about the date range
-        console.log('🔍 WeeklyReportView: Report date analysis:', {
-          reportId,
-          dateRangeStart: report.date_range_start,
-          dateRangeEnd: report.date_range_end,
-          startDate: startDate.toISOString().split('T')[0],
-          weekNumber,
-          calculatedTitle: reportTitle,
-          totalSpend: campaignTotals.spend,
-          campaignsCount: campaigns.length
-        });
-        
         // Calculate actual days in the report range
         const reportStartDate = new Date(report.date_range_start);
         const reportEndDate = new Date(report.date_range_end);
         const daysDifference = Math.ceil((reportEndDate.getTime() - reportStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         
-        console.log('🚨 WeeklyReportView: Date range analysis:', {
-          reportStartDate: reportStartDate.toISOString().split('T')[0],
-          reportEndDate: reportEndDate.toISOString().split('T')[0],
-          daysDifference,
-          isExactlyOneWeek: daysDifference === 7,
-          isLongerThanWeek: daysDifference > 7,
-          expectedForWeek: '7 days',
-          actualDays: daysDifference
-        });
-        
         if (daysDifference > 7) {
-          console.log('⚠️ WARNING: Weekly report contains MORE than 7 days of data!');
-          console.log('   This explains why spend/metrics are higher than expected');
-          console.log('   The API may be returning a longer date range than requested');
+          // console.log('⚠️ WARNING: Weekly report contains MORE than 7 days of data!');
+          // console.log('   This explains why spend/metrics are higher than expected');
+          // console.log('   The API may be returning a longer date range than requested');
         }
 
         return (
@@ -398,10 +527,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                           const weekStartDateStr = weekStartDate.toISOString().split('T')[0] || '';
                           const weekEndDateStr = weekEndDate.toISOString().split('T')[0] || '';
                           
-                          console.log(`🔧 SUBTITLE FIX: Using calculated dates for ${reportId}`);
-                          console.log(`   Week start: ${weekStartDateStr}`);
-                          console.log(`   Week end: ${weekEndDateStr}`);
-                          
                           return (
                             <span>{formatDate(weekStartDateStr)} - {formatDate(weekEndDateStr)}</span>
                           );
@@ -429,19 +554,21 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
 
 
 
-            {/* Campaign Performance Section */}
-            <section>
+            {/* Comprehensive Metrics Section */}
+            <section className="mb-12">
               <div className="mb-8">
-                <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Wydajność Kampanii</h2>
-                <p className="text-sm text-gray-600">Główne metryki reklamowe z Meta Ads API</p>
+                <h2 className="text-2xl font-semibold text-slate-900 mb-3 tracking-tight">Kompletne Metryki</h2>
+                <p className="text-base text-slate-600">Wszystkie metryki reklamowe i konwersji</p>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Main Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <MetricCard
-                  title="Całkowite Wydatki"
+                  title="Wydana kwota"
                   value={formatCurrency(campaignTotals.spend)}
                   subtitle="Suma wydatków na reklamy"
-                  tooltip="Łączna kwota wydana na reklamy w wybranym okresie"
+                  tooltip="Łączna kwota wydana na reklamy"
+                  icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
                 />
                 
                 <MetricCard
@@ -449,29 +576,188 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   value={formatNumber(campaignTotals.impressions)}
                   subtitle="Liczba wyświetleń reklam"
                   tooltip="Całkowita liczba wyświetleń reklam"
+                  icon={<Eye className="w-5 h-5 text-slate-600" />}
                 />
                 
                 <MetricCard
-                  title="Kliknięcia"
+                  title="Kliknięcia linku"
                   value={formatNumber(campaignTotals.clicks)}
                   subtitle="Liczba kliknięć w reklamy"
                   tooltip="Całkowita liczba kliknięć w reklamy"
+                  icon={<MousePointer className="w-5 h-5 text-slate-600" />}
+                />
+              </div>
+
+              {/* Booking Engine Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <MetricCard
+                  title="Booking Engine krok 1"
+                  value={campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0).toString()}
+                  subtitle="Pierwszy krok rezerwacji"
+                  tooltip="Liczba użytkowników, którzy rozpoczęli proces rezerwacji"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
                 />
                 
+                <MetricCard
+                  title="Booking Engine krok 2"
+                  value={campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0).toString()}
+                  subtitle="Drugi krok rezerwacji"
+                  tooltip="Liczba użytkowników, którzy przeszli do drugiego kroku"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
+                />
+                
+                <MetricCard
+                  title="Booking Engine krok 3"
+                  value={campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0).toString()}
+                  subtitle="Trzeci krok rezerwacji"
+                  tooltip="Liczba użytkowników, którzy ukończyli proces rezerwacji"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
+                />
+              </div>
+
+              {/* Contact Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <MetricCard
+                  title="Kliknięcia w adres e-mail"
+                  value={campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0).toString()}
+                  subtitle="Kontakt przez e-mail"
+                  tooltip="Liczba kliknięć w adres e-mail"
+                  icon={<Mail className="w-5 h-5 text-slate-600" />}
+                />
+                
+                <MetricCard
+                  title="Kliknięcia w numer telefonu"
+                  value={campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0).toString()}
+                  subtitle="Kontakt przez telefon"
+                  tooltip="Liczba kliknięć w numer telefonu"
+                  icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
+                />
+              </div>
+
+              {/* Social Media Metrics - Temporarily Hidden */}
+              {/* 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <MetricCard
+                  title="Nowi obserwujący na Facebooku"
+                  value={(() => {
+                    // CRITICAL: Debug the exact value being displayed
+                    const displayValue = socialLoading ? "Ładowanie..." : (socialInsights?.facebookNewFollowers?.toString() || "0");
+                    return displayValue;
+                  })()}
+                  subtitle="Meta ograniczyła dostęp do danych"
+                  tooltip="Facebook deprecował większość wskaźników obserwujących. Alternatywa: używaj danych o zaangażowaniu."
+                />
+                
+                <MetricCard
+                  title="Zasięg na Instagramie"
+                  value={socialLoading ? "Ładowanie..." : (socialInsights?.instagramReach || 0).toString()}
+                  subtitle="Użytkownicy którzy widzieli treści"
+                  tooltip="Rzeczywiste dane o zasięgu postów na Instagramie w wybranym okresie"
+                />
+              </div>
+              */}
+
+              {/* Social Insights Status Display - Temporarily Hidden */}
+              {/*
+              {socialError ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                      <p className="text-red-700 font-medium">Błąd - Metryki społecznościowe</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSocialError(null);
+                        setSocialLoading(true);
+                        // Trigger useEffect by changing a dependency
+                        window.location.reload();
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm underline"
+                    >
+                      Spróbuj ponownie
+                    </button>
+                  </div>
+                  <p className="text-red-600 text-sm mt-1">Problem z pobieraniem danych social media: {socialError}</p>
+                  <p className="text-red-600 text-xs mt-2">Wszystkie metryki reklamowe działają normalnie.</p>
+                </div>
+              ) : socialLoading ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 bg-yellow-500 rounded-full animate-pulse"></div>
+                    <p className="text-yellow-700 font-medium">Ładowanie - Metryki społecznościowe</p>
+                  </div>
+                  <p className="text-yellow-600 text-sm mt-1">Pobieranie danych z Facebook Page Insights i Instagram Business Account...</p>
+                </div>
+              ) : (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                    <p className="text-green-700 font-medium">Aktywne - Metryki społecznościowe</p>
+                  </div>
+                  <p className="text-green-600 text-sm mt-1">Dane z Facebook Page Insights i Instagram Business Account są aktywne.</p>
+                  <p className="text-green-600 text-xs mt-2">Wszystkie metryki reklamowe i społecznościowe działają normalnie.</p>
+                </div>
+              )}
+              */}
+
+
+
+              {/* Conversion Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <MetricCard
+                  title="Rezerwacje"
+                  value={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0).toString()}
+                  subtitle="Liczba rezerwacji"
+                  tooltip="Całkowita liczba rezerwacji"
+                  icon={<Calendar className="w-5 h-5 text-slate-600" />}
+                />
+                
+                <MetricCard
+                  title="Wartość rezerwacji"
+                  value={formatCurrency(campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0))}
+                  subtitle="Wartość wszystkich rezerwacji"
+                  tooltip="Łączna wartość wszystkich rezerwacji"
+                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+                />
+                
+                <MetricCard
+                  title="ROAS"
+                  value={(() => {
+                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+                    const totalValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    return totalSpend > 0 ? (totalValue / totalSpend).toFixed(2) + 'x' : '0x';
+                  })()}
+                  subtitle="Return on Ad Spend"
+                  tooltip="Zwrot z wydatków na reklamy"
+                  icon={<Percent className="w-5 h-5 text-slate-600" />}
+                />
+              </div>
+            </section>
+
+            {/* Campaign Performance Section - Consolidated */}
+            <section>
+              <div className="mb-8">
+                <h2 className="text-2xl font-semibold text-slate-900 mb-3 tracking-tight">Dodatkowe Metryki</h2>
+                <p className="text-base text-slate-600">Wszystkie dodatkowe metryki reklamowe i konwersji</p>
+              </div>
+              
+              {/* Main Campaign Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <MetricCard
                   title="Zasięg"
                   value={formatNumber(campaignTotals.reach)}
                   subtitle="Unikalni użytkownicy"
                   tooltip="Liczba unikalnych użytkowników, którzy zobaczyli reklamy"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
                 />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                
                 <MetricCard
                   title="CTR"
                   value={`${ctr.toFixed(2)}%`}
                   subtitle="Click-through rate"
                   tooltip="Procent kliknięć w stosunku do wyświetleń"
+                  icon={<Percent className="w-5 h-5 text-slate-600" />}
                 />
                 
                 <MetricCard
@@ -479,6 +765,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   value={formatCurrency(cpc)}
                   subtitle="Cost per click"
                   tooltip="Średni koszt za kliknięcie"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
                 />
                 
                 <MetricCard
@@ -486,79 +773,33 @@ export default function WeeklyReportView({ reports, viewType = 'weekly' }: Weekl
                   value={formatCurrency(cpm)}
                   subtitle="Cost per mille"
                   tooltip="Koszt za 1000 wyświetleń"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
                 />
-                
+              </div>
+
+              {/* Conversion and Performance Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <MetricCard
                   title="Konwersje"
                   value={campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0).toString()}
                   subtitle="Łączna liczba konwersji"
                   tooltip="Całkowita liczba konwersji ze wszystkich kampanii"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
+                />
+                
+                <MetricCard
+                  title="Koszt per rezerwacja"
+                  value={(() => {
+                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    return totalReservations > 0 ? formatCurrency(totalSpend / totalReservations) : '—';
+                  })()}
+                  subtitle="Średni koszt za jedną rezerwację"
+                  tooltip="Średni koszt za jedną rezerwację"
+                  icon={<Download className="w-5 h-5 text-slate-600" />}
                 />
               </div>
             </section>
-
-            {/* Conversion Metrics Section */}
-            {(() => {
-              // Calculate conversion metrics totals from campaigns
-              const conversionTotals = campaigns.reduce((acc, campaign) => {
-                return {
-                  click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-                  email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-                  booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-                  reservations: acc.reservations + (campaign.reservations || 0),
-                  reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-                  booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-                  total_spend: acc.total_spend + (campaign.spend || 0)
-                };
-              }, {
-                click_to_call: 0,
-                email_contacts: 0,
-                booking_step_1: 0,
-                reservations: 0,
-                reservation_value: 0,
-                booking_step_2: 0,
-                total_spend: 0
-              });
-
-              // Calculate ROAS and cost per reservation from aggregated totals
-              const roas = conversionTotals.total_spend > 0 && conversionTotals.reservation_value > 0 
-                ? conversionTotals.reservation_value / conversionTotals.total_spend 
-                : 0;
-              
-              const cost_per_reservation = conversionTotals.reservations > 0 
-                ? conversionTotals.total_spend / conversionTotals.reservations 
-                : 0;
-
-              // Create final conversion metrics object using calculated totals
-              const conversionMetrics = {
-                click_to_call: conversionTotals.click_to_call,
-                email_contacts: conversionTotals.email_contacts,
-                booking_step_1: conversionTotals.booking_step_1,
-                reservations: conversionTotals.reservations,
-                reservation_value: conversionTotals.reservation_value,
-                booking_step_2: conversionTotals.booking_step_2,
-                roas,
-                cost_per_reservation
-              };
-
-              console.log('🔍 WeeklyReportView: Conversion metrics calculation:', {
-                campaignsCount: campaigns.length,
-                conversionTotals,
-                conversionMetrics,
-                hasConversions: conversionTotals.reservations > 0 || conversionTotals.click_to_call > 0 || conversionTotals.email_contacts > 0
-              });
-
-              return (
-                <section className="mb-8">
-                  <ConversionMetricsCards 
-                    conversionMetrics={conversionMetrics}
-                    currency="PLN"
-                    isLoading={false}
-                    showInfoPanel={false}
-                  />
-                </section>
-              );
-            })()}
 
             {/* Campaigns Table */}
             {campaigns.length > 0 && (

@@ -18,9 +18,12 @@ function generateSecurePassword(): string {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    
+    // Await params before using
+    const { id } = await params;
     // Verify admin authentication
     const authResult = await authenticateRequest(request);
     if (!authResult.success) {
@@ -48,7 +51,7 @@ export async function POST(
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('email, generated_username')
-      .eq('id', params.id)
+      .eq('id', id)
       .single();
 
     if (clientError || !client) {
@@ -94,7 +97,7 @@ export async function POST(
         generated_username: username,
         credentials_generated_at: new Date().toISOString()
       })
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (dbError) {
       console.error('Error updating client record:', dbError);

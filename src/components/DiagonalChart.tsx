@@ -71,7 +71,7 @@ export default function DiagonalChart({
       ref={ref}
       initial={{ scale: 0.95, opacity: 0, y: 20 }}
       animate={controls}
-      className="relative bg-white/95 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-white/20 overflow-hidden group hover:shadow-3xl transition-all duration-500 hover:scale-[1.02] flex flex-col"
+      className="relative bg-white/95 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-gray-200/30 overflow-hidden group hover:shadow-3xl transition-all duration-500 hover:scale-[1.02] flex flex-col text-gray-900"
       style={{ minHeight: '450px' }} // Increased height for bigger charts
     >
       {/* Icon in corner - moved to top */}

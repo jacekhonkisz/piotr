@@ -107,6 +107,14 @@ export default function AdminCalendarPage() {
     }
   }, [user, profile, authLoading, router]);
 
+  // Reload data when currentDate changes (month navigation) - CONTROLLED refresh
+  useEffect(() => {
+    if (user && profile?.role === 'admin') {
+      console.log('📅 Calendar month changed, reloading data for:', currentDate.toLocaleDateString());
+      loadScheduledReports(); // Only reload scheduled reports, not clients
+    }
+  }, [currentDate, user, profile]);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -219,28 +227,14 @@ export default function AdminCalendarPage() {
             
             // Only include future dates
             if (sendDate > today) {
-              // Use the same period calculation logic as reports page
-              // Generate period ID for the send date's month
-              const sendDatePeriodId = generatePeriodId(sendDate, 'monthly');
-              const [year, month] = sendDatePeriodId.split('-').map(Number);
+              // For calendar view, monthly reports cover the PREVIOUS month before send date
+              // Calculate the previous month from the send date
+              const reportMonth = new Date(sendDate.getFullYear(), sendDate.getMonth() - 1, 1);
+              const year = reportMonth.getFullYear();
+              const month = reportMonth.getMonth() + 1; // getMonth() is 0-based, so add 1
               
-              // Check if this would be current month on send date
-              const isCurrentMonth = year === sendDate.getFullYear() && month === (sendDate.getMonth() + 1);
-              
-              let dateRange;
-              if (isCurrentMonth) {
-                // For current month, use today as the end date (or send date if future)
-                const startDate = new Date(Date.UTC(year, month - 1, 1));
-                const endDate = sendDate > today ? today : sendDate;
-                
-                dateRange = {
-                  start: startDate.toISOString().split('T')[0] || '',
-                  end: endDate.toISOString().split('T')[0] || ''
-                };
-              } else {
-                // For past months, use the full month
-                dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
-              }
+              // Always use full month boundaries for calendar view
+              const dateRange = getMonthBoundaries(year, month);
               
               const reportPeriodStart = new Date(dateRange.start);
               const reportPeriodEnd = new Date(dateRange.end);
@@ -279,27 +273,17 @@ export default function AdminCalendarPage() {
               
               // Only include future dates
               if (sendDate > today) {
-                // Use the same period calculation logic as reports page
-                // Generate period ID for the send date's week
-                const sendDatePeriodId = generatePeriodId(sendDate, 'weekly');
-                const [year, weekStr] = sendDatePeriodId.split('-W');
-                const week = parseInt(weekStr || '1');
+                // For weekly reports, cover the PREVIOUS week before send date
+                // Calculate the previous week from the send date
+                const reportWeekStart = new Date(sendDate);
+                reportWeekStart.setDate(sendDate.getDate() - 7); // Go back 7 days
                 
-                // Proper ISO week calculation (same as reports page)
-                const yearNum = parseInt(year || new Date().getFullYear().toString());
+                // Find the Monday of that week (ISO week starts on Monday)
+                const dayOfWeek = reportWeekStart.getDay();
+                const daysFromMonday = (dayOfWeek + 6) % 7; // Convert Sunday=0 to Monday=0 reference
+                reportWeekStart.setDate(reportWeekStart.getDate() - daysFromMonday);
                 
-                // January 4th is always in week 1 of the ISO year
-                const jan4 = new Date(yearNum, 0, 4);
-                
-                // Find the Monday of week 1
-                const startOfWeek1 = new Date(jan4);
-                startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-                
-                // Calculate the start date of the target week
-                const weekStartDate = new Date(startOfWeek1);
-                weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
-                
-                const dateRange = getWeekBoundaries(weekStartDate);
+                const dateRange = getWeekBoundaries(reportWeekStart);
                 const reportPeriodStart = new Date(dateRange.start);
                 const reportPeriodEnd = new Date(dateRange.end);
                 

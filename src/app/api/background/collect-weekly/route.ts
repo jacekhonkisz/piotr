@@ -8,6 +8,37 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export async function GET() {
+  // For Vercel cron jobs - bypass authentication
+  logger.info('📅 Weekly data collection triggered by cron job');
+  
+  try {
+    console.log(`📅 Starting weekly data collection via cron job`);
+
+    // Start background collection (don't await to avoid timeout)
+    const collector = BackgroundDataCollector.getInstance();
+    collector.collectWeeklySummaries().catch(error => {
+      console.error('❌ Background weekly collection failed:', error);
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Weekly data collection started in background via cron job',
+      startedAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Error starting weekly collection via cron:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to start weekly collection',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   logger.info('📅 Weekly data collection request started');
   

@@ -139,25 +139,12 @@ Przesyłamy raport wyników kampanii Meta Ads za okres ${periodDisplay}.
 Podsumowanie:
 ${polishSummary}
 
-Główne wskaźniki:
-- Łączne wydatki: ${spend}
-- Wyświetlenia: ${impressions}
-- Kliknięcia: ${clicks}
-- Konwersje: ${conversions}
-- CTR: ${ctr}
-- CPC: ${cpc}
-- CPM: ${cpm}
-
 Kompletny szczegółowy raport znajduje się w załączeniu PDF. Prosimy o otwarcie załącznika w celu zapoznania się z pełną analizą, wykresami i szczegółami kampanii.
 
 W razie pytań dotyczących raportu lub chęci omówienia strategii optymalizacji, prosimy o kontakt.
 
 Z poważaniem,
-Zespół Meta Ads
-
----
-To jest automatyczny raport wygenerowany przez system zarządzania Meta Ads.
-W celu uzyskania pomocy, skontaktuj się z nami pod adresem support@example.com`;
+Zespół Meta Ads`;
 
   const htmlContent = `
 <!DOCTYPE html>
