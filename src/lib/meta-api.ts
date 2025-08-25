@@ -100,9 +100,39 @@ interface TokenInfo {
   user_id: string;
 }
 
-// Cache for Meta API responses
+// DEPRECATED: Use MetaAPIServiceOptimized instead
+// This cache has been replaced with memory-managed cache to prevent memory leaks
 const apiCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Memory leak prevention: Limit cache size and add cleanup
+const MAX_CACHE_SIZE = 500;
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  const keysToDelete: string[] = [];
+  
+  for (const [key, entry] of apiCache.entries()) {
+    if (now - entry.timestamp > CACHE_DURATION) {
+      keysToDelete.push(key);
+    }
+  }
+  
+  keysToDelete.forEach(key => apiCache.delete(key));
+  
+  // If still too large, remove oldest entries
+  if (apiCache.size > MAX_CACHE_SIZE) {
+    const entries = Array.from(apiCache.entries());
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const toRemove = entries.slice(0, apiCache.size - MAX_CACHE_SIZE);
+    toRemove.forEach(([key]) => apiCache.delete(key));
+  }
+}, 2 * 60 * 1000); // Cleanup every 2 minutes
+
+// Cleanup on process exit
+process.on('exit', () => {
+  clearInterval(cleanupInterval);
+  apiCache.clear();
+});
 
 export class MetaAPIService {
   private accessToken: string;

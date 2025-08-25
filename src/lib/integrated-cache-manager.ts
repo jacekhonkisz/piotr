@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getCurrentProfile } from './auth-optimized';
+import { getCurrentProfileOptimized } from './auth-optimized';
 import { getSmartCacheData, getCurrentMonthInfo } from './smart-cache-helper';
 import logger from './logger';
 
@@ -46,7 +46,7 @@ class IntegratedCacheManager {
       logger.info('🔄 IntegratedCacheManager: Starting smart data fetch...');
       
       // Step 1: Get profile (with optimized caching)
-      const profile = await getCurrentProfile();
+      const profile = await getCurrentProfileOptimized();
       if (!profile) {
         throw new Error('User not authenticated');
       }
@@ -291,7 +291,7 @@ class IntegratedCacheManager {
     try {
       logger.info('🔄 Force refreshing current month data...');
       
-      const profile = await getCurrentProfile();
+      const profile = await getCurrentProfileOptimized();
       if (!profile) {
         throw new Error('User not authenticated');
       }
