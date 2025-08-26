@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
 import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
+import { UnifiedDataFetcher } from '../../../lib/unified-data-fetcher';
+import { convertMetaCampaignToUnified, convertGoogleCampaignToUnified, calculatePlatformTotals, UnifiedCampaign, PlatformTotals } from '../../../lib/unified-campaign-types';
 import logger from '../../../lib/logger';
 
 const supabase = createClient(
@@ -30,6 +32,14 @@ interface ReportData {
     ctr: number;
     cpc: number;
     cpm: number;
+  };
+  // Google Ads integration
+  googleCampaigns?: UnifiedCampaign[];
+  metaCampaigns?: UnifiedCampaign[];
+  platformTotals?: {
+    meta: PlatformTotals;
+    google: PlatformTotals;
+    combined: PlatformTotals;
   };
   previousMonthTotals?: {
     spend: number;
@@ -100,6 +110,25 @@ function generatePDFHTML(reportData: ReportData): string {
       day: 'numeric' 
     });
   };
+
+  // Calculate conversion metrics from campaigns (moved to top for cover KPIs)
+  const conversionMetrics = reportData.campaigns.reduce((acc, campaign) => {
+    return {
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0)
+    };
+  }, {
+    click_to_call: 0,
+    email_contacts: 0,
+    booking_step_1: 0,
+    reservations: 0,
+    reservation_value: 0,
+    booking_step_2: 0
+  });
 
   const calculatePercentageChange = (current: number, previous: number): number => {
     if (previous === 0) return 0;
@@ -248,24 +277,7 @@ function generatePDFHTML(reportData: ReportData): string {
   const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
   const reach = totalImpressions > 0 ? Math.round(totalImpressions / 1.5) : 0;
 
-  // Calculate conversion metrics from campaigns
-  const conversionMetrics = reportData.campaigns.reduce((acc, campaign) => {
-    return {
-      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-      reservations: acc.reservations + (campaign.reservations || 0),
-      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0)
-    };
-  }, {
-    click_to_call: 0,
-    email_contacts: 0,
-    booking_step_1: 0,
-    reservations: 0,
-    reservation_value: 0,
-    booking_step_2: 0
-  });
+
 
   // Calculate derived conversion metrics
   const roas = totalSpend > 0 && conversionMetrics.reservation_value > 0 
@@ -1017,6 +1029,79 @@ import logger from '../../../lib/logger';
                 page-break-after: always;
             }
             
+            /* Platform Comparison Styles */
+            .platform-comparison {
+                background: var(--bg-panel);
+                border-radius: 16px;
+                padding: 32px;
+                margin-bottom: 32px;
+            }
+            
+            .comparison-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 32px;
+                margin-top: 24px;
+            }
+            
+            .platform-card {
+                border-radius: 12px;
+                padding: 24px;
+                color: white;
+            }
+            
+            .meta-card {
+                background: linear-gradient(135deg, #1877F2 0%, #0866FF 100%);
+            }
+            
+            .google-card {
+                background: linear-gradient(135deg, #4285F4 0%, #34A853 100%);
+            }
+            
+            .platform-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                padding-bottom: 16px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            }
+            
+            .platform-header h4 {
+                font-size: 18px;
+                font-weight: 600;
+            }
+            
+            .platform-share {
+                font-size: 14px;
+                font-weight: 500;
+                background: rgba(255, 255, 255, 0.2);
+                padding: 4px 12px;
+                border-radius: 20px;
+            }
+            
+            .platform-metrics {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .metric-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .metric-label {
+                font-size: 14px;
+                opacity: 0.9;
+            }
+            
+            .metric-value {
+                font-size: 16px;
+                font-weight: 600;
+            }
+            
             /* Page breaks and print optimization */
             @media print {
                 body { background: white; }
@@ -1054,12 +1139,12 @@ import logger from '../../../lib/logger';
                 }
                 
                 <div class="cover-title">
-                    <h1>Raport Meta Ads — ${reportData.client.name}</h1>
+                    <h1>Raport Reklamowy — ${reportData.client.name}</h1>
                     <h2>${formatDate(reportData.dateRange.start)} – ${formatDate(reportData.dateRange.end)}</h2>
                 </div>
                 
                 <div class="cover-meta">
-                    Źródło: Meta Ads API • Wygenerowano: ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}
+Źródło: Meta Ads API & Google Ads API • Wygenerowano: ${new Date().toLocaleDateString('pl-PL')} ${new Date().toLocaleTimeString('pl-PL')}
                 </div>
                 
                 <!-- Executive Summary -->
@@ -1070,6 +1155,26 @@ import logger from '../../../lib/logger';
                     </div>
                 </div>
                 
+                <!-- Cover KPIs -->
+                <div class="cover-kpi-row">
+                    <div class="cover-kpi">
+                        <span class="cover-kpi-value">${formatCurrency(reportData.platformTotals ? reportData.platformTotals.combined.totalSpend : totalSpend)}</span>
+                        <span class="cover-kpi-label">Łączne Wydatki</span>
+                    </div>
+                    <div class="cover-kpi">
+                        <span class="cover-kpi-value">${formatNumber(reportData.platformTotals ? reportData.platformTotals.combined.totalImpressions : totalImpressions)}</span>
+                        <span class="cover-kpi-label">Wyświetlenia</span>
+                    </div>
+                    <div class="cover-kpi">
+                        <span class="cover-kpi-value">${formatNumber(reportData.platformTotals ? reportData.platformTotals.combined.totalClicks : totalClicks)}</span>
+                        <span class="cover-kpi-label">Kliknięcia</span>
+                    </div>
+                    <div class="cover-kpi">
+                        <span class="cover-kpi-value">${formatNumber(reportData.platformTotals ? reportData.platformTotals.combined.totalReservations : conversionMetrics.reservations)}</span>
+                        <span class="cover-kpi-label">Rezerwacje</span>
+                    </div>
+                </div>
+                
                 <!-- Period-over-Period Comparison - Now shown inline with individual metrics -->
                 
                 <!-- Year-over-Year Comparison -->
@@ -1077,6 +1182,9 @@ import logger from '../../../lib/logger';
                 
                 <div class="year-comparison">
                     <h3>Porównanie rok do roku</h3>
+                    
+                    <!-- Meta Ads Year Comparison -->
+                    <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
                     <table class="comparison-table">
                         <thead>
                             <tr>
@@ -1142,97 +1250,315 @@ import logger from '../../../lib/logger';
                             </tr>
                         </tbody>
                     </table>
+                    
+                    <!-- Google Ads Year Comparison -->
+                    <h4 style="margin-top: 30px; color: #34a853; font-size: 16px;">Google Ads</h4>
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th class="metric-name">Metryka</th>
+                                <th>${new Date(reportData.dateRange.start).getFullYear()}</th>
+                                <th>${new Date(reportData.dateRange.start).getFullYear() - 1}</th>
+                                <th>Zmiana</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="metric-name">Wydatki</td>
+                                <td class="current-year">${formatCurrency(reportData.platformTotals?.google?.totalSpend || 0)}</td>
+                                <td class="previous-year">0,00 zł</td>
+                                <td class="year-change neutral">—</td>
+                            </tr>
+                            <tr>
+                                <td class="metric-name">Rezerwacje</td>
+                                <td class="current-year">${formatNumber(reportData.platformTotals?.google?.totalReservations || 0)}</td>
+                                <td class="previous-year">0</td>
+                                <td class="year-change neutral">—</td>
+                            </tr>
+                            <tr>
+                                <td class="metric-name">Koszt per rezerwacja</td>
+                                <td class="current-year">${reportData.platformTotals?.google?.totalReservations > 0 ? formatCurrency((reportData.platformTotals?.google?.totalSpend || 0) / (reportData.platformTotals?.google?.totalReservations || 1)) : '—'}</td>
+                                <td class="previous-year">—</td>
+                                <td class="year-change neutral">—</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
                 ` : ''}
             </div>
 
+            ${true ? `
+            <!-- Platform Comparison Section -->
+            <div class="platform-comparison page-break-before">
+                <h3 class="section-title">Porównanie Platform Reklamowych</h3>
+                <div class="comparison-grid">
+                    <div class="platform-card meta-card">
+                        <div class="platform-header">
+                            <h4>Meta Ads</h4>
+                            <div class="platform-share">${reportData.platformTotals?.combined?.totalSpend > 0 ? 
+                                ((reportData.platformTotals?.meta?.totalSpend || 0) / (reportData.platformTotals?.combined?.totalSpend || 1) * 100).toFixed(0) : 0}% budżetu</div>
+                        </div>
+                        <div class="platform-metrics">
+                            <div class="metric-row">
+                                <span class="metric-label">Wydatki:</span>
+                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.meta?.totalSpend || 0)}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Kampanie:</span>
+                                <span class="metric-value">${reportData.metaCampaigns?.length || 0}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">CTR:</span>
+                                <span class="metric-value">${formatPercentage(reportData.platformTotals?.meta?.averageCtr || 0)}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">CPC:</span>
+                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.meta?.averageCpc || 0)}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Rezerwacje:</span>
+                                <span class="metric-value">${formatNumber(reportData.platformTotals?.meta?.totalReservations || 0)}</span>
+                            </div>
+                        </div>
+                    </div>
 
+                    <div class="platform-card google-card">
+                        <div class="platform-header">
+                            <h4>Google Ads</h4>
+                            <div class="platform-share">${reportData.platformTotals?.combined?.totalSpend > 0 ? 
+                                ((reportData.platformTotals?.google?.totalSpend || 0) / (reportData.platformTotals?.combined?.totalSpend || 1) * 100).toFixed(0) : 0}% budżetu</div>
+                        </div>
+                        <div class="platform-metrics">
+                            <div class="metric-row">
+                                <span class="metric-label">Wydatki:</span>
+                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.google?.totalSpend || 0)}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Kampanie:</span>
+                                <span class="metric-value">${reportData.googleCampaigns?.length || 0}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">CTR:</span>
+                                <span class="metric-value">${formatPercentage(reportData.platformTotals?.google?.averageCtr || 0)}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">CPC:</span>
+                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.google?.averageCpc || 0)}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Rezerwacje:</span>
+                                <span class="metric-value">${formatNumber(reportData.platformTotals?.google?.totalReservations || 0)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
 
-            <!-- Page 2 - Performance & Conversion Metrics -->
-            <div class="metrics-page page-break-before">
-                <div class="metrics-column">
-                    <h3>Wydajność kampanii</h3>
-                    <div class="stat-list">
-                        <div class="stat-item">
-                            <span class="stat-label">Wydatki łączne</span>
-                            ${formatStatValue(totalSpend, reportData.previousMonthTotals?.spend, formatCurrency)}
+                        <!-- Page 2 - Meta Ads Performance & Conversion Metrics -->
+            <div style="page-break-before: always; padding: 40px; width: 100%; box-sizing: border-box; font-family: Arial, sans-serif;">
+                <!-- Meta Ads Header -->
+                <h2 style="text-align: center; margin: 0 0 20px 0; color: #1877f2; font-size: 28px; font-weight: 600; width: 100%; display: block;">Meta Ads</h2>
+                
+                <!-- Two Column Layout for Meta Ads -->
+                <div style="display: flex !important; flex-direction: row !important; gap: 40px; width: 100% !important; justify-content: space-between; margin: 0; padding: 0; box-sizing: border-box;">
+                    <div style="flex: 1 !important; width: 48% !important; min-width: 0; margin: 0; padding: 0 10px; box-sizing: border-box;">
+                        <h3 style="text-align: center; margin-bottom: 30px; font-size: 20px; color: #333; font-weight: 600;">Wydajność kampanii</h3>
+                        <div style="margin: 0; padding: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Wydatki łączne</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(totalSpend, reportData.previousMonthTotals?.spend, formatCurrency)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Wyświetlenia</span>
-                            ${formatStatValue(totalImpressions, reportData.previousMonthTotals?.impressions, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Wyświetlenia</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(totalImpressions, reportData.previousMonthTotals?.impressions, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Kliknięcia</span>
-                            ${formatStatValue(totalClicks, reportData.previousMonthTotals?.clicks, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Kliknięcia</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(totalClicks, reportData.previousMonthTotals?.clicks, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Zasięg</span>
-                            ${formatStatValue(reach, undefined, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Zasięg</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(reach, undefined, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">CTR</span>
-                            ${formatStatValue(ctr, reportData.previousMonthTotals?.ctr, (val) => formatPercentage(val))}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">CTR</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(ctr, reportData.previousMonthTotals?.ctr, (val) => formatPercentage(val))}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">CPC</span>
-                            ${formatStatValue(cpc, reportData.previousMonthTotals?.cpc, formatCurrency)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">CPC</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(cpc, reportData.previousMonthTotals?.cpc, formatCurrency)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">CPM</span>
-                            ${formatStatValue(cpm, reportData.previousMonthTotals?.cpm, formatCurrency)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">CPM</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatStatValue(cpm, reportData.previousMonthTotals?.cpm, formatCurrency)}</span>
                         </div>
                     </div>
                 </div>
                 
-                <div class="metrics-column">
-                    <h3>Statystyki konwersji</h3>
-                    <div class="stat-list">
-                        <div class="stat-item">
-                            <span class="stat-label">Potencjalne kontakty – telefon</span>
-                            ${formatConversionValue(conversionMetrics.click_to_call, reportData.previousMonthConversions?.click_to_call, formatNumber)}
+                    <div style="flex: 1 !important; width: 48% !important; min-width: 0; margin: 0; padding: 0 10px; box-sizing: border-box;">
+                        <h3 style="text-align: center; margin-bottom: 30px; font-size: 20px; color: #333; font-weight: 600;">Statystyki konwersji</h3>
+                        <div style="margin: 0; padding: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Potencjalne kontakty – telefon</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatConversionValue(conversionMetrics.click_to_call, reportData.previousMonthConversions?.click_to_call, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Potencjalne kontakty – e-mail</span>
-                            ${formatConversionValue(conversionMetrics.email_contacts, reportData.previousMonthConversions?.email_contacts, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Potencjalne kontakty – e-mail</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatConversionValue(conversionMetrics.email_contacts, reportData.previousMonthConversions?.email_contacts, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Kroki rezerwacji – Etap 1</span>
-                            ${formatConversionValue(conversionMetrics.booking_step_1, reportData.previousMonthConversions?.booking_step_1, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Kroki rezerwacji – Etap 1</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatConversionValue(conversionMetrics.booking_step_1, reportData.previousMonthConversions?.booking_step_1, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Rezerwacje (zakończone)</span>
-                            ${formatConversionValue(conversionMetrics.reservations, reportData.previousMonthConversions?.reservations, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Rezerwacje (zakończone)</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatConversionValue(conversionMetrics.reservations, reportData.previousMonthConversions?.reservations, formatNumber)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Wartość rezerwacji (zł)</span>
-                            ${formatConversionValue(conversionMetrics.reservation_value, reportData.previousMonthConversions?.reservation_value, formatCurrency)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Wartość rezerwacji (zł)</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatConversionValue(conversionMetrics.reservation_value, reportData.previousMonthConversions?.reservation_value, formatCurrency)}</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">ROAS (x)</span>
-                            ${roas > 0 ? 
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">ROAS (x)</span>
+                                <span style="font-weight: 600; color: #1877f2;">${roas > 0 ? 
                                 formatStatValue(roas, 
                                   reportData.previousMonthConversions?.reservation_value && reportData.previousMonthTotals?.spend 
                                     ? reportData.previousMonthConversions.reservation_value / reportData.previousMonthTotals.spend 
                                     : undefined, 
                                   (val) => `${val.toFixed(2)}x`) :
                                 `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                                }</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Koszt per rezerwacja (zł)</span>
-                            ${cost_per_reservation > 0 ? 
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Koszt per rezerwacja (zł)</span>
+                                <span style="font-weight: 600; color: #1877f2;">${cost_per_reservation > 0 ? 
                                 formatStatValue(cost_per_reservation, 
                                   reportData.previousMonthConversions?.reservations && reportData.previousMonthTotals?.spend 
                                     ? reportData.previousMonthTotals.spend / reportData.previousMonthConversions.reservations 
                                     : undefined, 
                                   formatCurrency) :
                                 `<span class="stat-not-configured">— <span class="stat-tooltip">i</span></span>`
-                            }
+                                }</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Etap 2 rezerwacji</span>
-                            ${formatConversionValue(conversionMetrics.booking_step_2, reportData.previousMonthConversions?.booking_step_2, formatNumber)}
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Etap 2 rezerwacji</span>
+                                <span style="font-weight: 600; color: #1877f2;">${formatConversionValue(conversionMetrics.booking_step_2, reportData.previousMonthConversions?.booking_step_2, formatNumber)}</span>
+                            </div>
                         </div>
+                        </div>
+                </div>
+                </div>
+            </div>
+            
+            <!-- Page 3 - Google Ads Performance & Conversion Metrics -->
+            <div style="page-break-before: always; padding: 40px; width: 100%; box-sizing: border-box; font-family: Arial, sans-serif;">
+                <!-- Google Ads Header -->
+                <h2 style="text-align: center; margin: 0 0 20px 0; color: #34a853; font-size: 28px; font-weight: 600; width: 100%; display: block;">Google Ads</h2>
+                
+                <!-- Two Column Layout for Google Ads -->
+                <div style="display: flex !important; flex-direction: row !important; gap: 40px; width: 100% !important; justify-content: space-between; margin: 0; padding: 0; box-sizing: border-box;">
+                    <div style="flex: 1 !important; width: 48% !important; min-width: 0; margin: 0; padding: 0 10px; box-sizing: border-box;">
+                        <h3 style="text-align: center; margin-bottom: 30px; font-size: 20px; color: #333; font-weight: 600;">Wydajność kampanii</h3>
+                        <div style="margin: 0; padding: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Wydatki łączne</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(reportData.platformTotals?.google?.totalSpend || 0, undefined, formatCurrency)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Wyświetlenia</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(reportData.platformTotals?.google?.totalImpressions || 0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Kliknięcia</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(reportData.platformTotals?.google?.totalClicks || 0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Zasięg</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">CTR</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(reportData.platformTotals?.google?.totalClicks && reportData.platformTotals?.google?.totalImpressions ? (reportData.platformTotals.google.totalClicks / reportData.platformTotals.google.totalImpressions) * 100 : 0, undefined, (val) => formatPercentage(val))}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">CPC</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(reportData.platformTotals?.google?.totalClicks && reportData.platformTotals?.google?.totalClicks > 0 ? (reportData.platformTotals?.google?.totalSpend || 0) / reportData.platformTotals.google.totalClicks : 0, undefined, formatCurrency)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">CPM</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatStatValue(reportData.platformTotals?.google?.totalImpressions && reportData.platformTotals?.google?.totalImpressions > 0 ? ((reportData.platformTotals?.google?.totalSpend || 0) / reportData.platformTotals.google.totalImpressions) * 1000 : 0, undefined, formatCurrency)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="flex: 1 !important; width: 48% !important; min-width: 0; margin: 0; padding: 0 10px; box-sizing: border-box;">
+                        <h3 style="text-align: center; margin-bottom: 30px; font-size: 20px; color: #333; font-weight: 600;">Statystyki konwersji</h3>
+                        <div style="margin: 0; padding: 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Potencjalne kontakty – telefon</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatConversionValue(0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Potencjalne kontakty – e-mail</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatConversionValue(0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Kroki rezerwacji – Etap 1</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatConversionValue(0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Rezerwacje (zakończone)</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatConversionValue(reportData.platformTotals?.google?.totalReservations || 0, undefined, formatNumber)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Wartość rezerwacji (zł)</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatConversionValue(0, undefined, formatCurrency)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">ROAS (x)</span>
+                                <span style="font-weight: 600; color: #34a853;">—</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Koszt per rezerwacja (zł)</span>
+                                <span style="font-weight: 600; color: #34a853;">${reportData.platformTotals?.google?.totalReservations && reportData.platformTotals?.google?.totalReservations > 0 ? 
+                                    formatStatValue((reportData.platformTotals?.google?.totalSpend || 0) / (reportData.platformTotals?.google?.totalReservations || 1), undefined, formatCurrency) :
+                                    `—`
+                                }</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e0e0e0;">
+                                <span style="font-weight: 500; color: #333;">Etap 2 rezerwacji</span>
+                                <span style="font-weight: 600; color: #34a853;">${formatConversionValue(0, undefined, formatNumber)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Google Ads Campaigns List -->
+                <div style="margin-top: 40px;">
+                    <h3 style="color: #34a853; margin-bottom: 20px;">Kampanie Google Ads</h3>
+                        ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0) ? `
+                        <div class="campaigns-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                            ${reportData.googleCampaigns.map((campaign: any) => `
+                            <div class="campaign-card" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; background: #f9f9f9;">
+                                <h4 style="margin: 0 0 10px 0; color: #34a853; font-size: 14px; font-weight: 600;">${campaign.campaign_name || 'Nieznana kampania'}</h4>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+                                    <div><strong>Wydatki:</strong> ${formatCurrency(campaign.spend)}</div>
+                                    <div><strong>Wyświetlenia:</strong> ${formatNumber(campaign.impressions)}</div>
+                                    <div><strong>Kliknięcia:</strong> ${formatNumber(campaign.clicks)}</div>
+                                    <div><strong>CTR:</strong> ${formatPercentage(campaign.ctr)}</div>
+                                    <div><strong>CPC:</strong> ${formatCurrency(campaign.cpc)}</div>
+                                    <div><strong>Rezerwacje:</strong> ${formatNumber(campaign.reservations || 0)}</div>
+                                </div>
+                            </div>
+                            `).join('')}
+                        </div>
+                        ` : `
+                        <div style="text-align: center; padding: 30px; color: #666; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
+                            <p style="margin: 0; font-size: 16px;">Brak kampanii Google Ads dla wybranego okresu</p>
+                            <p style="margin: 8px 0 0 0; font-size: 14px; color: #999;">Kampanie będą widoczne po skonfigurowaniu Google Ads API</p>
+                        </div>
+                        `}
                     </div>
                 </div>
             </div>
@@ -1242,6 +1568,9 @@ import logger from '../../../lib/logger';
             <div class="section page-break-before">
                 <div class="chart-container">
                     <div class="chart-title">Demografia – Wyświetlenia</div>
+                    
+                    <!-- Meta Ads Demographics -->
+                    <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
                     <div class="charts-grid">
                         ${demographicData.gender.length > 0 ? `
                         <div class="chart-section">
@@ -1272,6 +1601,12 @@ import logger from '../../../lib/logger';
                         </div>
                         `}
                     </div>
+                    
+                    <!-- Google Ads Demographics -->
+                    <h4 style="margin-top: 30px; color: #34a853; font-size: 16px;">Google Ads</h4>
+                    <div style="text-align: center; padding: 20px; color: #6c757d; background: #f8f9fa; border-radius: 8px; margin-top: 10px;">
+                        <p>Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API</p>
+                    </div>
                 </div>
             </div>
             ` : `
@@ -1291,6 +1626,9 @@ import logger from '../../../lib/logger';
             <div class="section page-break-before">
                 <div class="chart-container">
                     <div class="chart-title">Demografia – Kliknięcia</div>
+                    
+                    <!-- Meta Ads Demographics -->
+                    <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
                     <div class="charts-grid">
                         ${demographicData.gender.length > 0 ? `
                         <div class="chart-section">
@@ -1449,11 +1787,56 @@ import logger from '../../../lib/logger';
                 </div>
             </div>
 
+            ${true ? `
+            <!-- Google Ads Campaign Details -->
+            <div class="section">
+                <div class="section-title">Szczegóły kampanii Google Ads</div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>NAZWA KAMPANII</th>
+                                <th>WYDATKI</th>
+                                <th>WYŚWIETLENIA</th>
+                                <th>KLIKNIĘCIA</th>
+                                <th>CTR</th>
+                                <th>CPC</th>
+                                <th>REZERWACJE</th>
+                                <th>ROAS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0) 
+                              ? reportData.googleCampaigns.map((campaign: any) => `
+                                <tr>
+                                    <td>${campaign.campaign_name || 'Nieznana kampania'}</td>
+                                    <td>${formatCurrency(campaign.spend)}</td>
+                                    <td>${formatNumber(campaign.impressions)}</td>
+                                    <td>${formatNumber(campaign.clicks)}</td>
+                                    <td>${formatPercentage(campaign.ctr)}</td>
+                                    <td>${formatCurrency(campaign.cpc)}</td>
+                                    <td>${formatNumber(campaign.reservations || 0)}</td>
+                                    <td>${(campaign.roas || 0).toFixed(2)}x</td>
+                                </tr>
+                              `).join('')
+                              : `
+                                <tr>
+                                    <td colspan="8" style="text-align: center; color: #666; padding: 20px;">
+                                        Brak danych Google Ads dla wybranego okresu
+                                    </td>
+                                </tr>
+                              `}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            ` : ''}
+
             <!-- Methodology -->
             <div class="section">
                 <div class="methodology">
                     <h3>Metodologia i przypisy</h3>
-                    <p><strong>Źródło:</strong> Meta Ads API, czas pobrania danych: ${new Date().toISOString()} (UTC)</p>
+                    <p><strong>Źródło:</strong> Meta Ads API & Google Ads API, czas pobrania danych: ${new Date().toISOString()} (UTC)</p>
                     <p><strong>Definicje metryk:</strong></p>
                     <p>• Wydatki: Całkowita kwota wydana na kampanie reklamowe</p>
                     <p>• CTR: Stosunek kliknięć do wyświetleń (Click-Through Rate)</p>
@@ -2078,6 +2461,69 @@ export async function POST(request: NextRequest) {
       previousYearPromise = fetchPreviousYearDataFromDB(dateRange, clientId);
     }
 
+    // Fetch Google Ads data in parallel with other operations
+    let googleCampaigns: UnifiedCampaign[] = [];
+    let metaCampaigns: UnifiedCampaign[] = [];
+    let platformTotals: { meta: PlatformTotals; google: PlatformTotals; combined: PlatformTotals } | undefined;
+
+    // PRODUCTION FIX: Always fetch Google Ads data first, regardless of path
+    async function fetchGoogleAdsData(): Promise<UnifiedCampaign[]> {
+      try {
+        logger.info('🔍 [PRODUCTION] Fetching Google Ads data for unified report...');
+        
+        // Check if client has Google Ads enabled
+        const { data: clientCheck, error: clientCheckError } = await supabase
+          .from('clients')
+          .select('google_ads_enabled, google_ads_customer_id, google_ads_refresh_token')
+          .eq('id', clientId)
+          .single();
+        
+        if (clientCheckError) {
+          logger.warn('⚠️ [PRODUCTION] Error checking client Google Ads status:', clientCheckError);
+          return [];
+        }
+        
+        if (!clientCheck?.google_ads_enabled || !clientCheck?.google_ads_customer_id) {
+          logger.info('ℹ️ [PRODUCTION] Google Ads not enabled for this client');
+          return [];
+        }
+        
+        logger.info('✅ [PRODUCTION] Client has Google Ads enabled, fetching campaigns...');
+        
+        // Fetch from google_ads_campaigns table (cached data)
+        const { data: cachedGoogleCampaigns, error: cacheError } = await supabase
+          .from('google_ads_campaigns')
+          .select('*')
+          .eq('client_id', clientId)
+          .gte('date_range_start', dateRange.start)
+          .lte('date_range_end', dateRange.end);
+        
+        if (cacheError) {
+          logger.error('❌ [PRODUCTION] Error fetching Google Ads campaigns:', cacheError);
+          return [];
+        }
+        
+        if (!cachedGoogleCampaigns || cachedGoogleCampaigns.length === 0) {
+          logger.info('ℹ️ [PRODUCTION] No Google Ads campaigns found for date range');
+          return [];
+        }
+        
+        logger.info(`🔍 [PRODUCTION] Found ${cachedGoogleCampaigns.length} raw Google Ads campaigns`);
+        
+        // Convert to unified format
+        const convertedCampaigns = cachedGoogleCampaigns.map(convertGoogleCampaignToUnified);
+        logger.info(`✅ [PRODUCTION] Successfully converted ${convertedCampaigns.length} Google Ads campaigns`);
+        
+        return convertedCampaigns;
+      } catch (error) {
+        logger.error('❌ [PRODUCTION] Error in fetchGoogleAdsData:', error);
+        return [];
+      }
+    }
+
+    // Fetch Google Ads data immediately
+    googleCampaigns = await fetchGoogleAdsData();
+
     // If we have direct data, use it (much faster)
     if (directCampaigns && directTotals) {
       logger.info('🚀 Using direct data for fast PDF generation');
@@ -2085,6 +2531,21 @@ export async function POST(request: NextRequest) {
       calculatedTotals = directTotals;
       console.log(`   Campaigns: ${campaigns.length}`);
       console.log(`   Total Spend: ${calculatedTotals.spend} zł`);
+      
+      // Convert Meta campaigns to unified format
+      try {
+        logger.info('🔄 Converting Meta campaigns to unified format...');
+        metaCampaigns = directCampaigns.map(convertMetaCampaignToUnified);
+        logger.info(`✅ Converted ${metaCampaigns.length} Meta campaigns`);
+      } catch (error) {
+        logger.error('❌ Error converting Meta campaigns:', error);
+        metaCampaigns = [];
+      }
+      
+      // Google Ads data already fetched above - no need to fetch again
+      logger.info(`✅ [PRODUCTION] Using pre-fetched Google Ads data: ${googleCampaigns.length} campaigns`);
+      
+      // Platform totals will be calculated after Google Ads data is fetched
       
       // Use direct Meta tables data if available
       if (directMetaTables) {
@@ -2128,6 +2589,16 @@ export async function POST(request: NextRequest) {
             logger.info('✅ Using dashboard API data for PDF generation');
             console.log(`   Campaigns: ${campaigns.length}`);
             console.log(`   Total Spend: ${data.data.stats.totalSpend} zł`);
+            
+            // Convert Meta campaigns to unified format for fallback path
+            try {
+              logger.info('🔄 Converting Meta campaigns to unified format (fallback path)...');
+              metaCampaigns = campaigns.map(convertMetaCampaignToUnified);
+              logger.info(`✅ Converted ${metaCampaigns.length} Meta campaigns (fallback path)`);
+            } catch (error) {
+              logger.error('❌ Error converting Meta campaigns (fallback path):', error);
+              metaCampaigns = [];
+            }
           } else {
             logger.info('⚠️ Dashboard API returned no data');
           }
@@ -2137,6 +2608,32 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         logger.info('⚠️ Dashboard API call error');
       }
+    }
+
+    // ALWAYS fetch Google Ads data regardless of path (Meta or fallback)
+    // Google Ads data already fetched at the beginning - no need for ensured fetch
+    logger.info(`✅ [PRODUCTION] Google Ads data status: ${googleCampaigns.length} campaigns available`);
+
+    // ALWAYS calculate platform totals after data fetching (regardless of path)
+    try {
+      logger.info('🧮 Calculating platform totals (ensured calculation)...');
+      const metaTotals = calculatePlatformTotals(metaCampaigns);
+      const googleTotals = calculatePlatformTotals(googleCampaigns);
+      const allCampaigns = [...metaCampaigns, ...googleCampaigns];
+      const combinedTotals = calculatePlatformTotals(allCampaigns);
+      
+      platformTotals = {
+        meta: metaTotals,
+        google: googleTotals,
+        combined: combinedTotals
+      };
+      
+      logger.info('✅ Platform totals calculated successfully (ensured calculation)');
+      logger.info(`   Meta campaigns: ${metaCampaigns.length}, Google campaigns: ${googleCampaigns.length}`);
+      logger.info(`   Combined total spend: ${combinedTotals.totalSpend.toFixed(2)} PLN`);
+    } catch (error) {
+      logger.error('❌ Error calculating platform totals (ensured calculation):', error);
+      platformTotals = undefined;
     }
 
     // Calculate totals if not provided directly
@@ -2382,8 +2879,24 @@ export async function POST(request: NextRequest) {
       previousYearConversions,
       metaTables: metaTablesData,
       executiveSummary,
-      reportType
+      reportType,
+      // Google Ads integration - PRODUCTION FIX: Ensure data is always present
+      googleCampaigns: googleCampaigns || [],
+      metaCampaigns: metaCampaigns || [],
+      platformTotals
     };
+
+    // Production logging: Data summary before HTML generation
+    logger.info('📊 [PRODUCTION] PDF Data Summary:', {
+      metaCampaigns: metaCampaigns?.length || 0,
+      googleCampaigns: googleCampaigns?.length || 0,
+      reportDataGoogleCampaigns: reportData.googleCampaigns?.length || 0,
+      hasPlatformTotals: !!reportData.platformTotals,
+      totalSpend: reportData.platformTotals?.combined?.totalSpend || 0,
+      htmlConditionCheck: !!(reportData.googleCampaigns && reportData.googleCampaigns.length > 0),
+      googleCampaignsSample: googleCampaigns?.slice(0, 1),
+      reportDataGoogleSample: reportData.googleCampaigns?.slice(0, 1)
+    });
 
     logger.info('🎯 PDF Generation Data:', {
       client: reportData.client.name,
@@ -2395,7 +2908,16 @@ export async function POST(request: NextRequest) {
       hasMetaTables: !!reportData.metaTables,
       hasExecutiveSummary: !!reportData.executiveSummary,
       hasPreviousMonthData: !!reportData.previousMonthTotals,
-      hasPreviousYearData: !!reportData.previousYearTotals
+      hasPreviousYearData: !!reportData.previousYearTotals,
+      // Google Ads integration debugging
+      hasGoogleCampaigns: !!reportData.googleCampaigns && reportData.googleCampaigns.length > 0,
+      googleCampaignsCount: reportData.googleCampaigns?.length || 0,
+      hasMetaCampaigns: !!reportData.metaCampaigns && reportData.metaCampaigns.length > 0,
+      metaCampaignsCount: reportData.metaCampaigns?.length || 0,
+      hasPlatformTotals: !!reportData.platformTotals,
+      platformTotalsMeta: reportData.platformTotals?.meta ? 'present' : 'missing',
+      platformTotalsGoogle: reportData.platformTotals?.google ? 'present' : 'missing',
+      platformTotalsCombined: reportData.platformTotals?.combined ? 'present' : 'missing'
     });
 
     // 🚨 CRITICAL DEBUGGING FOR PERIOD COMPARISON
@@ -2425,7 +2947,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate PDF HTML
-    const html = generatePDFHTML(reportData);
+    let html: string;
+    try {
+      logger.info('🔄 Generating PDF HTML...');
+      html = generatePDFHTML(reportData);
+      logger.info('✅ PDF HTML generated successfully');
+    } catch (htmlError) {
+      logger.error('❌ Error generating PDF HTML:', htmlError);
+      throw htmlError;
+    }
 
     // Generate PDF
     const browser = await puppeteer.launch({
@@ -2491,8 +3021,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('❌ Error generating PDF:', error);
+    logger.error('PDF Generation Error Details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      context: 'PDF generation failed'
+    });
+    
     return NextResponse.json(
-      { error: 'Failed to generate PDF' },
+      { 
+        error: 'Failed to generate PDF',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

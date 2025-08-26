@@ -37,61 +37,78 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       setIsGenerating(true);
       setError(null);
 
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
+      // Get the current session token (more robust approach)
+      const sessionData = await supabase.auth.getSession();
+      const accessToken = sessionData.data.session?.access_token;
+      if (!accessToken) {
         throw new Error('No authentication token available');
       }
 
-      // If we have the data already, use it directly for faster generation
-      const requestBody = campaigns && totals && client ? {
-        clientId,
-        dateRange: {
-          start: dateStart,
-          end: dateEnd
-        },
-        // Pass the data directly to avoid API calls
-        campaigns,
-        totals,
-        client,
-        metaTables // Add metaTables data for faster generation
-      } : {
+      // PRODUCTION FIX: Always use API fallback path to ensure Google Ads data is included
+      // This forces the backend to fetch both Meta and Google Ads data fresh
+      const requestBody = {
         clientId,
         dateRange: {
           start: dateStart,
           end: dateEnd
         }
+        // Removed: campaigns, totals, client, metaTables to force API fallback path
+        // This ensures both Meta and Google Ads data are always included
       };
 
       // Debug: Log the data being sent to PDF generation
-      console.log('🔍 InteractivePDFButton: Sending data to PDF generation:', {
-        hasDirectData: !!(campaigns && totals && client),
-        hasCampaigns: !!campaigns?.length,
-        hasTotals: !!totals,
-        hasClient: !!client,
-        hasMetaTables: !!metaTables,
-        metaTablesStructure: metaTables ? {
-          hasPlacementPerformance: !!metaTables.placementPerformance?.length,
-          hasDemographicPerformance: !!metaTables.demographicPerformance?.length,
-          hasAdRelevanceResults: !!metaTables.adRelevanceResults?.length,
-          demographicCount: metaTables.demographicPerformance?.length || 0,
-          demographicSample: metaTables.demographicPerformance?.slice(0, 2)
-        } : null
+      console.log('🔍 InteractivePDFButton: Sending data to PDF generation (PRODUCTION FIX):', {
+        forcingAPIFallback: true,
+        reason: 'Ensures both Meta and Google Ads data are included',
+        clientId: clientId,
+        dateRange: `${dateStart} to ${dateEnd}`,
+        availableDataNotUsed: {
+          hasCampaigns: !!campaigns?.length,
+          hasTotals: !!totals,
+          hasClient: !!client,
+          hasMetaTables: !!metaTables
+        }
       });
 
+      // Debug: Check session and auth token
+      console.log('🔐 InteractivePDFButton: Auth debug:', {
+        hasSession: !!sessionData.data.session,
+        sessionKeys: sessionData.data.session ? Object.keys(sessionData.data.session) : 'no session',
+        hasAccessToken: !!accessToken,
+        accessTokenLength: accessToken?.length || 0,
+        accessTokenPreview: accessToken ? `${accessToken.substring(0, 20)}...` : 'no token'
+      });
+
+      // Use main PDF generation that now includes both Meta and Google Ads
+      console.log('📡 InteractivePDFButton: Making request to /api/generate-pdf');
+      
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify(requestBody)
       });
 
+      console.log('📡 InteractivePDFButton: Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('❌ InteractivePDFButton: Request failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorData
+        });
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
+
+      console.log('✅ InteractivePDFButton: Request successful, processing PDF blob...');
 
       // Get the PDF blob
       const pdfBlob = await response.blob();
@@ -100,7 +117,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `raport-meta-ads-${dateStart}-${dateEnd}.pdf`;
+      link.download = `raport-reklamowy-${dateStart}-${dateEnd}.pdf`;
       
       // Trigger download
       document.body.appendChild(link);
@@ -139,7 +156,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         ) : (
           <>
             <FileText className="h-5 w-5" />
-            <span>Pobierz PDF</span>
+            <span>Pobierz PDF (Meta + Google)</span>
           </>
         )}
       </button>

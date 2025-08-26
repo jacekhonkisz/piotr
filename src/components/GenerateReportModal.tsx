@@ -268,8 +268,9 @@ export default function GenerateReportModal({
         },
         body: JSON.stringify({
           clientId,
-          dateRange,
-          metaTables: reportData.report?.meta_tables // Pass Meta Ads tables data from report generation
+          dateRange
+          // PRODUCTION FIX: Removed metaTables to force API fallback path
+          // This ensures both Meta and Google Ads data are always included
         })
       });
 
