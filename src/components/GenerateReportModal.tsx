@@ -259,6 +259,65 @@ export default function GenerateReportModal({
         setIsExistingReport(true);
       }
 
+      // Fetch Meta tables data for PDF generation
+      let metaTablesData = null;
+      try {
+        console.log('🔍 Fetching Meta tables data for PDF generation...');
+        const metaTablesResponse = await fetch('/api/fetch-meta-tables', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            dateRange: {
+              start: dateRange.start,
+              end: dateRange.end
+            },
+            clientId
+          })
+        });
+
+        if (metaTablesResponse.ok) {
+          const metaTablesResult = await metaTablesResponse.json();
+          console.log('📊 Meta tables API response:', metaTablesResult);
+          
+          if (metaTablesResult.success) {
+            metaTablesData = metaTablesResult.data.metaTables;
+            console.log('✅ GenerateReportModal: Meta tables data fetched for PDF:', {
+              placementCount: metaTablesData.placementPerformance?.length || 0,
+              demographicCount: metaTablesData.demographicPerformance?.length || 0,
+              adRelevanceCount: metaTablesData.adRelevanceResults?.length || 0
+            });
+            
+            console.log('🔍 GenerateReportModal: Full result structure:', {
+              hasData: !!metaTablesResult.data,
+              hasMetaTables: !!metaTablesResult.data?.metaTables,
+              metaTablesKeys: Object.keys(metaTablesResult.data?.metaTables || {}),
+              demographicDataType: typeof metaTablesData.demographicPerformance,
+              demographicIsArray: Array.isArray(metaTablesData.demographicPerformance)
+            });
+            
+            // Debug demographic data
+            if (metaTablesData.demographicPerformance?.length > 0) {
+              console.log('🔍 GenerateReportModal: Sample demographic data:', metaTablesData.demographicPerformance.slice(0, 2));
+              console.log('🔍 GenerateReportModal: Full demographic data:', metaTablesData.demographicPerformance);
+            } else {
+              console.log('⚠️ GenerateReportModal: No demographic data in Meta tables response');
+              console.log('🔍 GenerateReportModal: Raw metaTables object:', metaTablesData);
+            }
+          } else {
+            console.error('❌ GenerateReportModal: Meta tables API returned success: false', metaTablesResult);
+          }
+        } else {
+          const errorText = await metaTablesResponse.text();
+          console.error('❌ Meta tables API request failed:', metaTablesResponse.status, errorText);
+        }
+      } catch (metaError) {
+        console.warn('⚠️ Failed to fetch Meta tables for PDF:', metaError);
+        // Continue without Meta tables data
+      }
+
       // Then generate PDF with Meta Ads tables data
       const pdfResponse = await fetch('/api/generate-pdf', {
         method: 'POST',
@@ -268,9 +327,11 @@ export default function GenerateReportModal({
         },
         body: JSON.stringify({
           clientId,
-          dateRange
-          // PRODUCTION FIX: Removed metaTables to force API fallback path
-          // This ensures both Meta and Google Ads data are always included
+          dateRange,
+          campaigns: reportData.campaigns || [],
+          totals: reportData.totals || {},
+          client: reportData.client || { id: clientId, name: clientName, email: clientEmail },
+          metaTables: metaTablesData // Include Meta tables data for demographic charts
         })
       });
 

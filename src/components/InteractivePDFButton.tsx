@@ -44,29 +44,82 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         throw new Error('No authentication token available');
       }
 
-      // PRODUCTION FIX: Always use API fallback path to ensure Google Ads data is included
-      // This forces the backend to fetch both Meta and Google Ads data fresh
+      // Fetch Meta tables data first (like GenerateReportModal does)
+      console.log('🔍 InteractivePDFButton: Fetching Meta tables data for PDF generation...');
+      
+      let metaTablesData = null;
+      try {
+        const metaTablesResponse = await fetch('/api/fetch-meta-tables', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            dateRange: {
+              start: dateStart,
+              end: dateEnd
+            },
+            clientId
+          })
+        });
+
+        if (metaTablesResponse.ok) {
+          const metaTablesResult = await metaTablesResponse.json();
+          console.log('📊 InteractivePDFButton: Meta tables API response:', metaTablesResult);
+          
+          if (metaTablesResult.success) {
+            metaTablesData = metaTablesResult.data.metaTables;
+            console.log('✅ InteractivePDFButton: Meta tables data fetched for PDF:', {
+              placementCount: metaTablesData.placementPerformance?.length || 0,
+              demographicCount: metaTablesData.demographicPerformance?.length || 0,
+              adRelevanceCount: metaTablesData.adRelevanceResults?.length || 0
+            });
+            
+            // Debug demographic data
+            if (metaTablesData.demographicPerformance?.length > 0) {
+              console.log('🔍 InteractivePDFButton: Sample demographic data:', metaTablesData.demographicPerformance.slice(0, 2));
+            } else {
+              console.log('⚠️ InteractivePDFButton: No demographic data in Meta tables response');
+            }
+          } else {
+            console.error('❌ InteractivePDFButton: Meta tables API returned success: false', metaTablesResult);
+          }
+        } else {
+          const errorText = await metaTablesResponse.text();
+          console.error('❌ InteractivePDFButton: Meta tables API request failed:', metaTablesResponse.status, errorText);
+        }
+      } catch (metaError) {
+        console.error('❌ InteractivePDFButton: Error fetching Meta tables data:', metaError);
+      }
+
+      // PRODUCTION FIX: Include fetched Meta tables data in PDF generation
       const requestBody = {
         clientId,
         dateRange: {
           start: dateStart,
           end: dateEnd
-        }
-        // Removed: campaigns, totals, client, metaTables to force API fallback path
-        // This ensures both Meta and Google Ads data are always included
+        },
+        // Include the fetched Meta tables data
+        metaTables: metaTablesData,
+        // Also include any passed data for completeness
+        campaigns,
+        totals,
+        client
       };
 
       // Debug: Log the data being sent to PDF generation
-      console.log('🔍 InteractivePDFButton: Sending data to PDF generation (PRODUCTION FIX):', {
-        forcingAPIFallback: true,
-        reason: 'Ensures both Meta and Google Ads data are included',
+      console.log('🔍 InteractivePDFButton: Sending data to PDF generation (FIXED):', {
+        includingMetaTablesData: true,
+        reason: 'Fetched Meta tables data to ensure demographic charts appear',
         clientId: clientId,
         dateRange: `${dateStart} to ${dateEnd}`,
-        availableDataNotUsed: {
+        dataIncluded: {
           hasCampaigns: !!campaigns?.length,
           hasTotals: !!totals,
           hasClient: !!client,
-          hasMetaTables: !!metaTables
+          hasMetaTables: !!metaTablesData,
+          demographicDataCount: metaTablesData?.demographicPerformance?.length || 0
         }
       });
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import { createClient } from '@supabase/supabase-js';
 import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
-import { UnifiedDataFetcher } from '../../../lib/unified-data-fetcher';
+
 import { convertMetaCampaignToUnified, convertGoogleCampaignToUnified, calculatePlatformTotals, UnifiedCampaign, PlatformTotals } from '../../../lib/unified-campaign-types';
 import logger from '../../../lib/logger';
 
@@ -172,45 +172,7 @@ function generatePDFHTML(reportData: ReportData): string {
     }
   };
 
-  // Function to determine if year-over-year comparison should be shown
-  const shouldShowYearOverYear = (): boolean => {
-    logger.info('🔍 YEAR-OVER-YEAR VALIDATION DEBUG:');
-    logger.info('   Report Type:', reportData.reportType);
-    logger.info('   Previous Year Totals:', !!reportData.previousYearTotals);
-    logger.info('   Previous Year Conversions:', !!reportData.previousYearConversions);
-    logger.info('   Date Range:', reportData.dateRange);
-    
-    // Show for monthly reports OR custom reports that span reasonable periods
-    if (reportData.reportType !== 'monthly' && reportData.reportType !== 'custom') {
-      logger.info('🚫 Year-over-year hidden: Not a monthly or custom report');
-      return false;
-    }
-    
-    // Must have previous year data
-    if (!reportData.previousYearTotals || !reportData.previousYearConversions) {
-      logger.info('🚫 Year-over-year hidden: No previous year data');
-      logger.info('   Available totals keys:', reportData.previousYearTotals ? Object.keys(reportData.previousYearTotals) : 'none');
-      logger.info('   Available conversions keys:', reportData.previousYearConversions ? Object.keys(reportData.previousYearConversions) : 'none');
-      return false;
-    }
-    
-    // Check if we have meaningful comparison data (previous year must have spend)
-    const currentSpend = reportData.totals.spend || 0;
-    const previousSpend = reportData.previousYearTotals.spend || 0;
-    
-    logger.info('   Current spend:', currentSpend);
-    logger.info('   Previous year spend:', previousSpend);
-    
-    // Show comparison if previous year has meaningful data (even if current is 0)
-    // This handles cases where current period has no campaigns table data but summary data exists
-    if (previousSpend <= 0) {
-      logger.info('🚫 Year-over-year hidden: No meaningful previous year data');
-      return false;
-    }
-    
-    logger.info('✅ Year-over-year comparison shown: Previous year has meaningful data');
-    return true;
-  };
+
 
 
 
@@ -222,29 +184,44 @@ function generatePDFHTML(reportData: ReportData): string {
   const generateSummarySection = (): string => {
     const summaryParts = [];
     
-    // Build summary based on current period data
+    // Build summary based on combined platform data
     const periodLabel = reportData.reportType === 'weekly' ? 'tygodniu' : 'miesiącu';
     const startDate = formatDate(reportData.dateRange.start);
     const endDate = formatDate(reportData.dateRange.end);
     
-    summaryParts.push(`W ${periodLabel} od ${startDate} do ${endDate} wydaliśmy na kampanie reklamowe ${formatCurrency(totalSpend)}.`);
+    // Use combined platform totals if available, otherwise fall back to Meta-only data
+    const combinedSpend = reportData.platformTotals ? reportData.platformTotals.combined.totalSpend : totalSpend;
+    const combinedImpressions = reportData.platformTotals ? reportData.platformTotals.combined.totalImpressions : totalImpressions;
+    const combinedClicks = reportData.platformTotals ? reportData.platformTotals.combined.totalClicks : totalClicks;
+    const combinedReservations = reportData.platformTotals ? reportData.platformTotals.combined.totalReservations : conversionMetrics.reservations;
+    const combinedCtr = reportData.platformTotals ? reportData.platformTotals.combined.averageCtr : ctr;
+    const combinedCpc = reportData.platformTotals ? reportData.platformTotals.combined.averageCpc : cpc;
     
-    if (totalImpressions > 0) {
-      summaryParts.push(`Działania te zaowocowały ${formatNumber(totalImpressions)} wyświetleniami`);
-      if (totalClicks > 0) {
-        summaryParts.push(`a liczba kliknięć wyniosła ${formatNumber(totalClicks)}, co dało CTR na poziomie ${formatPercentage(ctr)}.`);
-        summaryParts.push(`Średni koszt kliknięcia (CPC) wyniósł ${formatCurrency(cpc)}.`);
+    // Determine data source for summary
+    const dataSource = reportData.platformTotals ? 'Meta Ads i Google Ads' : 'Meta Ads';
+    
+    summaryParts.push(`W ${periodLabel} od ${startDate} do ${endDate} wydaliśmy na kampanie reklamowe ${formatCurrency(combinedSpend)}.`);
+    
+    if (combinedImpressions > 0) {
+      summaryParts.push(`Działania te zaowocowały ${formatNumber(combinedImpressions)} wyświetleniami`);
+      if (combinedClicks > 0) {
+        summaryParts.push(`a liczba kliknięć wyniosła ${formatNumber(combinedClicks)}, co dało CTR na poziomie ${formatPercentage(combinedCtr)}.`);
+        summaryParts.push(`Średni koszt kliknięcia (CPC) wyniósł ${formatCurrency(combinedCpc)}.`);
       } else {
         summaryParts.push('.');
       }
     }
     
-    if (conversionMetrics.reservations > 0) {
-      summaryParts.push(`W tym okresie zaobserwowaliśmy ${formatNumber(conversionMetrics.reservations)} konwersje, co przekłada się na koszt pozyskania konwersji (CPA) na poziomie ${formatCurrency(cost_per_reservation)}.`);
+    if (combinedReservations > 0) {
+      const costPerReservation = combinedSpend > 0 ? combinedSpend / combinedReservations : 0;
+      summaryParts.push(`W tym okresie zaobserwowaliśmy ${formatNumber(combinedReservations)} konwersje, co przekłada się na koszt pozyskania konwersji (CPA) na poziomie ${formatCurrency(costPerReservation)}.`);
       if (conversionMetrics.reservation_value > 0) {
-        summaryParts.push(`Wszystkie konwersje to rezerwacje, dzięki czemu koszt pozyskania rezerwacji również wyniósł ${formatCurrency(cost_per_reservation)}.`);
+        summaryParts.push(`Wszystkie konwersje to rezerwacje, dzięki czemu koszt pozyskania rezerwacji również wyniósł ${formatCurrency(costPerReservation)}.`);
       }
     }
+    
+    // Add data source information
+    summaryParts.push(`Dane zostały pobrane z ${dataSource}.`);
     
     return summaryParts.join(' ');
   };
@@ -390,25 +367,28 @@ function generatePDFHTML(reportData: ReportData): string {
     });
   };
 
-  // Process demographic data for charts
+  // Process demographic data for charts with conversion metrics
   const processDemographicData = () => {
-    logger.debug('Debug info', {
+    logger.info('🔍 PDF: Processing demographic data...', {
       hasMetaTables: !!reportData.metaTables,
       hasDemographicData: !!reportData.metaTables?.demographicPerformance,
       demographicCount: reportData.metaTables?.demographicPerformance?.length || 0,
       sampleData: reportData.metaTables?.demographicPerformance?.slice(0, 2)
     });
     
-    if (!reportData.metaTables?.demographicPerformance) {
+    if (!reportData.metaTables?.demographicPerformance || reportData.metaTables.demographicPerformance.length === 0) {
       logger.info('⚠️ PDF: No demographic data available for PDF generation');
       return { gender: [], age: [] };
     }
+    
+    // Log all demographic data for debugging
+    logger.info('📊 PDF: Raw demographic data:', JSON.stringify(reportData.metaTables.demographicPerformance, null, 2));
     
     const genderMap = new Map();
     const ageMap = new Map();
     
     reportData.metaTables.demographicPerformance.forEach(item => {
-      // Gender aggregation
+      // Gender aggregation with conversion metrics
       const gender = item.gender === 'male' ? 'Mężczyźni' : 
                     item.gender === 'female' ? 'Kobiety' : 'Nieznana';
       
@@ -416,43 +396,65 @@ function generatePDFHTML(reportData: ReportData): string {
         const existing = genderMap.get(gender);
         existing.impressions += (item.impressions || 0);
         existing.clicks += (item.clicks || 0);
+        existing.reservations += (item.reservations || 0);
+        existing.reservation_value += (item.reservation_value || 0);
+        existing.spend += (item.spend || 0);
       } else {
         genderMap.set(gender, {
           gender,
           impressions: item.impressions || 0,
-          clicks: item.clicks || 0
+          clicks: item.clicks || 0,
+          reservations: item.reservations || 0,
+          reservation_value: item.reservation_value || 0,
+          spend: item.spend || 0,
+          roas: 0 // Will be calculated after aggregation
         });
       }
       
-      // Age aggregation
+      // Age aggregation with conversion metrics
       const age = item.age || 'Nieznany';
       if (ageMap.has(age)) {
         const existing = ageMap.get(age);
         existing.impressions += (item.impressions || 0);
         existing.clicks += (item.clicks || 0);
+        existing.reservations += (item.reservations || 0);
+        existing.reservation_value += (item.reservation_value || 0);
+        existing.spend += (item.spend || 0);
       } else {
         ageMap.set(age, {
           age,
           impressions: item.impressions || 0,
-          clicks: item.clicks || 0
+          clicks: item.clicks || 0,
+          reservations: item.reservations || 0,
+          reservation_value: item.reservation_value || 0,
+          spend: item.spend || 0,
+          roas: 0 // Will be calculated after aggregation
         });
       }
     });
     
+    // Calculate ROAS for aggregated data
+    const calculateROAS = (item: any) => {
+      item.roas = item.spend > 0 && item.reservation_value > 0 ? item.reservation_value / item.spend : 0;
+      return item;
+    };
+    
     const result = {
-      gender: Array.from(genderMap.values()),
-      age: Array.from(ageMap.values()).sort((a, b) => {
+      gender: Array.from(genderMap.values()).map(calculateROAS),
+      age: Array.from(ageMap.values()).map(calculateROAS).sort((a, b) => {
         const ageA = parseInt(a.age.split('-')[0]) || 999;
         const ageB = parseInt(b.age.split('-')[0]) || 999;
         return ageA - ageB;
       })
     };
     
-    logger.info('Success', {
+    logger.info('✅ PDF: Processed demographic data successfully', {
       genderCount: result.gender.length,
       ageCount: result.age.length,
       genderData: result.gender,
-      ageData: result.age
+      ageData: result.age,
+      totalReservations: result.gender.reduce((sum, item) => sum + item.reservations, 0),
+      totalReservationValue: result.gender.reduce((sum, item) => sum + item.reservation_value, 0)
     });
     
     return result;
@@ -462,9 +464,27 @@ function generatePDFHTML(reportData: ReportData): string {
   const demographicData = processDemographicData();
   const topAds = reportData.metaTables?.adRelevanceResults?.slice(0, 10) || [];
 
-  // Helper function to generate demographic data table
-  const generateDemographicTable = (data: any[], metric: 'impressions' | 'clicks') => {
+  // Helper function to generate demographic data table with conversion metrics
+  const generateDemographicTable = (data: any[], metric: 'roas' | 'reservations' | 'reservation_value') => {
     if (!data || data.length === 0) return '';
+    
+    const getMetricLabel = (metric: string) => {
+      switch(metric) {
+        case 'roas': return 'ROAS';
+        case 'reservations': return 'Rezerwacje';
+        case 'reservation_value': return 'Wartość';
+        default: return 'Wartość';
+      }
+    };
+
+    const formatMetricValue = (value: number, metric: string) => {
+      switch(metric) {
+        case 'roas': return value > 0 ? `${value.toFixed(2)}x` : '-';
+        case 'reservations': return value.toLocaleString('pl-PL');
+        case 'reservation_value': return formatCurrency(value);
+        default: return value.toLocaleString('pl-PL');
+      }
+    };
     
     const total = data.reduce((sum, item) => sum + (item[metric] || 0), 0);
     
@@ -473,21 +493,21 @@ function generatePDFHTML(reportData: ReportData): string {
         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
           <thead>
             <tr style="background: #f8f9fa; border-bottom: 1px solid #dee2e6;">
-              <th style="padding: 8px; text-align: left; font-weight: 600;">${metric === 'impressions' ? 'Grupa' : 'Grupa'}</th>
-              <th style="padding: 8px; text-align: right; font-weight: 600;">${metric === 'impressions' ? 'Wyświetlenia' : 'Kliknięcia'}</th>
+              <th style="padding: 8px; text-align: left; font-weight: 600;">Grupa</th>
+              <th style="padding: 8px; text-align: right; font-weight: 600;">${getMetricLabel(metric)}</th>
               <th style="padding: 8px; text-align: right; font-weight: 600;">%</th>
             </tr>
           </thead>
           <tbody>
             ${data.map(item => {
               const value = item[metric] || 0;
-              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+              const percentage = total > 0 && metric !== 'roas' ? ((value / total) * 100).toFixed(1) : '-';
               const label = item.gender || item.age || 'Nieznana';
               return `
                 <tr style="border-bottom: 1px solid #f1f3f4;">
                   <td style="padding: 6px 8px;">${label}</td>
-                  <td style="padding: 6px 8px; text-align: right; font-weight: 500;">${value.toLocaleString('pl-PL')}</td>
-                  <td style="padding: 6px 8px; text-align: right; color: #6b7280;">${percentage}%</td>
+                  <td style="padding: 6px 8px; text-align: right; font-weight: 500;">${formatMetricValue(value, metric)}</td>
+                  <td style="padding: 6px 8px; text-align: right; color: #6b7280;">${percentage}${percentage !== '-' ? '%' : ''}</td>
                 </tr>
               `;
             }).join('')}
@@ -1029,78 +1049,7 @@ import logger from '../../../lib/logger';
                 page-break-after: always;
             }
             
-            /* Platform Comparison Styles */
-            .platform-comparison {
-                background: var(--bg-panel);
-                border-radius: 16px;
-                padding: 32px;
-                margin-bottom: 32px;
-            }
-            
-            .comparison-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 32px;
-                margin-top: 24px;
-            }
-            
-            .platform-card {
-                border-radius: 12px;
-                padding: 24px;
-                color: white;
-            }
-            
-            .meta-card {
-                background: linear-gradient(135deg, #1877F2 0%, #0866FF 100%);
-            }
-            
-            .google-card {
-                background: linear-gradient(135deg, #4285F4 0%, #34A853 100%);
-            }
-            
-            .platform-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-                padding-bottom: 16px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-            }
-            
-            .platform-header h4 {
-                font-size: 18px;
-                font-weight: 600;
-            }
-            
-            .platform-share {
-                font-size: 14px;
-                font-weight: 500;
-                background: rgba(255, 255, 255, 0.2);
-                padding: 4px 12px;
-                border-radius: 20px;
-            }
-            
-            .platform-metrics {
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
-            }
-            
-            .metric-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            
-            .metric-label {
-                font-size: 14px;
-                opacity: 0.9;
-            }
-            
-            .metric-value {
-                font-size: 16px;
-                font-weight: 600;
-            }
+
             
             /* Page breaks and print optimization */
             @media print {
@@ -1175,188 +1124,152 @@ import logger from '../../../lib/logger';
                     </div>
                 </div>
                 
-                <!-- Period-over-Period Comparison - Now shown inline with individual metrics -->
-                
-                <!-- Year-over-Year Comparison -->
-                ${shouldShowYearOverYear() ? `
-                
-                <div class="year-comparison">
-                    <h3>Porównanie rok do roku</h3>
-                    
-                    <!-- Meta Ads Year Comparison -->
-                    <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
-                    <table class="comparison-table">
-                        <thead>
-                            <tr>
-                                <th class="metric-name">Metryka</th>
-                                <th>${new Date(reportData.dateRange.start).getFullYear()}</th>
-                                <th>${new Date(reportData.dateRange.start).getFullYear() - 1}</th>
-                                <th>Zmiana</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="metric-name">Wartość rezerwacji</td>
-                                <td class="current-year">${formatCurrency(conversionMetrics.reservation_value)}</td>
-                                <td class="previous-year">${formatCurrency(reportData.previousYearConversions!.reservation_value)}</td>
-                                <td class="year-change ${reportData.previousYearConversions!.reservation_value > 0 ? (conversionMetrics.reservation_value > reportData.previousYearConversions!.reservation_value ? 'positive' : conversionMetrics.reservation_value < reportData.previousYearConversions!.reservation_value ? 'negative' : 'neutral') : 'neutral'}">
-                                    ${reportData.previousYearConversions!.reservation_value > 0 ? 
-                                        (() => {
-                                            const change = ((conversionMetrics.reservation_value - reportData.previousYearConversions!.reservation_value) / reportData.previousYearConversions!.reservation_value) * 100;
-                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
-                                            const sign = change > 0 ? '+' : '';
-                                            return `${arrow} ${sign}${change.toFixed(1)}%`;
-                                        })() :
-                                        '—'
-                                    }
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="metric-name">Wydatki</td>
-                                <td class="current-year">${formatCurrency(totalSpend)}</td>
-                                <td class="previous-year">${formatCurrency(reportData.previousYearTotals!.spend)}</td>
-                                <td class="year-change ${reportData.previousYearTotals!.spend > 0 ? (totalSpend > reportData.previousYearTotals!.spend ? 'positive' : totalSpend < reportData.previousYearTotals!.spend ? 'negative' : 'neutral') : 'neutral'}">
-                                    ${reportData.previousYearTotals!.spend > 0 ? 
-                                        (() => {
-                                            const change = ((totalSpend - reportData.previousYearTotals!.spend) / reportData.previousYearTotals!.spend) * 100;
-                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
-                                            const sign = change > 0 ? '+' : '';
-                                            return `${arrow} ${sign}${change.toFixed(1)}%`;
-                                        })() :
-                                        '—'
-                                    }
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="metric-name">Koszt per rezerwacja</td>
-                                <td class="current-year">${cost_per_reservation > 0 ? formatCurrency(cost_per_reservation) : '—'}</td>
-                                <td class="previous-year">${reportData.previousYearConversions!.reservations > 0 && reportData.previousYearTotals!.spend > 0 ? formatCurrency(reportData.previousYearTotals!.spend / reportData.previousYearConversions!.reservations) : '—'}</td>
-                                <td class="year-change ${cost_per_reservation > 0 && reportData.previousYearConversions!.reservations > 0 && reportData.previousYearTotals!.spend > 0 ? 
-                                    (() => {
-                                        const previousCostPerReservation = reportData.previousYearTotals!.spend / reportData.previousYearConversions!.reservations;
-                                        return cost_per_reservation > previousCostPerReservation ? 'negative' : cost_per_reservation < previousCostPerReservation ? 'positive' : 'neutral';
-                                    })() : 'neutral'}">
-                                    ${cost_per_reservation > 0 && reportData.previousYearConversions!.reservations > 0 && reportData.previousYearTotals!.spend > 0 ? 
-                                        (() => {
-                                            const previousCostPerReservation = reportData.previousYearTotals!.spend / reportData.previousYearConversions!.reservations;
-                                            const change = ((cost_per_reservation - previousCostPerReservation) / previousCostPerReservation) * 100;
-                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
-                                            const sign = change > 0 ? '+' : '';
-                                            return `${arrow} ${sign}${change.toFixed(1)}%`;
-                                        })() :
-                                        '—'
-                                    }
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    
-                    <!-- Google Ads Year Comparison -->
-                    <h4 style="margin-top: 30px; color: #34a853; font-size: 16px;">Google Ads</h4>
-                    <table class="comparison-table">
-                        <thead>
-                            <tr>
-                                <th class="metric-name">Metryka</th>
-                                <th>${new Date(reportData.dateRange.start).getFullYear()}</th>
-                                <th>${new Date(reportData.dateRange.start).getFullYear() - 1}</th>
-                                <th>Zmiana</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="metric-name">Wydatki</td>
-                                <td class="current-year">${formatCurrency(reportData.platformTotals?.google?.totalSpend || 0)}</td>
-                                <td class="previous-year">0,00 zł</td>
-                                <td class="year-change neutral">—</td>
-                            </tr>
-                            <tr>
-                                <td class="metric-name">Rezerwacje</td>
-                                <td class="current-year">${formatNumber(reportData.platformTotals?.google?.totalReservations || 0)}</td>
-                                <td class="previous-year">0</td>
-                                <td class="year-change neutral">—</td>
-                            </tr>
-                            <tr>
-                                <td class="metric-name">Koszt per rezerwacja</td>
-                                <td class="current-year">${reportData.platformTotals?.google?.totalReservations > 0 ? formatCurrency((reportData.platformTotals?.google?.totalSpend || 0) / (reportData.platformTotals?.google?.totalReservations || 1)) : '—'}</td>
-                                <td class="previous-year">—</td>
-                                <td class="year-change neutral">—</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                ` : ''}
+
             </div>
 
-            ${true ? `
-            <!-- Platform Comparison Section -->
-            <div class="platform-comparison page-break-before">
-                <h3 class="section-title">Porównanie Platform Reklamowych</h3>
-                <div class="comparison-grid">
-                    <div class="platform-card meta-card">
-                        <div class="platform-header">
-                            <h4>Meta Ads</h4>
-                            <div class="platform-share">${reportData.platformTotals?.combined?.totalSpend > 0 ? 
-                                ((reportData.platformTotals?.meta?.totalSpend || 0) / (reportData.platformTotals?.combined?.totalSpend || 1) * 100).toFixed(0) : 0}% budżetu</div>
-                        </div>
-                        <div class="platform-metrics">
-                            <div class="metric-row">
-                                <span class="metric-label">Wydatki:</span>
-                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.meta?.totalSpend || 0)}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">Kampanie:</span>
-                                <span class="metric-value">${reportData.metaCampaigns?.length || 0}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">CTR:</span>
-                                <span class="metric-value">${formatPercentage(reportData.platformTotals?.meta?.averageCtr || 0)}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">CPC:</span>
-                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.meta?.averageCpc || 0)}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">Rezerwacje:</span>
-                                <span class="metric-value">${formatNumber(reportData.platformTotals?.meta?.totalReservations || 0)}</span>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div class="platform-card google-card">
-                        <div class="platform-header">
-                            <h4>Google Ads</h4>
-                            <div class="platform-share">${reportData.platformTotals?.combined?.totalSpend > 0 ? 
-                                ((reportData.platformTotals?.google?.totalSpend || 0) / (reportData.platformTotals?.combined?.totalSpend || 1) * 100).toFixed(0) : 0}% budżetu</div>
-                        </div>
-                        <div class="platform-metrics">
-                            <div class="metric-row">
-                                <span class="metric-label">Wydatki:</span>
-                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.google?.totalSpend || 0)}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">Kampanie:</span>
-                                <span class="metric-value">${reportData.googleCampaigns?.length || 0}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">CTR:</span>
-                                <span class="metric-value">${formatPercentage(reportData.platformTotals?.google?.averageCtr || 0)}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">CPC:</span>
-                                <span class="metric-value">${formatCurrency(reportData.platformTotals?.google?.averageCpc || 0)}</span>
-                            </div>
-                            <div class="metric-row">
-                                <span class="metric-label">Rezerwacje:</span>
-                                <span class="metric-value">${formatNumber(reportData.platformTotals?.google?.totalReservations || 0)}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            ` : ''}
 
-                        <!-- Page 2 - Meta Ads Performance & Conversion Metrics -->
+                        <!-- Page 2 - Year-over-Year Comparison & Platform Performance -->
             <div style="page-break-before: always; padding: 40px; width: 100%; box-sizing: border-box; font-family: Arial, sans-serif;">
+                
+                <!-- Year-over-Year Comparison - At Top of Page 2 -->
+                <div style="margin-bottom: 40px; padding: 30px; background: #f8f9fa; border-radius: 12px;">
+                    <h2 style="text-align: center; margin-bottom: 30px; color: #333; font-size: 28px; font-weight: 600;">Porównanie okresów do poprzedniego roku</h2>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <thead>
+                            <tr style="background: #e9ecef;">
+                                <th style="padding: 15px; text-align: left; border: 1px solid #dee2e6; font-weight: 600; color: #495057;">Platforma / Metryka</th>
+                                <th style="padding: 15px; text-align: center; border: 1px solid #dee2e6; font-weight: 600; color: #495057;">2025</th>
+                                <th style="padding: 15px; text-align: center; border: 1px solid #dee2e6; font-weight: 600; color: #495057;">2024</th>
+                                <th style="padding: 15px; text-align: center; border: 1px solid #dee2e6; font-weight: 600; color: #495057;">Zmiana</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Meta Ads Section -->
+                            <tr style="background: #f0f8ff;">
+                                <td colspan="4" style="padding: 12px 15px; border: 1px solid #dee2e6; font-weight: 600; color: #1877f2; text-align: center;">
+                                    Meta Ads
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wydatki</td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${formatCurrency(reportData.platformTotals?.meta?.totalSpend || 0)}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
+                                    ${reportData.previousYearTotals ? formatCurrency(reportData.previousYearTotals.spend) : 'Brak danych'}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${reportData.previousYearTotals && reportData.previousYearTotals.spend > 0 ? 
+                                        (() => {
+                                            const current = reportData.platformTotals?.meta?.totalSpend || 0;
+                                            const previous = reportData.previousYearTotals.spend;
+                                            const change = ((current - previous) / previous) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            const color = change > 0 ? '#28a745' : change < 0 ? '#dc3545' : '#6c757d';
+                                            return `<span style="color: ${color};">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+                                        })() : '—'
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Rezerwacje</td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${reportData.platformTotals?.meta?.totalReservations || 0}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
+                                    ${reportData.previousYearConversions ? reportData.previousYearConversions.reservations : 'Brak danych'}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${reportData.previousYearConversions && reportData.previousYearConversions.reservations > 0 ? 
+                                        (() => {
+                                            const current = reportData.platformTotals?.meta?.totalReservations || 0;
+                                            const previous = reportData.previousYearConversions.reservations;
+                                            const change = ((current - previous) / previous) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            const color = change > 0 ? '#28a745' : change < 0 ? '#dc3545' : '#6c757d';
+                                            return `<span style="color: ${color};">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+                                        })() : '—'
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wartość rezerwacji</td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${formatCurrency(reportData.platformTotals?.meta?.totalReservationValue || 0)}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
+                                    ${reportData.previousYearConversions ? formatCurrency(reportData.previousYearConversions.reservation_value) : 'Brak danych'}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${reportData.previousYearConversions && reportData.previousYearConversions.reservation_value > 0 ? 
+                                    (() => {
+                                            const current = reportData.platformTotals?.meta?.totalReservationValue || 0;
+                                            const previous = reportData.previousYearConversions.reservation_value;
+                                            const change = ((current - previous) / previous) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            const color = change > 0 ? '#28a745' : change < 0 ? '#dc3545' : '#6c757d';
+                                            return `<span style="color: ${color};">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+                                        })() : '—'
+                                    }
+                                </td>
+                            </tr>
+                            
+                            <!-- Google Ads Section -->
+                            <tr style="background: #f0fff0;">
+                                <td colspan="4" style="padding: 12px 15px; border: 1px solid #dee2e6; font-weight: 600; color: #34a853; text-align: center;">
+                                    Google Ads
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wydatki</td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${formatCurrency(reportData.platformTotals?.google?.totalSpend || 0)}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
+                                    Brak danych*
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    —
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Rezerwacje</td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${reportData.platformTotals?.google?.totalReservations || 0}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
+                                    Brak danych*
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    —
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wartość rezerwacji</td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${formatCurrency(reportData.platformTotals?.google?.totalReservationValue || 0)}
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
+                                    Brak danych*
+                                </td>
+                                <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
+                                    —
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <p style="text-align: center; color: #6c757d; font-size: 14px; margin-top: 20px;">
+                        Porównanie wyników każdej platformy z analogicznym okresem roku poprzedniego<br/>
+                        <span style="font-size: 12px;">* Dane Google Ads z roku poprzedniego będą dostępne po roku działania kampanii</span>
+                    </p>
+                    </div>
+
                 <!-- Meta Ads Header -->
                 <h2 style="text-align: center; margin: 0 0 20px 0; color: #1877f2; font-size: 28px; font-weight: 600; width: 100%; display: block;">Meta Ads</h2>
                 
@@ -1563,11 +1476,11 @@ import logger from '../../../lib/logger';
                 </div>
             </div>
 
-            <!-- Page 3 - Demographics (Impressions) -->
+                        <!-- Page 3 - Demographics (ROAS) -->
             ${demographicData.gender.length > 0 || demographicData.age.length > 0 ? `
             <div class="section page-break-before">
                 <div class="chart-container">
-                    <div class="chart-title">Demografia – Wyświetlenia</div>
+                    <div class="chart-title">Demografia – ROAS</div>
                     
                     <!-- Meta Ads Demographics -->
                     <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
@@ -1575,8 +1488,8 @@ import logger from '../../../lib/logger';
                         ${demographicData.gender.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według płci</h4>
-                            <canvas id="genderImpressionsChart" width="250" height="250"></canvas>
-                            ${generateDemographicTable(demographicData.gender, 'impressions')}
+                            <canvas id="genderROASChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.gender, 'roas')}
                         </div>
                         ` : `
                         <div class="chart-section">
@@ -1589,8 +1502,8 @@ import logger from '../../../lib/logger';
                         ${demographicData.age.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według grup wieku</h4>
-                            <canvas id="ageImpressionsChart" width="250" height="250"></canvas>
-                            ${generateDemographicTable(demographicData.age, 'impressions')}
+                            <canvas id="ageROASChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.age, 'roas')}
                         </div>
                         ` : `
                         <div class="chart-section">
@@ -1604,28 +1517,41 @@ import logger from '../../../lib/logger';
                     
                     <!-- Google Ads Demographics -->
                     <h4 style="margin-top: 30px; color: #34a853; font-size: 16px;">Google Ads</h4>
-                    <div style="text-align: center; padding: 20px; color: #6c757d; background: #f8f9fa; border-radius: 8px; margin-top: 10px;">
-                        <p>Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API</p>
+                    <div class="charts-grid">
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API
+                            </div>
+                        </div>
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
             ` : `
             <div class="section page-break-before">
                 <div class="chart-container">
-                    <div class="chart-title">Demografia – Wyświetlenia</div>
+                    <div class="chart-title">Demografia – ROAS</div>
                     <div style="text-align: center; padding: 40px; color: #6c757d;">
                         <p>Brak danych demograficznych dla tego okresu.</p>
-                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej liczby wyświetleń.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej liczby konwersji.</p>
                     </div>
                 </div>
             </div>
             `}
 
-            <!-- Page 4 - Demographics (Clicks) -->
+
+
+            <!-- Page 4 - Demographics (Rezerwacje) -->
             ${demographicData.gender.length > 0 || demographicData.age.length > 0 ? `
             <div class="section page-break-before">
                 <div class="chart-container">
-                    <div class="chart-title">Demografia – Kliknięcia</div>
+                    <div class="chart-title">Demografia – Rezerwacje</div>
                     
                     <!-- Meta Ads Demographics -->
                     <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
@@ -1633,8 +1559,8 @@ import logger from '../../../lib/logger';
                         ${demographicData.gender.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według płci</h4>
-                            <canvas id="genderClicksChart" width="250" height="250"></canvas>
-                            ${generateDemographicTable(demographicData.gender, 'clicks')}
+                            <canvas id="genderReservationsChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.gender, 'reservations')}
                         </div>
                         ` : `
                         <div class="chart-section">
@@ -1647,8 +1573,8 @@ import logger from '../../../lib/logger';
                         ${demographicData.age.length > 0 ? `
                         <div class="chart-section">
                             <h4>Podział według grup wieku</h4>
-                            <canvas id="ageClicksChart" width="250" height="250"></canvas>
-                            ${generateDemographicTable(demographicData.age, 'clicks')}
+                            <canvas id="ageReservationsChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.age, 'reservations')}
                         </div>
                         ` : `
                         <div class="chart-section">
@@ -1659,15 +1585,101 @@ import logger from '../../../lib/logger';
                         </div>
                         `}
                     </div>
+
+                    <!-- Google Ads Demographics -->
+                    <h4 style="margin-top: 30px; color: #34a853; font-size: 16px;">Google Ads</h4>
+                    <div class="charts-grid">
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API
+                            </div>
+                        </div>
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             ` : `
             <div class="section">
                 <div class="chart-container">
-                    <div class="chart-title">Demografia – Kliknięcia</div>
+                    <div class="chart-title">Demografia – Rezerwacje</div>
                     <div style="text-align: center; padding: 40px; color: #6c757d;">
                         <p>Brak danych demograficznych dla tego okresu.</p>
-                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej liczby kliknięć.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej liczby rezerwacji.</p>
+                    </div>
+                </div>
+            </div>
+            `}
+
+            <!-- Page 5 - Demographics (Wartość) -->
+            ${demographicData.gender.length > 0 || demographicData.age.length > 0 ? `
+            <div class="section page-break-before">
+                <div class="chart-container">
+                    <div class="chart-title">Demografia – Wartość</div>
+                    
+                    <!-- Meta Ads Demographics -->
+                    <h4 style="margin-top: 20px; color: #1877f2; font-size: 16px;">Meta Ads</h4>
+                    <div class="charts-grid">
+                        ${demographicData.gender.length > 0 ? `
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <canvas id="genderValueChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.gender, 'reservation_value')}
+                        </div>
+                        ` : `
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Brak danych demograficznych według płci
+                            </div>
+                        </div>
+                        `}
+                        ${demographicData.age.length > 0 ? `
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <canvas id="ageValueChart" width="250" height="250"></canvas>
+                            ${generateDemographicTable(demographicData.age, 'reservation_value')}
+                        </div>
+                        ` : `
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Brak danych demograficznych według wieku
+                            </div>
+                        </div>
+                        `}
+                    </div>
+
+                    <!-- Google Ads Demographics -->
+                    <h4 style="margin-top: 30px; color: #34a853; font-size: 16px;">Google Ads</h4>
+                    <div class="charts-grid">
+                        <div class="chart-section">
+                            <h4>Podział według płci</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API
+                            </div>
+                        </div>
+                        <div class="chart-section">
+                            <h4>Podział według grup wieku</h4>
+                            <div style="display: flex; align-items: center; justify-content: center; height: 250px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; color: #6c757d; font-size: 14px;">
+                                Dane demograficzne Google Ads będą dostępne po integracji z Google Ads API
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            ` : `
+            <div class="section">
+                <div class="chart-container">
+                    <div class="chart-title">Demografia – Wartość</div>
+                    <div style="text-align: center; padding: 40px; color: #6c757d;">
+                        <p>Brak danych demograficznych dla tego okresu.</p>
+                        <p style="font-size: 14px; margin-top: 8px;">Dane demograficzne będą dostępne po zebraniu wystarczającej wartości rezerwacji.</p>
                     </div>
                 </div>
             </div>
@@ -1856,6 +1868,10 @@ ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0)
             
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
+        // Debug: Check if Chart.js loaded
+        console.log('🔍 PDF: Chart.js loaded:', typeof Chart !== 'undefined');
+        console.log('🔍 PDF: Chart version:', typeof Chart !== 'undefined' ? Chart.version : 'not loaded');
+        
         // Demographic data from server
         const demographicData = ${JSON.stringify(demographicData)};
         
@@ -1897,22 +1913,62 @@ ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0)
             originalError.apply(console, args);
         };
         
-        logger.info('🔍 PDF: Starting chart generation...');
-        logger.debug('Debug info', demographicData);
+        console.log('🔍 PDF: Starting chart generation...');
+        console.log('📊 PDF Chart Debug - Full demographic data:', JSON.stringify(demographicData, null, 2));
         
-        // Gender Impressions Chart
+        // Gender ROAS Chart
         try {
             if (demographicData.gender && demographicData.gender.length > 0) {
-                const canvas1 = document.getElementById('genderImpressionsChart');
+                const canvas1 = document.getElementById('genderROASChart');
                 if (canvas1) {
-                    logger.info('✅ PDF: Found genderImpressionsChart canvas');
+                    console.log('✅ PDF: Found genderROASChart canvas');
                     const ctx1 = canvas1.getContext('2d');
+                    
+                    // Use ROAS if available, otherwise fall back to impressions, then clicks, then spend
+                    const hasROASData = demographicData.gender.some(g => (g.roas || 0) > 0);
+                    const hasImpressionData = demographicData.gender.some(g => (g.impressions || 0) > 0);
+                    const hasClickData = demographicData.gender.some(g => (g.clicks || 0) > 0);
+                    
+                    let chartData;
+                    let dataSource;
+                    
+                    if (hasROASData) {
+                        chartData = demographicData.gender.map(g => g.roas || 0);
+                        dataSource = 'ROAS';
+                    } else if (hasImpressionData) {
+                        chartData = demographicData.gender.map(g => g.impressions || 0);
+                        dataSource = 'Impressions';
+                    } else if (hasClickData) {
+                        chartData = demographicData.gender.map(g => g.clicks || 0);
+                        dataSource = 'Clicks';
+                    } else {
+                        // Final fallback: use spend, or if spend is also 0, use equal distribution (1 for each)
+                        const hasSpendData = demographicData.gender.some(g => (g.spend || 0) > 0);
+                        if (hasSpendData) {
+                            chartData = demographicData.gender.map(g => g.spend || 0);
+                            dataSource = 'Spend';
+                        } else {
+                            // Ultimate fallback: equal distribution to show demographic categories
+                            chartData = demographicData.gender.map(() => 1);
+                            dataSource = 'Equal distribution (showing categories)';
+                        }
+                    }
+                    
+                    console.log('📊 PDF: Gender ROAS chart data:', { 
+                        hasROASData, 
+                        hasImpressionData, 
+                        hasClickData, 
+                        dataSource,
+                        chartData,
+                        labels: demographicData.gender.map(g => g.gender)
+                    });
+                    
                     new Chart(ctx1, {
                         type: 'pie',
                         data: {
                             labels: demographicData.gender.map(g => g.gender),
                             datasets: [{
-                                data: demographicData.gender.map(g => g.impressions),
+                                data: chartData,
                                 backgroundColor: genderColors,
                                 borderWidth: 2,
                                 borderColor: '#fff'
@@ -1920,30 +1976,70 @@ ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0)
                         },
                         options: chartOptions
                     });
-                    logger.info('✅ PDF: Gender impressions chart created');
+                    console.log('✅ PDF: Gender ROAS chart created');
                 } else {
-                    logger.info('❌ PDF: genderImpressionsChart canvas not found');
+                    console.log('❌ PDF: genderROASChart canvas not found');
                 }
             } else {
-                logger.info('⚠️ PDF: No gender data available');
+                console.log('⚠️ PDF: No gender data available');
             }
         } catch (error) {
-            console.error('❌ PDF: Error creating gender impressions chart:', error);
+            console.error('❌ PDF: Error creating gender ROAS chart:', error);
         }
         
-        // Age Impressions Chart
+        // Age ROAS Chart
         try {
             if (demographicData.age && demographicData.age.length > 0) {
-                const canvas2 = document.getElementById('ageImpressionsChart');
+                const canvas2 = document.getElementById('ageROASChart');
                 if (canvas2) {
-                    logger.info('✅ PDF: Found ageImpressionsChart canvas');
+                    console.log('✅ PDF: Found ageROASChart canvas');
                     const ctx2 = canvas2.getContext('2d');
+                    
+                    // Use ROAS if available, otherwise fall back to impressions, then clicks, then spend
+                    const hasROASData = demographicData.age.some(a => (a.roas || 0) > 0);
+                    const hasImpressionData = demographicData.age.some(a => (a.impressions || 0) > 0);
+                    const hasClickData = demographicData.age.some(a => (a.clicks || 0) > 0);
+                    
+                    let chartData;
+                    let dataSource;
+                    
+                    if (hasROASData) {
+                        chartData = demographicData.age.map(a => a.roas || 0);
+                        dataSource = 'ROAS';
+                    } else if (hasImpressionData) {
+                        chartData = demographicData.age.map(a => a.impressions || 0);
+                        dataSource = 'Impressions';
+                    } else if (hasClickData) {
+                        chartData = demographicData.age.map(a => a.clicks || 0);
+                        dataSource = 'Clicks';
+                    } else {
+                        // Final fallback: use spend, or if spend is also 0, use equal distribution (1 for each)
+                        const hasSpendData = demographicData.age.some(a => (a.spend || 0) > 0);
+                        if (hasSpendData) {
+                            chartData = demographicData.age.map(a => a.spend || 0);
+                            dataSource = 'Spend';
+                        } else {
+                            // Ultimate fallback: equal distribution to show demographic categories
+                            chartData = demographicData.age.map(() => 1);
+                            dataSource = 'Equal distribution (showing categories)';
+                        }
+                    }
+                    
+                    console.log('📊 PDF: Age ROAS chart data:', { 
+                        hasROASData, 
+                        hasImpressionData, 
+                        hasClickData, 
+                        dataSource,
+                        chartData,
+                        labels: demographicData.age.map(a => a.age)
+                    });
+                    
                     new Chart(ctx2, {
                         type: 'pie',
                         data: {
                             labels: demographicData.age.map(a => a.age),
                             datasets: [{
-                                data: demographicData.age.map(a => a.impressions),
+                                data: chartData,
                                 backgroundColor: ageColors,
                                 borderWidth: 2,
                                 borderColor: '#fff'
@@ -1951,30 +2047,61 @@ ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0)
                         },
                         options: chartOptions
                     });
-                    logger.info('✅ PDF: Age impressions chart created');
+                    console.log('✅ PDF: Age ROAS chart created');
                 } else {
-                    logger.info('❌ PDF: ageImpressionsChart canvas not found');
+                    console.log('❌ PDF: ageROASChart canvas not found');
                 }
             } else {
-                logger.info('⚠️ PDF: No age data available');
+                console.log('⚠️ PDF: No age data available');
             }
         } catch (error) {
-            console.error('❌ PDF: Error creating age impressions chart:', error);
+            console.error('❌ PDF: Error creating age ROAS chart:', error);
         }
         
-        // Gender Clicks Chart
+        // Debug: Check all canvas elements
+        console.log('🔍 PDF: All canvas elements:', document.querySelectorAll('canvas').length);
+        console.log('🔍 PDF: Canvas IDs:', Array.from(document.querySelectorAll('canvas')).map(c => c.id));
+        
+        // Gender Reservations Chart
         try {
             if (demographicData.gender && demographicData.gender.length > 0) {
-                const canvas3 = document.getElementById('genderClicksChart');
+                console.log('🔍 PDF: Looking for genderReservationsChart...');
+                const canvas3 = document.getElementById('genderReservationsChart');
+                console.log('🔍 PDF: genderReservationsChart found:', !!canvas3);
                 if (canvas3) {
-                    logger.info('✅ PDF: Found genderClicksChart canvas');
+                    console.log('✅ PDF: Found genderReservationsChart canvas');
                     const ctx3 = canvas3.getContext('2d');
+                    
+                    // Use reservations if available, otherwise fall back to clicks, then impressions, then equal distribution
+                    const hasReservationData = demographicData.gender.some(g => (g.reservations || 0) > 0);
+                    const hasClickData = demographicData.gender.some(g => (g.clicks || 0) > 0);
+                    const hasImpressionData = demographicData.gender.some(g => (g.impressions || 0) > 0);
+                    
+                    let chartData;
+                    let dataSource;
+                    
+                    if (hasReservationData) {
+                        chartData = demographicData.gender.map(g => g.reservations || 0);
+                        dataSource = 'Reservations';
+                    } else if (hasClickData) {
+                        chartData = demographicData.gender.map(g => g.clicks || 0);
+                        dataSource = 'Clicks (fallback)';
+                    } else if (hasImpressionData) {
+                        chartData = demographicData.gender.map(g => g.impressions || 0);
+                        dataSource = 'Impressions (fallback)';
+                    } else {
+                        chartData = demographicData.gender.map(() => 1);
+                        dataSource = 'Equal distribution (showing categories)';
+                    }
+                    
+                    console.log('📊 PDF: Gender reservations chart data:', { hasReservationData, hasClickData, hasImpressionData, dataSource, chartData });
+                    
                     new Chart(ctx3, {
                         type: 'pie',
                         data: {
                             labels: demographicData.gender.map(g => g.gender),
                             datasets: [{
-                                data: demographicData.gender.map(g => g.clicks),
+                                data: chartData,
                                 backgroundColor: genderColors,
                                 borderWidth: 2,
                                 borderColor: '#fff'
@@ -1982,28 +2109,37 @@ ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0)
                         },
                         options: chartOptions
                     });
-                    logger.info('✅ PDF: Gender clicks chart created');
+                    console.log('✅ PDF: Gender reservations chart created');
                 } else {
-                    logger.info('❌ PDF: genderClicksChart canvas not found');
+                    console.log('❌ PDF: genderReservationsChart canvas not found');
                 }
             }
         } catch (error) {
-            console.error('❌ PDF: Error creating gender clicks chart:', error);
+            console.error('❌ PDF: Error creating gender reservations chart:', error);
         }
         
-        // Age Clicks Chart
+        // Age Reservations Chart
         try {
             if (demographicData.age && demographicData.age.length > 0) {
-                const canvas4 = document.getElementById('ageClicksChart');
+                const canvas4 = document.getElementById('ageReservationsChart');
                 if (canvas4) {
-                    logger.info('✅ PDF: Found ageClicksChart canvas');
+                    console.log('✅ PDF: Found ageReservationsChart canvas');
                     const ctx4 = canvas4.getContext('2d');
+                    
+                    // Use reservations if available, otherwise fall back to clicks for visualization
+                    const hasReservationData = demographicData.age.some(a => (a.reservations || 0) > 0);
+                    const chartData = hasReservationData 
+                        ? demographicData.age.map(a => a.reservations || 0)
+                        : demographicData.age.map(a => a.clicks || 0);
+                    
+                    console.log('📊 PDF: Age reservations chart data:', { hasReservationData, chartData });
+                    
                     new Chart(ctx4, {
                         type: 'pie',
                         data: {
                             labels: demographicData.age.map(a => a.age),
                             datasets: [{
-                                data: demographicData.age.map(a => a.clicks),
+                                data: chartData,
                                 backgroundColor: ageColors,
                                 borderWidth: 2,
                                 borderColor: '#fff'
@@ -2011,16 +2147,92 @@ ${(reportData.googleCampaigns && reportData.googleCampaigns.length > 0)
                         },
                         options: chartOptions
                     });
-                    logger.info('✅ PDF: Age clicks chart created');
+                    console.log('✅ PDF: Age reservations chart created');
                 } else {
-                    logger.info('❌ PDF: ageClicksChart canvas not found');
+                    console.log('❌ PDF: ageReservationsChart canvas not found');
                 }
             }
         } catch (error) {
-            console.error('❌ PDF: Error creating age clicks chart:', error);
+            console.error('❌ PDF: Error creating age reservations chart:', error);
+        }
+
+        // Gender Value Chart
+        try {
+            if (demographicData.gender && demographicData.gender.length > 0) {
+                const canvas5 = document.getElementById('genderValueChart');
+                if (canvas5) {
+                    console.log('✅ PDF: Found genderValueChart canvas');
+                    const ctx5 = canvas5.getContext('2d');
+                    
+                    // Use reservation value if available, otherwise fall back to spend for visualization
+                    const hasValueData = demographicData.gender.some(g => (g.reservation_value || 0) > 0);
+                    const chartData = hasValueData 
+                        ? demographicData.gender.map(g => g.reservation_value || 0)
+                        : demographicData.gender.map(g => g.spend || 0);
+                    
+                    console.log('📊 PDF: Gender value chart data:', { hasValueData, chartData });
+                    
+                    new Chart(ctx5, {
+                        type: 'pie',
+                        data: {
+                            labels: demographicData.gender.map(g => g.gender),
+                            datasets: [{
+                                data: chartData,
+                                backgroundColor: genderColors,
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    console.log('✅ PDF: Gender value chart created');
+                } else {
+                    console.log('❌ PDF: genderValueChart canvas not found');
+                }
+            }
+        } catch (error) {
+            console.error('❌ PDF: Error creating gender value chart:', error);
         }
         
-        logger.info('🔍 PDF: Chart generation completed');
+        // Age Value Chart
+        try {
+            if (demographicData.age && demographicData.age.length > 0) {
+                const canvas6 = document.getElementById('ageValueChart');
+                if (canvas6) {
+                    console.log('✅ PDF: Found ageValueChart canvas');
+                    const ctx6 = canvas6.getContext('2d');
+                    
+                    // Use reservation value if available, otherwise fall back to spend for visualization
+                    const hasValueData = demographicData.age.some(a => (a.reservation_value || 0) > 0);
+                    const chartData = hasValueData 
+                        ? demographicData.age.map(a => a.reservation_value || 0)
+                        : demographicData.age.map(a => a.spend || 0);
+                    
+                    console.log('📊 PDF: Age value chart data:', { hasValueData, chartData });
+                    
+                    new Chart(ctx6, {
+                        type: 'pie',
+                        data: {
+                            labels: demographicData.age.map(a => a.age),
+                            datasets: [{
+                                data: chartData,
+                                backgroundColor: ageColors,
+                                borderWidth: 2,
+                                borderColor: '#fff'
+                            }]
+                        },
+                        options: chartOptions
+                    });
+                    console.log('✅ PDF: Age value chart created');
+                } else {
+                    console.log('❌ PDF: ageValueChart canvas not found');
+                }
+            }
+        } catch (error) {
+            console.error('❌ PDF: Error creating age value chart:', error);
+        }
+        
+        console.log('🔍 PDF: Chart generation completed');
         </script>
         </body>
     </html>
@@ -2123,13 +2335,14 @@ function getPreviousYearDateRange(dateRange: { start: string; end: string }) {
   // Format as YYYY-MM-DD (always first day of month)
   const previousYearStart = `${previousYear}-${month.toString().padStart(2, '0')}-01`;
   
-  // Calculate last day of the month in previous year
+  // Calculate last day of the month in previous year (month is 0-indexed in Date constructor)
   const lastDayOfPreviousYearMonth = new Date(previousYear, month, 0).getDate();
   const previousYearEnd = `${previousYear}-${month.toString().padStart(2, '0')}-${lastDayOfPreviousYearMonth.toString().padStart(2, '0')}`;
   
   logger.info('📅 Previous year calculation:');
   console.log(`   Current: ${dateRange.start} (Year: ${year}, Month: ${month})`);
   console.log(`   Previous year: ${previousYearStart} (Year: ${previousYear}, Month: ${month})`);
+  console.log(`   Previous year range: ${previousYearStart} to ${previousYearEnd}`);
   
   return {
     start: previousYearStart,
@@ -2144,26 +2357,38 @@ async function fetchPreviousYearDataFromDB(dateRange: { start: string; end: stri
     const previousYearDateRange = getPreviousYearDateRange(dateRange);
     logger.info('   Previous year range:', previousYearDateRange);
 
-    // Query campaign_summaries table for stored monthly data from previous year
-    const { data: storedSummary, error } = await supabase
+    // Query campaign_summaries table for stored data from previous year (both monthly and weekly)
+    const { data: storedSummaries, error } = await supabase
       .from('campaign_summaries')
       .select('*')
       .eq('client_id', clientId)
-      .eq('summary_type', 'monthly')
-      .eq('summary_date', previousYearDateRange.start)
-      .single();
+      .gte('summary_date', previousYearDateRange.start)
+      .lte('summary_date', previousYearDateRange.end);
 
     if (error) {
       logger.warn('Warning', error.message);
       return null;
     }
 
-    if (storedSummary) {
-      console.log(`✅ Found stored summary for ${previousYearDateRange.start}`);
+    if (storedSummaries && storedSummaries.length > 0) {
+      console.log(`✅ Found ${storedSummaries.length} stored summaries for ${previousYearDateRange.start} to ${previousYearDateRange.end}`);
+      
+      // Aggregate data from all summaries (monthly + weekly)
+      const aggregatedData = storedSummaries.reduce((acc: any, summary: any) => ({
+        spend: acc.spend + (summary.total_spend || 0),
+        impressions: acc.impressions + (summary.total_impressions || 0),
+        clicks: acc.clicks + (summary.total_clicks || 0),
+        conversions: acc.conversions + (summary.total_conversions || 0),
+        campaign_data: [...(acc.campaign_data || []), ...(summary.campaign_data || [])]
+      }), { 
+        spend: 0, impressions: 0, clicks: 0, conversions: 0, campaign_data: []
+      });
+
+      console.log(`   Aggregated previous year data: spend=${aggregatedData.spend}, impressions=${aggregatedData.impressions}, clicks=${aggregatedData.clicks}`);
       
       // Extract campaign data for conversion calculations
-      const previousYearCampaigns = storedSummary.campaign_data || [];
-      console.log(`   Previous year campaigns from summary: ${previousYearCampaigns.length}`);
+      const previousYearCampaigns = aggregatedData.campaign_data || [];
+      console.log(`   Previous year campaigns from summaries: ${previousYearCampaigns.length}`);
 
       // Also fetch conversion data from campaigns table for the previous year
       const { data: previousYearCampaignRecords } = await supabase
@@ -2199,14 +2424,15 @@ async function fetchPreviousYearDataFromDB(dateRange: { start: string; end: stri
 
       console.log(`   Previous year totals: reservations=${previousYearTotals.reservations}, value=${previousYearTotals.reservation_value}`);
 
+      // Calculate averages for CTR, CPC, CPM from aggregated data
       const previousYearTotalsFormatted = {
-        spend: storedSummary.total_spend,
-        impressions: storedSummary.total_impressions,
-        clicks: storedSummary.total_clicks,
-        conversions: storedSummary.total_conversions,
-        ctr: storedSummary.average_ctr,
-        cpc: storedSummary.average_cpc,
-        cpm: storedSummary.total_impressions > 0 ? (storedSummary.total_spend / storedSummary.total_impressions) * 1000 : 0
+        spend: aggregatedData.spend,
+        impressions: aggregatedData.impressions,
+        clicks: aggregatedData.clicks,
+        conversions: aggregatedData.conversions,
+        ctr: aggregatedData.clicks > 0 ? (aggregatedData.conversions / aggregatedData.clicks) * 100 : 0,
+        cpc: aggregatedData.clicks > 0 ? aggregatedData.spend / aggregatedData.clicks : 0,
+        cpm: aggregatedData.impressions > 0 ? (aggregatedData.spend / aggregatedData.impressions) * 1000 : 0
       };
 
       const previousYearConversions = {
@@ -2230,6 +2456,8 @@ async function fetchPreviousYearDataFromDB(dateRange: { start: string; end: stri
     }
     
     logger.info('⚠️ No previous year data found in database');
+    console.log(`   Searched for client: ${clientId}`);
+    console.log(`   Date range: ${previousYearDateRange.start} to ${previousYearDateRange.end}`);
     return null;
   } catch (error) {
     logger.warn('Warning', error instanceof Error ? error.message : 'Unknown error');
@@ -2554,6 +2782,13 @@ export async function POST(request: NextRequest) {
         console.log(`   Placement: ${metaTablesData.placementPerformance?.length || 0} records`);
         console.log(`   Demographic: ${metaTablesData.demographicPerformance?.length || 0} records`);
         console.log(`   Ad Relevance: ${metaTablesData.adRelevanceResults?.length || 0} records`);
+        
+        // Debug demographic data structure
+        if (metaTablesData.demographicPerformance?.length > 0) {
+          console.log('🔍 PDF: Sample demographic data received:', JSON.stringify(metaTablesData.demographicPerformance.slice(0, 2), null, 2));
+        } else {
+          console.log('⚠️ PDF: No demographic data in directMetaTables');
+        }
       }
     } else {
       // Fallback to API call (slower)
@@ -2713,11 +2948,13 @@ export async function POST(request: NextRequest) {
       if (previousYearData) {
         previousYearTotals = previousYearData.previousYearTotals;
         previousYearConversions = previousYearData.previousYearConversions;
-        logger.info('✅ Previous year data loaded');
-        logger.info('   Year totals:', previousYearTotals);
-        logger.info('   Year conversions:', previousYearConversions);
+        logger.info('✅ Previous year data loaded (parallel path)');
+        logger.info('   Year totals:', !!previousYearTotals);
+        logger.info('   Year conversions:', !!previousYearConversions);
+        logger.info('   Year totals keys:', previousYearTotals ? Object.keys(previousYearTotals) : 'none');
+        logger.info('   Year conversions keys:', previousYearConversions ? Object.keys(previousYearConversions) : 'none');
       } else {
-        logger.info('❌ No previous year data found');
+        logger.info('❌ No previous year data found (parallel path)');
       }
     } else {
       // Sequential database lookups for non-direct data path
@@ -2744,9 +2981,20 @@ export async function POST(request: NextRequest) {
       }
       
       const previousYearData = await fetchPreviousYearDataFromDB(dateRange, clientId);
+      logger.info('🔍 Previous Year Data Fetch Result:', {
+        hasData: !!previousYearData,
+        dataType: previousYearData ? typeof previousYearData : 'null',
+        dataKeys: previousYearData ? Object.keys(previousYearData) : 'none'
+      });
+      
       if (previousYearData) {
         previousYearTotals = previousYearData.previousYearTotals;
         previousYearConversions = previousYearData.previousYearConversions;
+        logger.info('✅ Previous year data assigned to variables');
+        logger.info('   previousYearTotals:', !!previousYearTotals);
+        logger.info('   previousYearConversions:', !!previousYearConversions);
+      } else {
+        logger.info('❌ No previous year data returned from fetchPreviousYearDataFromDB');
       }
     }
 
@@ -2969,6 +3217,25 @@ export async function POST(request: NextRequest) {
     });
 
     const page = await browser.newPage();
+    
+    // Capture console logs from the PDF page
+    page.on('console', (msg) => {
+      const type = msg.type();
+      const text = msg.text();
+      if (type === 'log') {
+        logger.info(`📄 PDF Console: ${text}`);
+      } else if (type === 'error') {
+        logger.error(`📄 PDF Console Error: ${text}`);
+      } else if (type === 'warn') {
+        logger.warn(`📄 PDF Console Warning: ${text}`);
+      }
+    });
+    
+    // Capture page errors
+    page.on('pageerror', (error) => {
+      logger.error('📄 PDF Page Error:', error.message);
+    });
+    
     await page.setContent(html, { waitUntil: 'networkidle0' });
     
     // Wait for charts to render
