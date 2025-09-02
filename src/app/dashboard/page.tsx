@@ -857,10 +857,20 @@ export default function DashboardPage() {
       
       // Use intelligent API selection
       console.log('📡 DASHBOARD: Making API call to', apiEndpoint);
-      console.log('📡 API Request body:', {
+      // Enhanced API request with platform parameter and fresh data
+      const requestBody = {
         clientId: currentClient.id,
         dateRange: dateRange,
-        forceFresh: false
+        platform: effectiveProvider, // Include platform parameter like reports
+        forceFresh: true, // Force fresh data for dashboard accuracy
+        reason: 'dashboard_display'
+      };
+
+      console.log('📡 ENHANCED API Request:', {
+        endpoint: apiEndpoint,
+        body: requestBody,
+        platform: effectiveProvider,
+        dateRange: dateRange
       });
       
       let response;
@@ -871,11 +881,7 @@ export default function DashboardPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({
-          clientId: currentClient.id,
-          dateRange: dateRange,
-          forceFresh: false  // ✅ FIXED: Use smart caching
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
       } catch (fetchError: any) {
@@ -1140,8 +1146,14 @@ export default function DashboardPage() {
 
       clearTimeout(timeoutId);
 
+      console.log('📊 DASHBOARD API RESPONSE:', response.status, response.statusText);
+
       if (!response.ok) {
-        console.warn('⚠️ Dashboard API call failed:', response.status, response.statusText);
+        console.error('❌ Dashboard API call failed:', response.status, response.statusText);
+        
+        // Get error details
+        const errorText = await response.text();
+        console.error('❌ Error details:', errorText);
         
         // Set loading message for user feedback
         setLoadingMessage && setLoadingMessage(`Błąd API (${response.status}) - ładowanie z cache...`);
@@ -1151,7 +1163,70 @@ export default function DashboardPage() {
         
         // Try to load from cache as fallback
         try {
-          if (activeAdsProvider === 'meta') {
+          if (effectiveProvider === 'google') {
+            // Try Google Ads database fallback
+            console.log('🔍 GOOGLE ADS FALLBACK: Loading from campaign_summaries...');
+            
+            const { data: googleSummaries, error: googleError } = await supabase
+              .from('campaign_summaries')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .eq('platform', 'google')
+              .gte('summary_date', `${year}-${String(month).padStart(2, '0')}-01`)
+              .lt('summary_date', `${year}-${String(month + 1).padStart(2, '0')}-01`)
+              .order('summary_date', { ascending: false });
+            
+            if (!googleError && googleSummaries && googleSummaries.length > 0) {
+              console.log('✅ GOOGLE ADS FALLBACK: Found database data:', googleSummaries.length, 'records');
+              
+              // Aggregate the data
+              const totalSpend = googleSummaries.reduce((sum, s) => sum + (s.total_spend || 0), 0);
+              const totalReservations = googleSummaries.reduce((sum, s) => sum + (s.reservations || 0), 0);
+              const totalImpressions = googleSummaries.reduce((sum, s) => sum + (s.total_impressions || 0), 0);
+              const totalClicks = googleSummaries.reduce((sum, s) => sum + (s.total_clicks || 0), 0);
+              const totalConversions = googleSummaries.reduce((sum, s) => sum + (s.total_conversions || 0), 0);
+              
+              console.log('💰 GOOGLE ADS FALLBACK DATA:', {
+                totalSpend,
+                totalReservations,
+                totalImpressions,
+                totalClicks,
+                records: googleSummaries.length
+              });
+              
+              return {
+                campaigns: googleSummaries.flatMap(s => s.campaign_data || []),
+                stats: {
+                  totalSpend,
+                  totalImpressions,
+                  totalClicks,
+                  totalConversions,
+                  totalReservations,
+                  averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                  averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+                },
+                conversionMetrics: {
+                  click_to_call: googleSummaries.reduce((sum, s) => sum + (s.click_to_call || 0), 0),
+                  email_contacts: googleSummaries.reduce((sum, s) => sum + (s.email_contacts || 0), 0),
+                  booking_step_1: googleSummaries.reduce((sum, s) => sum + (s.booking_step_1 || 0), 0),
+                  booking_step_2: googleSummaries.reduce((sum, s) => sum + (s.booking_step_2 || 0), 0),
+                  booking_step_3: googleSummaries.reduce((sum, s) => sum + (s.booking_step_3 || 0), 0),
+                  reservations: totalReservations,
+                  reservation_value: googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0),
+                  roas: totalSpend > 0 ? (googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0) / totalSpend) : 0,
+                  cost_per_reservation: totalReservations > 0 ? totalSpend / totalReservations : 0
+                },
+                debug: {
+                  source: 'database-fallback',
+                  reason: `API call failed (${response.status}), using database data`,
+                  recordsFound: googleSummaries.length,
+                  dateRange: `${year}-${String(month).padStart(2, '0')}`
+                }
+              };
+            } else {
+              console.log('❌ GOOGLE ADS FALLBACK: No database data found');
+            }
+          } else if (effectiveProvider === 'meta') {
             // Try Meta cache first
             const { data: metaCache, error: metaCacheError } = await supabase
               .from('current_month_cache')
@@ -1353,16 +1428,29 @@ export default function DashboardPage() {
 
       const monthData = await response.json();
       
-      // 🔍 CRITICAL DEBUG: Log what data we actually received
-      console.log('📊 CRITICAL DEBUG - Dashboard API response received:', {
+      // 🔍 ENHANCED DEBUG: Log what data we actually received
+      console.log('✅ DASHBOARD API SUCCESS - Response received:', {
         success: monthData.success,
         hasData: !!monthData.data,
         dataKeys: monthData.data ? Object.keys(monthData.data) : 'no data',
         stats: monthData.data?.stats,
         campaigns: monthData.data?.campaigns?.length || 0,
         conversionMetrics: monthData.data?.conversionMetrics,
-        source: monthData.debug?.source || 'unknown'
+        source: monthData.source || monthData.debug?.source || 'unknown',
+        platform: effectiveProvider,
+        dateRange: dateRange
       });
+
+      // Log detailed stats if available
+      if (monthData.data?.stats) {
+        console.log('💰 DASHBOARD STATS BREAKDOWN:', {
+          totalSpend: monthData.data.stats.totalSpend,
+          totalReservations: monthData.data.stats.totalReservations || monthData.data.conversionMetrics?.reservations,
+          totalImpressions: monthData.data.stats.totalImpressions,
+          totalClicks: monthData.data.stats.totalClicks,
+          source: monthData.source
+        });
+      }
       
       // Log smart cache performance
       console.log('📊 Dashboard data received:', {
