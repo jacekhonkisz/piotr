@@ -855,7 +855,77 @@ export default function DashboardPage() {
         controller.abort();
       }, 12000);
       
-      // Use intelligent API selection
+      // 🔧 PRIORITY FIX: For Google Ads, try database fallback FIRST to get fresh data
+      if (effectiveProvider === 'google') {
+        console.log('🔍 GOOGLE ADS PRIORITY: Trying database fallback first to avoid stale cache...');
+        
+        try {
+          const { data: googleSummaries, error: googleError } = await supabase
+            .from('campaign_summaries')
+            .select('*')
+            .eq('client_id', currentClient.id)
+            .eq('platform', 'google')
+            .gte('summary_date', `${year}-${String(month).padStart(2, '0')}-01`)
+            .lt('summary_date', `${year}-${String(month + 1).padStart(2, '0')}-01`)
+            .order('summary_date', { ascending: false });
+          
+          if (!googleError && googleSummaries && googleSummaries.length > 0) {
+            console.log('✅ GOOGLE ADS PRIORITY FALLBACK: Found fresh database data:', googleSummaries.length, 'records');
+            
+            // Aggregate the data
+            const totalSpend = googleSummaries.reduce((sum, s) => sum + (s.total_spend || 0), 0);
+            const totalReservations = googleSummaries.reduce((sum, s) => sum + (s.reservations || 0), 0);
+            const totalImpressions = googleSummaries.reduce((sum, s) => sum + (s.total_impressions || 0), 0);
+            const totalClicks = googleSummaries.reduce((sum, s) => sum + (s.total_clicks || 0), 0);
+            const totalConversions = googleSummaries.reduce((sum, s) => sum + (s.total_conversions || 0), 0);
+            
+            console.log('💰 GOOGLE ADS PRIORITY FALLBACK DATA:', {
+              totalSpend,
+              totalReservations,
+              totalImpressions,
+              totalClicks,
+              records: googleSummaries.length
+            });
+            
+            clearTimeout(timeoutId);
+            return {
+              campaigns: googleSummaries.flatMap(s => s.campaign_data || []),
+              stats: {
+                totalSpend,
+                totalImpressions,
+                totalClicks,
+                totalConversions,
+                totalReservations,
+                averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+              },
+              conversionMetrics: {
+                click_to_call: googleSummaries.reduce((sum, s) => sum + (s.click_to_call || 0), 0),
+                email_contacts: googleSummaries.reduce((sum, s) => sum + (s.email_contacts || 0), 0),
+                booking_step_1: googleSummaries.reduce((sum, s) => sum + (s.booking_step_1 || 0), 0),
+                booking_step_2: googleSummaries.reduce((sum, s) => sum + (s.booking_step_2 || 0), 0),
+                booking_step_3: googleSummaries.reduce((sum, s) => sum + (s.booking_step_3 || 0), 0),
+                reservations: totalReservations,
+                reservation_value: googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0),
+                roas: totalSpend > 0 ? (googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0) / totalSpend) : 0,
+                cost_per_reservation: totalReservations > 0 ? totalSpend / totalReservations : 0
+              },
+              debug: {
+                source: 'database-priority',
+                reason: 'Bypassed API cache to get fresh data',
+                recordsFound: googleSummaries.length,
+                dateRange: `${year}-${String(month).padStart(2, '0')}`
+              }
+            };
+          } else {
+            console.log('❌ GOOGLE ADS PRIORITY FALLBACK: No database data found, will try API...');
+          }
+        } catch (error) {
+          console.log('❌ GOOGLE ADS PRIORITY FALLBACK failed:', error.message);
+        }
+      }
+
+      // Use intelligent API selection (fallback to API if database didn't work)
       console.log('📡 DASHBOARD: Making API call to', apiEndpoint);
       // Enhanced API request with platform parameter and fresh data
       const requestBody = {
