@@ -2106,8 +2106,8 @@ export default function DashboardPage() {
             
             return (
               <div className="space-y-3">
-                {campaigns.slice(0, 5).map((campaign) => (
-                  <div key={campaign.id} className="flex items-center justify-between p-4 bg-page rounded-xl hover:bg-stroke/30 transition-all duration-200 border border-transparent hover:border-stroke group">
+                {campaigns.slice(0, 5).map((campaign, index) => (
+                  <div key={campaign.id || `campaign-${index}`} className="flex items-center justify-between p-4 bg-page rounded-xl hover:bg-stroke/30 transition-all duration-200 border border-transparent hover:border-stroke group">
                     <div className="flex items-center space-x-4">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                         activeAdsProvider === 'meta' 
