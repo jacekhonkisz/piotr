@@ -328,6 +328,7 @@ export default function GenerateReportModal({
         body: JSON.stringify({
           clientId,
           dateRange
+          // Platform will be auto-detected by PDF generation based on client configuration
           // Removed direct data - PDF will use smart caching for consistency
         })
       });

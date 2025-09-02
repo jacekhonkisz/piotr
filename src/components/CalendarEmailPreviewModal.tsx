@@ -319,6 +319,7 @@ export default function CalendarEmailPreviewModal({
         body: JSON.stringify({
           clientId: report.client_id,
           dateRange,
+          // Platform will be auto-detected by PDF generation based on client configuration
           // Pass empty arrays to trigger data fetching from database
           campaigns: [],
           totals: null,

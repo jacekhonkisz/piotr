@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     logger.info(`📅 Collecting Google Ads data for: ${targetDate}`);
 
     // Get all clients with Google Ads configured
-    const { data: clients, error: clientsError } = await supabaseAdmin
+    const { data: clients, error: clientsError } = await supabaseAdmin!
       .from('clients')
       .select('*')
       .not('google_ads_customer_id', 'is', null)
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     let skippedCount = 0;
 
     // Get Google Ads system settings
-    const { data: settingsData, error: settingsError } = await supabaseAdmin
+    const { data: settingsData, error: settingsError } = await supabaseAdmin!
       .from('system_settings')
       .select('key, value')
       .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           const googleAdsAPI = new GoogleAdsAPIService(googleAdsCredentials);
 
           // Fetch campaigns data for the target date
-          const campaigns = await googleAdsAPI.getCampaignData(targetDate, targetDate);
+          const campaigns = await googleAdsAPI.getCampaignData(targetDate!, targetDate!);
           
           if (!campaigns || campaigns.length === 0) {
             console.warn(`⚠️ No Google Ads campaign data for ${client.name}`);
@@ -158,32 +158,54 @@ export async function POST(request: NextRequest) {
           const cpc = dailyTotals.clicks > 0 ? dailyTotals.spend / dailyTotals.clicks : 0;
 
           // Store in campaign_summaries table with platform="google"
-          const { error: insertError } = await supabaseAdmin
+          // Store both weekly and monthly summaries for better lookup compatibility
+          const summaryData = {
+            client_id: client.id,
+            platform: 'google', // Important: Mark as Google Ads data
+            summary_date: targetDate,
+            total_spend: Math.round(dailyTotals.spend * 100) / 100, // Round to 2 decimal places
+            total_impressions: Math.round(dailyTotals.impressions), // Ensure integer
+            total_clicks: Math.round(dailyTotals.clicks), // Ensure integer
+            total_conversions: Math.round(dailyTotals.conversions), // Ensure integer
+            average_ctr: Math.round(ctr * 100) / 100, // Round to 2 decimal places
+            average_cpc: Math.round(cpc * 100) / 100, // Round to 2 decimal places
+            // Google Ads specific conversion fields (ensure integers)
+            click_to_call: Math.round(dailyTotals.click_to_call || 0),
+            email_contacts: Math.round(dailyTotals.email_contacts || 0),
+            booking_step_1: Math.round(dailyTotals.booking_step_1 || 0),
+            booking_step_2: Math.round(dailyTotals.booking_step_2 || 0),
+            booking_step_3: Math.round(dailyTotals.booking_step_3 || 0),
+            reservations: Math.round(dailyTotals.reservations || 0),
+            reservation_value: Math.round(dailyTotals.reservation_value * 100) / 100, // Round to 2 decimal places
+            campaign_data: campaigns, // Store raw campaign data for detailed analysis
+            last_updated: new Date().toISOString()
+          };
+
+          // Store as both weekly and monthly for better compatibility
+          const weeklyInsert = await supabaseAdmin!
             .from('campaign_summaries')
             .upsert({
-              client_id: client.id,
-              summary_type: 'weekly', // Use 'weekly' since 'daily' is not allowed by constraint
-              summary_date: targetDate,
-              platform: 'google', // Important: Mark as Google Ads data
-              total_spend: Math.round(dailyTotals.spend * 100) / 100, // Round to 2 decimal places
-              total_impressions: Math.round(dailyTotals.impressions), // Ensure integer
-              total_clicks: Math.round(dailyTotals.clicks), // Ensure integer
-              total_conversions: Math.round(dailyTotals.conversions), // Ensure integer
-              average_ctr: Math.round(ctr * 100) / 100, // Round to 2 decimal places
-              average_cpc: Math.round(cpc * 100) / 100, // Round to 2 decimal places
-              // Google Ads specific conversion fields (ensure integers)
-              click_to_call: Math.round(dailyTotals.click_to_call || 0),
-              email_contacts: Math.round(dailyTotals.email_contacts || 0),
-              booking_step_1: Math.round(dailyTotals.booking_step_1 || 0),
-              booking_step_2: Math.round(dailyTotals.booking_step_2 || 0),
-              booking_step_3: Math.round(dailyTotals.booking_step_3 || 0),
-              reservations: Math.round(dailyTotals.reservations || 0),
-              reservation_value: Math.round(dailyTotals.reservation_value * 100) / 100, // Round to 2 decimal places
-              campaign_data: campaigns, // Store raw campaign data for detailed analysis
-              last_updated: new Date().toISOString()
+              ...summaryData,
+              summary_type: 'weekly'
             }, {
               onConflict: 'client_id,summary_type,summary_date'
             });
+
+          // Also store as monthly summary (using first day of month as date)
+          const monthDate = new Date(targetDate);
+          const monthlyDate = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}-01`;
+          
+          const monthlyInsert = await supabaseAdmin!
+            .from('campaign_summaries')
+            .upsert({
+              ...summaryData,
+              summary_type: 'monthly',
+              summary_date: monthlyDate
+            }, {
+              onConflict: 'client_id,summary_type,summary_date'
+            });
+
+          const insertError = weeklyInsert.error || monthlyInsert.error;
 
           if (insertError) {
             throw new Error(`Failed to store Google Ads summary: ${insertError.message}`);

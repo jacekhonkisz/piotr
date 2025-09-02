@@ -121,49 +121,96 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         }
       }
     } else {
-      // For monthly data, check both original date and modified date (original + 1 day)
-      console.log(`📅 Looking for Google monthly data for ${startDate}`);
+      // For monthly data, look for any Google Ads data in the month range
+      // IMPORTANT: Google Ads data is stored as 'weekly' type even for monthly requests
+      console.log(`📅 Looking for Google monthly data for ${startDate} to ${endDate}`);
       
-      // First try original date
-      const { data: monthlyResult, error: monthlyError } = await supabase
+      // Try to find monthly summary first, then weekly as fallback
+      let monthlyResults = null;
+      let monthlyError = null;
+      
+      // First try monthly summary type
+      const monthlyQuery = await supabase
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
-        .eq('summary_date', startDate)
-        .eq('summary_type', summaryType)
+        .eq('summary_type', 'monthly')
         .eq('platform', 'google')
-        .single();
+        .gte('summary_date', startDate)
+        .lte('summary_date', endDate)
+        .order('summary_date', { ascending: false })
+        .limit(1);
       
-      if (monthlyResult) {
-        storedSummary = monthlyResult;
-        error = null;
-        console.log(`✅ Found Google data on original date: ${startDate}`);
+      if (monthlyQuery.data && monthlyQuery.data.length > 0) {
+        monthlyResults = monthlyQuery.data;
+        console.log(`✅ Found monthly Google Ads summary`);
       } else {
-        // Try modified date (original + 1 day) - this is where our separated Google data is stored
-        const originalDate = new Date(startDate);
-        const modifiedDate = new Date(originalDate);
-        modifiedDate.setDate(modifiedDate.getDate() + 1);
-        const modifiedDateString = modifiedDate.toISOString().split('T')[0];
-        
-        console.log(`📅 Trying modified date: ${modifiedDateString}`);
-        
-        const { data: modifiedResult, error: modifiedError } = await supabase
+        // Fallback to weekly summaries within the month range
+        const weeklyQuery = await supabase
           .from('campaign_summaries')
           .select('*')
           .eq('client_id', clientId)
-          .eq('summary_date', modifiedDateString)
-          .eq('summary_type', summaryType)
+          .eq('summary_type', 'weekly')
+          .eq('platform', 'google')
+          .gte('summary_date', startDate)
+          .lte('summary_date', endDate)
+          .order('summary_date', { ascending: false })
+          .limit(1);
+        
+        monthlyResults = weeklyQuery.data;
+        monthlyError = weeklyQuery.error;
+        console.log(`📅 Fallback to weekly summaries: ${weeklyQuery.data?.length || 0} found`);
+      }
+      
+      if (monthlyResults && monthlyResults.length > 0) {
+        storedSummary = monthlyResults[0];
+        error = null;
+        console.log(`✅ Found Google data in month range: ${storedSummary.summary_date}`);
+      } else {
+        // Fallback: Try specific dates (original logic)
+        console.log(`📅 No data in range, trying specific dates...`);
+        
+        // First try original date
+        const { data: exactResult, error: exactError } = await supabase
+          .from('campaign_summaries')
+          .select('*')
+          .eq('client_id', clientId)
+          .eq('summary_date', startDate)
+          .eq('summary_type', 'weekly')
           .eq('platform', 'google')
           .single();
         
-        if (modifiedResult) {
-          storedSummary = modifiedResult;
+        if (exactResult) {
+          storedSummary = exactResult;
           error = null;
-          console.log(`✅ Found Google data on modified date: ${modifiedDateString}`);
+          console.log(`✅ Found Google data on exact date: ${startDate}`);
         } else {
-          storedSummary = null;
-          error = modifiedError || monthlyError;
-          console.log(`⚠️ No Google data found on either ${startDate} or ${modifiedDateString}`);
+          // Try modified date (original + 1 day)
+          const originalDate = new Date(startDate);
+          const modifiedDate = new Date(originalDate);
+          modifiedDate.setDate(modifiedDate.getDate() + 1);
+          const modifiedDateString = modifiedDate.toISOString().split('T')[0];
+          
+          console.log(`📅 Trying modified date: ${modifiedDateString}`);
+          
+          const { data: modifiedResult, error: modifiedError } = await supabase
+            .from('campaign_summaries')
+            .select('*')
+            .eq('client_id', clientId)
+            .eq('summary_date', modifiedDateString)
+            .eq('summary_type', 'weekly')
+            .eq('platform', 'google')
+            .single();
+          
+          if (modifiedResult) {
+            storedSummary = modifiedResult;
+            error = null;
+            console.log(`✅ Found Google data on modified date: ${modifiedDateString}`);
+          } else {
+            storedSummary = null;
+            error = modifiedError || exactError || monthlyError;
+            console.log(`⚠️ No Google data found in range ${startDate} to ${endDate} or specific dates`);
+          }
         }
       }
     }
@@ -501,20 +548,10 @@ export async function POST(request: NextRequest) {
             source: 'database'
           });
         } else {
-          // CRITICAL: For August 2025, NEVER fall back to live API if database fails
-          if (isAugust2025) {
-            console.log('🚫 AUGUST 2025: Database failed but BLOCKING live API fallback to prevent 0 spend');
-            logger.warn('🚫 AUGUST 2025: Blocking live API fallback to prevent 0 spend issue');
-            
-            return NextResponse.json({
-              success: false,
-              error: 'Database data not available for August 2025 and live API fallback is disabled',
-              responseTime: Date.now() - startTime,
-              source: 'database_required'
-            }, { status: 503 });
-          }
-          
-          console.log('⚠️ NO DATABASE RESULT - PROCEEDING TO LIVE API');
+          // IMPROVED: Allow live API fallback for historical periods when database is empty
+          // This ensures Google Ads data is available even if not stored in database yet
+          console.log('⚠️ NO DATABASE RESULT - PROCEEDING TO LIVE API (Google Ads can fetch historical data)');
+          logger.info('⚠️ Google Ads database lookup failed, proceeding to live API for historical data');
         }
       } catch (dbError) {
         console.log('❌ DATABASE LOADING ERROR:', dbError);

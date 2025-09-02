@@ -329,6 +329,7 @@ export default function UnifiedReportView({
             start: report.date_range_start,
             end: report.date_range_end
           }
+          // Platform will be auto-detected by PDF generation based on client configuration
         })
       });
 

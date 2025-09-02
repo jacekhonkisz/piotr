@@ -76,6 +76,7 @@ interface ReportData {
     booking_step_2: number;
   };
   reportType?: 'weekly' | 'monthly' | 'custom';
+  platform?: 'meta' | 'google'; // Add platform information for HTML generation
   previousYearTotals?: {
     spend: number;
     impressions: number;
@@ -1217,12 +1218,15 @@ import logger from '../../../lib/logger';
                             </tr>
                         </thead>
                         <tbody>
+                            ${reportData.platform === 'meta' ? `
                             <!-- Meta Ads Section -->
                             <tr style="background: #f0f8ff;">
                                 <td colspan="4" style="padding: 12px 15px; border: 1px solid #dee2e6; font-weight: 600; color: #1877f2; text-align: center;">
                                     Meta Ads
                                 </td>
                             </tr>
+                            ` : ''}
+                            ${reportData.platform === 'meta' ? `
                             <tr>
                                 <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wydatki</td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
@@ -1245,6 +1249,8 @@ import logger from '../../../lib/logger';
                                     }
                                 </td>
                             </tr>
+                            ` : ''}
+                            ${reportData.platform === 'meta' ? `
                             <tr>
                                 <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Rezerwacje</td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
@@ -1289,13 +1295,17 @@ import logger from '../../../lib/logger';
                                     }
                                 </td>
                             </tr>
+                            ` : ''}
                             
+                            ${reportData.platform === 'google' ? `
                             <!-- Google Ads Section -->
                             <tr style="background: #f0fff0;">
                                 <td colspan="4" style="padding: 12px 15px; border: 1px solid #dee2e6; font-weight: 600; color: #34a853; text-align: center;">
                                     Google Ads
                                 </td>
                             </tr>
+                            ` : ''}
+                            ${reportData.platform === 'google' ? `
                             <tr>
                                 <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wydatki</td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
@@ -1332,6 +1342,7 @@ import logger from '../../../lib/logger';
                                     —
                                 </td>
                             </tr>
+                            ` : ''}
                         </tbody>
                     </table>
                     
@@ -1341,6 +1352,7 @@ import logger from '../../../lib/logger';
                     </p>
                     </div>
 
+                ${reportData.platform === 'meta' ? `
                 <!-- Meta Ads Header -->
                 <h2 style="text-align: center; margin: 0 0 20px 0; color: #1877f2; font-size: 28px; font-weight: 600; width: 100%; display: block;">Meta Ads</h2>
                 
@@ -1434,7 +1446,9 @@ import logger from '../../../lib/logger';
                 </div>
                 </div>
             </div>
+            ` : ''}
             
+            ${reportData.platform === 'google' ? `
             <!-- Page 3 - Google Ads Performance & Conversion Metrics -->
             <div style="page-break-before: always; padding: 40px; width: 100%; box-sizing: border-box; font-family: Arial, sans-serif;">
                 <!-- Google Ads Header -->
@@ -2326,6 +2340,7 @@ import logger from '../../../lib/logger';
         
         console.log('🔍 PDF: Chart generation completed');
         </script>
+        ` : ''}
         </body>
     </html>
   `;
@@ -2733,7 +2748,7 @@ export async function POST(request: NextRequest) {
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-    const { clientId, dateRange, campaigns: directCampaigns, totals: directTotals, client: directClient, metaTables: directMetaTables } = await request.json();
+    const { clientId, dateRange, campaigns: directCampaigns, totals: directTotals, client: directClient, metaTables: directMetaTables, platform = 'meta' } = await request.json();
 
     if (!clientId || !dateRange) {
       return NextResponse.json({ error: 'Client ID and date range are required' }, { status: 400 });
@@ -2754,6 +2769,26 @@ export async function POST(request: NextRequest) {
 
     const client = directClient || clientData;
     logger.info('Success', client.name);
+
+    // Auto-detect platform based on client configuration if not explicitly provided
+    let detectedPlatform = platform;
+    if (!platform || platform === 'meta') {
+      // Check if client has Google Ads enabled and should use Google Ads data
+      if (client.google_ads_enabled && client.google_ads_customer_id) {
+        detectedPlatform = 'google';
+        logger.info('🎯 Auto-detected Google Ads platform based on client configuration');
+      } else {
+        detectedPlatform = 'meta';
+        logger.info('🎯 Using Meta platform (default or client has no Google Ads)');
+      }
+    }
+    
+    logger.info(`📊 PDF Generation Platform: ${detectedPlatform}`, {
+      requestedPlatform: platform,
+      detectedPlatform,
+      hasGoogleAds: !!client.google_ads_enabled,
+      hasGoogleCustomerId: !!client.google_ads_customer_id
+    });
 
     let campaigns: any[] = [];
     let calculatedTotals: any = null;
@@ -2842,8 +2877,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch Google Ads data immediately
-    googleCampaigns = await fetchGoogleAdsData();
+    // Fetch Google Ads data only if platform is Google or if we need both platforms
+    // For platform-specific reports, only fetch the relevant platform data
+    if (detectedPlatform === 'google') {
+      logger.info('🎯 Platform is Google Ads - fetching Google Ads data only');
+      googleCampaigns = await fetchGoogleAdsData();
+    } else {
+      logger.info('🎯 Platform is Meta - skipping Google Ads data fetch for platform-specific report');
+      googleCampaigns = []; // No Google Ads data for Meta-only reports
+    }
 
     // If we have direct data, use it (much faster)
     if (directCampaigns && directTotals) {
@@ -2853,18 +2895,28 @@ export async function POST(request: NextRequest) {
       console.log(`   Campaigns: ${campaigns.length}`);
       console.log(`   Total Spend: ${calculatedTotals.spend} zł`);
       
-      // Convert Meta campaigns to unified format
+      // Convert campaigns to unified format based on platform
       try {
-        logger.info('🔄 Converting Meta campaigns to unified format...');
-        metaCampaigns = directCampaigns.map(convertMetaCampaignToUnified);
-        logger.info(`✅ Converted ${metaCampaigns.length} Meta campaigns`);
+        if (detectedPlatform === 'meta') {
+          logger.info('🔄 Converting Meta campaigns to unified format...');
+          metaCampaigns = directCampaigns.map(convertMetaCampaignToUnified);
+          logger.info(`✅ Converted ${metaCampaigns.length} Meta campaigns`);
+        } else if (detectedPlatform === 'google') {
+          logger.info('🔄 Converting Google Ads campaigns to unified format...');
+          googleCampaigns = directCampaigns.map(convertGoogleCampaignToUnified);
+          logger.info(`✅ Converted ${googleCampaigns.length} Google Ads campaigns`);
+        }
       } catch (error) {
-        logger.error('❌ Error converting Meta campaigns:', error);
-        metaCampaigns = [];
+        logger.error(`❌ Error converting ${detectedPlatform} campaigns:`, error);
+        if (detectedPlatform === 'meta') {
+          metaCampaigns = [];
+        } else {
+          googleCampaigns = [];
+        }
       }
       
-      // Google Ads data already fetched above - no need to fetch again
-      logger.info(`✅ [PRODUCTION] Using pre-fetched Google Ads data: ${googleCampaigns.length} campaigns`);
+      // Platform-specific data handling completed
+      logger.info(`✅ [PRODUCTION] Platform-specific data processing completed for ${detectedPlatform}`);
       
       // Platform totals will be calculated after Google Ads data is fetched
       
@@ -2884,11 +2936,18 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      // Fallback to API call (slower)
-      logger.info('📡 Using dashboard API call for consistent data...');
+      // Fallback to API call (slower) - Use platform-specific API like reports page
+      logger.info(`📡 Using dashboard API call for consistent data (platform: ${detectedPlatform})...`);
       
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-live-data`, {
+        // Use the same API endpoint selection logic as reports page
+        const apiEndpoint = detectedPlatform === 'meta' 
+          ? '/api/fetch-live-data'
+          : '/api/fetch-google-ads-live-data';
+          
+        logger.info(`📡 PDF Generation: Using ${detectedPlatform} API endpoint: ${apiEndpoint}`);
+        
+        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}${apiEndpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2899,7 +2958,8 @@ export async function POST(request: NextRequest) {
               start: dateRange.start,
               end: dateRange.end
             },
-            clientId: clientId
+            clientId: clientId,
+            platform: detectedPlatform // Include platform parameter like reports page
           })
         });
 
@@ -2918,14 +2978,24 @@ export async function POST(request: NextRequest) {
             console.log(`   Campaigns: ${campaigns.length}`);
             console.log(`   Total Spend: ${data.data.stats.totalSpend} zł`);
             
-            // Convert Meta campaigns to unified format for fallback path
+            // Convert campaigns to unified format based on platform (fallback path)
             try {
-              logger.info('🔄 Converting Meta campaigns to unified format (fallback path)...');
-              metaCampaigns = campaigns.map(convertMetaCampaignToUnified);
-              logger.info(`✅ Converted ${metaCampaigns.length} Meta campaigns (fallback path)`);
+              if (detectedPlatform === 'meta') {
+                logger.info('🔄 Converting Meta campaigns to unified format (fallback path)...');
+                metaCampaigns = campaigns.map(convertMetaCampaignToUnified);
+                logger.info(`✅ Converted ${metaCampaigns.length} Meta campaigns (fallback path)`);
+              } else if (detectedPlatform === 'google') {
+                logger.info('🔄 Converting Google Ads campaigns to unified format (fallback path)...');
+                googleCampaigns = campaigns.map(convertGoogleCampaignToUnified);
+                logger.info(`✅ Converted ${googleCampaigns.length} Google Ads campaigns (fallback path)`);
+              }
             } catch (error) {
-              logger.error('❌ Error converting Meta campaigns (fallback path):', error);
-              metaCampaigns = [];
+              logger.error(`❌ Error converting ${detectedPlatform} campaigns (fallback path):`, error);
+              if (detectedPlatform === 'meta') {
+                metaCampaigns = [];
+              } else {
+                googleCampaigns = [];
+              }
             }
           } else {
             logger.info('⚠️ Dashboard API returned no data');
@@ -3258,7 +3328,8 @@ export async function POST(request: NextRequest) {
       // Google Ads integration - PRODUCTION FIX: Ensure data is always present
       googleCampaigns: googleCampaigns || [],
       metaCampaigns: metaCampaigns || [],
-      platformTotals
+      platformTotals,
+      platform: detectedPlatform // Add platform information for HTML generation
     };
 
     // Production logging: Data summary before HTML generation
