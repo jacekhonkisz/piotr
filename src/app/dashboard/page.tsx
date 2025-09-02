@@ -856,6 +856,7 @@ export default function DashboardPage() {
       }, 12000);
       
       // 🔧 PRIORITY FIX: For Google Ads, try database fallback FIRST to get fresh data
+      console.log('🚀 PRIORITY FALLBACK CODE LOADED - Version 2.0');
       if (effectiveProvider === 'google') {
         console.log('🔍 GOOGLE ADS PRIORITY: Trying database fallback first to avoid stale cache...');
         
