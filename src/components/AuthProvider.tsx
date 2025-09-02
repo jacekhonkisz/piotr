@@ -247,9 +247,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('Processing SIGNED_IN event');
           
           // Always call refreshProfile - it will handle cache internally and set loading states
-          refreshProfile(sessionUser).then((loadedProfile) => {
+          refreshProfile(sessionUser).then((loadedProfile: Profile | null) => {
             console.log('Profile refresh completed, profile loaded:', !!loadedProfile);
-          }).catch((error) => {
+          }).catch((error: any) => {
             console.error('Profile refresh failed:', error);
             if (mountedRef.current) {
               setLoading(false);

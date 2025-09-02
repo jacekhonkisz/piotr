@@ -178,13 +178,75 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     fetchGoogleAdsData(true);
   }, [fetchGoogleAdsData]);
 
-  // Initialize with placeholder data
+  // 🔧 FIX: Process shared data from dashboard (like MetaPerformanceLive does)
   useEffect(() => {
-    if (!isRequesting && !requestInProgress.current && clientId) {
-      console.log('🔄 GoogleAdsPerformanceLive: Initializing with placeholder data');
+    if (sharedData && sharedData.stats) {
+      console.log('📡 CRITICAL DEBUG - GoogleAdsPerformanceLive received sharedData:', {
+        hasStats: !!sharedData.stats,
+        stats: sharedData.stats,
+        hasConversionMetrics: !!sharedData.conversionMetrics,
+        conversionMetrics: sharedData.conversionMetrics,
+        debugSource: sharedData.debug?.source,
+        lastUpdated: sharedData.lastUpdated
+      });
+
+      // 🔧 PREVENT DATA LOSS: Don't overwrite good data with empty/zero data
+      const hasValidData = sharedData.stats && (
+        sharedData.stats.totalClicks > 0 || 
+        sharedData.stats.totalSpend > 0 || 
+        sharedData.stats.totalImpressions > 0
+      );
+      
+      const currentHasValidData = stats && (
+        stats.totalClicks > 0 || 
+        stats.totalSpend > 0 || 
+        stats.totalImpressions > 0
+      );
+      
+      // 🔧 FIX: Always update if it's Google Ads data, even if values are small
+      const isGoogleAdsUpdate = sharedData.debug?.source?.includes('google') || 
+                               sharedData.debug?.source === 'database' ||
+                               sharedData.debug?.reason?.includes('Google');
+      
+      console.log('🔍 GoogleAds Data Update Decision:', {
+        hasValidData,
+        currentHasValidData,
+        isGoogleAdsUpdate,
+        willUpdate: hasValidData || !currentHasValidData || isGoogleAdsUpdate,
+        sharedDataSpend: sharedData.stats?.totalSpend,
+        currentSpend: stats?.totalSpend
+      });
+      
+      if (hasValidData || !currentHasValidData || isGoogleAdsUpdate) {
+        // Use shared data from dashboard
+        setStats(sharedData.stats);
+        setMetrics(sharedData.conversionMetrics);
+        setLastUpdated(sharedData.lastUpdated || new Date().toLocaleTimeString('pl-PL'));
+        setDataSource(sharedData.debug?.source || 'dashboard-shared');
+        setCacheAge(sharedData.debug?.cacheAge || null);
+        setLoading(false);
+
+        console.log('📊 CRITICAL DEBUG - GoogleAdsPerformanceLive state after setting:', {
+          statsSet: sharedData.stats,
+          metricsSet: sharedData.conversionMetrics,
+          hasValidData,
+          currentHasValidData
+        });
+      } else {
+        console.log('🚫 PREVENTED DATA OVERWRITE: Keeping current valid data instead of empty shared data');
+      }
+      
+      return; // Don't fetch placeholder data if we have shared data
+    }
+  }, [sharedData, stats]);
+
+  // Initialize with placeholder data only if no shared data
+  useEffect(() => {
+    if (!sharedData && !isRequesting && !requestInProgress.current && clientId) {
+      console.log('🔄 GoogleAdsPerformanceLive: Initializing with placeholder data (no shared data)');
       fetchGoogleAdsData(false);
     }
-  }, [clientId, isRequesting, fetchGoogleAdsData]);
+  }, [clientId, isRequesting, fetchGoogleAdsData, sharedData]);
 
   // Component instance tracking
   useEffect(() => {
@@ -254,17 +316,28 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
         </div>
       </div>
 
-      {stats && (
-        <KPICarousel
-          items={[
-            {
-              id: 'clicks',
-              label: 'Kliknięcia',
-              value: stats.totalClicks.toLocaleString('pl-PL'),
-              sublabel: 'Bieżący miesiąc',
-              bars: clicksBars,
-              dateForMarker: new Date().toISOString()
-            },
+      {stats && (() => {
+        // 🔍 CRITICAL DEBUG: Log what we're about to render
+        console.log('🎨 CRITICAL DEBUG - GoogleAdsPerformanceLive render:', {
+          hasStats: !!stats,
+          stats: stats,
+          willRenderKPI: !!stats,
+          clicksValue: stats ? stats.totalClicks.toLocaleString('pl-PL') : 'no stats',
+          spendValue: stats ? formatCurrency(stats.totalSpend) : 'no stats',
+          conversionsValue: stats ? stats.totalConversions.toLocaleString('pl-PL') : 'no stats'
+        });
+
+        return (
+          <KPICarousel
+            items={[
+              {
+                id: 'clicks',
+                label: 'Kliknięcia',
+                value: stats.totalClicks.toLocaleString('pl-PL'),
+                sublabel: 'Bieżący miesiąc',
+                bars: clicksBars,
+                dateForMarker: new Date().toISOString()
+              },
             {
               id: 'spend',
               label: 'Wydatki',
@@ -284,7 +357,8 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
           ] as KPI[]}
           variant="light"
         />
-      )}
+        );
+      })()}
     </div>
   );
 } 

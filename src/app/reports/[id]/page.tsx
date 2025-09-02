@@ -477,10 +477,7 @@ export default function IndividualReportPage() {
                     <span className="text-gray-600">Average CPC</span>
                     <span className="font-semibold">{formatCurrency(stats.averageCpc)}</span>
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Total Conversions</span>
-                    <span className="font-semibold">{formatNumber(stats.totalConversions)}</span>
-                  </div>
+
                   <div className="flex justify-between items-center py-2 border-b border-gray-100">
                     <span className="text-gray-600">Campaign Count</span>
                     <span className="font-semibold">{stats.campaignCount}</span>

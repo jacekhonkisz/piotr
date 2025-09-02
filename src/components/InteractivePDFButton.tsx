@@ -93,19 +93,14 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         console.error('❌ InteractivePDFButton: Error fetching Meta tables data:', metaError);
       }
 
-      // PRODUCTION FIX: Include fetched Meta tables data in PDF generation
+      // Use smart caching approach for consistency
       const requestBody = {
         clientId,
         dateRange: {
           start: dateStart,
           end: dateEnd
-        },
-        // Include the fetched Meta tables data
-        metaTables: metaTablesData,
-        // Also include any passed data for completeness
-        campaigns,
-        totals,
-        client
+        }
+        // Removed direct data - PDF will use smart caching for consistency
       };
 
       // Debug: Log the data being sent to PDF generation

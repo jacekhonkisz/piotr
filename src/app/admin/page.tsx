@@ -642,7 +642,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                   placeholder="1//..."
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Zaczyna się od "1//" | Uzyskaj z OAuth 2.0 flow dla Google Ads API
+                  Zaczyna się od &quot;1//&quot; | Uzyskaj z OAuth 2.0 flow dla Google Ads API
                 </p>
               </div>
 

@@ -52,78 +52,6 @@ export class UnifiedPDFGenerator {
       return `${formatDate(start)} - ${formatDate(end)}`;
     };
 
-    // Generate platform comparison section
-    const generatePlatformComparison = () => {
-      const metaShare = report.totals.combined.totalSpend > 0 ? 
-        (report.totals.meta.totalSpend / report.totals.combined.totalSpend) * 100 : 0;
-      const googleShare = 100 - metaShare;
-
-      return `
-        <div class="platform-comparison">
-          <h3 class="section-title">Porównanie Platform</h3>
-          <div class="comparison-grid">
-            <div class="platform-card meta-card">
-              <div class="platform-header">
-                <h4>Meta Ads</h4>
-                <div class="platform-share">${metaShare.toFixed(0)}% budżetu</div>
-              </div>
-              <div class="platform-metrics">
-                <div class="metric-row">
-                  <span class="metric-label">Wydatki:</span>
-                  <span class="metric-value">${formatCurrency(report.totals.meta.totalSpend)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">Kampanie:</span>
-                  <span class="metric-value">${report.metaCampaigns.length}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">CTR:</span>
-                  <span class="metric-value">${formatPercentage(report.totals.meta.averageCtr)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">CPC:</span>
-                  <span class="metric-value">${formatCurrency(report.totals.meta.averageCpc)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">Rezerwacje:</span>
-                  <span class="metric-value">${formatNumber(report.totals.meta.totalReservations)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="platform-card google-card">
-              <div class="platform-header">
-                <h4>Google Ads</h4>
-                <div class="platform-share">${googleShare.toFixed(0)}% budżetu</div>
-              </div>
-              <div class="platform-metrics">
-                <div class="metric-row">
-                  <span class="metric-label">Wydatki:</span>
-                  <span class="metric-value">${formatCurrency(report.totals.google.totalSpend)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">Kampanie:</span>
-                  <span class="metric-value">${report.googleCampaigns.length}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">CTR:</span>
-                  <span class="metric-value">${formatPercentage(report.totals.google.averageCtr)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">CPC:</span>
-                  <span class="metric-value">${formatCurrency(report.totals.google.averageCpc)}</span>
-                </div>
-                <div class="metric-row">
-                  <span class="metric-label">Rezerwacje:</span>
-                  <span class="metric-value">${formatNumber(report.totals.google.totalReservations)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    };
-
     // Generate campaign tables for both platforms
     const generateCampaignTable = (campaigns: UnifiedCampaign[], title: string, platformClass: string) => {
       if (campaigns.length === 0) {
@@ -215,12 +143,17 @@ export class UnifiedPDFGenerator {
                   background: var(--bg-page);
                   font-size: 16px;
                   -webkit-font-smoothing: antialiased;
+                  margin: 0;
+                  padding: 0;
+                  min-height: 100vh;
               }
               
               .container {
                   max-width: 900px;
                   margin: 0 auto;
-                  padding: 0;
+                  padding: 20px;
+                  min-height: 100vh;
+                  background: var(--bg-page);
               }
               
               /* Cover Page */
@@ -309,105 +242,6 @@ export class UnifiedPDFGenerator {
                   opacity: 0.8;
               }
               
-              /* Platform Comparison */
-              .platform-comparison {
-                  background: var(--bg-panel);
-                  border-radius: 16px;
-                  padding: 32px;
-                  margin-bottom: 32px;
-              }
-              
-              .comparison-grid {
-                  display: grid;
-                  grid-template-columns: 1fr 1fr;
-                  gap: 32px;
-                  margin-top: 24px;
-              }
-              
-              .platform-card {
-                  border-radius: 12px;
-                  padding: 24px;
-                  color: white;
-              }
-              
-              .meta-card {
-                  background: linear-gradient(135deg, var(--meta-color) 0%, #0866FF 100%);
-              }
-              
-              .google-card {
-                  background: linear-gradient(135deg, var(--google-color) 0%, #34A853 100%);
-              }
-              
-              .platform-header {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  margin-bottom: 20px;
-                  padding-bottom: 16px;
-                  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-              }
-              
-              .platform-header h4 {
-                  font-size: 18px;
-                  font-weight: 600;
-              }
-              
-              .platform-share {
-                  font-size: 14px;
-                  font-weight: 500;
-                  background: rgba(255, 255, 255, 0.2);
-                  padding: 4px 12px;
-                  border-radius: 20px;
-              }
-              
-              .platform-metrics {
-                  display: flex;
-                  flex-direction: column;
-                  gap: 12px;
-              }
-              
-              .metric-row {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-              }
-              
-              .metric-label {
-                  font-size: 14px;
-                  opacity: 0.9;
-              }
-              
-              .metric-value {
-                  font-size: 16px;
-                  font-weight: 600;
-              }
-              
-              /* AI Summary */
-              .ai-summary {
-                  background: var(--bg-panel);
-                  border-radius: 16px;
-                  padding: 32px;
-                  margin-bottom: 32px;
-                  border-left: 4px solid var(--brand-primary);
-              }
-              
-              .ai-summary h3 {
-                  font-size: 20px;
-                  font-weight: 600;
-                  color: var(--text-strong);
-                  margin-bottom: 16px;
-                  display: flex;
-                  align-items: center;
-                  gap: 8px;
-              }
-              
-              .ai-summary p {
-                  font-size: 16px;
-                  line-height: 1.6;
-                  color: var(--text-muted);
-                  margin-bottom: 12px;
-              }
-              
               /* Section Styles */
               .section-title {
                   font-size: 20px;
@@ -427,7 +261,7 @@ export class UnifiedPDFGenerator {
               
               /* Tables */
               .table-container {
-                  background: var(--bg-panel);
+                  background: var(--bg-page);
                   border-radius: 16px;
                   overflow: hidden;
                   margin-bottom: 32px;
@@ -459,7 +293,7 @@ export class UnifiedPDFGenerator {
               }
               
               .data-table tr:nth-child(even) {
-                  background: #FAFBFC;
+                  background: #EDEEF2;
               }
               
               .data-table tr:last-child td {
@@ -515,8 +349,19 @@ export class UnifiedPDFGenerator {
               }
               
               @media print {
-                  body { background: white; }
-                  .container { padding: 0; }
+                  body { 
+                      background: var(--bg-page) !important;
+                      margin: 0 !important;
+                      padding: 0 !important;
+                  }
+                  .container { 
+                      padding: 20px !important;
+                      margin: 0 !important;
+                      max-width: none !important;
+                      width: 100% !important;
+                      min-height: 100vh !important;
+                      background: var(--bg-page) !important;
+                  }
                   .section-title { page-break-after: avoid; }
                   .table-container { page-break-inside: auto; }
                   .data-table thead { 
@@ -527,7 +372,8 @@ export class UnifiedPDFGenerator {
               
               @page {
                   size: A4;
-                  margin: 2cm;
+                  margin: 0;
+                  background: var(--bg-page);
               }
           </style>
       </head>
@@ -578,9 +424,6 @@ export class UnifiedPDFGenerator {
                     ).join('')}
                 </div>
               ` : ''}
-              
-              <!-- Platform Comparison -->
-              ${generatePlatformComparison()}
               
               <!-- Campaign Tables -->
               <div class="page-break-before">

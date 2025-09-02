@@ -1,0 +1,81 @@
+[
+  {
+    "timestamp": "2025-08-18T12:28:42.525Z",
+    "overallProgress": 50,
+    "currentPhase": "waiting_for_approval",
+    "estimatedCompletion": "24-48 hours",
+    "milestones": [
+      {
+        "id": "credentials_configured",
+        "name": "API Credentials Configuration",
+        "description": "Developer token, OAuth credentials, and manager account setup",
+        "status": "completed",
+        "completedAt": "2025-08-18T12:28:36.289Z",
+        "estimatedTime": "30 minutes"
+      },
+      {
+        "id": "oauth_working",
+        "name": "OAuth Authentication Flow",
+        "description": "Successful token refresh and authentication",
+        "status": "completed",
+        "completedAt": "2025-08-18T12:28:38.519Z",
+        "estimatedTime": "15 minutes"
+      },
+      {
+        "id": "api_enabled",
+        "name": "Google Ads API Enabled",
+        "description": "API enabled in Google Cloud Console",
+        "status": "completed",
+        "completedAt": null,
+        "estimatedTime": "5 minutes"
+      },
+      {
+        "id": "token_submitted",
+        "name": "Developer Token Submitted",
+        "description": "Token application submitted to Google for approval",
+        "status": "completed",
+        "completedAt": null,
+        "estimatedTime": "10 minutes"
+      },
+      {
+        "id": "token_approved",
+        "name": "Developer Token Approved",
+        "description": "Google approves developer token for production use",
+        "status": "pending",
+        "completedAt": null,
+        "estimatedTime": "24-48 hours (Google review)"
+      },
+      {
+        "id": "spending_requirement",
+        "name": "Account Spending Requirement Met",
+        "description": "$100+ lifetime spend in manager or linked accounts",
+        "status": "unknown",
+        "completedAt": null,
+        "estimatedTime": "1-2 weeks (depending on campaign activity)"
+      },
+      {
+        "id": "api_access_working",
+        "name": "Full API Access Confirmed",
+        "description": "Successful data retrieval from Google Ads API",
+        "status": "blocked",
+        "completedAt": null,
+        "estimatedTime": "5 minutes (testing)"
+      },
+      {
+        "id": "client_data_tested",
+        "name": "Client Data Integration",
+        "description": "Successfully fetch data for all client accounts",
+        "status": "unknown",
+        "completedAt": null,
+        "estimatedTime": "30 minutes (testing all clients)"
+      }
+    ],
+    "blockers": [
+      "Developer token awaiting Google approval"
+    ],
+    "nextSteps": [
+      "Wait 24-48 hours for Google to approve developer token",
+      "Check token status in Google Ads API Center"
+    ]
+  }
+]

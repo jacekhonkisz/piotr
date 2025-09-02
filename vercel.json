@@ -22,11 +22,11 @@
     },
     {
       "path": "/api/automated/refresh-current-month-cache",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/automated/refresh-current-week-cache",
-      "schedule": "30 */6 * * *"
+      "schedule": "30 */3 * * *"
     },
     {
       "path": "/api/automated/archive-completed-months",
@@ -43,6 +43,22 @@
     {
       "path": "/api/automated/daily-kpi-collection",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/automated/refresh-google-ads-current-month-cache",
+      "schedule": "15 */3 * * *"
+    },
+    {
+      "path": "/api/automated/refresh-google-ads-current-week-cache",
+      "schedule": "45 */3 * * *"
+    },
+    {
+      "path": "/api/automated/generate-monthly-reports",
+      "schedule": "0 2 1 * *"
+    },
+    {
+      "path": "/api/automated/generate-weekly-reports",
+      "schedule": "0 3 * * 1"
     }
   ]
 } 

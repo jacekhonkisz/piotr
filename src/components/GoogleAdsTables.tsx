@@ -78,21 +78,122 @@ interface GoogleAdsTablesProps {
 
 const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded }) => {
   const [placementData, setPlacementData] = useState<GoogleAdsPlacementPerformance[]>([]);
-  const [demographicData, setDemographicData] = useState<GoogleAdsDemographicPerformance[]>([]);
   const [deviceData, setDeviceData] = useState<GoogleAdsDevicePerformance[]>([]);
   const [keywordData, setKeywordData] = useState<GoogleAdsKeywordPerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'device' | 'keywords'>('placement');
+  const [activeTab, setActiveTab] = useState<'placement' | 'device' | 'keywords'>('placement');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
-  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'conversions' | 'roas' | 'conversionValue'>('roas');
+  const [retryKey, setRetryKey] = useState(0);
+  const [isRequestInProgress, setIsRequestInProgress] = useState(false);
+
+  // Transform Google Ads API data into table format
+  const transformGoogleAdsDataToTables = (apiData: any) => {
+    console.log('🔄 Transforming Google Ads API data to tables format');
+    console.log('🔍 Transform input apiData:', {
+      hasCampaigns: !!apiData.campaigns,
+      campaignCount: apiData.campaigns?.length || 0,
+      hasGoogleAdsTables: !!apiData.googleAdsTables,
+      googleAdsTablesKeys: apiData.googleAdsTables ? Object.keys(apiData.googleAdsTables) : 'none',
+      sampleGoogleAdsTable: apiData.googleAdsTables
+    });
+    
+    // Extract data from API response
+    const campaigns = apiData.campaigns || [];
+    const googleAdsTables = apiData.googleAdsTables || {};
+    const networkPerformance = googleAdsTables.networkPerformance || [];
+    const devicePerformance = googleAdsTables.devicePerformance || [];
+    const keywordPerformance = googleAdsTables.keywordPerformance || [];
+
+    console.log('🔍 Extracted table data:', {
+      networkCount: networkPerformance.length,
+      deviceCount: devicePerformance.length,
+      keywordCount: keywordPerformance.length,
+      sampleDeviceData: devicePerformance[0],
+      sampleKeywordData: keywordPerformance[0]
+    });
+    
+    // Transform network/placement data - use real API data if available, otherwise aggregate from campaigns
+    let placementPerformance: GoogleAdsPlacementPerformance[] = [];
+    
+    if (networkPerformance.length > 0) {
+      // Use real network performance data from API
+      placementPerformance = networkPerformance.map((network: any) => ({
+        network: network.network || network.adNetworkType || 'Unknown Network',
+        spend: network.spend || 0,
+        impressions: network.impressions || 0,
+        clicks: network.clicks || 0,
+        ctr: network.ctr || 0,
+        cpc: network.cpc || 0,
+        conversions: network.conversions || 0,
+        conversionValue: network.conversionValue || network.conversion_value || 0,
+        roas: network.roas || 0
+      }));
+    } else {
+      // No fallback fake data - show empty if no real network data available
+      placementPerformance = [];
+    }
+
+    // Demographics removed - not available through Google Ads API
+
+    // Transform device data
+    const transformedDevicePerformance: GoogleAdsDevicePerformance[] = devicePerformance.map((device: any) => ({
+      device: device.device || 'Unknown',
+      spend: device.spend || 0,
+      impressions: device.impressions || 0,
+      clicks: device.clicks || 0,
+      ctr: device.ctr || 0,
+      cpc: device.cpc || 0,
+      conversions: device.conversions || 0,
+      conversionValue: device.conversionValue || device.conversion_value || 0,
+      roas: device.roas || 0
+    }));
+
+    // Transform keyword data
+    const transformedKeywordPerformance: GoogleAdsKeywordPerformance[] = keywordPerformance.map((keyword: any) => ({
+      keyword: keyword.keyword || 'Unknown',
+      spend: keyword.spend || 0,
+      impressions: keyword.impressions || 0,
+      clicks: keyword.clicks || 0,
+      ctr: keyword.ctr || 0,
+      cpc: keyword.cpc || 0,
+      conversions: keyword.conversions || 0,
+      conversionValue: keyword.conversionValue || keyword.conversion_value || 0,
+      roas: keyword.roas || 0
+    }));
+
+    // Return only real data - no fallback fake data
+    const result = {
+      placementPerformance: placementPerformance,
+      demographicPerformance: [], // Empty - not available through Google Ads API
+      devicePerformance: transformedDevicePerformance,
+      keywordPerformance: transformedKeywordPerformance
+    };
+
+    console.log('🔍 Transform result:', {
+      placementCount: result.placementPerformance.length,
+      deviceCount: result.devicePerformance.length,
+      keywordCount: result.keywordPerformance.length,
+      sampleDevice: result.devicePerformance[0],
+      sampleKeyword: result.keywordPerformance[0]
+    });
+
+    return result;
+  };
 
   useEffect(() => {
-    fetchGoogleAdsTablesData();
-  }, [dateStart, dateEnd, clientId]);
+    console.log('🔄 useEffect triggered with:', { dateStart, dateEnd, clientId, retryKey });
 
   const fetchGoogleAdsTablesData = async () => {
     try {
+      // Prevent duplicate requests
+      if (isRequestInProgress) {
+        console.log('🚫 Request already in progress, skipping duplicate');
+        return;
+      }
+      
+      console.log('🚀 Starting Google Ads tables data fetch...');
+      setIsRequestInProgress(true);
       setLoading(true);
       setError(null);
 
@@ -101,54 +202,114 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         throw new Error('No authentication token available');
       }
 
-      // Mock data for Google Ads (since API might not be fully implemented)
-      const mockPlacementData: GoogleAdsPlacementPerformance[] = [
-        { network: 'Search Network', spend: 5000, impressions: 50000, clicks: 2500, ctr: 5.0, cpc: 2.0, conversions: 125, conversionValue: 12500, roas: 2.5 },
-        { network: 'Display Network', spend: 3000, impressions: 100000, clicks: 1500, ctr: 1.5, cpc: 2.0, conversions: 60, conversionValue: 7200, roas: 2.4 },
-        { network: 'YouTube', spend: 2000, impressions: 80000, clicks: 800, ctr: 1.0, cpc: 2.5, conversions: 32, conversionValue: 4800, roas: 2.4 },
-      ];
+      console.log('🔍 Fetching Google Ads tables data for period:', dateStart, 'to', dateEnd);
 
-      const mockDemographicData: GoogleAdsDemographicPerformance[] = [
-        { ageRange: '25-34', gender: 'female', spend: 2000, impressions: 40000, clicks: 1600, ctr: 4.0, cpc: 1.25, conversions: 80, conversionValue: 8000, roas: 4.0 },
-        { ageRange: '25-34', gender: 'male', spend: 1500, impressions: 30000, clicks: 1200, ctr: 4.0, cpc: 1.25, conversions: 60, conversionValue: 6000, roas: 4.0 },
-        { ageRange: '35-44', gender: 'female', spend: 2500, impressions: 45000, clicks: 1800, ctr: 4.0, cpc: 1.39, conversions: 90, conversionValue: 10800, roas: 4.32 },
-        { ageRange: '35-44', gender: 'male', spend: 2000, impressions: 35000, clicks: 1400, ctr: 4.0, cpc: 1.43, conversions: 70, conversionValue: 8400, roas: 4.2 },
-        { ageRange: '45-54', gender: 'female', spend: 1500, impressions: 25000, clicks: 1000, ctr: 4.0, cpc: 1.5, conversions: 50, conversionValue: 6000, roas: 4.0 },
-        { ageRange: '55-64', gender: 'male', spend: 1000, impressions: 15000, clicks: 600, ctr: 4.0, cpc: 1.67, conversions: 30, conversionValue: 3600, roas: 3.6 },
-      ];
+      // Fetch real Google Ads data using the existing API endpoint
+      console.log('📡 Making API request to /api/fetch-google-ads-live-data');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
+      const response = await fetch('/api/fetch-google-ads-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          clientId: clientId,
+          dateRange: {
+            start: dateStart,
+            end: dateEnd
+          },
+          includeTableData: true
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      console.log('📡 API response received:', response.status, response.statusText);
 
-      const mockDeviceData: GoogleAdsDevicePerformance[] = [
-        { device: 'Mobile', spend: 4000, impressions: 80000, clicks: 3200, ctr: 4.0, cpc: 1.25, conversions: 128, conversionValue: 15360, roas: 3.84 },
-        { device: 'Desktop', spend: 4000, impressions: 60000, clicks: 2400, ctr: 4.0, cpc: 1.67, conversions: 96, conversionValue: 11520, roas: 2.88 },
-        { device: 'Tablet', spend: 2000, impressions: 30000, clicks: 1200, ctr: 4.0, cpc: 1.67, conversions: 48, conversionValue: 5760, roas: 2.88 },
-      ];
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      }
 
-      const mockKeywordData: GoogleAdsKeywordPerformance[] = [
-        { keyword: 'hotel booking', spend: 2000, impressions: 20000, clicks: 800, ctr: 4.0, cpc: 2.5, conversions: 40, conversionValue: 4800, roas: 2.4 },
-        { keyword: 'vacation rental', spend: 1500, impressions: 15000, clicks: 600, ctr: 4.0, cpc: 2.5, conversions: 30, conversionValue: 3600, roas: 2.4 },
-        { keyword: 'accommodation', spend: 1000, impressions: 10000, clicks: 400, ctr: 4.0, cpc: 2.5, conversions: 20, conversionValue: 2400, roas: 2.4 },
-      ];
+      const data = await response.json();
+      console.log('📊 Google Ads tables API response:', data);
+      console.log('🔍 CRITICAL DEBUG - Raw response structure:', {
+        hasSuccess: 'success' in data,
+        success: data.success,
+        hasData: 'data' in data,
+        dataType: typeof data.data,
+        dataKeys: data.data ? Object.keys(data.data) : 'no data object',
+        fullResponse: JSON.stringify(data, null, 2)
+      });
+      console.log('🔍 GoogleAdsTables: Checking response structure:', {
+        hasSuccess: 'success' in data,
+        success: data.success,
+        hasData: 'data' in data,
+        dataKeys: data.data ? Object.keys(data.data) : 'no data',
+        hasGoogleAdsTables: data.data?.googleAdsTables ? 'yes' : 'no',
+        googleAdsTablesKeys: data.data?.googleAdsTables ? Object.keys(data.data.googleAdsTables) : 'none'
+      });
 
-      setPlacementData(mockPlacementData);
-      setDemographicData(mockDemographicData);
-      setDeviceData(mockDeviceData);
-      setKeywordData(mockKeywordData);
+      // Extract the actual data from API response
+      const apiData = data.success ? data.data : data;
+      console.log('🔍 GoogleAdsTables: Using apiData:', {
+        hasCampaigns: !!apiData.campaigns,
+        campaignCount: apiData.campaigns?.length || 0,
+        hasGoogleAdsTables: !!apiData.googleAdsTables,
+        googleAdsTablesStructure: apiData.googleAdsTables ? Object.keys(apiData.googleAdsTables) : 'none'
+      });
+
+      // Transform the API data into table format
+      console.log('🔄 About to transform Google Ads data:', apiData);
+      const transformedData = transformGoogleAdsDataToTables(apiData);
+      console.log('✅ Transformed data:', transformedData);
+
+      setPlacementData(transformedData.placementPerformance);
+      setDeviceData(transformedData.devicePerformance);
+      setKeywordData(transformedData.keywordPerformance);
+      
+      console.log('✅ State updated with:', {
+        placementCount: transformedData.placementPerformance.length,
+        deviceCount: transformedData.devicePerformance.length,
+        keywordCount: transformedData.keywordPerformance.length
+      });
 
       if (onDataLoaded) {
-        onDataLoaded({
-          placementPerformance: mockPlacementData,
-          demographicPerformance: mockDemographicData,
-          devicePerformance: mockDeviceData,
-          keywordPerformance: mockKeywordData
-        });
+        onDataLoaded(transformedData);
       }
 
     } catch (err) {
-      console.error('Error fetching Google Ads tables data:', err);
+      console.error('❌ Error fetching Google Ads tables data:', err);
+      
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Request timed out. Please try again.');
+      } else {
       setError(err instanceof Error ? err.message : 'Failed to load Google Ads data');
+      }
     } finally {
+      console.log('🏁 CRITICAL: Google Ads tables fetch completed, setting loading to false');
+      console.log('🏁 CRITICAL: About to call setLoading(false)');
       setLoading(false);
+      setIsRequestInProgress(false);
+      console.log('🏁 CRITICAL: setLoading(false) called successfully');
     }
+  };
+
+    // Reset data and show loading when any dependency changes
+    setLoading(true);
+    setError(null);
+    setPlacementData([]);
+    setDeviceData([]);
+    setKeywordData([]);
+    
+    fetchGoogleAdsTablesData();
+  }, [dateStart, dateEnd, clientId, retryKey]);
+
+  const retryFetch = () => {
+    setRetryKey(prev => prev + 1); // This will trigger useEffect to re-run
   };
 
   const exportToCSV = (data: any[], filename: string) => {
@@ -189,7 +350,22 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     return `${num.toFixed(2)}%`;
   };
 
-  if (loading) {
+  // Show loading if explicitly loading OR if we have no data yet (initial state)
+  const hasAnyData = placementData.length > 0 || deviceData.length > 0 || keywordData.length > 0;
+  const shouldShowLoading = loading || (!hasAnyData && !error);
+
+  console.log('🔍 Render state check:', {
+    loading,
+    hasAnyData,
+    error,
+    shouldShowLoading,
+    placementCount: placementData.length,
+    deviceCount: deviceData.length,
+    keywordCount: keywordData.length
+  });
+
+  if (shouldShowLoading) {
+    console.log('📊 Showing loading state');
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
         <div className="flex items-center justify-center space-x-3">
@@ -201,6 +377,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
   }
 
   if (error) {
+    console.log('❌ Showing error state:', error);
     return (
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
         <div className="flex items-center space-x-3 text-orange-600 mb-4">
@@ -208,7 +385,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
           <span>Błąd: {error}</span>
         </div>
         <button
-          onClick={fetchGoogleAdsTablesData}
+          onClick={retryFetch}
           className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 shadow-sm rounded-lg transition-all duration-200 font-medium"
         >
           Spróbuj ponownie
@@ -216,6 +393,8 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       </div>
     );
   }
+
+  console.log('✅ Rendering main Google Ads tables component');
 
   return (
     <div className="space-y-8">
@@ -231,17 +410,6 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         >
           <Target className="h-4 w-4" />
           <span>Sieci reklamowe</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('demographic')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'demographic'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          <span>Demografia</span>
         </button>
         <button
           onClick={() => setActiveTab('device')}
@@ -275,155 +443,162 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         transition={{ duration: 0.3 }}
         className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
       >
-        {/* Demographics Tab with Pie Charts */}
-        {activeTab === 'demographic' && (
+
+
+        {/* Placement/Network Performance Tab */}
+        {activeTab === 'placement' && (
           <div>
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-semibold text-slate-900 mb-1">Demographic Performance</h3>
+                <h3 className="text-xl font-semibold text-slate-900 mb-1">Sieci Reklamowe</h3>
                 <p className="text-sm text-slate-600">
-                  Skuteczność reklam według demografii
+                  Wydajność kampanii według sieci reklamowych Google Ads
                 </p>
               </div>
-              <div className="flex items-center space-x-4">
-                {/* Enhanced Metric Selector */}
-                <div className="flex items-center space-x-2 bg-slate-100 rounded-xl p-1">
-                  <button
-                    onClick={() => setDemographicMetric('roas')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'roas'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <BarChart3 className="h-4 w-4" />
-                      <span>ROAS</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setDemographicMetric('conversions')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'conversions'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Target className="h-4 w-4" />
-                      <span>Konwersje</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setDemographicMetric('conversionValue')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'conversionValue'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <BarChart3 className="h-4 w-4" />
-                      <span>Wartość</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setDemographicMetric('clicks')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'clicks'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <MousePointer className="h-4 w-4" />
-                      <span>Kliknięcia</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setDemographicMetric('impressions')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'impressions'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Eye className="h-4 w-4" />
-                      <span>Wyświetlenia</span>
-                    </div>
-                  </button>
-                </div>
-                <button
-                  onClick={() => exportToCSV(demographicData, 'google_ads_demografia')}
-                  className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  <span>Export CSV</span>
-                </button>
-              </div>
             </div>
-            
-            {demographicData.length > 0 ? (
-              <div>
-                {/* Demographic Charts Section */}
-                <div className="p-6 border-b border-slate-100">
-                  <GoogleAdsDemographicPieCharts 
-                    data={demographicData} 
-                    metric={demographicMetric}
-                  />
-                </div>
 
-                {/* Traditional Table View */}
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-slate-50 sticky top-0">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-slate-700">Grupa wiekowa</th>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-slate-700">Płeć</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">Wydana kwota</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">Wyświetlenia</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">Kliknięcia</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">CTR</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">CPC</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">Konwersje</th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">ROAS</th>
+            {placementData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Sieć</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Ilość rezerwacji</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość rezerwacji</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {placementData.map((network, index) => (
+                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{network.network}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(network.spend)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(network.impressions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(network.clicks)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(network.ctr)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(network.cpc)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(network.conversions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(network.conversionValue)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{network.roas.toFixed(2)}x</td>
                       </tr>
-                    </thead>
-                    <tbody className="bg-white">
-                      {demographicData.map((demo, index) => (
-                        <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
-                          <td className="px-6 py-4 text-sm text-slate-900">{demo.ageRange}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 capitalize">
-                            {demo.gender === 'male' ? 'Mężczyzna' : demo.gender === 'female' ? 'Kobieta' : 'Nieznana'}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(demo.spend)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(demo.impressions)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(demo.clicks)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(demo.ctr)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(demo.cpc)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(demo.conversions)}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{demo.roas.toFixed(2)}x</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="text-center py-8 text-slate-500">
-                Brak danych &quot;Demographics&quot; dla wybranego okresu.
+                Brak danych sieci reklamowych dla wybranego okresu.
               </div>
             )}
           </div>
         )}
 
-        {/* Other tabs would go here - placement, device, keywords */}
-        {activeTab !== 'demographic' && (
-          <div className="p-6">
-            <div className="text-center py-8 text-slate-500">
-              Zakładka "{activeTab}" w trakcie implementacji
+        {/* Device Performance Tab */}
+        {activeTab === 'device' && (
+          <div>
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900 mb-1">Wydajność Urządzeń</h3>
+                <p className="text-sm text-slate-600">
+                  Wydajność kampanii według typów urządzeń
+                </p>
+              </div>
             </div>
+
+            {deviceData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Urządzenie</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Ilość rezerwacji</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość rezerwacji</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {deviceData.map((device, index) => (
+                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{device.device}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(device.spend)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(device.impressions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(device.clicks)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(device.ctr)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(device.cpc)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(device.conversions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(device.conversionValue)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{device.roas.toFixed(2)}x</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+            <div className="text-center py-8 text-slate-500">
+                Brak danych urządzeń dla wybranego okresu.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Keywords Performance Tab */}
+        {activeTab === 'keywords' && (
+          <div>
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900 mb-1">Słowa Kluczowe</h3>
+                <p className="text-sm text-slate-600">
+                  Wydajność najważniejszych słów kluczowych
+                </p>
+              </div>
+            </div>
+
+            {keywordData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Słowo Kluczowe</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {keywordData.map((keyword, index) => (
+                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{keyword.keyword}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(keyword.spend)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.impressions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.clicks)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(keyword.ctr)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(keyword.cpc)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.conversions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{keyword.roas.toFixed(2)}x</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                Brak danych słów kluczowych dla wybranego okresu.
+              </div>
+            )}
           </div>
         )}
       </motion.div>

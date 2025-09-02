@@ -1,14 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from './meta-api';
 import logger from './logger';
+import { getCurrentWeekInfo, parseWeekPeriodId, isCurrentWeekPeriod } from './week-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Cache duration: 6 hours (was 3 hours)
-const CACHE_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+// Cache duration: 3 hours (restored from 6 hours)
+const CACHE_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
 
 // Helper function to check if cached data is still fresh
 export function isCacheFresh(lastUpdated: string): boolean {
@@ -548,42 +549,17 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
   };
 }
 
-// Helper function to get current week info with ISO week format
-export function getCurrentWeekInfo() {
-  const now = new Date();
-  
-  // Get current week boundaries (Monday to Sunday)
-  const currentDayOfWeek = now.getDay();
-  const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
-  
-  const startOfCurrentWeek = new Date(now);
-  startOfCurrentWeek.setDate(startOfCurrentWeek.getDate() - daysToMonday);
-  startOfCurrentWeek.setHours(0, 0, 0, 0);
-  
-  const endOfCurrentWeek = new Date(startOfCurrentWeek);
-  endOfCurrentWeek.setDate(endOfCurrentWeek.getDate() + 6);
-  endOfCurrentWeek.setHours(23, 59, 59, 999);
-  
-  // Calculate ISO week number
-  const year = now.getFullYear();
-  const startOfYear = new Date(year, 0, 1);
-  const daysFromStart = Math.floor((startOfCurrentWeek.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
-  const weekNumber = Math.ceil((daysFromStart + startOfYear.getDay() + 1) / 7);
-  
-  return {
-    year,
-    week: weekNumber,
-    startDate: startOfCurrentWeek.toISOString().split('T')[0],
-    endDate: endOfCurrentWeek.toISOString().split('T')[0],
-    periodId: `${year}-W${String(weekNumber).padStart(2, '0')}`
-  };
-}
+
 
 // Function to fetch fresh weekly data from Meta API
-export async function fetchFreshCurrentWeekData(client: any) {
-  logger.info('🔄 Fetching fresh current week data from Meta API...');
+export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
+  const weekToFetch = targetWeek || getCurrentWeekInfo();
+  logger.info('🔄 Fetching fresh weekly data from Meta API...', { 
+    periodId: weekToFetch.periodId,
+    dateRange: `${weekToFetch.startDate} to ${weekToFetch.endDate}`
+  });
   
-  const currentWeek = getCurrentWeekInfo();
+  const currentWeek = weekToFetch;
   const metaService = new MetaAPIService(client.meta_access_token);
   
   const adAccountId = client.ad_account_id.startsWith('act_') 
@@ -707,16 +683,36 @@ export async function fetchFreshCurrentWeekData(client: any) {
   }
 }
 
-// Weekly smart cache function
-export async function getSmartWeekCacheData(clientId: string, forceRefresh: boolean = false) {
-  const currentWeek = getCurrentWeekInfo();
-  const cacheKey = `${clientId}_${currentWeek.periodId}`;
+// Weekly smart cache function - now supports specific period requests
+export async function getSmartWeekCacheData(clientId: string, forceRefresh: boolean = false, requestedPeriodId?: string) {
+  // Use requested period or default to current week
+  const targetWeek = requestedPeriodId ? parseWeekPeriodId(requestedPeriodId) : getCurrentWeekInfo();
+  const cacheKey = `${clientId}_${targetWeek.periodId}`;
   
   logger.info('📅 Smart weekly cache request:', {
     clientId,
-    periodId: currentWeek.periodId,
+    periodId: targetWeek.periodId,
+    requestedPeriodId,
+    isCurrentWeek: isCurrentWeekPeriod(targetWeek.periodId),
     forceRefresh
   });
+  
+  // Only use current week cache for current week requests
+  const isCurrentWeekRequest = isCurrentWeekPeriod(targetWeek.periodId);
+  
+  if (!isCurrentWeekRequest) {
+    logger.info('📚 Historical week requested, should use database instead of smart cache');
+    // Return indication that this should be handled by database lookup
+    return {
+      success: false,
+      shouldUseDatabase: true,
+      periodId: targetWeek.periodId,
+      dateRange: {
+        start: targetWeek.startDate,
+        end: targetWeek.endDate
+      }
+    };
+  }
   
   // If same request is already in progress, return that promise (unless force refresh)
   if (!forceRefresh && globalRequestCache.has(cacheKey)) {
@@ -725,7 +721,7 @@ export async function getSmartWeekCacheData(clientId: string, forceRefresh: bool
   }
 
   // Create and cache the request promise
-  const requestPromise = executeSmartWeeklyCacheRequest(clientId, currentWeek, forceRefresh);
+  const requestPromise = executeSmartWeeklyCacheRequest(clientId, targetWeek, forceRefresh);
   globalRequestCache.set(cacheKey, requestPromise);
   
   try {
@@ -738,13 +734,16 @@ export async function getSmartWeekCacheData(clientId: string, forceRefresh: bool
 }
 
 // Weekly cache logic
-async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any, forceRefresh: boolean) {
-  // 🔧 TEMPORARY: Force refresh to see live booking steps data
-  const FORCE_LIVE_DATA_FOR_BOOKING_STEPS = true;
+async function executeSmartWeeklyCacheRequest(clientId: string, targetWeek: any, forceRefresh: boolean) {
+  // 🔧 FIXED: Only force refresh for current week, not historical weeks
+  const isCurrentWeekRequest = isCurrentWeekPeriod(targetWeek.periodId);
+  const FORCE_LIVE_DATA_FOR_CURRENT_WEEK = false; // Disabled force refresh to allow proper caching
   
-  if (FORCE_LIVE_DATA_FOR_BOOKING_STEPS) {
-    logger.info('🔄 FORCING LIVE WEEKLY DATA FETCH for booking steps testing');
+  if (FORCE_LIVE_DATA_FOR_CURRENT_WEEK && isCurrentWeekRequest) {
+    logger.info('🔄 FORCING LIVE WEEKLY DATA FETCH for current week only');
     forceRefresh = true;
+  } else if (!isCurrentWeekRequest) {
+    logger.info('📚 Historical week request - using normal cache behavior');
   }
   
   // Check if we have fresh cached data (unless force refresh)
@@ -754,7 +753,7 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
         .from('current_week_cache')
         .select('*')
         .eq('client_id', clientId)
-        .eq('period_id', currentWeek.periodId)
+        .eq('period_id', targetWeek.periodId)
         .single();
 
       if (!cacheError && cachedData) {
@@ -778,7 +777,7 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
             logger.info('⚠️ Weekly cache is stale, returning stale data + refreshing in background');
             
             // Refresh in background
-            refreshWeeklyCacheInBackground(clientId, currentWeek.periodId).catch((err: any) => 
+            refreshWeeklyCacheInBackground(clientId, targetWeek.periodId).catch((err: any) => 
               logger.info('⚠️ Weekly background refresh failed:', err)
             );
           } else {
@@ -822,8 +821,13 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
     throw new Error('Client not found for weekly cache');
   }
 
+  // Only fetch fresh data for current week - historical weeks should use database
+  if (!isCurrentWeekRequest) {
+    throw new Error(`Cannot fetch fresh data for historical week ${targetWeek.periodId} - should use database`);
+  }
+  
   // Fetch fresh weekly data and store in cache
-  const freshData = await fetchFreshCurrentWeekData(clientData);
+  const freshData = await fetchFreshCurrentWeekData(clientData, targetWeek);
   
   // Store fresh data in weekly cache
   try {
@@ -833,7 +837,7 @@ async function executeSmartWeeklyCacheRequest(clientId: string, currentWeek: any
         client_id: clientId,
         cache_data: freshData,
         last_updated: new Date().toISOString(),
-        period_id: currentWeek.periodId
+        period_id: targetWeek.periodId
       });
     logger.info('✅ Fresh weekly data cached successfully');
   } catch (cacheError) {
@@ -876,7 +880,7 @@ async function refreshWeeklyCacheInBackground(clientId: string, periodId: string
       throw new Error('Client not found for weekly background refresh');
     }
 
-    // Fetch fresh data
+    // Fetch fresh data (for background refresh, always use current week)
     const freshData = await fetchFreshCurrentWeekData(clientData);
     
     // Update cache

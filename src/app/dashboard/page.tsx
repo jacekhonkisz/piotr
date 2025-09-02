@@ -17,7 +17,7 @@ import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 
 import type { Database } from '../../lib/database.types';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { DashboardLoading } from '../../components/LoadingSpinner';
 
 import AnimatedMetricsCharts from '../../components/AnimatedMetricsCharts';
 import MetaPerformanceLive from '../../components/MetaPerformanceLive';
@@ -74,55 +74,71 @@ export default function DashboardPage() {
   const [loadingMessage, setLoadingMessage] = useState('Ładowanie dashboardu...');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('meta');
+  const [loadingSafetyTimeout, setLoadingSafetyTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Mock Google Ads campaigns data
-  const mockGoogleAdsCampaigns = [
-    {
-      id: 'gads-1',
-      campaign_name: '[PBM] HOT | Remarketing | www i SM',
-      campaign_id: '2385172329403015',
-      spend: 70,
-      clicks: 49,
-      ctr: 1.03,
-      impressions: 4756
-    },
-    {
-      id: 'gads-2', 
-      campaign_name: '[PBM] Hot | Remarketing dynamiczny',
-      campaign_id: '2385358331190015',
-      spend: 23,
-      clicks: 19,
-      ctr: 1.41,
-      impressions: 1348
-    },
-    {
-      id: 'gads-3',
-      campaign_name: '[PBM] Cold | Aktywność | Fani FB', 
-      campaign_id: '2385762175720015',
-      spend: 5,
-      clicks: 15,
-      ctr: 3.70,
-      impressions: 405
-    },
-    {
-      id: 'gads-4',
-      campaign_name: '[PBM] Kampania Advantage+ | Ogólna | Lux V3 - 30% Kampania',
-      campaign_id: '1202021372357001016',
-      spend: 109,
-      clicks: 334,
-      ctr: 2.77,
-      impressions: 12050
-    },
-    {
-      id: 'gads-5',
-      campaign_name: '[PBM] Ruch | Profil Instagramowy',
-      campaign_id: '1202161348620101016',
-      spend: 5,
-      clicks: 7,
-      ctr: 2.54,
-      impressions: 276
+  // Handle tab switching - reload data when switching between platforms
+  const handleTabSwitch = async (provider: 'meta' | 'google') => {
+    console.log('🔄 TAB SWITCH CALLED:', {
+      requestedProvider: provider,
+      currentProvider: activeAdsProvider,
+      hasSelectedClient: !!selectedClient,
+      hasClientData: !!clientData,
+      clientDataClient: !!clientData?.client,
+      willSwitch: provider !== activeAdsProvider && (!!selectedClient || !!clientData?.client)
+    });
+    
+    // 🔧 FIX: Use clientData.client if selectedClient is null
+    const currentClient = selectedClient || clientData?.client;
+    
+    if (provider === activeAdsProvider || !currentClient) {
+      console.log('🔄 TAB SWITCH BLOCKED:', {
+        sameProvider: provider === activeAdsProvider,
+        noClient: !currentClient,
+        selectedClient: !!selectedClient,
+        clientDataClient: !!clientData?.client
+      });
+      return;
     }
-  ];
+    
+          console.log('🔄 TAB SWITCH: Switching from', activeAdsProvider, 'to', provider);
+      setActiveAdsProvider(provider);
+      
+      // 🔧 CRITICAL: Wait for state update before loading data
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Reload data for the new platform
+      if (currentClient) {
+        setRefreshingData(true);
+        console.log('🔄 TAB SWITCH: Loading data for provider:', provider);
+        const newData = await loadMainDashboardData(currentClient, provider);
+        
+        console.log('🔄 TAB SWITCH: Received data:', {
+          hasData: !!newData,
+          dataSource: newData?.debug?.source,
+          reason: newData?.debug?.reason,
+          hasStats: !!newData?.stats,
+          statsClicks: newData?.stats?.totalClicks,
+          statsSpend: newData?.stats?.totalSpend,
+          provider: provider,
+          expectedForGoogle: provider === 'google' ? 'Should be 15800 spend, 7400 clicks' : 'N/A'
+        });
+      
+      if (newData && clientData) {
+        setClientData({
+          ...clientData,
+          campaigns: newData.campaigns || [],
+          stats: newData.stats,
+          conversionMetrics: newData.conversionMetrics,
+          debug: newData.debug,
+          lastUpdated: (newData as any).lastUpdated || new Date().toISOString()
+        });
+        setDataSource(newData.debug?.source || 'unknown');
+      }
+      setRefreshingData(false);
+    }
+  };
+
+  // Google Ads campaigns data will be loaded from clientData.campaigns when activeAdsProvider is 'google'
 
   const { user, profile, authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -145,11 +161,56 @@ export default function DashboardPage() {
     setLoadingMessage('Ładowanie danych klienta...');
     setLoadingProgress(25);
     
+    // Clear any existing safety timeout
+    if (loadingSafetyTimeout) {
+      clearTimeout(loadingSafetyTimeout);
+    }
+    
+    // Set safety timeout to prevent infinite loading (20 seconds max)
+    const safetyTimeout = setTimeout(() => {
+      console.warn('⚠️ SAFETY TIMEOUT: Force stopping loading after 20 seconds');
+      setLoading(false);
+      setLoadingMessage('Timeout - spróbuj ponownie');
+      setLoadingProgress(0);
+    }, 20000);
+    setLoadingSafetyTimeout(safetyTimeout);
+    
+    // 🔧 INTELLIGENT TAB SELECTION: Set appropriate tab based on client configuration
+    const hasMetaAds = client.meta_access_token && client.ad_account_id;
+    const hasGoogleAds = client.google_ads_enabled && client.google_ads_customer_id;
+    
+    console.log('🔍 CLIENT TAB SELECTION:', {
+      clientName: client.name,
+      hasMetaAds,
+      hasGoogleAds,
+      currentTab: activeAdsProvider
+    });
+    
+    // Set the appropriate tab based on client configuration
+    if (hasMetaAds && !hasGoogleAds) {
+      // Client only has Meta Ads
+      setActiveAdsProvider('meta');
+      console.log('📡 Setting tab to Meta Ads (only platform configured)');
+    } else if (hasGoogleAds && !hasMetaAds) {
+      // Client only has Google Ads
+      setActiveAdsProvider('google');
+      console.log('📡 Setting tab to Google Ads (only platform configured)');
+    } else if (hasMetaAds && hasGoogleAds) {
+      // Client has both - keep current tab or default to Meta
+      if (activeAdsProvider !== 'meta' && activeAdsProvider !== 'google') {
+        setActiveAdsProvider('meta');
+        console.log('📡 Setting tab to Meta Ads (both platforms, defaulting to Meta)');
+      }
+    } else {
+      // Client has no platforms configured
+      console.warn('⚠️ Client has no advertising platforms configured');
+    }
+    
     // Clear cache for the new client to ensure fresh data
     clearCache();
     
     try {
-      setLoadingMessage('Pobieranie danych z Meta API...');
+      setLoadingMessage('Pobieranie danych z API...');
       setLoadingProgress(50);
       
       // Load data for the new client
@@ -171,16 +232,32 @@ export default function DashboardPage() {
       const dashboardData = {
         client: client,
         reports: reports || [],
-        campaigns: mainDashboardData.campaigns,
-        stats: mainDashboardData.stats,
-        conversionMetrics: mainDashboardData.conversionMetrics,
+        campaigns: mainDashboardData?.campaigns || [],
+        stats: mainDashboardData?.stats || {
+          totalSpend: 0,
+          totalImpressions: 0,
+          totalClicks: 0,
+          totalConversions: 0,
+          averageCtr: 0,
+          averageCpc: 0
+        },
+        conversionMetrics: mainDashboardData?.conversionMetrics || {
+          click_to_call: 0,
+          email_contacts: 0,
+          booking_step_1: 0,
+          reservations: 0,
+          reservation_value: 0,
+          roas: 0,
+          cost_per_reservation: 0,
+          booking_step_2: 0
+        },
         // Add debug info for components
-        debug: mainDashboardData.debug,
+        debug: mainDashboardData?.debug || { source: 'fallback', reason: 'No data loaded' },
         lastUpdated: new Date().toISOString()
       };
 
       setClientData(dashboardData);
-      setDataSource(mainDashboardData.debug?.source || 'database');
+      setDataSource(mainDashboardData?.debug?.source || 'database');
       
       setLoadingProgress(100);
       setLoadingMessage('Gotowe!');
@@ -190,14 +267,28 @@ export default function DashboardPage() {
         setLoading(false);
         setLoadingMessage('Ładowanie dashboardu...');
         setLoadingProgress(0);
+        
+        // Clear safety timeout on successful completion
+        if (loadingSafetyTimeout) {
+          clearTimeout(loadingSafetyTimeout);
+          setLoadingSafetyTimeout(null);
+        }
       }, 500);
     } catch (error) {
       console.error('Error loading client data:', error);
       setLoadingMessage('Błąd ładowania danych');
+      
+      // Ensure loading state is always resolved
       setTimeout(() => {
         setLoading(false);
         setLoadingMessage('Ładowanie dashboardu...');
         setLoadingProgress(0);
+        
+        // Clear safety timeout on error completion
+        if (loadingSafetyTimeout) {
+          clearTimeout(loadingSafetyTimeout);
+          setLoadingSafetyTimeout(null);
+        }
       }, 2000);
     }
   };
@@ -231,8 +322,13 @@ export default function DashboardPage() {
     return () => {
       mountedRef.current = false;
       loadingRef.current = false;
+      
+      // Clear safety timeout on unmount
+      if (loadingSafetyTimeout) {
+        clearTimeout(loadingSafetyTimeout);
+      }
     };
-  }, []);
+  }, [loadingSafetyTimeout]);
 
   useEffect(() => {
     if (loadingRef.current || authLoading || !user) {
@@ -376,9 +472,25 @@ export default function DashboardPage() {
       const dashboardData = {
         client: clientData,
         reports: reports || [],
-        campaigns: mainDashboardData.campaigns,
-        stats: mainDashboardData.stats,
-        conversionMetrics: mainDashboardData.conversionMetrics
+        campaigns: mainDashboardData?.campaigns || [],
+        stats: mainDashboardData?.stats || {
+          totalSpend: 0,
+          totalImpressions: 0,
+          totalClicks: 0,
+          totalConversions: 0,
+          averageCtr: 0,
+          averageCpc: 0
+        },
+        conversionMetrics: mainDashboardData?.conversionMetrics || {
+          click_to_call: 0,
+          email_contacts: 0,
+          booking_step_1: 0,
+          reservations: 0,
+          reservation_value: 0,
+          roas: 0,
+          cost_per_reservation: 0,
+          booking_step_2: 0
+        }
       };
 
       setClientData(dashboardData);
@@ -582,17 +694,34 @@ export default function DashboardPage() {
     }
   };
 
-  const loadMainDashboardData = async (currentClient: any) => {
+  const loadMainDashboardData = async (currentClient: any, forceProvider?: 'meta' | 'google') => {
     console.log('🚀 DASHBOARD: loadMainDashboardData called for client:', currentClient?.id);
     try {
       // Use the same date range logic as smart cache helper to ensure proper cache detection
       const now = new Date();
       const year = now.getFullYear();
       const month = now.getMonth() + 1;
+      
+      // 🔧 FIX: Don't use future dates - use current date as end if we're in current month
+      const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+      const monthEnd = new Date(year, month, 0).toISOString().split('T')[0]; // Last day of month
+      const today = now.toISOString().split('T')[0];
+      
+      // Use today as end date if it's before the month end, otherwise use month end
+      const actualEndDate = (today && monthEnd && today < monthEnd) ? today : monthEnd;
+      
       const dateRange = {
-        start: `${year}-${String(month).padStart(2, '0')}-01`,
-        end: new Date(year, month, 0).toISOString().split('T')[0] // Last day of current month
+        start: monthStart,
+        end: actualEndDate
       };
+      
+      console.log('📅 FIXED: Dashboard date range calculation:', {
+        monthStart,
+        monthEnd,
+        today,
+        actualEndDate,
+        dateRange
+      });
       
       console.log('📅 Dashboard loading FULL CURRENT MONTH data for smart caching:', dateRange);
       
@@ -621,22 +750,122 @@ export default function DashboardPage() {
         };
       }
 
-      // Increased timeout to 30 seconds for smart cache system
+      // 🔧 INTELLIGENT API SELECTION: Check client configuration to determine which API to call
+      const hasMetaAds = currentClient.meta_access_token && currentClient.ad_account_id;
+      const hasGoogleAds = currentClient.google_ads_enabled && currentClient.google_ads_customer_id;
+      
+      console.log('🔍 CLIENT CONFIGURATION CHECK:', {
+        clientId: currentClient.id,
+        clientName: currentClient.name,
+        hasMetaAds,
+        hasGoogleAds,
+        metaAccessToken: !!currentClient.meta_access_token,
+        adAccountId: !!currentClient.ad_account_id,
+        googleAdsEnabled: currentClient.google_ads_enabled,
+        googleCustomerId: !!currentClient.google_ads_customer_id,
+        googleRefreshToken: !!currentClient.google_ads_refresh_token
+      });
+
+      // Determine which API endpoint to use based on client configuration and current tab
+      const effectiveProvider = forceProvider || activeAdsProvider;
+      let apiEndpoint = '/api/fetch-live-data'; // Default to Meta API
+      let shouldCallAPI = false;
+      let monthData: any; // Declare monthData variable
+      
+              console.log('📡 DASHBOARD: API selection logic (before assignment):', {
+          activeAdsProvider,
+          forceProvider,
+          effectiveProvider,
+          hasMetaAds,
+          hasGoogleAds,
+          willCallAPI: shouldCallAPI,
+          apiEndpoint: shouldCallAPI ? apiEndpoint : 'SKIPPED - will use database fallback'
+        });
+      
+      if (effectiveProvider === 'meta' && hasMetaAds) {
+        apiEndpoint = '/api/fetch-live-data';
+        shouldCallAPI = true;
+        console.log('📡 DASHBOARD: Using Meta API for Meta Ads configured client');
+      } else if (effectiveProvider === 'google' && hasGoogleAds) {
+        // Use Google Ads API for real data
+        apiEndpoint = '/api/fetch-google-ads-live-data';
+        shouldCallAPI = true;
+        console.log('📡 DASHBOARD: Using Google Ads API for Google Ads configured client');
+      } else if (hasMetaAds && !hasGoogleAds) {
+        // Client only has Meta Ads - force Meta API and update tab
+        apiEndpoint = '/api/fetch-live-data';
+        shouldCallAPI = true;
+        setActiveAdsProvider('meta');
+        console.log('📡 DASHBOARD: Client only has Meta Ads - using Meta API and switching to Meta tab');
+      } else if (hasGoogleAds && !hasMetaAds) {
+        // Client only has Google Ads - force Google API and update tab
+        apiEndpoint = '/api/fetch-google-ads-live-data';
+        shouldCallAPI = true;
+        setActiveAdsProvider('google');
+        console.log('📡 DASHBOARD: Client only has Google Ads - using Google Ads API and switching to Google tab');
+      } else {
+        console.warn('⚠️ DASHBOARD: Client has no configured advertising platforms or current tab not supported');
+        shouldCallAPI = false;
+      }
+
+      console.log('🔍 LOAD DATA DECISION (after assignment):', {
+        effectiveProvider,
+        shouldCallAPI,
+        willSkipAPI: !shouldCallAPI,
+        willGoToFallback: !shouldCallAPI,
+        apiEndpoint: shouldCallAPI ? apiEndpoint : 'SKIPPED - will use database fallback'
+      });
+
+      if (!shouldCallAPI) {
+        console.log('🔄 DASHBOARD: Skipping API call - going directly to database fallback');
+        // Return empty data structure for skipped API calls
+        return {
+          campaigns: [],
+          stats: {
+            totalSpend: 0,
+            totalImpressions: 0,
+            totalClicks: 0,
+            totalConversions: 0,
+            averageCtr: 0,
+            averageCpc: 0
+          },
+          conversionMetrics: {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            roas: 0,
+            cost_per_reservation: 0,
+            booking_step_2: 0,
+            booking_step_3: 0
+          },
+          debug: {
+            campaigns: [],
+            source: 'skipped-api',
+            reason: 'API call skipped, using database fallback'
+          }
+        };
+      } else {
+
+      // Optimized timeout to 12 seconds for better UX
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.warn('⚠️ Dashboard API call timed out after 30 seconds');
+        console.warn('⚠️ Dashboard API call timed out after 12 seconds');
         controller.abort();
-      }, 30000);
+      }, 12000);
       
-      // Use fetch-live-data with smart caching enabled (no force refresh)
-      console.log('📡 DASHBOARD: Making API call to /api/fetch-live-data');
+      // Use intelligent API selection
+      console.log('📡 DASHBOARD: Making API call to', apiEndpoint);
       console.log('📡 API Request body:', {
         clientId: currentClient.id,
         dateRange: dateRange,
         forceFresh: false
       });
       
-      const response = await fetch('/api/fetch-live-data', {
+      let response;
+      try {
+        response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -649,11 +878,237 @@ export default function DashboardPage() {
         }),
         signal: controller.signal
       });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.warn('⚠️ Dashboard API call failed:', response.status, response.statusText);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        console.warn('⚠️ Dashboard API fetch failed:', fetchError?.message || fetchError);
+        
+        // Handle network errors, server not running, etc.
+        console.log('🔄 NETWORK ERROR FALLBACK: Attempting to load data from cache/database...');
+        
+        // Set loading message to inform user of fallback
+        setLoadingMessage && setLoadingMessage('Błąd API - ładowanie z cache...');
+        setLoadingProgress && setLoadingProgress(60);
+        
+        // Use the same fallback logic as for failed responses
+        try {
+          if (activeAdsProvider === 'meta') {
+            // Try Meta cache first
+            const { data: metaCache, error: metaCacheError } = await supabase
+              .from('current_month_cache')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .eq('period_id', `${year}-${String(month).padStart(2, '0')}`)
+              .single();
+              
+            if (!metaCacheError && metaCache?.cache_data) {
+              console.log('✅ NETWORK FALLBACK: Using Meta cache data');
+              const cacheData = metaCache.cache_data as any;
+              console.log('🔍 CACHE DATA STRUCTURE:', {
+                hasStats: !!cacheData.stats,
+                stats: cacheData.stats,
+                hasCampaigns: !!cacheData.campaigns,
+                campaignsCount: cacheData.campaigns?.length || 0
+              });
+              
+              return {
+                stats: cacheData.stats || null,
+                campaigns: cacheData.campaigns || [],
+                conversionMetrics: cacheData.conversionMetrics || null,
+                debug: {
+                  source: 'database',
+                  reason: 'Network error, using cached data',
+                  cacheAge: Date.now() - new Date(metaCache.last_updated).getTime(),
+                  error: fetchError?.message || fetchError
+                }
+              };
+            }
+            
+            // Try campaign summaries as secondary fallback
+            const { data: summaries, error: summariesError } = await supabase
+              .from('campaign_summaries')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .eq('summary_date', `${year}-${String(month).padStart(2, '0')}-01`)
+              .eq('summary_type', 'monthly')
+              .single();
+              
+            if (!summariesError && summaries) {
+              console.log('✅ NETWORK FALLBACK: Using campaign summaries data');
+              return {
+                campaigns: summaries.campaign_data || [],
+                stats: {
+                  totalSpend: summaries.total_spend || 0,
+                  totalImpressions: summaries.total_impressions || 0,
+                  totalClicks: summaries.total_clicks || 0,
+                  totalConversions: summaries.total_conversions || 0,
+                  averageCtr: summaries.average_ctr || 0,
+                  averageCpc: summaries.average_cpc || 0
+                },
+                conversionMetrics: {
+                  click_to_call: (summaries as any).click_to_call || 0,
+                  email_contacts: (summaries as any).email_contacts || 0,
+                  booking_step_1: (summaries as any).booking_step_1 || 0,
+                  reservations: (summaries as any).reservations || 0,
+                  reservation_value: (summaries as any).reservation_value || 0,
+                  roas: (summaries as any).roas || 0,
+                  cost_per_reservation: (summaries as any).cost_per_reservation || 0,
+                  booking_step_2: (summaries as any).booking_step_2 || 0
+                },
+                debug: {
+                  source: 'campaign-summaries-network-fallback',
+                  reason: 'Network error, using campaign summaries',
+                  error: fetchError?.message || fetchError
+                }
+              };
+            }
+          } else if (effectiveProvider === 'google') {
+            // Try Google Ads campaigns table as fallback
+            const { data: googleCampaigns, error: googleError } = await supabase
+              .from('google_ads_campaigns')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .gte('date_range_start', `${year}-${String(month).padStart(2, '0')}-01`)
+              .lte('date_range_end', `${year}-${String(month).padStart(2, '0')}-31`);
+              
+            console.log('🔍 Google Ads campaigns query result:', {
+              error: googleError,
+              campaignsFound: googleCampaigns?.length || 0,
+              effectiveProvider
+            });
+            
+            if (!googleError && googleCampaigns && googleCampaigns.length > 0) {
+              console.log('✅ NETWORK FALLBACK: Using Google Ads campaigns data');
+              
+              const totalSpend = googleCampaigns.reduce((sum, c) => sum + (parseFloat(String(c.spend)) || 0), 0);
+              const totalClicks = googleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.clicks)) || 0), 0);
+              const totalImpressions = googleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.impressions)) || 0), 0);
+              const totalConversions = googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).conversions)) || 0), 0);
+              
+              return {
+                campaigns: googleCampaigns,
+                stats: {
+                  totalSpend,
+                  totalImpressions,
+                  totalClicks,
+                  totalConversions,
+                  averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                  averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+                },
+                conversionMetrics: {
+                  click_to_call: 0,
+                  email_contacts: 0,
+                  booking_step_1: 0,
+                  reservations: totalConversions,
+                  reservation_value: 0,
+                  roas: 0,
+                  cost_per_reservation: totalConversions > 0 ? totalSpend / totalConversions : 0,
+                  booking_step_2: 0
+                },
+                debug: {
+                  source: 'google-campaigns-network-fallback',
+                  reason: 'Network error, using Google Ads campaigns table',
+                  error: fetchError?.message || fetchError
+                }
+              };
+            } else {
+              console.log('❌ No Google Ads campaigns found in date range, trying broader search...');
+              
+              // Try broader search without date restrictions
+              const { data: allGoogleCampaigns, error: allGoogleError } = await supabase
+                .from('google_ads_campaigns')
+                .select('*')
+                .eq('client_id', currentClient.id);
+                
+              console.log('🔍 Broader Google Ads search result:', {
+                error: allGoogleError,
+                campaignsFound: allGoogleCampaigns?.length || 0
+              });
+              
+              if (!allGoogleError && allGoogleCampaigns && allGoogleCampaigns.length > 0) {
+                console.log('✅ FALLBACK: Using all Google Ads campaigns data');
+                
+                // Calculate totals from all Google campaigns
+                const totalSpend = allGoogleCampaigns.reduce((sum, c) => sum + (parseFloat(String(c.spend)) || 0), 0);
+                const totalClicks = allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.clicks)) || 0), 0);
+                const totalImpressions = allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.impressions)) || 0), 0);
+                const totalConversions = allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).reservations)) || 0), 0);
+                const totalReservationValue = allGoogleCampaigns.reduce((sum, c) => sum + (parseFloat(String((c as any).reservation_value)) || 0), 0);
+                
+                console.log('📊 Calculated Google Ads totals from real data:', {
+                  totalSpend,
+                  totalClicks,
+                  totalImpressions,
+                  totalConversions,
+                  totalReservationValue
+                });
+                
+                return {
+                  stats: {
+                    totalSpend,
+                    totalClicks,
+                    totalImpressions,
+                    totalConversions,
+                    averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                    averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+                  },
+                  campaigns: allGoogleCampaigns,
+                  conversionMetrics: {
+                    form_submissions: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).form_submissions)) || 0), 0),
+                    phone_calls: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).phone_calls)) || 0), 0),
+                    email_clicks: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).email_clicks)) || 0), 0),
+                    phone_clicks: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).phone_clicks)) || 0), 0),
+                    booking_step_1: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_1)) || 0), 0),
+                    booking_step_2: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_2)) || 0), 0),
+                    booking_step_3: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_3)) || 0), 0),
+                    reservations: totalConversions,
+                    reservation_value: totalReservationValue,
+                    cost_per_reservation: totalConversions > 0 ? totalSpend / totalConversions : 0
+                  },
+                  debug: {
+                    source: 'database',
+                    reason: 'Using real Google Ads campaigns data (all campaigns)',
+                    cacheAge: null,
+                    responseTime: 0
+                  }
+                };
+              } else {
+                console.log('❌ No Google Ads campaigns found at all, this should not happen');
+                return {
+                  stats: {
+                    totalSpend: 0,
+                    totalClicks: 0,
+                    totalImpressions: 0,
+                    totalConversions: 0,
+                    averageCtr: 0,
+                    averageCpc: 0
+                  },
+                  campaigns: [],
+                  conversionMetrics: {
+                    form_submissions: 0,
+                    phone_calls: 0,
+                    email_clicks: 0,
+                    phone_clicks: 0,
+                    booking_step_1: 0,
+                    booking_step_2: 0,
+                    booking_step_3: 0,
+                    reservations: 0,
+                    reservation_value: 0,
+                    cost_per_reservation: 0
+                  },
+                  debug: {
+                    source: 'database',
+                    reason: 'No Google Ads campaigns found',
+                    error: fetchError?.message || fetchError
+                  }
+                };
+              }
+            }
+          }
+        } catch (networkFallbackError) {
+          console.error('❌ NETWORK FALLBACK: Cache lookup failed:', networkFallbackError);
+        }
+        
+        // Final fallback for network errors
         return {
           campaigns: [],
           stats: {
@@ -675,13 +1130,239 @@ export default function DashboardPage() {
             booking_step_2: 0
           },
           debug: {
-            campaigns: [], // Add empty campaigns to debug
-            source: 'session-error-fallback'
+            campaigns: [],
+            source: 'network-error-fallback',
+            reason: 'Network error and no cached data available',
+            error: fetchError.message
+          }
+        };
+      }
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.warn('⚠️ Dashboard API call failed:', response.status, response.statusText);
+        
+        // Set loading message for user feedback
+        setLoadingMessage && setLoadingMessage(`Błąd API (${response.status}) - ładowanie z cache...`);
+        setLoadingProgress && setLoadingProgress(70);
+        
+        console.log('🔄 FALLBACK: Attempting to load data from cache/database...');
+        
+        // Try to load from cache as fallback
+        try {
+          if (activeAdsProvider === 'meta') {
+            // Try Meta cache first
+            const { data: metaCache, error: metaCacheError } = await supabase
+              .from('current_month_cache')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .eq('period_id', `${year}-${String(month).padStart(2, '0')}`)
+              .single();
+              
+            if (!metaCacheError && metaCache?.cache_data) {
+              console.log('✅ FALLBACK: Using Meta cache data');
+              const cacheData = metaCache.cache_data as any;
+              console.log('🔍 CACHE DATA STRUCTURE:', {
+                hasStats: !!cacheData.stats,
+                stats: cacheData.stats,
+                hasCampaigns: !!cacheData.campaigns,
+                campaignsCount: cacheData.campaigns?.length || 0
+              });
+              
+              return {
+                stats: cacheData.stats || null,
+                campaigns: cacheData.campaigns || [],
+                conversionMetrics: cacheData.conversionMetrics || null,
+                debug: {
+                  source: 'database',
+                  reason: 'API call failed, using cached data',
+                  cacheAge: Date.now() - new Date(metaCache.last_updated).getTime()
+                }
+              };
+            }
+            
+            // Try campaign summaries as secondary fallback
+            const { data: summaries, error: summariesError } = await supabase
+              .from('campaign_summaries')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .eq('summary_date', `${year}-${String(month).padStart(2, '0')}-01`)
+              .eq('summary_type', 'monthly')
+              .single();
+              
+            if (!summariesError && summaries) {
+              console.log('✅ FALLBACK: Using campaign summaries data');
+              return {
+                campaigns: summaries.campaign_data || [],
+                stats: {
+                  totalSpend: summaries.total_spend || 0,
+                  totalImpressions: summaries.total_impressions || 0,
+                  totalClicks: summaries.total_clicks || 0,
+                  totalConversions: summaries.total_conversions || 0,
+                  averageCtr: summaries.average_ctr || 0,
+                  averageCpc: summaries.average_cpc || 0
+                },
+                conversionMetrics: {
+                  click_to_call: (summaries as any).click_to_call || 0,
+                  email_contacts: (summaries as any).email_contacts || 0,
+                  booking_step_1: (summaries as any).booking_step_1 || 0,
+                  reservations: (summaries as any).reservations || 0,
+                  reservation_value: (summaries as any).reservation_value || 0,
+                  roas: (summaries as any).roas || 0,
+                  cost_per_reservation: (summaries as any).cost_per_reservation || 0,
+                  booking_step_2: (summaries as any).booking_step_2 || 0
+                },
+                debug: {
+                  source: 'campaign-summaries-fallback',
+                  reason: 'API call failed, using campaign summaries'
+                }
+              };
+            }
+          } else if (effectiveProvider === 'google') {
+            // Try Google Ads campaigns table as fallback
+            const { data: googleCampaigns, error: googleError } = await supabase
+              .from('google_ads_campaigns')
+              .select('*')
+              .eq('client_id', currentClient.id)
+              .gte('date_range_start', `${year}-${String(month).padStart(2, '0')}-01`)
+              .lte('date_range_end', `${year}-${String(month).padStart(2, '0')}-31`);
+              
+            console.log('🔍 Google Ads campaigns query result (API fallback):', {
+              error: googleError,
+              campaignsFound: googleCampaigns?.length || 0
+            });
+            
+            if (!googleError && googleCampaigns && googleCampaigns.length > 0) {
+              console.log('✅ FALLBACK: Using Google Ads campaigns data');
+              
+              const totalSpend = googleCampaigns.reduce((sum, c) => sum + (parseFloat(String(c.spend)) || 0), 0);
+              const totalClicks = googleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.clicks)) || 0), 0);
+              const totalImpressions = googleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.impressions)) || 0), 0);
+              const totalConversions = googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).reservations)) || 0), 0);
+              const totalReservationValue = googleCampaigns.reduce((sum, c) => sum + (parseFloat(String((c as any).reservation_value)) || 0), 0);
+              
+              return {
+                campaigns: googleCampaigns,
+                stats: {
+                  totalSpend,
+                  totalImpressions,
+                  totalClicks,
+                  totalConversions,
+                  averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                  averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+                },
+                conversionMetrics: {
+                  form_submissions: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).form_submissions)) || 0), 0),
+                  phone_calls: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).phone_calls)) || 0), 0),
+                  email_clicks: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).email_clicks)) || 0), 0),
+                  phone_clicks: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).phone_clicks)) || 0), 0),
+                  booking_step_1: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_1)) || 0), 0),
+                  booking_step_2: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_2)) || 0), 0),
+                  booking_step_3: googleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_3)) || 0), 0),
+                  reservations: totalConversions,
+                  reservation_value: totalReservationValue,
+                  cost_per_reservation: totalConversions > 0 ? totalSpend / totalConversions : 0
+                },
+                debug: {
+                  source: 'database',
+                  reason: 'API call failed, using Google Ads campaigns table'
+                }
+              };
+            } else {
+              console.log('❌ No Google Ads campaigns found in date range, trying broader search (API fallback)...');
+              
+              // Try broader search without date restrictions
+              const { data: allGoogleCampaigns, error: allGoogleError } = await supabase
+                .from('google_ads_campaigns')
+                .select('*')
+                .eq('client_id', currentClient.id);
+                
+              if (!allGoogleError && allGoogleCampaigns && allGoogleCampaigns.length > 0) {
+                console.log('✅ FALLBACK: Using all Google Ads campaigns data (API fallback)');
+                
+                const totalSpend = allGoogleCampaigns.reduce((sum, c) => sum + (parseFloat(String(c.spend)) || 0), 0);
+                const totalClicks = allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.clicks)) || 0), 0);
+                const totalImpressions = allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String(c.impressions)) || 0), 0);
+                const totalConversions = allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).reservations)) || 0), 0);
+                const totalReservationValue = allGoogleCampaigns.reduce((sum, c) => sum + (parseFloat(String((c as any).reservation_value)) || 0), 0);
+                
+                return {
+                  campaigns: allGoogleCampaigns,
+                  stats: {
+                    totalSpend,
+                    totalImpressions,
+                    totalClicks,
+                    totalConversions,
+                    averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                    averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+                  },
+                  conversionMetrics: {
+                    form_submissions: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).form_submissions)) || 0), 0),
+                    phone_calls: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).phone_calls)) || 0), 0),
+                    email_clicks: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).email_clicks)) || 0), 0),
+                    phone_clicks: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).phone_clicks)) || 0), 0),
+                    booking_step_1: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_1)) || 0), 0),
+                    booking_step_2: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_2)) || 0), 0),
+                    booking_step_3: allGoogleCampaigns.reduce((sum, c) => sum + (parseInt(String((c as any).booking_step_3)) || 0), 0),
+                    reservations: totalConversions,
+                    reservation_value: totalReservationValue,
+                    cost_per_reservation: totalConversions > 0 ? totalSpend / totalConversions : 0
+                  },
+                  debug: {
+                    source: 'database',
+                    reason: 'API call failed, using all Google Ads campaigns data'
+                  }
+                };
+              }
+            }
+          }
+        } catch (fallbackError) {
+          console.error('❌ FALLBACK: Cache lookup failed:', fallbackError);
+        }
+        
+        // Final fallback - return empty data
+        console.log('❌ FALLBACK: No cached data available, returning empty data');
+        return {
+          campaigns: [],
+          stats: {
+            totalSpend: 0,
+            totalImpressions: 0,
+            totalClicks: 0,
+            totalConversions: 0,
+            averageCtr: 0,
+            averageCpc: 0
+          },
+          conversionMetrics: {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: 0,
+            reservation_value: 0,
+            roas: 0,
+            cost_per_reservation: 0,
+            booking_step_2: 0
+          },
+          debug: {
+            campaigns: [],
+            source: 'empty-fallback',
+            reason: 'API call failed and no cached data available'
           }
         };
       }
 
       const monthData = await response.json();
+      
+      // 🔍 CRITICAL DEBUG: Log what data we actually received
+      console.log('📊 CRITICAL DEBUG - Dashboard API response received:', {
+        success: monthData.success,
+        hasData: !!monthData.data,
+        dataKeys: monthData.data ? Object.keys(monthData.data) : 'no data',
+        stats: monthData.data?.stats,
+        campaigns: monthData.data?.campaigns?.length || 0,
+        conversionMetrics: monthData.data?.conversionMetrics,
+        source: monthData.debug?.source || 'unknown'
+      });
       
       // Log smart cache performance
       console.log('📊 Dashboard data received:', {
@@ -694,13 +1375,13 @@ export default function DashboardPage() {
       
       // Log if smart caching worked
       if (monthData.debug?.source === 'cache') {
-        console.log('🚀 ✅ SMART CACHE HIT! Dashboard loaded from fresh cache in', monthData.debug.responseTime + 'ms');
+        console.log('🚀 ✅ SMART CACHE HIT! Dashboard loaded from fresh cache in', (monthData.debug.responseTime || 0) + 'ms');
       } else if (monthData.debug?.source === 'stale-cache') {
-        console.log('⚡ ✅ SMART CACHE STALE! Dashboard loaded from stale cache in', monthData.debug.responseTime + 'ms');
+        console.log('⚡ ✅ SMART CACHE STALE! Dashboard loaded from stale cache in', (monthData.debug.responseTime || 0) + 'ms');
       } else if (monthData.debug?.source === 'live-api-cached') {
-        console.log('🔄 ✅ LIVE API + CACHE! Dashboard fetched fresh data and cached it in', monthData.debug.responseTime + 'ms');
+        console.log('🔄 ✅ LIVE API + CACHE! Dashboard fetched fresh data and cached it in', (monthData.debug.responseTime || 0) + 'ms');
       } else {
-        console.log('🐌 ❌ NO SMART CACHE! Dashboard loaded from', monthData.debug?.source, 'in', monthData.debug.responseTime + 'ms');
+        console.log('🐌 ❌ NO SMART CACHE! Dashboard loaded from', monthData.debug?.source, 'in', (monthData.debug?.responseTime || 0) + 'ms');
       }
       
       // Validate that returned data matches expected period
@@ -867,8 +1548,14 @@ export default function DashboardPage() {
           }
         };
       }
+      } // End of else block for shouldCallAPI
     } catch (error) {
       console.error('❌ Error loading dashboard data:', error);
+      
+      // Set loading message for user feedback
+      setLoadingMessage && setLoadingMessage('Błąd ładowania danych');
+      setLoadingProgress && setLoadingProgress(100);
+      
       return {
         campaigns: [],
         stats: {
@@ -892,7 +1579,8 @@ export default function DashboardPage() {
         },
         debug: {
           campaigns: [], // Add empty campaigns to debug
-          source: 'catch-error-fallback'
+          source: 'catch-error-fallback',
+          error: error instanceof Error ? error.message : 'Unknown error'
         }
       };
     }
@@ -935,7 +1623,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-page flex items-center justify-center">
-        <LoadingSpinner text={loadingMessage} progress={loadingProgress} />
+        <DashboardLoading progress={loadingProgress} message={loadingMessage} />
       </div>
     );
   }
@@ -1070,18 +1758,69 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Ads Provider Toggle - Simple without container */}
+        {/* Platform Tabs - Only show tabs for configured platforms */}
+        {(() => {
+          const hasMetaAds = clientData.client.meta_access_token && clientData.client.ad_account_id;
+          const hasGoogleAds = clientData.client.google_ads_enabled && clientData.client.google_ads_customer_id;
+          const showTabs = hasMetaAds && hasGoogleAds; // Only show tabs if client has both platforms
+          
+          // 🔍 CRITICAL DEBUG: Log tab logic
+          console.log('🎯 TAB LOGIC DEBUG:', {
+            clientName: clientData.client.name,
+            hasMetaAds,
+            hasGoogleAds,
+            showTabs,
+            activeAdsProvider,
+            refreshingData,
+            metaToken: !!clientData.client.meta_access_token,
+            adAccountId: !!clientData.client.ad_account_id,
+            googleEnabled: clientData.client.google_ads_enabled,
+            googleCustomerId: !!clientData.client.google_ads_customer_id,
+            googleRefreshToken: !!clientData.client.google_ads_refresh_token
+          });
+          
+          if (!showTabs) {
+            // Single platform - show indicator instead of tabs
+            return (
+              <div className="flex justify-center mb-8">
+                <div className="flex items-center space-x-2 px-4 py-2 bg-muted/30 rounded-lg">
+                  {hasMetaAds && (
+                    <>
+                      <BarChart3 className="w-4 h-4 text-navy" />
+                      <span className="text-sm font-medium text-text">Meta Ads</span>
+                    </>
+                  )}
+                  {hasGoogleAds && (
+                    <>
+                      <Target className="w-4 h-4 text-orange" />
+                      <span className="text-sm font-medium text-text">Google Ads</span>
+                    </>
+                  )}
+                  {!hasMetaAds && !hasGoogleAds && (
+                    <>
+                      <AlertCircle className="w-4 h-4 text-muted" />
+                      <span className="text-sm text-muted">No advertising platforms configured</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          }
+          
+          return (
         <div className="flex justify-center mb-8">
           <div className="relative bg-stroke p-1 rounded-lg">
             <div className="flex space-x-1">
               {/* Meta Ads Tab */}
+                  {hasMetaAds && (
               <button
-                onClick={() => setActiveAdsProvider('meta')}
+                      onClick={() => handleTabSwitch('meta')}
+                      disabled={refreshingData}
                 className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                   activeAdsProvider === 'meta'
                     ? 'text-white shadow-sm'
                     : 'text-muted hover:text-text'
-                }`}
+                      } ${refreshingData ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {activeAdsProvider === 'meta' && (
                   <div className="absolute inset-0 bg-navy rounded-md" />
@@ -1089,17 +1828,27 @@ export default function DashboardPage() {
                 <span className="relative flex items-center space-x-2">
                   <BarChart3 className="w-4 h-4" />
                   <span>Meta Ads</span>
+                        {refreshingData && activeAdsProvider === 'meta' && (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        )}
                 </span>
               </button>
+                  )}
 
               {/* Google Ads Tab */}
+                  {hasGoogleAds && (
               <button
-                onClick={() => setActiveAdsProvider('google')}
+                      onClick={() => {
+                        console.log('🎯 GOOGLE TAB CLICKED!');
+                        handleTabSwitch('google');
+                      }}
+                      disabled={refreshingData}
                 className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                   activeAdsProvider === 'google'
                     ? 'text-white shadow-sm'
                     : 'text-muted hover:text-text'
-                }`}
+                      } ${refreshingData ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      style={{ zIndex: 10 }}
               >
                 {activeAdsProvider === 'google' && (
                   <div className="absolute inset-0 bg-orange rounded-md" />
@@ -1107,28 +1856,102 @@ export default function DashboardPage() {
                 <span className="relative flex items-center space-x-2">
                   <Target className="w-4 h-4" />
                   <span>Google Ads</span>
+                        {refreshingData && activeAdsProvider === 'google' && (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        )}
                 </span>
               </button>
+                  )}
             </div>
           </div>
         </div>
+          );
+        })()}
 
         {/* Modern Bar Chart - Main Metrics */}
         <div className="mb-8">
           {activeAdsProvider === 'meta' ? (
-            <MetaPerformanceLive
-              clientId={clientData.client.id}
-              sharedData={{
+            (() => {
+              // 🔍 CRITICAL DEBUG: Log what we're passing to MetaPerformanceLive
+              const sharedDataToPass = {
                 stats: clientData.stats,
                 conversionMetrics: clientData.conversionMetrics,
                 debug: clientData.debug,
                 lastUpdated: clientData.lastUpdated || new Date().toISOString()
-              }}
-            />
+              };
+              
+              console.log('📡 CRITICAL DEBUG - Data being passed to MetaPerformanceLive:', {
+                hasStats: !!sharedDataToPass.stats,
+                stats: sharedDataToPass.stats,
+                hasConversionMetrics: !!sharedDataToPass.conversionMetrics,
+                conversionMetrics: sharedDataToPass.conversionMetrics,
+                debugSource: sharedDataToPass.debug?.source,
+                lastUpdated: sharedDataToPass.lastUpdated
+              });
+              
+              return (
+                <MetaPerformanceLive
+                  clientId={clientData.client.id}
+                  sharedData={sharedDataToPass}
+                />
+              );
+            })()
           ) : (
+            (() => {
+              // Use Google Ads data directly - no transformation needed as data comes from Google Ads API
+              console.log('📊 GOOGLE ADS DATA:', {
+                totalSpend: clientData.stats?.totalSpend,
+                totalClicks: clientData.stats?.totalClicks,
+                totalConversions: clientData.stats?.totalConversions,
+                source: clientData.debug?.source,
+                reason: clientData.debug?.reason
+              });
+              
+              // Use the data as-is from Google Ads API
+              const googleStats = clientData.stats;
+              const googleMetrics = clientData.conversionMetrics;
+              
+              const googleSharedDataToPass = {
+                stats: googleStats || {
+                  totalSpend: 0,
+                  totalImpressions: 0,
+                  totalClicks: 0,
+                  totalConversions: 0,
+                  averageCtr: 0,
+                  averageCpc: 0
+                },
+                conversionMetrics: googleMetrics || {
+                  form_submissions: 0,
+                  phone_calls: 0,
+                  email_clicks: 0,
+                  phone_clicks: 0,
+                  booking_step_1: 0,
+                  booking_step_2: 0,
+                  booking_step_3: 0,
+                  reservations: 0,
+                  reservation_value: 0,
+                  cost_per_reservation: 0
+                },
+                debug: clientData.debug,
+                lastUpdated: clientData.lastUpdated || new Date().toISOString()
+              };
+              
+              console.log('📡 CRITICAL DEBUG - Data being passed to GoogleAdsPerformanceLive:', {
+                hasStats: !!googleSharedDataToPass.stats,
+                stats: googleSharedDataToPass.stats,
+                hasConversionMetrics: !!googleSharedDataToPass.conversionMetrics,
+                conversionMetrics: googleSharedDataToPass.conversionMetrics,
+                debugSource: googleSharedDataToPass.debug?.source,
+                lastUpdated: googleSharedDataToPass.lastUpdated
+              });
+              
+                            return (
             <GoogleAdsPerformanceLive
               clientId={clientData.client.id}
+                  sharedData={googleSharedDataToPass as any}
             />
+              );
+            })()
           )}
         </div>
 
@@ -1138,28 +1961,28 @@ export default function DashboardPage() {
             leads={{
               current: activeAdsProvider === 'meta' 
                 ? (clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)
-                : 28, // Mock Google Ads leads data
+                : ((clientData.conversionMetrics as any)?.form_submissions || 0) + ((clientData.conversionMetrics as any)?.phone_calls || 0),
               previous: activeAdsProvider === 'meta'
                 ? Math.round((((clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)) * 0.85))
-                : 24,
+                : Math.round(((((clientData.conversionMetrics as any)?.form_submissions || 0) + ((clientData.conversionMetrics as any)?.phone_calls || 0)) * 0.85)),
               change: activeAdsProvider === 'meta' ? 15.0 : 16.7
             }}
             reservations={{
               current: activeAdsProvider === 'meta'
                 ? clientData.conversionMetrics?.reservations || 0
-                : 8, // Mock Google Ads reservations
+                : clientData.conversionMetrics?.reservations || 0,
               previous: activeAdsProvider === 'meta'
                 ? Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92))
-                : 7,
+                : Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92)),
               change: activeAdsProvider === 'meta' ? 8.7 : 14.3
             }}
             reservationValue={{
               current: activeAdsProvider === 'meta'
                 ? clientData.conversionMetrics?.reservation_value || 0
-                : 12500, // Mock Google Ads reservation value
+                : clientData.conversionMetrics?.reservation_value || 0,
               previous: activeAdsProvider === 'meta'
                 ? Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88))
-                : 11000,
+                : Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88)),
               change: activeAdsProvider === 'meta' ? 12.5 : 13.6
             }}
             isLoading={loading}
@@ -1179,7 +2002,7 @@ export default function DashboardPage() {
           </div>
           
           {(() => {
-            const campaigns = activeAdsProvider === 'meta' ? clientData.campaigns : mockGoogleAdsCampaigns;
+            const campaigns = clientData.campaigns;
             
             if (campaigns.length === 0) {
               return (

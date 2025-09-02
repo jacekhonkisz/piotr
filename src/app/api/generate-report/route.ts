@@ -183,7 +183,8 @@ export async function POST(request: NextRequest) {
         date_range_end: endDate,
         generated_at: new Date().toISOString(),
         generation_time_ms: generationTime,
-        email_sent: false
+        email_sent: false,
+        meta_tables: metaTablesData // Include Meta tables data in database
       })
       .select()
       .single();

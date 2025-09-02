@@ -213,19 +213,7 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
                 </div>
               </div>
 
-              <div className="card">
-                <div className="flex items-center">
-                  <div className="p-3 bg-green-100 rounded-lg">
-                    <Target className="h-6 w-6 text-green-600" />
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-600">Conversions</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {formatNumber(report.account_summary.total_conversions)}
-                    </p>
-                  </div>
-                </div>
-              </div>
+
 
               <div className="card">
                 <div className="flex items-center">

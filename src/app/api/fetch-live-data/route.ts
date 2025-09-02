@@ -55,6 +55,35 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
 }
 
 // Helper function to check if date range is current week
+// Helper function to generate period ID from date range
+function generatePeriodIdFromDateRange(startDate: string, endDate: string): string | null {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  
+  if (daysDiff <= 7) {
+    // Weekly period - calculate ISO week
+    const year = start.getFullYear();
+    
+    // Calculate ISO week number using same logic as frontend
+    const jan4 = new Date(year, 0, 4);
+    const startOfYear = new Date(jan4);
+    startOfYear.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+    
+    const weeksDiff = Math.floor((start.getTime() - startOfYear.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    const weekNumber = weeksDiff + 1;
+    
+    return `${year}-W${String(weekNumber).padStart(2, '0')}`;
+  } else if (daysDiff >= 28 && daysDiff <= 31) {
+    // Monthly period
+    const year = start.getFullYear();
+    const month = start.getMonth() + 1;
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+  
+  return null; // Custom date range
+}
+
 function isCurrentWeek(startDate: string, endDate: string): boolean {
   const now = new Date();
   
@@ -102,8 +131,8 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
 }
 
 // Helper function to load data from database for previous months/weeks
-async function loadFromDatabase(clientId: string, startDate: string, endDate: string) {
-  console.log(`📊 Loading data from database for ${clientId} (${startDate} to ${endDate})`);
+async function loadFromDatabase(clientId: string, startDate: string, endDate: string, platform: string = 'meta') {
+  console.log(`📊 Loading data from database for ${clientId} (${startDate} to ${endDate}) - Platform: ${platform}`);
   
   // Determine if this is a weekly or monthly request based on date range
   const start = new Date(startDate);
@@ -111,15 +140,73 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const summaryType = daysDiff <= 7 ? 'weekly' : 'monthly';
   
-  console.log(`📊 Detected ${summaryType} request (${daysDiff} days)`);
+  console.log(`📊 Detected ${summaryType} request (${daysDiff} days) for ${platform} platform`);
   
-  const { data: storedSummary, error } = await supabase
-    .from('campaign_summaries')
-    .select('*')
-    .eq('client_id', clientId)
-    .eq('summary_date', startDate)
-    .eq('summary_type', summaryType)
-    .single();
+  // For weekly data, use date range query instead of exact date match
+  // This handles cases where database has different week start dates than frontend calculation
+  let storedSummary, error;
+  
+  if (summaryType === 'weekly') {
+    console.log(`📅 Searching for weekly data between ${startDate} and ${endDate}`);
+    
+    const { data: weeklyResults, error: weeklyError } = await supabase
+      .from('campaign_summaries')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('summary_type', 'weekly')
+      .eq('platform', platform)
+      .gte('summary_date', startDate)
+      .lte('summary_date', endDate)
+      .order('summary_date', { ascending: false })
+      .limit(1);
+    
+    if (weeklyResults && weeklyResults.length > 0) {
+      storedSummary = weeklyResults[0];
+      error = null;
+      console.log(`✅ Found weekly data for ${storedSummary.summary_date} (requested ${startDate}-${endDate})`);
+    } else {
+      // Try broader search - within 7 days of start date
+      console.log(`📅 No exact match, searching within 7 days of ${startDate}`);
+      
+      const weekBefore = new Date(startDate);
+      weekBefore.setDate(weekBefore.getDate() - 3);
+      const weekAfter = new Date(startDate);
+      weekAfter.setDate(weekAfter.getDate() + 3);
+      
+      const { data: broadResults, error: broadError } = await supabase
+        .from('campaign_summaries')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('summary_type', 'weekly')
+        .eq('platform', platform)
+        .gte('summary_date', weekBefore.toISOString().split('T')[0])
+        .lte('summary_date', weekAfter.toISOString().split('T')[0])
+        .order('summary_date', { ascending: false })
+        .limit(1);
+      
+      if (broadResults && broadResults.length > 0) {
+        storedSummary = broadResults[0];
+        error = null;
+        console.log(`✅ Found nearby weekly data for ${storedSummary.summary_date} (requested ${startDate})`);
+      } else {
+        storedSummary = null;
+        error = broadError || { message: 'No weekly data found in date range' };
+      }
+    }
+  } else {
+    // For monthly data, keep exact date matching
+    const { data: monthlyResult, error: monthlyError } = await supabase
+      .from('campaign_summaries')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('summary_date', startDate)
+      .eq('summary_type', summaryType)
+      .eq('platform', platform)
+      .single();
+      
+    storedSummary = monthlyResult;
+    error = monthlyError;
+  }
 
   if (error || !storedSummary) {
     console.log(`⚠️ No stored ${summaryType} data found, falling back to live fetch`);
@@ -214,7 +301,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     
     // Parse request body
     const requestBody = await request.json();
-    const { dateRange, clientId, clearCache, forceFresh } = requestBody;
+    const { dateRange, clientId, clearCache, forceFresh, platform = 'meta' } = requestBody;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -318,13 +405,21 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
           logger.info('📅 Date range for API call:', { startDate, endDate, method: apiMethod.method });
 
-      // SMART ROUTING: Current month vs Current week vs Previous periods
-      const isCurrentMonthRequest = isCurrentMonth(startDate, endDate);
-      const isCurrentWeekRequest = isCurrentWeek(startDate, endDate);
+      // SMART ROUTING: Determine request type first, then check if current or historical
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const requestType = daysDiff <= 7 ? 'weekly' : 'monthly';
+      
+      // Apply current/historical logic based on request type
+      const isCurrentMonthRequest = requestType === 'monthly' && isCurrentMonth(startDate, endDate);
+      const isCurrentWeekRequest = requestType === 'weekly' && isCurrentWeek(startDate, endDate);
       
       console.log(`📊 CRITICAL DEBUG - ROUTING ANALYSIS:`, {
         startDate,
         endDate,
+        daysDiff,
+        requestType,
         currentSystemDate: new Date().toISOString(),
         currentYear: new Date().getFullYear(),
         currentMonth: new Date().getMonth() + 1,
@@ -350,7 +445,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         // Previous periods: Use database lookup OR force fresh if requested
         if (!forceFresh) {
           logger.info('📊 Checking database for previous period data...');
-          const databaseResult = await loadFromDatabase(clientId, startDate, endDate);
+          const databaseResult = await loadFromDatabase(clientId, startDate, endDate, platform);
           
           if (databaseResult) {
             const responseTime = Date.now() - startTime;
@@ -469,11 +564,38 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         logger.info('📊 🟡 CURRENT WEEK DETECTED - CHECKING WEEKLY SMART CACHE...');
         
         try {
+          // Generate period ID from date range
+          const requestedPeriodId = generatePeriodIdFromDateRange(dateRange.start, dateRange.end);
+          logger.info('📅 Generated period ID for weekly cache:', { requestedPeriodId, dateRange });
+          
           // Use the shared weekly smart cache helper
           const { getSmartWeekCacheData } = await import('../../../lib/smart-cache-helper');
-          const cacheResult = await getSmartWeekCacheData(clientId, false);
+          const cacheResult = await getSmartWeekCacheData(clientId, false, requestedPeriodId || undefined);
           
-          if (cacheResult.success && cacheResult.data.campaigns.length >= 0) {
+          if (cacheResult.shouldUseDatabase) {
+            // Historical week - use database lookup instead of smart cache
+            logger.info('📚 Historical week detected, using database lookup instead of smart cache');
+            const dbResult = await loadFromDatabase(clientId, dateRange.start, dateRange.end, platform);
+            
+            if (dbResult) {
+              const responseTime = Date.now() - startTime;
+              logger.info(`✅ Historical weekly data loaded from database in ${responseTime}ms`);
+              
+              return NextResponse.json({
+                success: true,
+                data: dbResult,
+                debug: {
+                  source: 'historical-database',
+                  responseTime,
+                  authenticatedUser: user.email,
+                  currency: 'PLN',
+                  period: requestedPeriodId || 'historical-week'
+                }
+              });
+            } else {
+              logger.info('⚠️ No historical data found in database, falling back to live fetch');
+            }
+          } else if (cacheResult.success && cacheResult.data.campaigns.length >= 0) {
             const responseTime = Date.now() - startTime;
             console.log(`🚀 Weekly smart cache returned data in ${responseTime}ms`);
             console.log(`📊 Weekly cache source: ${cacheResult.source}`);
@@ -486,7 +608,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                 responseTime,
                 authenticatedUser: user.email,
                 currency: 'PLN',
-                period: 'current-week'
+                period: requestedPeriodId || 'current-week'
               }
             });
           }

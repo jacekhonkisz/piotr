@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
+import { UnifiedAISummaryGenerator } from '../lib/unified-ai-summary';
+import { UnifiedReport } from '../lib/unified-campaign-types';
 
 interface AIExecutiveSummaryProps {
   clientId: string;
@@ -20,8 +22,11 @@ interface AIExecutiveSummaryProps {
     start: string;
     end: string;
   };
-  reportData: any;
+  reportData?: any;
+  unifiedReport?: UnifiedReport;
+  clientName?: string;
   onSummaryGenerated?: (summary: string) => void;
+  isUnified?: boolean;
 }
 
 interface ExecutiveSummary {
@@ -35,7 +40,10 @@ export default function AIExecutiveSummary({
   clientId, 
   dateRange, 
   reportData, 
-  onSummaryGenerated 
+  unifiedReport,
+  clientName,
+  onSummaryGenerated,
+  isUnified = false
 }: AIExecutiveSummaryProps) {
 
   const [summary, setSummary] = useState<ExecutiveSummary | null>(null);
@@ -44,6 +52,7 @@ export default function AIExecutiveSummary({
   const [editedContent, setEditedContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [shouldHide, setShouldHide] = useState(false);
 
   // Load existing summary on component mount
   useEffect(() => {
@@ -88,46 +97,71 @@ export default function AIExecutiveSummary({
     setError(null);
 
     try {
-      // Get session token
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error('No session token available');
+      let summaryContent: string | null = null;
+
+      if (isUnified && unifiedReport && clientName) {
+        // Generate unified summary using the new generator
+        summaryContent = await UnifiedAISummaryGenerator.generateUnifiedSummary(
+          unifiedReport, 
+          clientName
+        );
+      } else {
+        // Use the existing API for regular reports
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error('No session token available');
+        }
+
+        const response = await fetch('/api/generate-executive-summary', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange,
+            reportData
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          
+          // Handle skipSummary case - no platform data available
+          if (errorData.skipSummary) {
+            console.log('No platform data available for AI summary - hiding component');
+            setSummary(null);
+            setShouldHide(true);
+            setIsGenerating(false);
+            return; // Exit early, don't show error
+          }
+          
+          throw new Error(errorData.error || 'Failed to generate summary');
+        }
+
+        const data = await response.json();
+        summaryContent = data.summary;
       }
 
-      const response = await fetch('/api/generate-executive-summary', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          clientId,
-          dateRange,
-          reportData
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate summary');
+      if (!summaryContent) {
+        throw new Error('Failed to generate summary content');
       }
-
-      const data = await response.json();
       
       const newSummary: ExecutiveSummary = {
-        content: data.summary,
+        content: summaryContent,
         generated_at: new Date().toISOString(),
         is_ai_generated: true
       };
 
       setSummary(newSummary);
-      setEditedContent(data.summary);
+      setEditedContent(summaryContent);
       
       // Save the generated summary
       await saveSummary(newSummary);
       
       if (onSummaryGenerated) {
-        onSummaryGenerated(data.summary);
+        onSummaryGenerated(summaryContent);
       }
 
     } catch (error) {
@@ -206,6 +240,11 @@ export default function AIExecutiveSummary({
       minute: '2-digit'
     });
   };
+
+  // Hide component entirely if no platform data available
+  if (shouldHide) {
+    return null;
+  }
 
   if (!summary && !isGenerating) {
     return (

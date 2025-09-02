@@ -1,5 +1,7 @@
 import { Resend } from 'resend';
 import logger from './logger';
+import { RateLimiter } from './rate-limiter';
+import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject } from './email-config';
 
 export interface EmailTemplate {
   subject: string;
@@ -23,9 +25,17 @@ export interface EmailData {
 export class EmailService {
   private static instance: EmailService;
   private resend: Resend;
+  private rateLimiter: RateLimiter;
 
   constructor() {
     this.resend = new Resend(process.env.RESEND_API_KEY);
+    
+    // Initialize rate limiter for Resend API limits using configuration
+    this.rateLimiter = RateLimiter.getInstance('resend-email', {
+      maxRequests: EMAIL_CONFIG.RATE_LIMIT.MAX_REQUESTS,
+      windowMs: EMAIL_CONFIG.RATE_LIMIT.WINDOW_MS,
+      retryAfterMs: EMAIL_CONFIG.RATE_LIMIT.RETRY_AFTER_MS
+    });
   }
 
   static getInstance(): EmailService {
@@ -37,40 +47,98 @@ export class EmailService {
 
   async sendEmail(emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const emailOptions: any = {
-        from: emailData.from,
-        to: emailData.to,
-        subject: emailData.subject,
-        html: emailData.html,
-      };
+      // Wait for rate limit slot before sending
+      logger.info('Checking rate limit before sending email...');
+      await this.rateLimiter.waitForSlot();
+      
+      // Get appropriate recipients based on configuration
+      const originalRecipient = emailData.to;
+      const recipients = getEmailRecipients(originalRecipient);
+      const subject = getEmailSubject(emailData.subject);
+      
+      // Send to each recipient (monitoring emails in monitoring mode, original in production)
+      const results = [];
+      for (const recipient of recipients) {
+        const emailOptions: any = {
+          from: emailData.from,
+          to: recipient,
+          subject: subject,
+          html: isMonitoringMode() ? this.addMonitoringNotice(emailData.html, originalRecipient) : emailData.html,
+        };
 
-      if (emailData.text) {
-        emailOptions.text = emailData.text;
+        if (emailData.text) {
+          emailOptions.text = isMonitoringMode() ? 
+            this.addMonitoringNoticeText(emailData.text, originalRecipient) : 
+            emailData.text;
+        }
+
+        if (emailData.attachments) {
+          emailOptions.attachments = emailData.attachments;
+        }
+
+        const logMessage = isMonitoringMode() ? 'Sending monitoring email via Resend API...' : 'Sending email via Resend API...';
+        logger.info(logMessage, { 
+          originalTo: originalRecipient,
+          actualTo: recipient,
+          subject: emailOptions.subject,
+          monitoringMode: isMonitoringMode(),
+          rateLimitStatus: this.rateLimiter.getStatus()
+        });
+
+        const { data, error } = await this.resend.emails.send(emailOptions);
+
+        if (error) {
+          const errorMessage = this.handleResendError(error);
+          logger.error('Email sending failed:', { error, parsedError: errorMessage, recipient });
+          results.push({ success: false, error: errorMessage, email: recipient });
+        } else {
+          const messageId = data?.id;
+          const successMessage = isMonitoringMode() ? 'Monitoring email sent successfully' : 'Email sent successfully';
+          logger.info(successMessage, { 
+            messageId, 
+            originalTo: originalRecipient, 
+            actualTo: recipient,
+            monitoringMode: isMonitoringMode()
+          });
+          results.push({ success: true, messageId, email: recipient });
+        }
+
+        // Small delay between emails to respect rate limits (only in monitoring mode with multiple recipients)
+        if (isMonitoringMode() && recipients.indexOf(recipient) < recipients.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, EMAIL_CONFIG.MONITORING_EMAIL_DELAY));
+        }
       }
 
-      if (emailData.attachments) {
-        emailOptions.attachments = emailData.attachments;
+      // Return success if at least one email was sent
+      const successfulSends = results.filter(r => r.success);
+      if (successfulSends.length > 0) {
+        const errorMessage = results.length > successfulSends.length ? 
+          (isMonitoringMode() ? 
+            `Sent to ${successfulSends.length}/${results.length} monitoring addresses` :
+            `Sent to ${successfulSends.length}/${results.length} recipients`
+          ) : undefined;
+          
+        return { 
+          success: true, 
+          messageId: successfulSends[0]?.messageId,
+          error: errorMessage
+        };
+      } else {
+        const errorMessage = isMonitoringMode() ?
+          `Failed to send to all monitoring addresses: ${results.map(r => r.error).join(', ')}` :
+          `Failed to send email: ${results.map(r => r.error).join(', ')}`;
+          
+        return { 
+          success: false, 
+          error: errorMessage
+        };
       }
-
-      const { data, error } = await this.resend.emails.send(emailOptions);
-
-      if (error) {
-        logger.error('Email sending failed:', error);
-        return { success: false, error: error.message };
-      }
-
-      const result: { success: boolean; messageId?: string; error?: string } = { 
-        success: true 
-      };
-      if (data?.id) {
-        result.messageId = data.id;
-      }
-      return result;
     } catch (error) {
-      logger.error('Email service error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Email service error:', { error: errorMessage, to: emailData.to });
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: errorMessage
       };
     }
   }
@@ -207,6 +275,281 @@ export class EmailService {
     return this.sendEmail(emailData);
   }
 
+  /**
+   * Add monitoring notice to HTML email content
+   */
+  private addMonitoringNotice(htmlContent: string, originalRecipient: string): string {
+    const style = EMAIL_CONFIG.MONITORING_NOTICE_STYLE;
+    const monitoringEmails = EMAIL_CONFIG.MONITORING_EMAILS.join(', ');
+    
+    const monitoringNotice = `
+      <div style="background: ${style.background}; border: ${style.border}; border-radius: ${style.borderRadius}; padding: ${style.padding}; margin: ${style.margin}; font-family: ${style.fontFamily};">
+        <h3 style="color: #856404; margin: 0 0 10px 0; font-size: 16px;">
+          🔍 MONITORING MODE - Internal Testing
+        </h3>
+        <p style="color: #856404; margin: 0; font-size: 14px;">
+          <strong>Original Recipient:</strong> ${originalRecipient}<br>
+          <strong>Monitoring Recipients:</strong> ${monitoringEmails}<br>
+          <strong>Note:</strong> This email was redirected for monitoring purposes. In production, it would be sent to the original recipient.
+        </p>
+      </div>
+    `;
+
+    // Insert the notice after the opening body tag, or at the beginning if no body tag
+    if (htmlContent.includes('<body')) {
+      return htmlContent.replace(/(<body[^>]*>)/i, `$1${monitoringNotice}`);
+    } else {
+      return monitoringNotice + htmlContent;
+    }
+  }
+
+  /**
+   * Add monitoring notice to text email content
+   */
+  private addMonitoringNoticeText(textContent: string, originalRecipient: string): string {
+    const monitoringEmails = EMAIL_CONFIG.MONITORING_EMAILS.join(', ');
+    
+    const monitoringNotice = `
+🔍 MONITORING MODE - Internal Testing
+=====================================
+Original Recipient: ${originalRecipient}
+Monitoring Recipients: ${monitoringEmails}
+Note: This email was redirected for monitoring purposes. In production, it would be sent to the original recipient.
+=====================================
+
+`;
+    return monitoringNotice + textContent;
+  }
+
+  /**
+   * Handle Resend-specific errors with appropriate messages
+   */
+  private handleResendError(error: any): string {
+    if (error.name) {
+      switch (error.name) {
+        case 'validation_error':
+          return 'Invalid email format or content';
+        case 'rate_limit_exceeded':
+          return 'Email rate limit exceeded, please try again later';
+        case 'invalid_api_key':
+          return 'Invalid Resend API key configuration';
+        case 'insufficient_credits':
+          return 'Insufficient email credits in Resend account';
+        case 'domain_not_verified':
+          return 'Email domain not verified in Resend';
+        default:
+          return error.message || 'Unknown Resend API error';
+      }
+    }
+    
+    // Handle HTTP status codes
+    if (error.status) {
+      switch (error.status) {
+        case 429:
+          return 'Rate limit exceeded - too many requests';
+        case 401:
+          return 'Unauthorized - check API key';
+        case 403:
+          return 'Forbidden - insufficient permissions';
+        case 422:
+          return 'Invalid request data';
+        default:
+          return `HTTP ${error.status}: ${error.message || 'API error'}`;
+      }
+    }
+
+    return error.message || 'Unknown email service error';
+  }
+
+  /**
+   * Get current rate limit status
+   */
+  getRateLimitStatus() {
+    return this.rateLimiter.getStatus();
+  }
+
+  /**
+   * Send multiple emails with rate limiting and progress tracking
+   */
+  async sendBulkEmails(
+    emails: EmailData[], 
+    onProgress?: (sent: number, total: number, current: EmailData) => void
+  ): Promise<{
+    successful: number;
+    failed: number;
+    results: Array<{ email: string; success: boolean; messageId?: string; error?: string }>;
+  }> {
+    const results: Array<{ email: string; success: boolean; messageId?: string; error?: string }> = [];
+    let successful = 0;
+    let failed = 0;
+
+    logger.info(`Starting bulk email send for ${emails.length} emails`);
+
+    for (let i = 0; i < emails.length; i++) {
+      const emailData = emails[i];
+      
+      if (!emailData) {
+        failed++;
+        results.push({
+          email: 'unknown',
+          success: false,
+          error: 'Invalid email data'
+        });
+        continue;
+      }
+      
+      try {
+        if (onProgress) {
+          onProgress(i, emails.length, emailData);
+        }
+
+        const result = await this.sendEmail(emailData);
+        
+        if (result.success) {
+          successful++;
+          results.push({
+            email: emailData.to,
+            success: true,
+            messageId: result.messageId
+          });
+        } else {
+          failed++;
+          results.push({
+            email: emailData.to,
+            success: false,
+            error: result.error
+          });
+        }
+
+        // Log progress every 10 emails
+        if ((i + 1) % 10 === 0) {
+          logger.info(`Bulk email progress: ${i + 1}/${emails.length} processed`);
+        }
+
+      } catch (error) {
+        failed++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        results.push({
+          email: emailData.to,
+          success: false,
+          error: errorMessage
+        });
+        logger.error(`Failed to send email to ${emailData.to}:`, errorMessage);
+      }
+    }
+
+    logger.info(`Bulk email send completed: ${successful} successful, ${failed} failed`);
+    
+    return {
+      successful,
+      failed,
+      results
+    };
+  }
+
+  generateReportEmailTemplate(clientName: string, reportData: any): EmailTemplate {
+    const subject = `Your Meta Ads Report - ${reportData.dateRange}`;
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Meta Ads Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: #1877f2; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+          .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; }
+          .metric { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #1877f2; }
+          .metric h3 { margin: 0 0 5px 0; color: #1877f2; }
+          .metric p { margin: 0; font-size: 18px; font-weight: bold; }
+          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📊 Meta Ads Performance Report</h1>
+            <p>${reportData.dateRange}</p>
+          </div>
+          <div class="content">
+            <p>Dear ${clientName},</p>
+            <p>Here's your Meta Ads performance report for the period ${reportData.dateRange}.</p>
+            
+            <div class="metric">
+              <h3>💰 Total Spend</h3>
+              <p>$${reportData.totalSpend.toLocaleString()}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>👁️ Total Impressions</h3>
+              <p>${reportData.totalImpressions.toLocaleString()}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>🖱️ Total Clicks</h3>
+              <p>${reportData.totalClicks.toLocaleString()}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>📈 Click-Through Rate</h3>
+              <p>${(reportData.ctr * 100).toFixed(2)}%</p>
+            </div>
+            
+            <div class="metric">
+              <h3>💵 Cost Per Click</h3>
+              <p>$${reportData.cpc.toFixed(2)}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>📊 Cost Per Mille</h3>
+              <p>$${reportData.cpm.toFixed(2)}</p>
+            </div>
+            
+            <p>Please find the detailed report attached to this email.</p>
+            
+            <p>If you have any questions about this report, please don't hesitate to reach out.</p>
+            
+            <p>Best regards,<br>Your Meta Ads Reporting Team</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated report. Please do not reply to this email.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+Meta Ads Performance Report - ${reportData.dateRange}
+
+Dear ${clientName},
+
+Here's your Meta Ads performance report for the period ${reportData.dateRange}:
+
+💰 Total Spend: $${reportData.totalSpend.toLocaleString()}
+👁️ Total Impressions: ${reportData.totalImpressions.toLocaleString()}
+🖱️ Total Clicks: ${reportData.totalClicks.toLocaleString()}
+📈 Click-Through Rate: ${(reportData.ctr * 100).toFixed(2)}%
+💵 Cost Per Click: $${reportData.cpc.toFixed(2)}
+📊 Cost Per Mille: $${reportData.cpm.toFixed(2)}
+
+Please find the detailed report attached to this email.
+
+If you have any questions about this report, please don't hesitate to reach out.
+
+Best regards,
+Your Meta Ads Reporting Team
+
+---
+This is an automated report. Please do not reply to this email.
+    `;
+
+    return { subject, html, text };
+  }
+
   private generateInteractiveReportEmailTemplate(clientName: string, reportData: any): EmailTemplate {
     const subject = `Your Interactive Meta Ads Report - ${reportData.dateRange}`;
     
@@ -335,108 +678,7 @@ This is an automated report generated by your Meta Ads management system.
     return { subject, html, text };
   }
 
-  private generateReportEmailTemplate(clientName: string, reportData: any): EmailTemplate {
-    const subject = `Your Meta Ads Report - ${reportData.dateRange}`;
-    
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Meta Ads Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: #1877f2; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-          .content { background: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; }
-          .metric { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #1877f2; }
-          .metric h3 { margin: 0 0 5px 0; color: #1877f2; }
-          .metric p { margin: 0; font-size: 18px; font-weight: bold; }
-          .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1>📊 Meta Ads Performance Report</h1>
-            <p>${reportData.dateRange}</p>
-          </div>
-          <div class="content">
-            <p>Dear ${clientName},</p>
-            <p>Here's your Meta Ads performance report for the period ${reportData.dateRange}.</p>
-            
-            <div class="metric">
-              <h3>💰 Total Spend</h3>
-              <p>$${reportData.totalSpend.toLocaleString()}</p>
-            </div>
-            
-            <div class="metric">
-              <h3>👁️ Total Impressions</h3>
-              <p>${reportData.totalImpressions.toLocaleString()}</p>
-            </div>
-            
-            <div class="metric">
-              <h3>🖱️ Total Clicks</h3>
-              <p>${reportData.totalClicks.toLocaleString()}</p>
-            </div>
-            
-            <div class="metric">
-              <h3>📈 Click-Through Rate</h3>
-              <p>${(reportData.ctr * 100).toFixed(2)}%</p>
-            </div>
-            
-            <div class="metric">
-              <h3>💵 Cost Per Click</h3>
-              <p>$${reportData.cpc.toFixed(2)}</p>
-            </div>
-            
-            <div class="metric">
-              <h3>📊 Cost Per Mille</h3>
-              <p>$${reportData.cpm.toFixed(2)}</p>
-            </div>
-            
-            <p>Please find the detailed report attached to this email.</p>
-            
-            <p>If you have any questions about this report, please don't hesitate to reach out.</p>
-            
-            <p>Best regards,<br>Your Meta Ads Reporting Team</p>
-          </div>
-          <div class="footer">
-            <p>This is an automated report. Please do not reply to this email.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
 
-    const text = `
-Meta Ads Performance Report - ${reportData.dateRange}
-
-Dear ${clientName},
-
-Here's your Meta Ads performance report for the period ${reportData.dateRange}:
-
-💰 Total Spend: $${reportData.totalSpend.toLocaleString()}
-👁️ Total Impressions: ${reportData.totalImpressions.toLocaleString()}
-🖱️ Total Clicks: ${reportData.totalClicks.toLocaleString()}
-📈 Click-Through Rate: ${(reportData.ctr * 100).toFixed(2)}%
-💵 Cost Per Click: $${reportData.cpc.toFixed(2)}
-📊 Cost Per Mille: $${reportData.cpm.toFixed(2)}
-
-Please find the detailed report attached to this email.
-
-If you have any questions about this report, please don't hesitate to reach out.
-
-Best regards,
-Your Meta Ads Reporting Team
-
----
-This is an automated report. Please do not reply to this email.
-    `;
-
-    return { subject, html, text };
-  }
 
   private generateCredentialsEmailTemplate(clientName: string, credentials: { username: string; password: string }): EmailTemplate {
     const subject = 'Your Meta Ads Reporting Dashboard Access';

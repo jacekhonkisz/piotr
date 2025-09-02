@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import EmailService from '../../../../lib/email';
 
 export async function POST() {
   try {
@@ -8,6 +9,21 @@ export async function POST() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    // Get first admin user for system operations
+    const { data: adminUser, error: adminError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'admin')
+      .limit(1)
+      .single();
+
+    if (adminError || !adminUser) {
+      console.error('No admin user found for bulk operation');
+      return NextResponse.json({ 
+        error: 'No admin user available for bulk operations' 
+      }, { status: 500 });
+    }
 
     // Get all active clients
     const { data: clients, error: clientsError } = await supabase
@@ -34,7 +50,8 @@ export async function POST() {
         total_recipients: clients.length,
         successful_sends: 0,
         failed_sends: 0,
-        status: 'running'
+        status: 'running',
+        admin_id: adminUser.id // Use first admin for system operations
       })
       .select()
       .single();
@@ -47,59 +64,88 @@ export async function POST() {
     let failedSends = 0;
     const errors: string[] = [];
 
-    // Process each client
+    // Prepare bulk email data with rate limiting
+    const emailService = EmailService.getInstance();
+    const bulkEmailData: any[] = [];
+
+    // First, prepare all email data
     for (const client of clients) {
       try {
-        // Generate interactive PDF report for the client
-        const interactivePdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
-          },
-          body: JSON.stringify({
+        // Generate sample report data (in production, this would be real data)
+        const sampleReportData = {
+          dateRange: 'Last 30 days',
+          totalSpend: 12500.50,
+          totalImpressions: 250000,
+          totalClicks: 5000,
+          ctr: 0.02,
+          cpc: 2.50,
+          cpm: 50.00
+        };
+
+        const fromEmail = process.env.EMAIL_FROM_ADDRESS || 'noreply@yourdomain.com';
+        const emailTemplate = emailService.generateReportEmailTemplate(client.name, sampleReportData);
+
+        // For monitoring mode, we'll send one email per client (will be redirected to monitoring addresses)
+        // In production, this would iterate through client.contact_emails || [client.email]
+        const originalEmail = client.email; // Use primary email as the "original recipient"
+        
+        bulkEmailData.push({
+          to: originalEmail, // This will be overridden to monitoring addresses in EmailService
+          from: fromEmail,
+          subject: emailTemplate.subject,
+          html: emailTemplate.html,
+          text: emailTemplate.text,
             clientId: client.id,
-            dateRange: {
-              start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days ago
-              end: new Date().toISOString().split('T')[0] // today
-            }
-          })
+          clientName: client.name
         });
 
-        if (interactivePdfResponse.ok) {
-          const pdfBuffer = await interactivePdfResponse.arrayBuffer();
-          
-          // Send the interactive PDF report via email
-          const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/send-interactive-report`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
-            },
-            body: JSON.stringify({
-              clientId: client.id,
-              clientEmail: client.email,
-              pdfBuffer: Buffer.from(pdfBuffer).toString('base64'),
-              dateRange: {
-                start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                end: new Date().toISOString().split('T')[0]
-              }
-            })
+      } catch (error: any) {
+        errors.push(`Error preparing email for ${client.name}: ${error.message}`);
+      }
+    }
+
+    console.log(`📧 MONITORING MODE: Prepared ${bulkEmailData.length} emails for ${clients.length} clients`);
+    console.log(`📧 All emails will be redirected to monitoring addresses (see email-config.ts)`);
+
+    // Send bulk emails with rate limiting and progress tracking
+    const bulkResult = await emailService.sendBulkEmails(
+      bulkEmailData,
+      (sent, total, current) => {
+        if (sent % 5 === 0) { // Log every 5 emails
+          console.log(`📧 Bulk email progress: ${sent}/${total} - original recipient: ${current.to} (redirected to monitoring)`);
+        }
+      }
+    );
+
+    successfulSends = bulkResult.successful;
+    failedSends = bulkResult.failed;
+
+    // Process results for database logging
+    for (const result of bulkResult.results) {
+      const emailData = bulkEmailData.find(e => e.to === result.email);
+      if (emailData) {
+        // Log email in database
+        const { error: logError } = await supabase
+          .from('email_logs')
+          .insert({
+            client_id: emailData.clientId,
+            admin_id: null, // Bulk operation, no specific admin
+            email_type: 'bulk_report',
+            recipient_email: result.email,
+            subject: emailData.subject,
+            message_id: result.messageId || null,
+            sent_at: new Date().toISOString(),
+            status: result.success ? 'sent' : 'failed',
+            error_message: result.error || null
           });
 
-          if (emailResponse.ok) {
-            successfulSends++;
-          } else {
-            failedSends++;
-            errors.push(`Failed to send email to ${client.email}: ${emailResponse.statusText}`);
-          }
-        } else {
-          failedSends++;
-          errors.push(`Failed to generate interactive PDF for ${client.name}: ${interactivePdfResponse.statusText}`);
+        if (logError) {
+          console.error('Error logging email:', logError);
         }
-      } catch (error: any) {
-        failedSends++;
-        errors.push(`Error processing ${client.name}: ${error.message}`);
+      }
+
+      if (!result.success && result.error) {
+        errors.push(`${result.email}: ${result.error}`);
       }
     }
 

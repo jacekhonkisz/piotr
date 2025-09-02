@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, ChevronDown, ChevronUp, Download, Eye, EyeOff, BarChart3, HelpCircle, MousePointer, PhoneCall, Mail, DollarSign, Percent, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useYearOverYearComparison } from '@/lib/hooks/useYearOverYearComparison';
 
 
 
@@ -108,15 +109,16 @@ const getWeekDateRange = (year: number, week: number) => {
   const weekStartDate = new Date(startOfWeek1);
   weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
   
-  // Use the same getWeekBoundaries logic as API (adds 6 days with UTC)
+  // FIXED: Use timezone-safe calculation (same as dropdown and API)
   const endDate = new Date(weekStartDate);
-  endDate.setUTCDate(weekStartDate.getUTCDate() + 6);
+  endDate.setDate(weekStartDate.getDate() + 6); // Use setDate for timezone-safe calculation
   
   const formatDateForDisplay = (date: Date) => {
-    // Use toISOString to get consistent formatting like API
-    const isoString = date.toISOString().split('T')[0] || '';
-    const [yearStr, monthStr, dayStr] = isoString.split('-');
-    return `${dayStr}.${monthStr}`;
+    // FIXED: Use timezone-safe formatting (same as dropdown)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${day}.${month}`;
   };
   
   const result = `${formatDateForDisplay(weekStartDate)} - ${formatDateForDisplay(endDate)}.${year}`;
@@ -414,6 +416,17 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
   const reportIds = Object.keys(reports);
   
+  // Year-over-year comparison hook - moved outside of map
+  const firstReport = reportIds.length > 0 ? reports[reportIds[0]!] : null;
+  const { data: yoyData, loading: yoyLoading } = useYearOverYearComparison({
+    clientId: clientData?.id || '',
+    dateRange: {
+      start: firstReport?.date_range_start || '',
+      end: firstReport?.date_range_end || '',
+    },
+    enabled: !!clientData?.id && !!firstReport?.date_range_start && !!firstReport?.date_range_end,
+  });
+  
   if (reportIds.length === 0) {
     return (
       <div className="text-center py-8">
@@ -423,7 +436,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   }
 
   const toggleCampaignExpansion = (reportId: string) => {
-    setExpandedCampaigns(prev => ({
+    setExpandedCampaigns((prev: { [key: string]: boolean }) => ({
       ...prev,
       [reportId]: !prev[reportId]
     }));
@@ -435,6 +448,17 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         const report = reports[reportId];
         if (!report) return null;
         const campaigns = report.campaigns || [];
+        
+        // Helper function to format year-over-year change for MetricCard
+        const formatYoyChange = (changePercent: number) => {
+          if (!yoyData || yoyLoading) return undefined;
+          
+          return {
+            value: Math.abs(changePercent),
+            period: 'rok do roku',
+            type: changePercent >= 0 ? 'increase' as const : 'decrease' as const,
+          };
+        };
         
         // Calculate campaign performance totals
         const campaignTotals = campaigns.reduce((acc, campaign) => {
@@ -569,6 +593,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Suma wydatków na reklamy"
                   tooltip="Łączna kwota wydana na reklamy"
                   icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.spend || 0)}
                 />
                 
                 <MetricCard
@@ -577,6 +602,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Liczba wyświetleń reklam"
                   tooltip="Całkowita liczba wyświetleń reklam"
                   icon={<Eye className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.impressions || 0)}
                 />
                 
                 <MetricCard
@@ -585,52 +611,129 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Liczba kliknięć w reklamy"
                   tooltip="Całkowita liczba kliknięć w reklamy"
                   icon={<MousePointer className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
                 />
               </div>
 
-              {/* Booking Engine Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              {/* Booking Engine and Reservation Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <MetricCard
-                  title="Booking Engine krok 1"
+                  title="krok 1 w Booking Engine"
                   value={campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0).toString()}
                   subtitle="Pierwszy krok rezerwacji"
                   tooltip="Liczba użytkowników, którzy rozpoczęli proces rezerwacji"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
                 />
                 
                 <MetricCard
-                  title="Booking Engine krok 2"
+                  title="krok 2 w Booking Engine"
                   value={campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0).toString()}
                   subtitle="Drugi krok rezerwacji"
                   tooltip="Liczba użytkowników, którzy przeszli do drugiego kroku"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
                 />
                 
                 <MetricCard
-                  title="Booking Engine krok 3"
+                  title="krok 3 w Booking Engine"
                   value={campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0).toString()}
                   subtitle="Trzeci krok rezerwacji"
                   tooltip="Liczba użytkowników, którzy ukończyli proces rezerwacji"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
-                />
-              </div>
-
-              {/* Contact Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <MetricCard
-                  title="Kliknięcia w adres e-mail"
-                  value={campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0).toString()}
-                  subtitle="Kontakt przez e-mail"
-                  tooltip="Liczba kliknięć w adres e-mail"
-                  icon={<Mail className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
                 />
                 
                 <MetricCard
-                  title="Kliknięcia w numer telefonu"
-                  value={campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0).toString()}
-                  subtitle="Kontakt przez telefon"
-                  tooltip="Liczba kliknięć w numer telefonu"
-                  icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
+                  title="Ilość rezerwacji [purchase]"
+                  value={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0).toString()}
+                  subtitle="Liczba rezerwacji"
+                  tooltip="Całkowita liczba rezerwacji"
+                  icon={<Calendar className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.reservations || 0)}
+                />
+                
+                <MetricCard
+                  title="wartość rezerwacji online"
+                  value={formatCurrency(campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0))}
+                  subtitle="Wartość wszystkich rezerwacji online"
+                  tooltip="Łączna wartość wszystkich rezerwacji online"
+                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
+                />
+                
+                <MetricCard
+                  title="ROAS"
+                  value={(() => {
+                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+                    const totalValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    return totalSpend > 0 ? (totalValue / totalSpend).toFixed(2) + 'x' : '0x';
+                  })()}
+                  subtitle="Return on Ad Spend"
+                  tooltip="Zwrot z wydatków na reklamy"
+                  icon={<Percent className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
+                />
+              </div>
+
+              {/* Summary Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <MetricCard
+                  title="Łączna wartość potencjalnych rezerwacji online + offline"
+                  value={(() => {
+                    // Calculate potential offline value
+                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                    
+                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    
+                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+                    
+                    // Calculate online value
+                    const onlineValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    
+                    // Total potential value
+                    const totalPotentialValue = potentialOfflineValue + onlineValue;
+                    
+                    return `${formatCurrency(totalPotentialValue)} zł`;
+                  })()}
+                  subtitle="Suma wartości rezerwacji online i potencjalnych offline"
+                  tooltip="Łączna wartość wszystkich rezerwacji online plus szacowana wartość offline"
+                  icon={<Target className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
+                />
+                
+                <MetricCard
+                  title="Koszt pozyskania rezerwacji"
+                  value={(() => {
+                    // Calculate total spend
+                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+                    
+                    // Calculate total potential value (same calculation as above)
+                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                    
+                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    
+                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+                    const onlineValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const totalPotentialValue = potentialOfflineValue + onlineValue;
+                    
+                    // Calculate cost percentage
+                    const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
+                    
+                    return `${costPercentage.toFixed(2)}%`;
+                  })()}
+                  subtitle="(wydana kwota / łączna wartość potencjalnych rezerwacji) × 100"
+                  tooltip="Procent kosztów w stosunku do łącznej wartości potencjalnych rezerwacji"
+                  icon={<Percent className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.spend || 0)}
                 />
               </div>
 
@@ -703,53 +806,83 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
 
 
-              {/* Conversion Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <MetricCard
-                  title="Rezerwacje"
-                  value={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0).toString()}
-                  subtitle="Liczba rezerwacji"
-                  tooltip="Całkowita liczba rezerwacji"
-                  icon={<Calendar className="w-5 h-5 text-slate-600" />}
-                />
-                
-                <MetricCard
-                  title="Wartość rezerwacji"
-                  value={formatCurrency(campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0))}
-                  subtitle="Wartość wszystkich rezerwacji"
-                  tooltip="Łączna wartość wszystkich rezerwacji"
-                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                />
-                
-                <MetricCard
-                  title="ROAS"
-                  value={(() => {
-                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                    const totalValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    return totalSpend > 0 ? (totalValue / totalSpend).toFixed(2) + 'x' : '0x';
-                  })()}
-                  subtitle="Return on Ad Spend"
-                  tooltip="Zwrot z wydatków na reklamy"
-                  icon={<Percent className="w-5 h-5 text-slate-600" />}
-                />
-              </div>
             </section>
 
             {/* Campaign Performance Section - Consolidated */}
             <section>
               <div className="mb-8">
-                <h2 className="text-2xl font-semibold text-slate-900 mb-3 tracking-tight">Dodatkowe Metryki</h2>
+                <h2 className="text-2xl font-semibold text-slate-900 mb-3 tracking-tight">Wydajność kampanii</h2>
                 <p className="text-base text-slate-600">Wszystkie dodatkowe metryki reklamowe i konwersji</p>
               </div>
               
+              {/* Contact Metrics - Moved to top */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <MetricCard
+                  title="Kliknięcia w adres e-mail"
+                  value={campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0).toString()}
+                  subtitle="Kontakt przez e-mail"
+                  tooltip="Liczba kliknięć w adres e-mail"
+                  icon={<Mail className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy for contact metrics
+                />
+                
+                <MetricCard
+                  title="Kliknięcia w numer telefonu"
+                  value={campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0).toString()}
+                  subtitle="Kontakt przez telefon"
+                  tooltip="Liczba kliknięć w numer telefonu"
+                  icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy for contact metrics
+                />
+              </div>
+
+              {/* Calculated Offline Potential Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <MetricCard
+                  title="Potencjalna ilość rezerwacji offline"
+                  value={(() => {
+                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                    return potentialOfflineReservations.toString();
+                  })()}
+                  subtitle="20% z łącznej liczby e-mail i telefonów"
+                  tooltip="Szacowana liczba rezerwacji offline na podstawie kontaktów"
+                  icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy
+                />
+                
+                <MetricCard
+                  title="Potencjalna łączna wartość rezerwacji offline"
+                  value={(() => {
+                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                    
+                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    
+                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+                    
+                    return formatCurrency(potentialOfflineValue);
+                  })()}
+                  subtitle="(wartość rezerwacji/ilość rezerwacji) × potencjalna ilość offline"
+                  tooltip="Szacowana wartość rezerwacji offline"
+                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
+                />
+              </div>
+              
               {/* Main Campaign Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <MetricCard
                   title="Zasięg"
                   value={formatNumber(campaignTotals.reach)}
                   subtitle="Unikalni użytkownicy"
                   tooltip="Liczba unikalnych użytkowników, którzy zobaczyli reklamy"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.impressions || 0)} // Using impressions as proxy for reach
                 />
                 
                 <MetricCard
@@ -758,6 +891,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Click-through rate"
                   tooltip="Procent kliknięć w stosunku do wyświetleń"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // CTR is related to clicks
                 />
                 
                 <MetricCard
@@ -766,39 +900,13 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Cost per click"
                   tooltip="Średni koszt za kliknięcie"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.spend || 0)} // CPC is related to spend efficiency
                 />
                 
-                <MetricCard
-                  title="CPM"
-                  value={formatCurrency(cpm)}
-                  subtitle="Cost per mille"
-                  tooltip="Koszt za 1000 wyświetleń"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                />
+
               </div>
 
-              {/* Conversion and Performance Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <MetricCard
-                  title="Konwersje"
-                  value={campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0).toString()}
-                  subtitle="Łączna liczba konwersji"
-                  tooltip="Całkowita liczba konwersji ze wszystkich kampanii"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                />
-                
-                <MetricCard
-                  title="Koszt per rezerwacja"
-                  value={(() => {
-                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-                    return totalReservations > 0 ? formatCurrency(totalSpend / totalReservations) : '—';
-                  })()}
-                  subtitle="Średni koszt za jedną rezerwację"
-                  tooltip="Średni koszt za jedną rezerwację"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                />
-              </div>
+
             </section>
 
             {/* Campaigns Table */}
@@ -843,14 +951,14 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         
                         return (
                           <tr 
-                            key={`${reportId}-${campaign.campaign_id}`} 
+                            key={`${reportId}-${campaign.campaign_id}-${index}`} 
                             className="transition-all duration-150 border-t border-gray-100"
-                            onMouseEnter={(e) => {
+                            onMouseEnter={(e: React.MouseEvent<HTMLTableRowElement>) => {
                               e.currentTarget.style.backgroundColor = '#F8F9FA';
                               e.currentTarget.style.borderLeftColor = '#244583';
                               e.currentTarget.style.borderLeftWidth = '3px';
                             }}
-                            onMouseLeave={(e) => {
+                            onMouseLeave={(e: React.MouseEvent<HTMLTableRowElement>) => {
                               e.currentTarget.style.backgroundColor = '#FFFFFF';
                               e.currentTarget.style.borderLeftColor = 'transparent';
                               e.currentTarget.style.borderLeftWidth = '0px';

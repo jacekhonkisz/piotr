@@ -9,7 +9,9 @@ const nextConfig = {
   },
   
   // Enable experimental features for better error handling
-  serverExternalPackages: ['@supabase/supabase-js'],
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+  },
 
   // Production optimizations
   compress: true,

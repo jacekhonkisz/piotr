@@ -26,6 +26,8 @@ interface PlacementPerformance {
   cpc: number;
   cpa?: number;
   cpp?: number;
+  reservations?: number;
+  reservation_value?: number;
 }
 
 interface DemographicPerformance {
@@ -420,6 +422,12 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           CPA (CPP)
                         </th>
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
+                          Ilość rezerwacji
+                        </th>
+                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
+                          Wartość rezerwacji
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
@@ -454,6 +462,12 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                             </td>
                             <td className="px-6 py-4 text-right">
                               <span className="text-sm text-slate-900 tabular-nums">{placement.cpp ? formatCurrency(placement.cpp) : 'N/A'}</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{placement.reservations || 0}</span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="text-sm text-slate-900 tabular-nums">{formatCurrency(placement.reservation_value || 0)}</span>
                             </td>
                           </tr>
                         ))}

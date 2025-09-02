@@ -1,0 +1,204 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { supabase } from '../../../lib/supabase';
+import logger from '../../../lib/logger';
+import { UnifiedDataFetcher } from '../../../lib/unified-data-fetcher';
+
+export async function POST(request: NextRequest) {
+  try {
+    logger.info('🚀 Starting unified report data fetch');
+    
+    const body = await request.json();
+    const { clientId, dateStart, dateEnd, reportType } = body;
+
+    if (!clientId || !dateStart || !dateEnd) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Client ID and date range are required' 
+      }, { status: 400 });
+    }
+
+    logger.info(`📅 Fetching unified data for client ${clientId} from ${dateStart} to ${dateEnd}`);
+
+    // Get authorization token from request headers
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No authorization token provided' 
+      }, { status: 401 });
+    }
+
+    // Extract the token (remove "Bearer " prefix)
+    const token = authorization.replace('Bearer ', '');
+
+    // Validate the session with Supabase
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      logger.error('❌ Authentication failed:', authError);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Invalid authentication token' 
+      }, { status: 401 });
+    }
+
+    // Verify client access
+    const { data: client, error: clientError } = await supabase
+      .from('clients')
+      .select('*')
+      .eq('id', clientId)
+      .eq('admin_id', user.id)
+      .single();
+
+    if (clientError || !client) {
+      logger.error('❌ Client not found or access denied:', clientError);
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Client not found or access denied' 
+      }, { status: 404 });
+    }
+
+    // Check platform availability
+    const platformStatus = await UnifiedDataFetcher.getClientPlatformStatus(clientId);
+    
+    // Fetch unified report data
+    const unifiedReport = await UnifiedDataFetcher.fetchUnifiedReport({
+      clientId,
+      dateStart,
+      dateEnd,
+      authToken: token
+    });
+
+    // Add platform status to response
+    const response = {
+      success: true,
+      data: unifiedReport,
+      platformStatus,
+      message: `Successfully fetched unified report with ${unifiedReport.metaCampaigns.length} Meta campaigns and ${unifiedReport.googleCampaigns.length} Google campaigns`
+    };
+
+    logger.info(`✅ Unified report fetch completed: ${unifiedReport.metaCampaigns.length} Meta + ${unifiedReport.googleCampaigns.length} Google campaigns`);
+    
+    return NextResponse.json(response);
+
+  } catch (error) {
+    logger.error('❌ Error in unified report data fetch:', error);
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error : undefined
+    }, { status: 500 });
+  }
+}
+
+// GET endpoint for fetching specific report types
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const clientId = searchParams.get('clientId');
+    const reportType = searchParams.get('type'); // 'monthly', 'weekly', 'custom'
+    const year = searchParams.get('year');
+    const month = searchParams.get('month');
+    const week = searchParams.get('week');
+    const dateStart = searchParams.get('dateStart');
+    const dateEnd = searchParams.get('dateEnd');
+
+    if (!clientId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Client ID is required' 
+      }, { status: 400 });
+    }
+
+    // Get authorization token from request headers
+    const authorization = request.headers.get('authorization');
+    if (!authorization) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No authorization token provided' 
+      }, { status: 401 });
+    }
+
+    const token = authorization.replace('Bearer ', '');
+
+    // Validate the session with Supabase
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Invalid authentication token' 
+      }, { status: 401 });
+    }
+
+    let unifiedReport;
+
+    switch (reportType) {
+      case 'monthly':
+        if (!year || !month) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Year and month are required for monthly reports' 
+          }, { status: 400 });
+        }
+        unifiedReport = await UnifiedDataFetcher.fetchUnifiedMonthlyData(
+          clientId, 
+          parseInt(year), 
+          parseInt(month), 
+          token
+        );
+        break;
+
+      case 'weekly':
+        if (!year || !week) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Year and week are required for weekly reports' 
+          }, { status: 400 });
+        }
+        unifiedReport = await UnifiedDataFetcher.fetchUnifiedWeeklyData(
+          clientId, 
+          parseInt(year), 
+          parseInt(week), 
+          token
+        );
+        break;
+
+      case 'custom':
+        if (!dateStart || !dateEnd) {
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Start and end dates are required for custom reports' 
+          }, { status: 400 });
+        }
+        unifiedReport = await UnifiedDataFetcher.fetchUnifiedCustomData(
+          clientId, 
+          dateStart, 
+          dateEnd, 
+          token
+        );
+        break;
+
+      default:
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Invalid report type. Use: monthly, weekly, or custom' 
+        }, { status: 400 });
+    }
+
+    const platformStatus = await UnifiedDataFetcher.getClientPlatformStatus(clientId);
+
+    return NextResponse.json({
+      success: true,
+      data: unifiedReport,
+      platformStatus
+    });
+
+  } catch (error) {
+    logger.error('❌ Error in unified report GET:', error);
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Internal server error'
+    }, { status: 500 });
+  }
+}

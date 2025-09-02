@@ -24,9 +24,48 @@ interface SystemLog {
   created_at: string;
 }
 
+interface DataValidationReport {
+  overallStatus: 'healthy' | 'warning' | 'critical';
+  healthScore: number;
+  totalChecks: number;
+  passedChecks: number;
+  warningChecks: number;
+  criticalIssues: number;
+  summary: {
+    dataConsistency: number;
+    dataFreshness: number;
+    systemHealth: number;
+  };
+}
+
+interface SystemHealthMetrics {
+  database: {
+    status: 'healthy' | 'warning' | 'critical';
+    responseTime: number;
+  };
+  dataFreshness: {
+    status: 'healthy' | 'warning' | 'critical';
+    lastKpiUpdate: string;
+    hoursSinceUpdate: number;
+  };
+  cacheHealth: {
+    status: 'healthy' | 'warning' | 'critical';
+    entriesCount: number;
+    staleEntriesCount: number;
+    averageAge: number;
+  };
+  overallHealth: {
+    status: 'healthy' | 'warning' | 'critical';
+    score: number;
+    lastCheck: string;
+  };
+}
+
 export default function MonitoringPage() {
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([]);
+  const [dataValidation, setDataValidation] = useState<DataValidationReport | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -62,6 +101,28 @@ export default function MonitoringPage() {
         }
       } catch (error) {
         console.error('Error calling get_storage_stats:', error);
+      }
+
+      // Load data validation report
+      try {
+        const response = await fetch('/api/monitoring/data-validation');
+        if (response.ok) {
+          const result = await response.json();
+          setDataValidation(result.data);
+        }
+      } catch (error) {
+        console.error('Error loading data validation:', error);
+      }
+
+      // Load system health metrics
+      try {
+        const response = await fetch('/api/monitoring/system-health');
+        if (response.ok) {
+          const result = await response.json();
+          setSystemHealth(result.data);
+        }
+      } catch (error) {
+        console.error('Error loading system health:', error);
       }
 
       // Load recent logs
@@ -193,6 +254,24 @@ export default function MonitoringPage() {
       case 'warning': return 'text-yellow-600';
       case 'info': return 'text-blue-600';
       default: return 'text-gray-600';
+    }
+  };
+
+  const getHealthStatusColor = (status: 'healthy' | 'warning' | 'critical') => {
+    switch (status) {
+      case 'healthy': return 'text-green-600';
+      case 'warning': return 'text-yellow-600';
+      case 'critical': return 'text-red-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const getHealthStatusIcon = (status: 'healthy' | 'warning' | 'critical') => {
+    switch (status) {
+      case 'healthy': return '✅';
+      case 'warning': return '⚠️';
+      case 'critical': return '❌';
+      default: return '❓';
     }
   };
 

@@ -755,18 +755,10 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                 {/* Detailed Metrics Grid */}
                 <div>
                   <h3 className="text-md font-medium text-gray-900 mb-4">Detailed Metrics</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">CPM</p>
-                      <p className="text-lg font-semibold">{formatCurrency(monthlyStats.averageCpm)}</p>
-                    </div>
+                  <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600">CPC</p>
                       <p className="text-lg font-semibold">{formatCurrency(monthlyStats.averageCpc)}</p>
-                    </div>
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">CPA</p>
-                      <p className="text-lg font-semibold">{formatCurrency(monthlyStats.averageCpa)}</p>
                     </div>
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600">Frequency</p>

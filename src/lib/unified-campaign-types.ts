@@ -136,9 +136,9 @@ export function convertMetaCampaignToUnified(metaCampaign: any): UnifiedCampaign
 // Helper function to convert Google Ads campaign to unified format
 export function convertGoogleCampaignToUnified(googleCampaign: any): UnifiedCampaign {
   return {
-    id: googleCampaign.id || googleCampaign.campaign_id,
-    campaign_id: googleCampaign.campaign_id || '',
-    campaign_name: googleCampaign.campaign_name || 'Unknown Campaign',
+    id: googleCampaign.id || googleCampaign.campaignId || googleCampaign.campaign_id,
+    campaign_id: googleCampaign.campaignId || googleCampaign.campaign_id || '',
+    campaign_name: googleCampaign.campaignName || googleCampaign.campaign_name || 'Unknown Campaign',
     platform: 'google' as PlatformType,
     status: googleCampaign.status || 'UNKNOWN',
     
@@ -160,8 +160,8 @@ export function convertGoogleCampaignToUnified(googleCampaign: any): UnifiedCamp
     objective: undefined,
     
     // Conversion tracking (mapped from Google naming to unified naming)
-    click_to_call: googleCampaign.phone_clicks || 0,
-    email_contacts: googleCampaign.email_clicks || 0,
+    click_to_call: googleCampaign.click_to_call || googleCampaign.phone_clicks || 0,
+    email_contacts: googleCampaign.email_contacts || googleCampaign.email_clicks || 0,
     form_submissions: googleCampaign.form_submissions || 0,
     phone_calls: googleCampaign.phone_calls || 0,
     booking_step_1: googleCampaign.booking_step_1 || 0,
@@ -268,7 +268,7 @@ export function combinePlatformTotals(metaTotals: PlatformTotals, googleTotals: 
     averageCtr: combined.totalImpressions > 0 ? (combined.totalClicks / combined.totalImpressions) * 100 : 0,
     averageCpc: combined.totalClicks > 0 ? combined.totalSpend / combined.totalClicks : 0,
     averageCpa: combined.totalConversions > 0 ? combined.totalSpend / combined.totalConversions : 0,
-    averageFrequency: (metaTotals.averageFrequency || 0 + googleTotals.averageFrequency || 0) / 2,
+    averageFrequency: ((metaTotals.averageFrequency || 0) + (googleTotals.averageFrequency || 0)) / 2,
     averageRoas: (metaTotals.averageRoas + googleTotals.averageRoas) / 2,
   };
 }

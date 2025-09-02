@@ -234,8 +234,8 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
           body: JSON.stringify({
             clientId,
             dateRange: currentMonth,
-            forceFresh: true, // 🔧 TEMPORARY: Force fresh data for booking steps testing
-            reason: 'booking_steps_testing_live_component'
+            forceFresh: false, // ✅ FIXED: Use smart cache instead of bypassing
+            reason: 'meta_performance_live_component'
           })
         });
 
@@ -477,6 +477,16 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         cacheAge: sharedData.debug?.cacheAge || 0
       });
       
+      // 🔍 CRITICAL DEBUG: Log what MetaPerformanceLive receives
+      console.log('📡 CRITICAL DEBUG - MetaPerformanceLive received sharedData:', {
+        hasStats: !!sharedData.stats,
+        stats: sharedData.stats,
+        hasConversionMetrics: !!sharedData.conversionMetrics,
+        conversionMetrics: sharedData.conversionMetrics,
+        debugSource: sharedData.debug?.source,
+        lastUpdated: sharedData.lastUpdated
+      });
+      
       // Use shared data from dashboard
       setStats(sharedData.stats);
       setMetrics(sharedData.conversionMetrics);
@@ -484,6 +494,12 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       setDataSource(sharedData.debug?.source || 'dashboard-shared');
       setCacheAge(sharedData.debug?.cacheAge || null);
       setLoading(false);
+      
+      // 🔍 CRITICAL DEBUG: Log what we set in state
+      console.log('📊 CRITICAL DEBUG - MetaPerformanceLive state after setting:', {
+        statsSet: sharedData.stats,
+        metricsSet: sharedData.conversionMetrics
+      });
       
       // DISABLED: Fetch daily data only once, not on every shared data change
       // This prevents auto-refresh when switching between cards
@@ -675,37 +691,54 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         </div>
       </div>
 
-      {stats && (
-        <KPICarousel
-          items={[
-            {
-              id: 'clicks',
-              label: 'Kliknięcia',
-              value: stats.totalClicks.toLocaleString('pl-PL'),
-              sublabel: 'Bieżący miesiąc',
-              bars: clicksBars,
-              dateForMarker: new Date().toISOString()
-            },
-            {
-              id: 'spend',
-              label: 'Wydatki',
-              value: formatCurrency(stats.totalSpend),
-              sublabel: 'Bieżący miesiąc',
-              bars: spendBars,
-              dateForMarker: new Date().toISOString()
-            },
-            {
-              id: 'conversions',
-              label: 'Konwersje',
-              value: safeConversion(stats.totalConversions).toLocaleString('pl-PL'),
-              sublabel: 'Bieżący miesiąc',
-              bars: conversionsBars,
-              dateForMarker: new Date().toISOString()
-            }
-          ] as KPI[]}
-          variant="light"
-        />
-      )}
+      {(() => {
+        // 🔍 CRITICAL DEBUG: Log what we're about to render
+        console.log('🎨 CRITICAL DEBUG - MetaPerformanceLive render:', {
+          hasStats: !!stats,
+          stats: stats,
+          willRenderKPI: !!stats,
+          clicksValue: stats ? stats.totalClicks.toLocaleString('pl-PL') : 'no stats',
+          spendValue: stats ? formatCurrency(stats.totalSpend) : 'no stats',
+          conversionsValue: stats ? safeConversion(stats.totalConversions).toLocaleString('pl-PL') : 'no stats'
+        });
+        
+        if (!stats) {
+          console.log('❌ CRITICAL DEBUG - No stats available, not rendering KPICarousel');
+          return <div className="text-center text-muted py-8">Brak danych do wyświetlenia</div>;
+        }
+        
+        return (
+          <KPICarousel
+            items={[
+              {
+                id: 'clicks',
+                label: 'Kliknięcia',
+                value: stats.totalClicks.toLocaleString('pl-PL'),
+                sublabel: 'Bieżący miesiąc',
+                bars: clicksBars,
+                dateForMarker: new Date().toISOString()
+              },
+              {
+                id: 'spend',
+                label: 'Wydatki',
+                value: formatCurrency(stats.totalSpend),
+                sublabel: 'Bieżący miesiąc',
+                bars: spendBars,
+                dateForMarker: new Date().toISOString()
+              },
+              {
+                id: 'conversions',
+                label: 'Konwersje',
+                value: safeConversion(stats.totalConversions).toLocaleString('pl-PL'),
+                sublabel: 'Bieżący miesiąc',
+                bars: conversionsBars,
+                dateForMarker: new Date().toISOString()
+              }
+            ] as KPI[]}
+            variant="light"
+          />
+        );
+      })()}
     </div>
   );
 } 

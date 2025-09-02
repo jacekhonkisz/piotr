@@ -318,7 +318,7 @@ export default function GenerateReportModal({
         // Continue without Meta tables data
       }
 
-      // Then generate PDF with Meta Ads tables data
+      // Generate PDF using smart caching (standardized approach)
       const pdfResponse = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: {
@@ -327,11 +327,8 @@ export default function GenerateReportModal({
         },
         body: JSON.stringify({
           clientId,
-          dateRange,
-          campaigns: reportData.campaigns || [],
-          totals: reportData.totals || {},
-          client: reportData.client || { id: clientId, name: clientName, email: clientEmail },
-          metaTables: metaTablesData // Include Meta tables data for demographic charts
+          dateRange
+          // Removed direct data - PDF will use smart caching for consistency
         })
       });
 

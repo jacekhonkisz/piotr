@@ -102,11 +102,11 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get Google Ads API credentials from system settings
+    // Get Google Ads API credentials from system settings (including manager refresh token)
     const { data: settingsData, error: settingsError } = await supabase
       .from('system_settings')
       .select('key, value')
-      .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token']);
+      .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
 
     if (settingsError || !settingsData) {
       logger.error('❌ Failed to get Google Ads system settings:', settingsError);
@@ -121,12 +121,29 @@ export async function POST(request: NextRequest) {
       return acc;
     }, {} as Record<string, any>);
 
+    // Use the same token priority logic as the main API route
+    let refreshToken = null;
+    if (settings.google_ads_manager_refresh_token) {
+      refreshToken = settings.google_ads_manager_refresh_token;
+    } else if (client.google_ads_refresh_token) {
+      refreshToken = client.google_ads_refresh_token;
+    }
+
+    if (!refreshToken) {
+      logger.error('❌ No Google Ads refresh token found');
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Google Ads refresh token not found. Please configure Google Ads authentication.' 
+      }, { status: 400 });
+    }
+
     const googleAdsCredentials = {
-      refreshToken: client.google_ads_refresh_token!,
+      refreshToken,
       clientId: settings.google_ads_client_id,
       clientSecret: settings.google_ads_client_secret,
       developmentToken: settings.google_ads_developer_token,
       customerId: client.google_ads_customer_id!,
+      managerCustomerId: settings.google_ads_manager_customer_id,
     };
 
     // Initialize Google Ads API service
@@ -163,7 +180,6 @@ export async function POST(request: NextRequest) {
           success: true,
           data: {
             placementPerformance: cachedData.placement_performance || [],
-            demographicPerformance: cachedData.demographic_performance || [],
             devicePerformance: cachedData.device_performance || [],
             keywordPerformance: cachedData.keywords_performance || [],
           },
@@ -178,12 +194,10 @@ export async function POST(request: NextRequest) {
     // Fetch data from Google Ads API
     const [
       placementPerformance,
-      demographicPerformance,
       devicePerformance,
       keywordPerformance
     ] = await Promise.allSettled([
-      googleAdsService.getPlacementPerformance(dateStart, dateEnd),
-      googleAdsService.getDemographicPerformance(dateStart, dateEnd),
+      googleAdsService.getNetworkPerformance(dateStart, dateEnd),
       googleAdsService.getDevicePerformance(dateStart, dateEnd),
       googleAdsService.getKeywordPerformance(dateStart, dateEnd),
     ]);
@@ -191,7 +205,6 @@ export async function POST(request: NextRequest) {
     // Process results and handle any failures
     const data = {
       placementPerformance: placementPerformance.status === 'fulfilled' ? placementPerformance.value : [],
-      demographicPerformance: demographicPerformance.status === 'fulfilled' ? demographicPerformance.value : [],
       devicePerformance: devicePerformance.status === 'fulfilled' ? devicePerformance.value : [],
       keywordPerformance: keywordPerformance.status === 'fulfilled' ? keywordPerformance.value : [],
     };
@@ -199,9 +212,6 @@ export async function POST(request: NextRequest) {
     // Log any failures
     if (placementPerformance.status === 'rejected') {
       logger.warn('⚠️ Placement performance fetch failed:', placementPerformance.reason);
-    }
-    if (demographicPerformance.status === 'rejected') {
-      logger.warn('⚠️ Demographic performance fetch failed:', demographicPerformance.reason);
     }
     if (devicePerformance.status === 'rejected') {
       logger.warn('⚠️ Device performance fetch failed:', devicePerformance.reason);
@@ -216,7 +226,6 @@ export async function POST(request: NextRequest) {
       date_range_start: dateStart,
       date_range_end: dateEnd,
       placement_performance: data.placementPerformance as any,
-      demographic_performance: data.demographicPerformance as any,
       device_performance: data.devicePerformance as any,
       keywords_performance: data.keywordPerformance as any,
       data_source: 'google_ads_api',
@@ -244,7 +253,6 @@ export async function POST(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
       summary: {
         placementCount: data.placementPerformance.length,
-        demographicCount: data.demographicPerformance.length,
         deviceCount: data.devicePerformance.length,
         keywordCount: data.keywordPerformance.length,
       }

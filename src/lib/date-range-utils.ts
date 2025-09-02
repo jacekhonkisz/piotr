@@ -95,7 +95,7 @@ export function getMonthBoundaries(year: number, month: number): DateRange {
  */
 export function getWeekBoundaries(startDate: Date): DateRange {
   const endDate = new Date(startDate);
-  endDate.setUTCDate(startDate.getUTCDate() + 6); // Add 6 days for a 7-day week
+  endDate.setDate(startDate.getDate() + 6); // Add 6 days for a 7-day week (timezone-safe)
   
   return {
     start: formatDateForMetaAPI(startDate),
@@ -105,10 +105,13 @@ export function getWeekBoundaries(startDate: Date): DateRange {
 
 /**
  * Format date for Meta API (YYYY-MM-DD)
+ * Uses timezone-safe formatting to avoid UTC conversion issues
  */
 export function formatDateForMetaAPI(date: Date): string {
-  const parts = date.toISOString().split('T');
-  return parts[0] || '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**
@@ -169,25 +172,40 @@ export function validateDateRange(startDate: string, endDate: string): {
     return { isValid: false, error: 'Invalid date format' };
   }
   
-  // Check if start is before end
-  if (start >= end) {
-    logger.info('❌ Start date is not before end date');
-    return { isValid: false, error: 'Start date must be before end date' };
+  // Check if start is before or equal to end (allow same-day requests)
+  if (start > end) {
+    logger.info('❌ Start date is after end date');
+    return { isValid: false, error: 'Start date must be before or equal to end date' };
   }
   
-  // Check if end date is not in the future (allow current month even if not ended)
-  const currentMonthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+  // Check if end date is not in the future
+  // For current month: allow up to today
+  // For past months: allow up to end of that month
+  const currentMonth = currentDate.getFullYear() === start.getFullYear() && 
+                      currentDate.getMonth() === start.getMonth();
+  
+  let maxAllowedEnd: Date;
+  if (currentMonth) {
+    // Current month: allow up to today (set to end of today for comparison)
+    maxAllowedEnd = new Date(currentDate);
+    maxAllowedEnd.setHours(23, 59, 59, 999); // End of today
+  } else {
+    // Past month: allow up to end of that month
+    maxAllowedEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    maxAllowedEnd.setHours(23, 59, 59, 999); // End of last day of month
+  }
   
   logger.info('🔍 Date comparisons:', {
     end: end.toISOString(),
-    currentMonthEnd: currentMonthEnd.toISOString(),
-    isEndInFuture: end > currentMonthEnd
+    maxAllowedEnd: maxAllowedEnd.toISOString(),
+    isCurrentMonth: currentMonth,
+    isEndInFuture: end > maxAllowedEnd
   });
   
-  // Allow the current month to be accessed even if it's not finished
-  if (end > currentMonthEnd) {
+  // Check if end date is in the future relative to what's allowed
+  if (end > maxAllowedEnd) {
     logger.info('❌ End date is in the future');
-    return { isValid: false, error: 'End date cannot be in the future' };
+    return { isValid: false, error: `End date cannot be in the future. For ${currentMonth ? 'current month' : 'past month'}, maximum allowed is ${maxAllowedEnd.toISOString().split('T')[0]}` };
   }
   
   // Check Meta API limits (typically 37 months back) - use actual current date

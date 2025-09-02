@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
+import { CampaignsLoading } from '../../components/LoadingSpinner';
 
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -182,14 +183,7 @@ export default function CampaignsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="spinner h-8 w-8 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading campaigns...</p>
-        </div>
-      </div>
-    );
+    return <CampaignsLoading />;
   }
 
   const stats = getCampaignStats();

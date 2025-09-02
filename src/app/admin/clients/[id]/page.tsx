@@ -16,7 +16,8 @@ import {
   Edit,
   Trash2,
   Eye,
-  Send
+  Send,
+  Download
 } from 'lucide-react';
 import { useAuth } from '../../../../components/AuthProvider';
 import { supabase } from '../../../../lib/supabase';
@@ -34,6 +35,7 @@ export default function ClientDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [sendingPDF, setSendingPDF] = useState<string | null>(null);
+  const [downloadingUnifiedPDF, setDownloadingUnifiedPDF] = useState<string | null>(null);
   const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
@@ -280,6 +282,67 @@ export default function ClientDetailPage() {
       alert(`Failed to send PDF report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSendingPDF(null);
+    }
+  };
+
+  const downloadUnifiedPDF = async (reportId: string) => {
+    if (!user || !client) {
+      return;
+    }
+
+    try {
+      setDownloadingUnifiedPDF(reportId);
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No access token available');
+      }
+
+      // Get the report to extract date information
+      const report = reports.find(r => r.id === reportId);
+      if (!report) {
+        throw new Error('Report not found');
+      }
+
+      const response = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          dateRange: {
+            start: report.date_range_start,
+            end: report.date_range_end
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate unified PDF');
+      }
+
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `unified-report-${client.name.replace(/[^a-zA-Z0-9]/g, '-')}-${report.date_range_start}-${report.date_range_end}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      console.log('✅ Unified PDF downloaded successfully from admin panel');
+
+    } catch (error) {
+      console.error('Error downloading unified PDF:', error);
+      alert(`Failed to download unified PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDownloadingUnifiedPDF(null);
     }
   };
 
@@ -585,6 +648,18 @@ export default function ClientDetailPage() {
                               <RefreshCw className="h-4 w-4 animate-spin" />
                             ) : (
                               <Send className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => downloadUnifiedPDF(report.id)}
+                            disabled={downloadingUnifiedPDF === report.id}
+                            className="text-purple-600 hover:text-purple-900 disabled:opacity-50"
+                            title="Download Unified PDF (Meta + Google)"
+                          >
+                            {downloadingUnifiedPDF === report.id ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
                             )}
                           </button>
                         </div>

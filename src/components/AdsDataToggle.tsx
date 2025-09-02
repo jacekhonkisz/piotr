@@ -14,6 +14,8 @@ interface AdsDataToggleProps {
   onProviderChange?: (provider: 'meta' | 'google') => void;
   onMetaDataLoaded?: (data: any) => void;
   onGoogleDataLoaded?: (data: any) => void;
+  hasMetaAds?: boolean;
+  hasGoogleAds?: boolean;
 }
 
 const AdsDataToggle: React.FC<AdsDataToggleProps> = ({
@@ -24,6 +26,8 @@ const AdsDataToggle: React.FC<AdsDataToggleProps> = ({
   onProviderChange,
   onMetaDataLoaded,
   onGoogleDataLoaded,
+  hasMetaAds = true,
+  hasGoogleAds = true,
 }) => {
   const [internalActiveProvider, setInternalActiveProvider] = useState<'meta' | 'google'>('meta');
   
@@ -64,58 +68,79 @@ const AdsDataToggle: React.FC<AdsDataToggleProps> = ({
           </div>
         </div>
         
-        {/* Toggle Switch */}
-        <div className="flex items-center space-x-4">
-          <div className="relative">
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              {/* Meta Ads Tab */}
-              <button
-                onClick={() => handleProviderChange('meta')}
-                className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  activeProvider === 'meta'
-                    ? 'text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {activeProvider === 'meta' && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute inset-0 bg-blue-600 rounded-md"
-                    initial={false}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  />
-                )}
-                <span className="relative flex items-center space-x-2">
-                  <BarChart3 className="w-4 h-4" />
-                  <span>Meta Ads</span>
-                </span>
-              </button>
+        {/* Toggle Switch - Only show if both platforms are available */}
+        {hasMetaAds && hasGoogleAds ? (
+          <div className="flex items-center space-x-4">
+            <div className="relative">
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                {/* Meta Ads Tab */}
+                <button
+                  onClick={() => handleProviderChange('meta')}
+                  className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    activeProvider === 'meta'
+                      ? 'text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {activeProvider === 'meta' && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-blue-600 rounded-md"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative flex items-center space-x-2">
+                    <BarChart3 className="w-4 h-4" />
+                    <span>Meta Ads</span>
+                  </span>
+                </button>
 
-              {/* Google Ads Tab */}
-              <button
-                onClick={() => handleProviderChange('google')}
-                className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  activeProvider === 'google'
-                    ? 'text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {activeProvider === 'google' && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute inset-0 bg-green-600 rounded-md"
-                    initial={false}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  />
-                )}
-                <span className="relative flex items-center space-x-2">
-                  <Target className="w-4 h-4" />
-                  <span>Google Ads</span>
-                </span>
-              </button>
+                {/* Google Ads Tab */}
+                <button
+                  onClick={() => handleProviderChange('google')}
+                  className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                    activeProvider === 'google'
+                      ? 'text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {activeProvider === 'google' && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-green-600 rounded-md"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative flex items-center space-x-2">
+                    <Target className="w-4 h-4" />
+                    <span>Google Ads</span>
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          // Single platform indicator
+          <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-50 rounded-lg">
+            <span className="text-xs text-gray-500 uppercase tracking-wide">Platforma:</span>
+            <div className="flex items-center space-x-1">
+              {hasMetaAds && (
+                <>
+                  <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-600">Meta Ads</span>
+                </>
+              )}
+              {hasGoogleAds && (
+                <>
+                  <Target className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-600">Google Ads</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Content */}

@@ -715,25 +715,27 @@ export class MetaAPIService {
               if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
                 email_contacts += valueNum;
               }
-              // 3. Kroki rezerwacji – Etap 1 (initiate_checkout proxy)
-              if (actionType.includes('booking_step_1') || actionType === 'initiate_checkout' || actionType.includes('initiate_checkout')) {
+              // 3. Kroki rezerwacji – Etap 1 (search event in Booking Engine)
+              if (actionType.includes('booking_step_1') || actionType === 'search' || actionType.includes('search')) {
                 booking_step_1 += valueNum;
               }
               // 4. Rezerwacje (purchase)
               if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
                 reservations += valueNum;
               }
-              // 8. Etap 2 rezerwacji - Proper mapping based on funnel analysis
+              // 8. Etap 2 rezerwacji - View content event in Booking Engine
               if (actionType.includes('booking_step_2') || 
-                  actionType.includes('add_payment_info') ||
+                  actionType.includes('view_content') ||
+                  actionType === 'view_content' ||
                   actionType.includes('offsite_conversion.custom.1150356839010935')) {
                 booking_step_2 += valueNum;
                 // 🔧 ENHANCED LOGGING: Track when booking_step_2 is found
                 logger.info('✅ FOUND booking_step_2:', { actionType, valueNum, campaign: insight.campaign_name });
               }
-              // 9. Etap 3 rezerwacji - Proper mapping based on funnel analysis
+              // 9. Etap 3 rezerwacji - Initiate checkout event in Booking Engine
               if (actionType.includes('booking_step_3') || 
-                  actionType === 'complete_checkout' ||
+                  actionType === 'initiate_checkout' ||
+                  actionType.includes('initiate_checkout') ||
                   actionType.includes('offsite_conversion.custom.3490904591193350')) {
                 booking_step_3 += valueNum;
                 // 🔧 ENHANCED LOGGING: Track when booking_step_3 is found
@@ -937,22 +939,24 @@ export class MetaAPIService {
             if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
               email_contacts += valueNum;
             }
-            // 3. Kroki rezerwacji – Etap 1 (initiate_checkout proxy)
-            if (actionType.includes('booking_step_1') || actionType === 'initiate_checkout' || actionType.includes('initiate_checkout')) {
+            // 3. Kroki rezerwacji – Etap 1 (search event in Booking Engine)
+            if (actionType.includes('booking_step_1') || actionType === 'search' || actionType.includes('search')) {
               booking_step_1 += valueNum;
             }
             // 4. Rezerwacje (purchase)
             if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
               reservations += valueNum;
             }
-            // 8. Etap 2 rezerwacji - Conservative: Only payment info (most accurate)
+            // 8. Etap 2 rezerwacji - View content event in Booking Engine
             if (actionType.includes('booking_step_2') || 
-                actionType.includes('add_payment_info')) {
+                actionType.includes('view_content') ||
+                actionType === 'view_content') {
               booking_step_2 += valueNum;
             }
-            // 9. Etap 3 rezerwacji - Conservative: Only checkout completion (most accurate)
+            // 9. Etap 3 rezerwacji - Initiate checkout event in Booking Engine
             if (actionType.includes('booking_step_3') || 
-                actionType === 'complete_checkout') {
+                actionType === 'initiate_checkout' ||
+                actionType.includes('initiate_checkout')) {
               booking_step_3 += valueNum;
             }
           });
@@ -1349,7 +1353,9 @@ export class MetaAPIService {
         'clicks',
         'ctr',
         'cpc',
-        'cpp'
+        'cpp',
+        'actions',
+        'action_values'
       ].join(',');
 
       const params = new URLSearchParams({
@@ -1411,6 +1417,33 @@ export class MetaAPIService {
             }
           }
           
+          // Extract conversion metrics from actions
+          let reservations = 0;
+          let reservation_value = 0;
+          
+          // Process actions array for conversion counts
+          const actionsArray = (insight.actions && Array.isArray(insight.actions)) ? insight.actions : [];
+          actionsArray.forEach((action: any) => {
+            const actionType = String(action.action_type || '').toLowerCase();
+            const valueNum = Number(action.value || 0);
+            
+            // Reservations (purchase events)
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+              reservations += valueNum;
+            }
+          });
+          
+          // Process action_values array for conversion values
+          const actionValuesArray = (insight.action_values && Array.isArray(insight.action_values)) ? insight.action_values : [];
+          actionValuesArray.forEach((actionValue: any) => {
+            const actionType = String(actionValue.action_type || '').toLowerCase();
+            const value = Number(actionValue.value || 0);
+            
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+              reservation_value += value;
+            }
+          });
+          
           return {
             placement: placement,
             spend: parseFloat(insight.spend || '0'),
@@ -1419,6 +1452,8 @@ export class MetaAPIService {
             ctr: parseFloat(insight.ctr || '0'),
             cpc: parseFloat(insight.cpc || '0'),
             cpp: insight.cpp ? parseFloat(insight.cpp) : null,
+            reservations: reservations,
+            reservation_value: reservation_value,
           };
         });
 
@@ -1433,6 +1468,8 @@ export class MetaAPIService {
             existing.spend += item.spend;
             existing.impressions += item.impressions;
             existing.clicks += item.clicks;
+            existing.reservations += item.reservations;
+            existing.reservation_value += item.reservation_value;
           } else {
             // Add new placement
             consolidatedMap.set(item.placement, { ...item });

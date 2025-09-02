@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { signIn } from '@/lib/auth';
 import { BarChart3 } from 'lucide-react';
-import LoadingSpinner from '@/components/LoadingSpinner';
+import { LoginLoading } from '@/components/LoadingSpinner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -97,39 +97,18 @@ export default function LoginPage() {
   };
 
   // Show loading while auth is initializing or if user is authenticated but we haven't redirected
-  if (authLoading || (user && profile && !redirectedRef.current)) {
+  if (authLoading || (user && profile && !redirectedRef.current) || (user && !profile)) {
     return (
-      <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-        <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="flex justify-center items-center mb-8">
-            <BarChart3 className="h-8 w-8 text-blue-600" />
-            <h1 className="ml-2 text-xl font-semibold text-gray-900">
-              Meta Ads Raportowanie
-            </h1>
+      <>
+        <LoginLoading text={authLoading ? "Inicjalizacja..." : "Ładowanie profilu..."} />
+        {user && !profile && (
+          <div className="fixed inset-0 flex items-end justify-center pb-20 pointer-events-none">
+            <div className="text-sm text-gray-500 bg-white/90 px-4 py-2 rounded-lg">
+              Jeśli ładowanie trwa zbyt długo, strona zostanie przekierowana automatycznie
+            </div>
           </div>
-          <LoadingSpinner text={authLoading ? "Inicjalizacja..." : "Przekierowywanie..."} />
-        </div>
-      </div>
-    );
-  }
-
-  // If user is authenticated but no profile, show different message with timeout
-  if (user && !profile && !authLoading) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-        <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="flex justify-center items-center mb-8">
-            <BarChart3 className="h-8 w-8 text-blue-600" />
-            <h1 className="ml-2 text-xl font-semibold text-gray-900">
-              Meta Ads Raportowanie
-            </h1>
-          </div>
-          <LoadingSpinner text="Ładowanie profilu..." />
-          <div className="text-center mt-4 text-sm text-gray-500">
-            Jeśli ładowanie trwa zbyt długo, strona zostanie przekierowana automatycznie
-          </div>
-        </div>
-      </div>
+        )}
+      </>
     );
   }
 

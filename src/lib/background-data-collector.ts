@@ -1,6 +1,7 @@
 // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from './meta-api';
+import { GoogleAdsAPIService } from './google-ads-api';
 import { SmartDataLoader } from './smart-data-loader';
 import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';
 import logger from './logger';
@@ -16,6 +17,8 @@ interface Client {
   email: string;
   meta_access_token?: string;
   ad_account_id?: string;
+  google_ads_customer_id?: string;
+  google_ads_refresh_token?: string;
   api_status: string;
 }
 
@@ -99,7 +102,7 @@ export class BackgroundDataCollector {
   }
 
   /**
-   * Collect monthly summary for a specific client
+   * Collect monthly summary for a specific client (both Meta and Google Ads)
    */
   private async collectMonthlySummaryForClient(client: Client): Promise<void> {
     logger.info(`📊 Collecting monthly summary for ${client.name}...`);
@@ -122,9 +125,32 @@ export class BackgroundDataCollector {
       });
     }
 
+    // Collect Meta Ads data if configured
+    if (client.meta_access_token && client.ad_account_id) {
+      await this.collectMetaMonthlySummary(client, monthsToCollect);
+    }
+
+    // Collect Google Ads data if configured
+    if (client.google_ads_customer_id) {
+      await this.collectGoogleAdsMonthlySummary(client, monthsToCollect);
+    }
+
+    // If neither platform is configured, log warning
+    if (!client.meta_access_token && !client.google_ads_customer_id) {
+      logger.warn(`⚠️ No advertising platforms configured for ${client.name}, skipping`);
+      return;
+    }
+  }
+
+  /**
+   * Collect Meta Ads monthly summary for a client
+   */
+  private async collectMetaMonthlySummary(client: Client, monthsToCollect: any[]): Promise<void> {
+    logger.info(`📊 Collecting Meta Ads monthly summary for ${client.name}...`);
+
     // Initialize Meta API service
     if (!client.meta_access_token || !client.ad_account_id) {
-      logger.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
+      logger.warn(`⚠️ Missing Meta token or ad account ID for ${client.name}, skipping Meta collection`);
       return;
     }
 
@@ -201,6 +227,117 @@ export class BackgroundDataCollector {
 
       } catch (error) {
         logger.error(`❌ Failed to collect ${monthData.year}-${monthData.month} for ${client.name}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Collect Google Ads monthly summary for a client
+   */
+  private async collectGoogleAdsMonthlySummary(client: Client, monthsToCollect: any[]): Promise<void> {
+    logger.info(`📊 Collecting Google Ads monthly summary for ${client.name}...`);
+
+    // Get Google Ads system settings
+    const { data: settingsData, error: settingsError } = await supabase
+      .from('system_settings')
+      .select('key, value')
+      .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
+
+    if (settingsError) {
+      logger.error(`❌ Failed to get Google Ads system settings for ${client.name}:`, settingsError);
+      return;
+    }
+
+    const settings = settingsData.reduce((acc: any, setting: any) => {
+      acc[setting.key] = setting.value;
+      return acc;
+    }, {});
+
+    // Determine refresh token (manager token takes priority)
+    let refreshToken = null;
+    if (settings.google_ads_manager_refresh_token) {
+      refreshToken = settings.google_ads_manager_refresh_token;
+    } else if (client.google_ads_refresh_token) {
+      refreshToken = client.google_ads_refresh_token;
+    }
+
+    if (!refreshToken) {
+      logger.warn(`⚠️ No Google Ads refresh token available for ${client.name}, skipping Google Ads collection`);
+      return;
+    }
+
+    const googleAdsCredentials = {
+      refreshToken,
+      clientId: settings.google_ads_client_id,
+      clientSecret: settings.google_ads_client_secret,
+      developmentToken: settings.google_ads_developer_token,
+      customerId: client.google_ads_customer_id!,
+      managerCustomerId: settings.google_ads_manager_customer_id,
+    };
+
+    // Initialize Google Ads API service
+    const googleAdsService = new GoogleAdsAPIService(googleAdsCredentials);
+
+    for (const monthData of monthsToCollect) {
+      try {
+        logger.info(`📅 Collecting Google Ads ${monthData.year}-${monthData.month.toString().padStart(2, '0')} for ${client.name}`);
+
+        // Fetch Google Ads campaign performance
+        const campaigns = await googleAdsService.getCampaignData(monthData.startDate, monthData.endDate);
+
+        logger.info(`📊 Retrieved ${campaigns.length} Google Ads campaigns`);
+
+        if (campaigns.length === 0) {
+          logger.info(`⚠️ No Google Ads campaigns found for ${client.name} ${monthData.year}-${monthData.month}`);
+          continue;
+        }
+
+        // Calculate totals from Google Ads campaign data
+        const totals = campaigns.reduce((acc: any, campaign: any) => ({
+          spend: acc.spend + (campaign.spend || 0),
+          impressions: acc.impressions + (campaign.impressions || 0),
+          clicks: acc.clicks + (campaign.clicks || 0),
+          conversions: acc.conversions + (campaign.conversions || 0),
+          // Google Ads specific conversions
+          click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+          email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+          booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+          booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+          booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+          reservations: acc.reservations + (campaign.reservations || 0),
+          reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+        }), {
+          spend: 0, impressions: 0, clicks: 0, conversions: 0,
+          click_to_call: 0, email_contacts: 0, booking_step_1: 0,
+          booking_step_2: 0, booking_step_3: 0, reservations: 0, reservation_value: 0
+        });
+
+        // Calculate derived metrics
+        const ctr = totals.clicks > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+        const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+
+        const activeCampaignCount = campaigns.length;
+        logger.info(`📈 Active Google Ads campaigns for ${monthData.year}-${monthData.month}: ${activeCampaignCount}`);
+
+        // Store the Google Ads summary with platform="google"
+        await this.storeGoogleAdsMonthlySummary(client.id, {
+          summary_date: monthData.startDate,
+          platform: 'google',
+          campaigns,
+          totals: {
+            ...totals,
+            ctr,
+            cpc
+          },
+          activeCampaignCount
+        });
+
+        logger.info(`✅ Stored Google Ads monthly summary for ${client.name} ${monthData.year}-${monthData.month}`);
+
+        // Add delay between months to avoid rate limiting
+        await this.delay(1000);
+      } catch (error) {
+        logger.error(`❌ Failed to collect Google Ads month ${monthData.year}-${monthData.month} for ${client.name}:`, error);
       }
     }
   }
@@ -419,6 +556,7 @@ export class BackgroundDataCollector {
       client_id: clientId,
       summary_type: 'monthly',
       summary_date: data.summary_date,
+      platform: data.platform || 'meta', // Default to 'meta' for backward compatibility
       total_spend: data.totals.spend || 0,
       total_impressions: data.totals.impressions || 0,
       total_clicks: data.totals.clicks || 0,
@@ -447,7 +585,7 @@ export class BackgroundDataCollector {
     const { error } = await supabase
       .from('campaign_summaries')
       .upsert(summary, {
-        onConflict: 'client_id,summary_type,summary_date'
+        onConflict: 'client_id,summary_type,summary_date,platform'
       });
 
     if (error) {
@@ -455,6 +593,54 @@ export class BackgroundDataCollector {
     }
 
     logger.info(`💾 Stored monthly summary with enhanced conversion metrics: ${enhancedConversionMetrics.reservations} reservations, ${enhancedConversionMetrics.reservation_value} value`);
+  }
+
+  /**
+   * Store Google Ads monthly summary in database
+   */
+  private async storeGoogleAdsMonthlySummary(clientId: string, data: any): Promise<void> {
+    logger.info(`💾 Storing Google Ads monthly summary for client ${clientId} on ${data.summary_date}`);
+
+    const totals = data.totals || {};
+    const campaigns = data.campaigns || [];
+
+    // Calculate cost per reservation if we have reservations
+    const cost_per_reservation = totals.reservations > 0 ? totals.spend / totals.reservations : 0;
+
+    const summary = {
+      client_id: clientId,
+      summary_type: 'monthly', // This is correct - monthly is allowed
+      summary_date: data.summary_date,
+      platform: 'google', // Important: Mark as Google Ads data
+      total_spend: totals.spend || 0,
+      total_impressions: totals.impressions || 0,
+      total_clicks: totals.clicks || 0,
+      total_conversions: totals.conversions || 0,
+      average_ctr: totals.ctr || 0,
+      average_cpc: totals.cpc || 0,
+      // Google Ads specific conversion fields
+      click_to_call: totals.click_to_call || 0,
+      email_contacts: totals.email_contacts || 0,
+      booking_step_1: totals.booking_step_1 || 0,
+      booking_step_2: totals.booking_step_2 || 0,
+      booking_step_3: totals.booking_step_3 || 0,
+      reservations: totals.reservations || 0,
+      reservation_value: totals.reservation_value || 0,
+      cost_per_reservation: cost_per_reservation,
+      campaign_data: campaigns, // Store raw campaign data for detailed analysis
+      active_campaign_count: data.activeCampaignCount || 0,
+      last_updated: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary);
+
+    if (error) {
+      throw new Error(`Failed to store Google Ads monthly summary: ${error.message}`);
+    }
+
+    logger.info(`💾 Stored Google Ads monthly summary: ${totals.spend} spend, ${totals.impressions} impressions, ${totals.clicks} clicks, ${totals.reservations} reservations`);
   }
 
   /**

@@ -417,7 +417,7 @@ export default function UnifiedReportView({
         </div>
       )}
 
-      {/* Platform Summaries */}
+      {/* Platform Summaries - Removed duplicate Google Ads cards as requested */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <PlatformSummary
           title="Meta Ads (Facebook)"
@@ -428,14 +428,7 @@ export default function UnifiedReportView({
           icon={<Zap className="w-6 h-6" />}
         />
         
-        <PlatformSummary
-          title="Google Ads"
-          campaigns={report.googleCampaigns}
-          totals={report.totals.google}
-          currency={currency}
-          color="from-green-600 to-green-700"
-          icon={<BarChart3 className="w-6 h-6" />}
-        />
+        {/* Google Ads Platform Summary removed - campaigns shown in table below */}
       </div>
 
       {/* Campaign Tables */}

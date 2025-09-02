@@ -33,6 +33,23 @@ interface ExecutiveSummaryData {
     percentageChange: number;
   };
   estimatedOfflineImpact?: number;
+  // Platform attribution
+  platformAttribution?: string;
+  platformSources?: string[];
+  platformBreakdown?: {
+    meta?: {
+      spend: number;
+      impressions: number;
+      clicks: number;
+      conversions: number;
+    };
+    google?: {
+      spend: number;
+      impressions: number;
+      clicks: number;
+      conversions: number;
+    };
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -67,9 +84,9 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const { clientId, dateRange, reportData } = await request.json();
 
-    if (!clientId || !dateRange || !reportData) {
+    if (!clientId || !dateRange) {
       return NextResponse.json({ 
-        error: 'Missing required parameters: clientId, dateRange, reportData' 
+        error: 'Missing required parameters: clientId, dateRange' 
       }, { status: 400 });
     }
 
@@ -84,24 +101,240 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
 
+    // Fetch data from smart cache/database instead of relying on passed data
+    let actualReportData;
+    let kpiData: any[] = [];
+    
+    if (reportData && reportData.account_summary) {
+      // If reportData is provided and has valid data, use it
+      actualReportData = reportData;
+      logger.info('📊 Using provided report data for AI summary');
+    } else {
+      // Fetch data from the same source as reports (smart cache/database)
+      logger.info('📊 Fetching data from smart cache for AI summary...');
+      
+      try {
+        // Import the smart cache helper
+        const { getUnifiedSmartCacheData } = await import('../../../lib/unified-smart-cache-helper');
+        
+        // Determine if this is current month to use smart cache
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const isCurrentMonth = dateRange.start.startsWith(currentMonth);
+        
+        if (isCurrentMonth) {
+          // Use smart cache for current month
+          const cacheResult = await getUnifiedSmartCacheData(clientId, false);
+          
+          // Extract platform-specific data
+          const metaStats = cacheResult.data.meta?.stats || {};
+          const googleStats = cacheResult.data.googleAds?.stats || {};
+          
+          actualReportData = {
+            account_summary: {
+              total_spend: cacheResult.data.combined?.totalSpend || 0,
+              total_impressions: cacheResult.data.combined?.totalImpressions || 0,
+              total_clicks: cacheResult.data.combined?.totalClicks || 0,
+              total_conversions: cacheResult.data.combined?.totalConversions || 0,
+              average_ctr: cacheResult.data.combined?.averageCtr || 0,
+              average_cpc: cacheResult.data.combined?.averageCpc || 0,
+              average_cpa: cacheResult.data.combined?.totalConversions > 0 ? 
+                (cacheResult.data.combined.totalSpend / cacheResult.data.combined.totalConversions) : 0,
+              total_conversion_value: 0,
+              roas: 0,
+              micro_conversions: 0,
+              // Add platform-specific breakdown
+              meta_spend: metaStats.totalSpend || 0,
+              meta_impressions: metaStats.totalImpressions || 0,
+              meta_clicks: metaStats.totalClicks || 0,
+              meta_conversions: metaStats.totalConversions || 0,
+              google_spend: googleStats.totalSpend || 0,
+              google_impressions: googleStats.totalImpressions || 0,
+              google_clicks: googleStats.totalClicks || 0,
+              google_conversions: googleStats.totalConversions || 0
+            }
+          };
+          
+          logger.info('✅ Fetched data from smart cache:', {
+            spend: actualReportData.account_summary.total_spend,
+            impressions: actualReportData.account_summary.total_impressions,
+            metaSpend: actualReportData.account_summary.meta_spend,
+            googleSpend: actualReportData.account_summary.google_spend,
+            source: cacheResult.source
+          });
+        } else {
+          // For historical data, fetch from database
+          const { data: fetchedKpiData, error: kpiError } = await supabase
+            .from('daily_kpi_data')
+            .select('*')
+            .eq('client_id', clientId)
+            .gte('date', dateRange.start)
+            .lte('date', dateRange.end);
+            
+          if (kpiError) {
+            throw new Error(`Failed to fetch historical data: ${kpiError.message}`);
+          }
+          
+          kpiData = fetchedKpiData || [];
+          
+          // Calculate totals from KPI data
+          const totals = kpiData.reduce((acc, day) => ({
+            spend: acc.spend + (day.total_spend || 0),
+            impressions: acc.impressions + (day.total_impressions || 0),
+            clicks: acc.clicks + (day.total_clicks || 0),
+            conversions: acc.conversions + (day.total_conversions || 0)
+          }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+          
+          actualReportData = {
+            account_summary: {
+              total_spend: totals.spend,
+              total_impressions: totals.impressions,
+              total_clicks: totals.clicks,
+              total_conversions: totals.conversions,
+              average_ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+              average_cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+              average_cpa: totals.conversions > 0 ? totals.spend / totals.conversions : 0,
+              total_conversion_value: 0,
+              roas: 0,
+              micro_conversions: 0
+            }
+          };
+          
+          logger.info('✅ Fetched historical data from database:', {
+            spend: totals.spend,
+            impressions: totals.impressions,
+            records: kpiData.length
+          });
+        }
+      } catch (error) {
+        logger.error('❌ Failed to fetch data for AI summary:', error);
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to fetch report data for AI summary generation'
+        }, { status: 500 });
+      }
+    }
+
+    // Validate that we have actual data
+    const hasValidData = actualReportData?.account_summary?.total_spend > 0 || 
+                        actualReportData?.account_summary?.total_impressions > 0 || 
+                        actualReportData?.account_summary?.total_clicks > 0;
+    
+    if (!hasValidData) {
+      logger.warn('⚠️ No valid data found for AI summary generation', {
+        clientId,
+        dateRange,
+        data: actualReportData?.account_summary
+      });
+      
+      return NextResponse.json({
+        success: false,
+        error: 'No advertising data found for the specified period. AI summary cannot be generated without campaign data.'
+      }, { status: 400 });
+    }
+
+    // Detect platform sources for attribution
+    let platformAttribution = 'kampanie reklamowe'; // default generic
+    let platformSources: string[] = [];
+    let platformBreakdown: any = null;
+    
+    // Check if we have platform-specific data in actualReportData
+    const metaSpend = actualReportData.account_summary?.meta_spend || 0;
+    const googleSpend = actualReportData.account_summary?.google_spend || 0;
+    const hasMetaData = metaSpend > 0 || (actualReportData.account_summary?.meta_impressions || 0) > 0;
+    const hasGoogleData = googleSpend > 0 || (actualReportData.account_summary?.google_impressions || 0) > 0;
+    
+    if (hasMetaData || hasGoogleData) {
+      // We have platform-specific data from smart cache
+      if (hasMetaData && hasGoogleData) {
+        platformAttribution = 'kampanie Meta Ads i Google Ads';
+        platformSources = ['meta', 'google'];
+        platformBreakdown = {
+          meta: {
+            spend: actualReportData.account_summary.meta_spend || 0,
+            impressions: actualReportData.account_summary.meta_impressions || 0,
+            clicks: actualReportData.account_summary.meta_clicks || 0,
+            conversions: actualReportData.account_summary.meta_conversions || 0
+          },
+          google: {
+            spend: actualReportData.account_summary.google_spend || 0,
+            impressions: actualReportData.account_summary.google_impressions || 0,
+            clicks: actualReportData.account_summary.google_clicks || 0,
+            conversions: actualReportData.account_summary.google_conversions || 0
+          }
+        };
+      } else if (hasMetaData) {
+        platformAttribution = 'kampanie Meta Ads';
+        platformSources = ['meta'];
+      } else if (hasGoogleData) {
+        platformAttribution = 'kampanie Google Ads';
+        platformSources = ['google'];
+      }
+      
+      logger.info('📊 Platform attribution from smart cache data:', {
+        attribution: platformAttribution,
+        hasMetaData,
+        hasGoogleData,
+        metaSpend,
+        googleSpend
+      });
+    } else if (kpiData && kpiData.length > 0) {
+      // Fallback to analyzing data sources from KPI data
+      const sources = [...new Set(kpiData.map((day: any) => day.data_source))];
+      const hasMetaSource = sources.some((s: string) => s && s.includes('meta'));
+      const hasGoogleSource = sources.some((s: string) => s && s.includes('google'));
+      
+      if (hasMetaSource && hasGoogleSource) {
+        platformAttribution = 'kampanie Meta Ads i Google Ads';
+        platformSources = ['meta', 'google'];
+      } else if (hasMetaSource) {
+        platformAttribution = 'kampanie Meta Ads';
+        platformSources = ['meta'];
+      } else if (hasGoogleSource) {
+        platformAttribution = 'kampanie Google Ads';
+        platformSources = ['google'];
+      }
+      
+      logger.info('📊 Platform attribution from KPI data sources:', {
+        sources,
+        attribution: platformAttribution,
+        hasMetaSource,
+        hasGoogleSource
+      });
+    }
+
+    // If no platform data detected, skip AI summary generation
+    if (platformSources.length === 0) {
+      logger.info('⚠️ No platform data detected - skipping AI summary generation');
+      return NextResponse.json({
+        success: false,
+        error: 'No platform data available for AI summary generation',
+        skipSummary: true
+      }, { status: 400 });
+    }
+
     // Prepare data for AI summary
     const summaryData: ExecutiveSummaryData = {
-      totalSpend: reportData.account_summary?.total_spend || 0,
-      totalImpressions: reportData.account_summary?.total_impressions || 0,
-      totalClicks: reportData.account_summary?.total_clicks || 0,
-      totalConversions: reportData.account_summary?.total_conversions || 0,
-      averageCtr: reportData.account_summary?.average_ctr || 0,
-      averageCpc: reportData.account_summary?.average_cpc || 0,
-      averageCpa: reportData.account_summary?.average_cpa || 0,
+      totalSpend: actualReportData.account_summary?.total_spend || 0,
+      totalImpressions: actualReportData.account_summary?.total_impressions || 0,
+      totalClicks: actualReportData.account_summary?.total_clicks || 0,
+      totalConversions: actualReportData.account_summary?.total_conversions || 0,
+      averageCtr: actualReportData.account_summary?.average_ctr || 0,
+      averageCpc: actualReportData.account_summary?.average_cpc || 0,
+      averageCpa: actualReportData.account_summary?.average_cpa || 0,
       currency: 'PLN', // Hardcoded to PLN for Polish market
       dateRange: dateRange,
       clientName: client.name,
       // Extract conversion tracking data if available
-      reservations: reportData.account_summary?.total_conversions || 0,
-      reservationValue: reportData.account_summary?.total_conversion_value || 0,
-      roas: reportData.account_summary?.roas || 0,
-      microConversions: reportData.account_summary?.micro_conversions || 0,
-      costPerReservation: reportData.account_summary?.average_cpa || 0
+      reservations: actualReportData.account_summary?.total_conversions || 0,
+      reservationValue: actualReportData.account_summary?.total_conversion_value || 0,
+      roas: actualReportData.account_summary?.roas || 0,
+      microConversions: actualReportData.account_summary?.micro_conversions || 0,
+      costPerReservation: actualReportData.account_summary?.average_cpa || 0,
+      // Add platform attribution
+      platformAttribution: platformAttribution,
+      platformSources: platformSources,
+      platformBreakdown: platformBreakdown
     };
 
     // Generate AI summary using OpenAI
@@ -186,11 +419,12 @@ async function generateAISummary(data: ExecutiveSummaryData): Promise<string | n
     };
 
     // Prepare the prompt for OpenAI
-    const prompt = `Napisz miesięczne podsumowanie wyników kampanii Meta Ads w języku polskim.
+    const platformText = data.platformAttribution || 'kampanie reklamowe';
+    const prompt = `Napisz miesięczne podsumowanie wyników ${platformText} w języku polskim.
 
 Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy", "zaobserwowaliśmy").
 
-Nie używaj nazwy klienta, firmy ani nazw platformy w tekście podsumowania.
+Nie używaj nazwy klienta ani firmy w tekście podsumowania. Możesz używać nazw platform reklamowych (Meta Ads, Google Ads) jeśli są one określone w danych.
 
 Nie wymyślaj danych ani zdarzeń – opieraj się tylko na dostarczonych liczbach.
 
@@ -216,6 +450,12 @@ CPC: ${formatCurrency(data.averageCpc)}
 Liczba konwersji: ${formatNumber(data.totalConversions)}
 CPA: ${formatCurrency(data.averageCpa)}
 
+${data.platformBreakdown ? `
+Podział według platform:
+Meta Ads: ${formatCurrency(data.platformBreakdown.meta?.spend || 0)} (${formatNumber(data.platformBreakdown.meta?.impressions || 0)} wyświetleń, ${formatNumber(data.platformBreakdown.meta?.clicks || 0)} kliknięć, ${formatNumber(data.platformBreakdown.meta?.conversions || 0)} konwersji)
+Google Ads: ${formatCurrency(data.platformBreakdown.google?.spend || 0)} (${formatNumber(data.platformBreakdown.google?.impressions || 0)} wyświetleń, ${formatNumber(data.platformBreakdown.google?.clicks || 0)} kliknięć, ${formatNumber(data.platformBreakdown.google?.conversions || 0)} konwersji)
+` : ''}
+
 ${data.reservations ? `Liczba rezerwacji: ${formatNumber(data.reservations)}` : ''}
 ${data.reservationValue ? `Wartość rezerwacji: ${formatCurrency(data.reservationValue)}` : ''}
 ${data.roas ? `ROAS: ${formatPercentage(data.roas)}` : ''}
@@ -224,8 +464,10 @@ ${data.costPerReservation ? `Koszt pozyskania rezerwacji: ${formatCurrency(data.
 
 Przykład stylu:
 
-W kwietniu wydaliśmy 246,94 zł na kampanie reklamowe, które wygenerowały 8 099 wyświetleń i 143 kliknięcia, co dało CTR na poziomie 1,77%. Średni koszt kliknięcia wyniósł 1,73 zł. W tym okresie nie zanotowaliśmy żadnych konwersji, dlatego CPA wyniósł 0,00 zł. W porównaniu do poprzedniego miesiąca liczba kliknięć spadła o 8%.
-Pomimo braku konwersji, działania mogły przyczynić się do zwiększenia świadomości marki oraz potencjalnych kontaktów offline.
+${data.platformBreakdown ? 
+`W sierpniu wydaliśmy łącznie ${formatCurrency(data.totalSpend)} na ${platformText}. W ramach Meta Ads wydaliśmy ${formatCurrency(data.platformBreakdown.meta?.spend || 0)}, a na Google Ads ${formatCurrency(data.platformBreakdown.google?.spend || 0)}. Łącznie kampanie wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, co dało CTR na poziomie ${data.averageCtr.toFixed(2)}%. W wyniku tych działań zanotowaliśmy ${formatNumber(data.totalConversions)} konwersji.` :
+`W sierpniu wydaliśmy ${formatCurrency(data.totalSpend)} na ${platformText}, które wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, co dało CTR na poziomie ${data.averageCtr.toFixed(2)}%. Średni koszt kliknięcia wyniósł ${formatCurrency(data.averageCpc)}. W wyniku tych działań zanotowaliśmy ${formatNumber(data.totalConversions)} konwersji, co dało nam koszt pozyskania konwersji na poziomie ${formatCurrency(data.averageCpa)}.`}
+Działania przyniosły pozytywne rezultaty w zakresie pozyskiwania nowych klientów.
 
 Jeśli nie ma danych porównawczych, pomiń zdania porównujące. Zakończ podsumowanie, gdy przekażesz najważniejsze fakty.`;
 
