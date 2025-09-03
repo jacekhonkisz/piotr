@@ -105,10 +105,27 @@ export async function POST(request: NextRequest) {
     let actualReportData;
     let kpiData: any[] = [];
     
+    // Check if client has both Meta and Google Ads for unified data fetching
+    const hasGoogleAds = client.google_ads_enabled && client.google_ads_customer_id;
+    const hasMetaAds = client.ad_account_id && client.meta_access_token;
+    const shouldFetchUnifiedData = hasGoogleAds && hasMetaAds;
+    
+    logger.info('🔍 [AI-SUMMARY] Platform detection:', {
+      hasGoogleAds,
+      hasMetaAds,
+      shouldFetchUnifiedData
+    });
+    
     if (reportData && reportData.account_summary) {
       // If reportData is provided and has valid data, use it
       actualReportData = reportData;
-      logger.info('📊 Using provided report data for AI summary');
+      logger.info('📊 [DATA-SYNC] Using provided report data for AI summary:', {
+        totalSpend: actualReportData.account_summary.total_spend,
+        metaSpend: actualReportData.account_summary.meta_spend,
+        googleSpend: actualReportData.account_summary.google_spend,
+        hasUnifiedData: !!(actualReportData.account_summary.meta_spend && actualReportData.account_summary.google_spend),
+        dataSource: 'provided_by_pdf'
+      });
     } else {
       // Fetch data from the same source as reports (smart cache/database)
       logger.info('📊 Fetching data from smart cache for AI summary...');
@@ -213,6 +230,87 @@ export async function POST(request: NextRequest) {
           error: 'Failed to fetch report data for AI summary generation'
         }, { status: 500 });
       }
+    }
+
+    // Fetch platform-separated data for unified reports (only if not provided by PDF)
+    const hasProvidedPlatformData = actualReportData?.account_summary?.meta_spend !== undefined && 
+                                   actualReportData?.account_summary?.google_spend !== undefined;
+    
+    if (shouldFetchUnifiedData && actualReportData?.account_summary && !hasProvidedPlatformData) {
+      logger.info('🔍 [AI-SUMMARY] Fetching platform-separated data for unified summary...');
+      
+      try {
+        // Fetch Meta data
+        const metaResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-live-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            dateRange,
+            clientId,
+            platform: 'meta'
+          })
+        });
+
+        // Fetch Google Ads data
+        const googleResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-google-ads-live-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            dateRange,
+            clientId,
+            platform: 'google'
+          })
+        });
+
+        let metaData = null;
+        let googleData = null;
+
+        if (metaResponse.ok) {
+          const metaResult = await metaResponse.json();
+          if (metaResult.success && metaResult.data) {
+            metaData = metaResult.data;
+            logger.info(`✅ [AI-SUMMARY] Fetched Meta data: ${metaData.stats?.totalSpend || 0} PLN`);
+          }
+        }
+
+        if (googleResponse.ok) {
+          const googleResult = await googleResponse.json();
+          if (googleResult.success && googleResult.data) {
+            googleData = googleResult.data;
+            logger.info(`✅ [AI-SUMMARY] Fetched Google data: ${googleData.stats?.totalSpend || 0} PLN`);
+          }
+        }
+
+        // Add platform-separated data to account_summary
+        if (metaData || googleData) {
+          actualReportData.account_summary.meta_spend = metaData?.stats?.totalSpend || 0;
+          actualReportData.account_summary.meta_impressions = metaData?.stats?.totalImpressions || 0;
+          actualReportData.account_summary.meta_clicks = metaData?.stats?.totalClicks || 0;
+          actualReportData.account_summary.meta_conversions = metaData?.stats?.totalConversions || 0;
+          
+          actualReportData.account_summary.google_spend = googleData?.stats?.totalSpend || 0;
+          actualReportData.account_summary.google_impressions = googleData?.stats?.totalImpressions || 0;
+          actualReportData.account_summary.google_clicks = googleData?.stats?.totalClicks || 0;
+          actualReportData.account_summary.google_conversions = googleData?.stats?.totalConversions || 0;
+          
+          logger.info('✅ [AI-SUMMARY] Added platform-separated data to account_summary');
+        }
+      } catch (error) {
+        logger.error('❌ [AI-SUMMARY] Error fetching platform-separated data:', error);
+        // Continue with combined data if platform separation fails
+      }
+    } else if (hasProvidedPlatformData) {
+      logger.info('✅ [AI-SUMMARY] Using platform data provided by PDF generation:', {
+        metaSpend: actualReportData.account_summary.meta_spend,
+        googleSpend: actualReportData.account_summary.google_spend,
+        source: 'pdf_unified_data'
+      });
     }
 
     // Validate that we have actual data
@@ -348,11 +446,15 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    // Save to cache if within retention period (12 months)
+    // Save to cache if within retention period (12 months) and not in development mode
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_APP_URL?.includes('localhost');
     const cacheService = ExecutiveSummaryCacheService.getInstance();
-    if (cacheService.isWithinRetentionPeriod(dateRange)) {
+    
+    if (!isDevelopment && cacheService.isWithinRetentionPeriod(dateRange)) {
       await cacheService.saveSummary(clientId, dateRange, aiSummary);
       logger.info('💾 Saved AI Executive Summary to cache');
+    } else if (isDevelopment) {
+      logger.info('🔄 [DEV MODE] Skipping AI summary cache save for development');
     } else {
       logger.info('⚠️ Summary not saved to cache (outside 12-month retention period)');
     }

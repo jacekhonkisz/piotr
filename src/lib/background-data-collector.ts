@@ -678,7 +678,10 @@ export class BackgroundDataCollector {
       try {
         // Get the week start and end dates
         const weekStart = data.summary_date;
-        const weekEnd = new Date(new Date(weekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // 🔧 FIX: Use setDate instead of getTime() + milliseconds to avoid invalid dates
+        const weekEndDate = new Date(weekStart);
+        weekEndDate.setDate(weekEndDate.getDate() + 6);
+        const weekEnd = weekEndDate.toISOString().split('T')[0];
         
         // Query daily_kpi_data for this week
         const { data: dailyKpiData, error: kpiError } = await supabase

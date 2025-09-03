@@ -38,6 +38,7 @@ import EditClientModal from '../../components/EditClientModal';
 import SearchFilters from '../../components/SearchFilters';
 import BulkActions from '../../components/BulkActions';
 import GenerateReportModal from '../../components/GenerateReportModal';
+import GoogleAdsTokenModal from '../../components/GoogleAdsTokenModal';
 
 
 
@@ -792,6 +793,7 @@ export default function AdminPage() {
     clientName: '',
     clientEmail: ''
   });
+  const [showGoogleAdsTokenModal, setShowGoogleAdsTokenModal] = useState(false);
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
@@ -1378,6 +1380,14 @@ export default function AdminPage() {
               </button>
 
               <button
+                onClick={() => setShowGoogleAdsTokenModal(true)}
+                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#FF6B35] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(255,107,53,0.12)] focus:outline-none focus:ring-2 focus:ring-[#FFB89A] focus:ring-offset-2 flex items-center space-x-2"
+              >
+                <Target className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Google Ads Token</span>
+              </button>
+
+              <button
                 onClick={() => router.push('/admin/settings')}
                 className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#1F3D8A] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
               >
@@ -1520,7 +1530,7 @@ export default function AdminPage() {
                               }}
                             />
                             {/* Fallback initials (hidden by default) */}
-                            <div className="h-[52px] w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg -mt-[52px] hidden">
+                            <div className="h-[52px] w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl items-center justify-center shadow-lg -mt-[52px] hidden">
                               <span className="text-xl font-bold text-white">
                                 {client.name?.charAt(0) || 'C'}
                               </span>
@@ -1784,6 +1794,16 @@ export default function AdminPage() {
           clientEmail={selectedClientForReport.email}
         />
       )}
+
+      {/* Google Ads Token Modal */}
+      <GoogleAdsTokenModal
+        isOpen={showGoogleAdsTokenModal}
+        onClose={() => setShowGoogleAdsTokenModal(false)}
+        onSuccess={() => {
+          setShowGoogleAdsTokenModal(false);
+          // Optionally refresh client data or show success message
+        }}
+      />
     </div>
   );
 } 

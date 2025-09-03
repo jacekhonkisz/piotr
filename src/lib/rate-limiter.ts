@@ -13,7 +13,14 @@ export const createRateLimiter = (options: {
     message: options.message || 'Too many requests from this IP',
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: options.keyGenerator || ((req) => req.ip),
+    keyGenerator: options.keyGenerator || ((req) => {
+      // Handle IPv6 addresses properly
+      const forwarded = req.headers['x-forwarded-for'];
+      if (forwarded) {
+        return Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
+      }
+      return req.ip || req.connection?.remoteAddress || 'unknown';
+    }),
     handler: (req, res) => {
       logger.warn('Rate limit exceeded', {
         ip: req.ip,

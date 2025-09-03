@@ -9,6 +9,7 @@ import {
   selectMetaAPIMethod, 
   validateDateRange
 } from '../../../lib/date-range-utils';
+import { getCurrentWeekInfo } from '../../../lib/week-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,50 +88,31 @@ function generatePeriodIdFromDateRange(startDate: string, endDate: string): stri
 function isCurrentWeek(startDate: string, endDate: string): boolean {
   const now = new Date();
   
-  // 🔧 FIX: Use exact same ISO week calculation as frontend
-  // This MUST match the frontend logic exactly
-  const getISOWeekBoundaries = (date: Date) => {
-    // Get current week boundaries (Monday to Sunday)
-    const currentDayOfWeek = date.getDay();
-    const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
-    
-    const startOfCurrentWeek = new Date(date);
-    startOfCurrentWeek.setDate(startOfCurrentWeek.getDate() - daysToMonday);
-    startOfCurrentWeek.setHours(0, 0, 0, 0);
-    
-         const endOfCurrentWeek = new Date(startOfCurrentWeek);
-     endOfCurrentWeek.setDate(endOfCurrentWeek.getDate() + 6);
-     endOfCurrentWeek.setHours(0, 0, 0, 0); // Use 00:00:00 for date comparison
-    
-    return {
-      start: startOfCurrentWeek.toISOString().split('T')[0],
-      end: endOfCurrentWeek.toISOString().split('T')[0]
-    };
-  };
+  // 🔧 FIX: Use centralized getCurrentWeekInfo to ensure consistency
+  // Import at the top of file: import { getCurrentWeekInfo } from '../../../lib/week-utils';
+  const currentWeekInfo = getCurrentWeekInfo();
   
-  const currentWeekBoundaries = getISOWeekBoundaries(now);
-  
-  logger.debug('Debug info', {
+  logger.debug('🔍 Current week validation:', {
     now: now.toISOString(),
-    currentWeekStart: currentWeekBoundaries.start,
-    currentWeekEnd: currentWeekBoundaries.end,
+    currentWeekStart: currentWeekInfo.startDate,
+    currentWeekEnd: currentWeekInfo.endDate,
     requestStartDate: startDate,
     requestEndDate: endDate
   });
   
   // Simple string comparison for date ranges
-  const result = startDate === currentWeekBoundaries.start && endDate === currentWeekBoundaries.end;
+  const result = startDate === currentWeekInfo.startDate && endDate === currentWeekInfo.endDate;
   
-  logger.debug('Debug info', {
-    startDateMatches: startDate === currentWeekBoundaries.start,
-    endDateMatches: endDate === currentWeekBoundaries.end,
+  logger.debug('🔍 Week comparison result:', {
+    startDateMatches: startDate === currentWeekInfo.startDate,
+    endDateMatches: endDate === currentWeekInfo.endDate,
     result
   });
   
   return result;
 }
 
-// Helper function to load data from database for previous months/weeks
+// Helper function to load data from database with date-based separation
 async function loadFromDatabase(clientId: string, startDate: string, endDate: string, platform: string = 'meta') {
   console.log(`📊 Loading data from database for ${clientId} (${startDate} to ${endDate}) - Platform: ${platform}`);
   
@@ -142,12 +124,24 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   
   console.log(`📊 Detected ${summaryType} request (${daysDiff} days) for ${platform} platform`);
   
-  // For weekly data, use date range query instead of exact date match
-  // This handles cases where database has different week start dates than frontend calculation
+  // 🎯 DATE-BASED SEPARATION RULES:
+  // - Weekly data: Always from campaign_summaries table
+  // - Monthly data: From campaign_summaries table (for now, will migrate to monthly_summaries later)
+  // - Current periods: Use smart caching (3-hour refresh)
+  // - Historical periods: Use stored database records
+  
+  const now = new Date();
+  const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
+  const isCurrentMonth = summaryType === 'monthly' && startDate === currentMonth;
+  const isCurrentWeek = summaryType === 'weekly' && start <= now && end >= now;
+  
+  console.log(`🎯 Period classification: ${isCurrentMonth ? 'CURRENT MONTH' : isCurrentWeek ? 'CURRENT WEEK' : 'HISTORICAL PERIOD'}`);
+  
   let storedSummary, error;
   
   if (summaryType === 'weekly') {
-    console.log(`📅 Searching for weekly data between ${startDate} and ${endDate}`);
+    // 📅 WEEKLY DATA: Always use campaign_summaries table
+    console.log(`📅 Searching for weekly data in campaign_summaries between ${startDate} and ${endDate}`);
     
     const { data: weeklyResults, error: weeklyError } = await supabase
       .from('campaign_summaries')
@@ -194,18 +188,26 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       }
     }
   } else {
-    // For monthly data, keep exact date matching
+    // 📅 MONTHLY DATA: Use campaign_summaries for now (will migrate to monthly_summaries later)
+    console.log(`📅 Searching for monthly data in campaign_summaries for ${startDate}`);
+    
     const { data: monthlyResult, error: monthlyError } = await supabase
       .from('campaign_summaries')
       .select('*')
       .eq('client_id', clientId)
       .eq('summary_date', startDate)
-      .eq('summary_type', summaryType)
+      .eq('summary_type', 'monthly')
       .eq('platform', platform)
       .single();
       
     storedSummary = monthlyResult;
     error = monthlyError;
+    
+    if (storedSummary) {
+      console.log(`✅ Found monthly data for ${storedSummary.summary_date}`);
+    } else {
+      console.log(`⚠️ No monthly data found for ${startDate}`);
+    }
   }
 
   if (error || !storedSummary) {
@@ -571,6 +573,19 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           // Use the shared weekly smart cache helper
           const { getSmartWeekCacheData } = await import('../../../lib/smart-cache-helper');
           const cacheResult = await getSmartWeekCacheData(clientId, false, requestedPeriodId || undefined);
+          
+          // 🔧 DEBUG: Log what smart cache actually returned
+          console.log('🔍 SMART CACHE RESULT ANALYSIS:', {
+            periodId: requestedPeriodId,
+            success: cacheResult.success,
+            shouldUseDatabase: cacheResult.shouldUseDatabase,
+            campaignCount: cacheResult.data?.campaigns?.length || 0,
+            totalSpend: cacheResult.data?.stats?.totalSpend || 0,
+            source: cacheResult.source,
+            fromCache: cacheResult.data?.fromCache,
+            hasData: !!cacheResult.data,
+            willReturnData: cacheResult.success && cacheResult.data?.campaigns?.length >= 0
+          });
           
           if (cacheResult.shouldUseDatabase) {
             // Historical week - use database lookup instead of smart cache

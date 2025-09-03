@@ -591,17 +591,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     // Calculate conversion metrics (same logic as monthly)
     const totalConversionsSum = campaignInsights.reduce((sum, c) => sum + (c.conversions || 0), 0);
     
-    const realConversionMetrics = campaignInsights.reduce((acc, campaign) => {
-      return {
-        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-        booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
-        reservations: acc.reservations + (campaign.reservations || 0),
-        reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-      };
-    }, {
+    // 🔧 FIX: Check daily_kpi_data for real conversion metrics (same as monthly system)
+    let realConversionMetrics = {
       click_to_call: 0,
       email_contacts: 0,
       booking_step_1: 0,
@@ -609,30 +600,97 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       booking_step_3: 0,
       reservations: 0,
       reservation_value: 0,
-    });
+    };
+
+    // Try to get real conversion data from daily_kpi_data table
+    try {
+      const { data: dailyKpiData, error: kpiError } = await supabase
+        .from('daily_kpi_data')
+        .select('*')
+        .eq('client_id', client.id)
+        .gte('date', currentWeek.startDate)
+        .lte('date', currentWeek.endDate);
+
+      if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
+        logger.info(`🔧 Found ${dailyKpiData.length} daily KPI records for weekly period, using real conversion data`);
+        
+        // Aggregate real conversion metrics from daily_kpi_data
+        realConversionMetrics = dailyKpiData.reduce((acc: any, record: any) => ({
+          click_to_call: acc.click_to_call + (record.click_to_call || 0),
+          email_contacts: acc.email_contacts + (record.email_contacts || 0),
+          booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
+          booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
+          booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0),
+          reservations: acc.reservations + (record.reservations || 0),
+          reservation_value: acc.reservation_value + (record.reservation_value || 0),
+        }), realConversionMetrics);
+        
+        logger.info(`✅ Using real weekly conversion metrics from daily_kpi_data:`, realConversionMetrics);
+      } else {
+        logger.warn(`⚠️ No daily_kpi_data found for weekly period ${currentWeek.startDate}-${currentWeek.endDate}, falling back to Meta API data`);
+        
+        // Fallback: Extract from Meta API campaign data
+        realConversionMetrics = campaignInsights.reduce((acc, campaign) => {
+          return {
+            click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+            email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+            booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+            booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+            booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+            reservations: acc.reservations + (campaign.reservations || 0),
+            reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+          };
+        }, realConversionMetrics);
+        
+        logger.info(`📊 Using Meta API conversion metrics as fallback:`, realConversionMetrics);
+      }
+    } catch (error) {
+      logger.error('❌ Failed to fetch daily_kpi_data for weekly conversion metrics:', error);
+      
+      // Final fallback: Extract from Meta API campaign data
+      realConversionMetrics = campaignInsights.reduce((acc, campaign) => {
+        return {
+          click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+          email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+          booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+          booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+          booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+          reservations: acc.reservations + (campaign.reservations || 0),
+          reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+        };
+      }, realConversionMetrics);
+    }
+
+    // 🔧 FIX: Use real conversion metrics when available, only fall back to estimates if no real data
+    const hasRealData = realConversionMetrics.booking_step_1 > 0 || 
+                       realConversionMetrics.booking_step_2 > 0 || 
+                       realConversionMetrics.booking_step_3 > 0 ||
+                       realConversionMetrics.click_to_call > 0 ||
+                       realConversionMetrics.email_contacts > 0 ||
+                       realConversionMetrics.reservations > 0;
 
     const conversionMetrics = {
-      click_to_call: realConversionMetrics.click_to_call > 0 
+      click_to_call: hasRealData 
         ? realConversionMetrics.click_to_call 
         : Math.round(totalConversionsSum * 0.15),
       
-      email_contacts: realConversionMetrics.email_contacts > 0 
+      email_contacts: hasRealData 
         ? realConversionMetrics.email_contacts 
         : Math.round(totalConversionsSum * 0.10),
       
-      booking_step_1: realConversionMetrics.booking_step_1 > 0 
+      booking_step_1: hasRealData 
         ? realConversionMetrics.booking_step_1 
         : Math.round(totalConversionsSum * 0.75),
       
-      booking_step_2: realConversionMetrics.booking_step_2 > 0 
+      booking_step_2: hasRealData 
         ? realConversionMetrics.booking_step_2 
         : Math.round(totalConversionsSum * 0.75 * 0.50),
       
-      booking_step_3: realConversionMetrics.booking_step_3 > 0 
+      booking_step_3: hasRealData 
         ? realConversionMetrics.booking_step_3 
         : Math.round(totalConversionsSum * 0.75 * 0.50 * 0.8), // 80% of step 2 proceed to step 3
       
-      reservations: realConversionMetrics.reservations > 0 
+      reservations: hasRealData 
         ? realConversionMetrics.reservations 
         : totalConversionsSum,
       
@@ -648,6 +706,12 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         ? totalSpend / (realConversionMetrics.reservations || totalConversionsSum) 
         : 0
     };
+
+    logger.info(`📊 Final weekly conversion metrics:`, {
+      hasRealData,
+      conversionMetrics,
+      source: hasRealData ? 'real_data' : 'calculated_estimates'
+    });
 
     return {
       client: {
@@ -757,7 +821,31 @@ async function executeSmartWeeklyCacheRequest(clientId: string, targetWeek: any,
         .single();
 
       if (!cacheError && cachedData) {
-        if (isCacheFresh(cachedData.last_updated)) {
+        // 🔧 FIX: Check for corrupted cache data (wrong date ranges)
+        const cacheData = cachedData.cache_data;
+        const expectedStart = targetWeek.startDate;
+        const expectedEnd = targetWeek.endDate;
+        const actualStart = cacheData?.dateRange?.start;
+        const actualEnd = cacheData?.dateRange?.end;
+        
+        const isCorruptedCache = actualStart !== expectedStart || actualEnd !== expectedEnd;
+        
+        if (isCorruptedCache) {
+          logger.info(`🚨 CORRUPTED CACHE DETECTED for ${targetWeek.periodId}:`, {
+            expected: `${expectedStart} to ${expectedEnd}`,
+            actual: `${actualStart} to ${actualEnd}`,
+            action: 'Forcing fresh fetch'
+          });
+          
+          // Delete corrupted cache entry
+          await supabase
+            .from('current_week_cache')
+            .delete()
+            .eq('client_id', clientId)
+            .eq('period_id', targetWeek.periodId);
+            
+          logger.info('🗑️ Deleted corrupted cache entry, will fetch fresh data');
+        } else if (isCacheFresh(cachedData.last_updated)) {
           logger.info('✅ Returning fresh weekly cached data');
           
           return {

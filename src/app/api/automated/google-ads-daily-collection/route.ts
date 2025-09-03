@@ -8,7 +8,7 @@ import logger from '../../../../lib/logger';
 
 export async function GET() {
   // For Vercel cron jobs - they only support GET requests
-  return POST(new NextRequest('http://localhost:3000/api/automated/google-ads-daily-collection', { method: 'GET' }));
+  return POST(new NextRequest('http://localhost:3000/api/automated/google-ads-daily-collection'));
 }
 
 export async function POST(request: NextRequest) {
@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
             booking_step_3: Math.round(dailyTotals.booking_step_3 || 0),
             reservations: Math.round(dailyTotals.reservations || 0),
             reservation_value: Math.round(dailyTotals.reservation_value * 100) / 100, // Round to 2 decimal places
-            campaign_data: campaigns, // Store raw campaign data for detailed analysis
+            campaign_data: campaigns as any, // Type assertion for JSON compatibility
             last_updated: new Date().toISOString()
           };
 
@@ -186,13 +186,14 @@ export async function POST(request: NextRequest) {
             .from('campaign_summaries')
             .upsert({
               ...summaryData,
-              summary_type: 'weekly'
-            }, {
+              summary_type: 'weekly',
+              summary_date: targetDate || new Date().toISOString().split('T')[0]
+            } as any, {
               onConflict: 'client_id,summary_type,summary_date'
             });
 
           // Also store as monthly summary (using first day of month as date)
-          const monthDate = new Date(targetDate);
+          const monthDate = new Date(targetDate!);
           const monthlyDate = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}-01`;
           
           const monthlyInsert = await supabaseAdmin!
@@ -201,7 +202,7 @@ export async function POST(request: NextRequest) {
               ...summaryData,
               summary_type: 'monthly',
               summary_date: monthlyDate
-            }, {
+            } as any, {
               onConflict: 'client_id,summary_type,summary_date'
             });
 

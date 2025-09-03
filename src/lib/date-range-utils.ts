@@ -95,7 +95,7 @@ export function getMonthBoundaries(year: number, month: number): DateRange {
  */
 export function getWeekBoundaries(startDate: Date): DateRange {
   const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6); // Add 6 days for a 7-day week (timezone-safe)
+  endDate.setUTCDate(startDate.getUTCDate() + 6); // Add 6 days for a 7-day week (UTC timezone-safe)
   
   return {
     start: formatDateForMetaAPI(startDate),
@@ -105,12 +105,12 @@ export function getWeekBoundaries(startDate: Date): DateRange {
 
 /**
  * Format date for Meta API (YYYY-MM-DD)
- * Uses timezone-safe formatting to avoid UTC conversion issues
+ * Uses UTC formatting to avoid timezone conversion issues
  */
 export function formatDateForMetaAPI(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -180,12 +180,23 @@ export function validateDateRange(startDate: string, endDate: string): {
   
   // Check if end date is not in the future
   // For current month: allow up to today
+  // For current week: allow up to end of current week (even if in future)
   // For past months: allow up to end of that month
   const currentMonth = currentDate.getFullYear() === start.getFullYear() && 
                       currentDate.getMonth() === start.getMonth();
   
+  // Check if this is a current week request (7 days or less, includes today)
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const isWeeklyRequest = daysDiff <= 7;
+  const isCurrentWeek = isWeeklyRequest && start <= currentDate && end >= currentDate;
+  
   let maxAllowedEnd: Date;
-  if (currentMonth) {
+  if (isCurrentWeek) {
+    // Current week: allow up to end of week (even if in future)
+    maxAllowedEnd = new Date(end);
+    maxAllowedEnd.setHours(23, 59, 59, 999);
+    logger.info('📅 Current week detected, allowing future dates within week');
+  } else if (currentMonth) {
     // Current month: allow up to today (set to end of today for comparison)
     maxAllowedEnd = new Date(currentDate);
     maxAllowedEnd.setHours(23, 59, 59, 999); // End of today
@@ -199,13 +210,16 @@ export function validateDateRange(startDate: string, endDate: string): {
     end: end.toISOString(),
     maxAllowedEnd: maxAllowedEnd.toISOString(),
     isCurrentMonth: currentMonth,
+    isCurrentWeek: isCurrentWeek,
+    isWeeklyRequest: isWeeklyRequest,
+    daysDiff: daysDiff,
     isEndInFuture: end > maxAllowedEnd
   });
   
   // Check if end date is in the future relative to what's allowed
   if (end > maxAllowedEnd) {
     logger.info('❌ End date is in the future');
-    return { isValid: false, error: `End date cannot be in the future. For ${currentMonth ? 'current month' : 'past month'}, maximum allowed is ${maxAllowedEnd.toISOString().split('T')[0]}` };
+    return { isValid: false, error: `End date cannot be in the future. For ${isCurrentWeek ? 'current week' : currentMonth ? 'current month' : 'past month'}, maximum allowed is ${maxAllowedEnd.toISOString().split('T')[0]}` };
   }
   
   // Check Meta API limits (typically 37 months back) - use actual current date

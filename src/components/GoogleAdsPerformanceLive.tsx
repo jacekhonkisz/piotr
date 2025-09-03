@@ -60,6 +60,7 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
   
   const requestInProgress = useRef(false);
   const [isRequesting, setIsRequesting] = useState(false);
+  const [waitingForSharedData, setWaitingForSharedData] = useState(false);
 
   const dateRange = useMemo(() => {
     const today = new Date();
@@ -155,23 +156,95 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     }
   }, [clientId]);
 
-  // Fetch placeholder daily data points for charts
+  // Fetch REAL daily data points for charts via API
   const fetchDailyDataPoints = useCallback(async () => {
     try {
-      // Empty arrays for now - will be populated with real data
-      const emptyData = Array.from({ length: 7 }, () => 0);
+      console.log('🔄 GoogleAdsPerformanceLive: Fetching REAL daily data points via API...');
+      
+      // Call our API endpoint instead of direct database access
+      const response = await fetch(`/api/google-ads-daily-data?clientId=${clientId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const dailyData = result.data || [];
+
+      if (dailyData && dailyData.length > 0) {
+        console.log(`✅ GoogleAdsPerformanceLive: Got ${dailyData.length} real daily data points from API`);
+        
+        // Create arrays for the last 7 days (fill missing days with 0)
+        const last7Days = [];
+        const today = new Date();
+        
+        for (let i = 6; i >= 0; i--) {
+          const date = new Date(today);
+          date.setDate(today.getDate() - i - 1); // -1 to exclude today
+          const dateStr = date.toISOString().split('T')[0];
+          last7Days.push(dateStr);
+        }
+        
+        // Map daily data to arrays
+        const clicksData = last7Days.map(date => {
+          const dayData = dailyData.find((d: any) => d.date === date);
+          return dayData ? dayData.total_clicks : 0;
+        });
+        
+        const spendData = last7Days.map(date => {
+          const dayData = dailyData.find((d: any) => d.date === date);
+          return dayData ? dayData.total_spend : 0;
+        });
+        
+        const conversionsData = last7Days.map(date => {
+          const dayData = dailyData.find((d: any) => d.date === date);
+          return dayData ? dayData.total_conversions : 0;
+        });
+        
+        const ctrData = last7Days.map(date => {
+          const dayData = dailyData.find((d: any) => d.date === date);
+          if (!dayData || dayData.total_impressions === 0) return 0;
+          return (dayData.total_clicks / dayData.total_impressions) * 100;
+        });
+
+        setClicksBars(clicksData);
+        setSpendBars(spendData);
+        setConversionsBars(conversionsData);
+        setCtrBars(ctrData);
+
+        console.log('📊 GoogleAdsPerformanceLive: Set real daily data bars:', {
+          clicks: clicksData,
+          spend: spendData,
+          conversions: conversionsData,
+          ctr: ctrData,
+          source: result.debug?.source
+        });
+
+        return true;
+      } else {
+        console.log('ℹ️ No Google Ads daily data available - using empty arrays');
+        const emptyData = Array.from({ length: 7 }, () => 0);
+        setClicksBars(emptyData);
+        setSpendBars(emptyData);
+        setConversionsBars(emptyData);
+        setCtrBars(emptyData);
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch daily Google Ads data via API:', error);
+      const emptyData = Array.from({ length: 7 }, () => 0);
       setClicksBars(emptyData);
       setSpendBars(emptyData);
       setConversionsBars(emptyData);
       setCtrBars(emptyData);
-
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to fetch daily Google Ads data:', error);
       return false;
     }
-  }, [dateRange]);
+  }, [clientId]);
 
   const handleRefresh = useCallback(() => {
     console.log('🔄 GoogleAdsPerformanceLive: Manual refresh requested');
@@ -180,73 +253,93 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
 
   // 🔧 FIX: Process shared data from dashboard (like MetaPerformanceLive does)
   useEffect(() => {
-    if (sharedData && sharedData.stats) {
-      console.log('📡 CRITICAL DEBUG - GoogleAdsPerformanceLive received sharedData:', {
-        hasStats: !!sharedData.stats,
-        stats: sharedData.stats,
-        hasConversionMetrics: !!sharedData.conversionMetrics,
-        conversionMetrics: sharedData.conversionMetrics,
-        debugSource: sharedData.debug?.source,
-        lastUpdated: sharedData.lastUpdated
-      });
+    console.log('📡 CRITICAL DEBUG - GoogleAdsPerformanceLive useEffect triggered:', {
+      hasSharedData: !!sharedData,
+      hasStats: !!sharedData?.stats,
+      sharedDataStats: sharedData?.stats,
+      debugSource: sharedData?.debug?.source
+    });
 
-      // 🔧 PREVENT DATA LOSS: Don't overwrite good data with empty/zero data
-      const hasValidData = sharedData.stats && (
-        sharedData.stats.totalClicks > 0 || 
-        sharedData.stats.totalSpend > 0 || 
-        sharedData.stats.totalImpressions > 0
-      );
+    if (sharedData) {
+      setWaitingForSharedData(false);
       
-      const currentHasValidData = stats && (
-        stats.totalClicks > 0 || 
-        stats.totalSpend > 0 || 
-        stats.totalImpressions > 0
-      );
-      
-      // 🔧 FIX: Always update if it's Google Ads data, even if values are small
-      const isGoogleAdsUpdate = sharedData.debug?.source?.includes('google') || 
-                               sharedData.debug?.source === 'database' ||
-                               sharedData.debug?.reason?.includes('Google');
-      
-      console.log('🔍 GoogleAds Data Update Decision:', {
-        hasValidData,
-        currentHasValidData,
-        isGoogleAdsUpdate,
-        willUpdate: hasValidData || !currentHasValidData || isGoogleAdsUpdate,
-        sharedDataSpend: sharedData.stats?.totalSpend,
-        currentSpend: stats?.totalSpend
-      });
-      
-      if (hasValidData || !currentHasValidData || isGoogleAdsUpdate) {
-        // Use shared data from dashboard
-        setStats(sharedData.stats);
-        setMetrics(sharedData.conversionMetrics);
-        setLastUpdated(sharedData.lastUpdated || new Date().toLocaleTimeString('pl-PL'));
-        setDataSource(sharedData.debug?.source || 'dashboard-shared');
-        setCacheAge(sharedData.debug?.cacheAge || null);
-        setLoading(false);
-
-        console.log('📊 CRITICAL DEBUG - GoogleAdsPerformanceLive state after setting:', {
-          statsSet: sharedData.stats,
-          metricsSet: sharedData.conversionMetrics,
-          hasValidData,
-          currentHasValidData
+      if (sharedData.stats) {
+        console.log('📡 CRITICAL DEBUG - GoogleAdsPerformanceLive received sharedData:', {
+          hasStats: !!sharedData.stats,
+          stats: sharedData.stats,
+          hasConversionMetrics: !!sharedData.conversionMetrics,
+          conversionMetrics: sharedData.conversionMetrics,
+          debugSource: sharedData.debug?.source,
+          lastUpdated: sharedData.lastUpdated
         });
+
+        // 🔧 PREVENT DATA LOSS: Don't overwrite good data with empty/zero data
+        const hasValidData = sharedData.stats && (
+          sharedData.stats.totalClicks > 0 || 
+          sharedData.stats.totalSpend > 0 || 
+          sharedData.stats.totalImpressions > 0
+        );
+        
+        const currentHasValidData = stats && (
+          stats.totalClicks > 0 || 
+          stats.totalSpend > 0 || 
+          stats.totalImpressions > 0
+        );
+        
+        // 🔧 FIX: Always update if it's Google Ads data, even if values are small
+        const isGoogleAdsUpdate = sharedData.debug?.source?.includes('google') || 
+                                 sharedData.debug?.source === 'database' ||
+                                 sharedData.debug?.reason?.includes('Google');
+        
+        console.log('🔍 GoogleAds Data Update Decision:', {
+          hasValidData,
+          currentHasValidData,
+          isGoogleAdsUpdate,
+          willUpdate: hasValidData || !currentHasValidData || isGoogleAdsUpdate,
+          sharedDataSpend: sharedData.stats?.totalSpend,
+          currentSpend: stats?.totalSpend
+        });
+        
+        if (hasValidData || !currentHasValidData || isGoogleAdsUpdate) {
+          // Use shared data from dashboard
+          setStats(sharedData.stats);
+          setMetrics(sharedData.conversionMetrics);
+          setLastUpdated(sharedData.lastUpdated || new Date().toLocaleTimeString('pl-PL'));
+          setDataSource(sharedData.debug?.source || 'dashboard-shared');
+          setCacheAge(sharedData.debug?.cacheAge || null);
+          setLoading(false);
+
+          console.log('📊 CRITICAL DEBUG - GoogleAdsPerformanceLive state after setting:', {
+            statsSet: sharedData.stats,
+            metricsSet: sharedData.conversionMetrics,
+            hasValidData,
+            currentHasValidData
+          });
+        } else {
+          console.log('🚫 PREVENTED DATA OVERWRITE: Keeping current valid data instead of empty shared data');
+          setLoading(false); // Still stop loading even if we don't update data
+        }
       } else {
-        console.log('🚫 PREVENTED DATA OVERWRITE: Keeping current valid data instead of empty shared data');
+        // SharedData exists but no stats - still stop loading to avoid "Brak danych"
+        console.log('📡 SharedData exists but no stats - stopping loading state');
+        setLoading(false);
       }
       
       return; // Don't fetch placeholder data if we have shared data
+    } else {
+      // No shared data yet - we might be waiting for it
+      console.log('📡 No sharedData yet - checking if we should wait');
+      setWaitingForSharedData(true);
     }
   }, [sharedData, stats]);
 
-  // Initialize with placeholder data only if no shared data
+  // Initialize with placeholder data only if no shared data and not waiting
   useEffect(() => {
-    if (!sharedData && !isRequesting && !requestInProgress.current && clientId) {
+    if (!sharedData && !waitingForSharedData && !isRequesting && !requestInProgress.current && clientId) {
       console.log('🔄 GoogleAdsPerformanceLive: Initializing with placeholder data (no shared data)');
       fetchGoogleAdsData(false);
     }
-  }, [clientId, isRequesting, fetchGoogleAdsData, sharedData]);
+  }, [clientId, isRequesting, fetchGoogleAdsData, sharedData, waitingForSharedData]);
 
   // Component instance tracking
   useEffect(() => {
@@ -285,10 +378,16 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
                 <span>Cache</span>
               </div>
             )}
-            {dataSource === 'placeholder' && (
+            {dataSource === 'placeholder' && !waitingForSharedData && (
               <div className="flex items-center space-x-1 text-warning-500">
                 <Target className="w-3 h-3" />
                 <span>Brak danych</span>
+              </div>
+            )}
+            {waitingForSharedData && (
+              <div className="flex items-center space-x-1 text-muted">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Ładowanie...</span>
               </div>
             )}
             {cacheAge && (
@@ -316,7 +415,16 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
         </div>
       </div>
 
-      {stats && (() => {
+      {loading || waitingForSharedData ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="flex items-center space-x-3">
+            <RefreshCw className="w-5 h-5 animate-spin text-orange" />
+            <span className="text-muted">
+              {waitingForSharedData ? 'Ładowanie danych Google Ads...' : 'Ładowanie...'}
+            </span>
+          </div>
+        </div>
+      ) : stats ? (() => {
         // 🔍 CRITICAL DEBUG: Log what we're about to render
         console.log('🎨 CRITICAL DEBUG - GoogleAdsPerformanceLive render:', {
           hasStats: !!stats,
@@ -358,7 +466,17 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
           variant="light"
         />
         );
-      })()}
+      })() : (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Target className="h-16 w-16 text-stroke mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-text mb-2">Brak danych Google Ads</h3>
+            <p className="text-muted">
+              Dane Google Ads pojawią się tutaj po skonfigurowaniu konta.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

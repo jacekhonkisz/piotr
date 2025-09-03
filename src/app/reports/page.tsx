@@ -950,6 +950,19 @@ function ReportsPageContent() {
 
   // Load data for a specific period with explicit client data
   const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false) => {
+    // 🔧 FORCE CORRECT VIEW TYPE: Auto-fix view type mismatch to prevent January dates
+    const detectedViewType = periodId.includes('-W') ? 'weekly' : 'monthly';
+    if (viewType !== detectedViewType) {
+      console.warn(`⚠️ VIEW TYPE MISMATCH: Period ${periodId} is ${detectedViewType} but current view is ${viewType}`);
+      console.warn(`🔧 AUTO-FIXING: Switching to ${detectedViewType} view to prevent January dates`);
+      
+      // Force switch to correct view type
+      setViewType(detectedViewType);
+      
+      // Don't continue with wrong view type - let the re-render handle it
+      return;
+    }
+    
     console.log(`📊 Loading ${viewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
     
     // CRITICAL: Prevent ALL duplicate calls with multiple layers of protection
@@ -980,12 +993,24 @@ function ReportsPageContent() {
     }
     
     // Layer 3: Check if we already have this data and it's not forced
-    if (!forceClearCache && reports[periodId] && reports[periodId].campaigns && reports[periodId].campaigns.length > 0) {
+    // 🔧 TEMPORARY FIX: Force refresh for all weekly data to clear corrupted cache
+    const forceWeeklyRefresh = viewType === 'weekly';
+    if (!forceClearCache && !forceWeeklyRefresh && reports[periodId] && reports[periodId].campaigns && reports[periodId].campaigns.length > 0) {
       console.log('🚫 BLOCKED: Data already exists (Layer 3)', {
         periodId,
         campaignCount: reports[periodId].campaigns.length
       });
       return;
+    }
+    
+    if (forceWeeklyRefresh) {
+      console.log('🔧 FORCING WEEKLY REFRESH: Clearing corrupted cached data for', periodId);
+      // Clear the corrupted data to force fresh API call
+      setReports(prev => {
+        const newState = { ...prev };
+        delete newState[periodId];
+        return newState;
+      });
     }
     
     // Track this call immediately
@@ -1005,10 +1030,11 @@ function ReportsPageContent() {
     })();
 
     // For previous periods, check if we already have this data
-    if (!isCurrentPeriod && reports[periodId]) {
-      console.log('✅ Data already loaded for previous period, skipping API call');
-      return;
-    }
+    // 🔧 DISABLED: Allow API calls for historical weeks to get fresh database data
+    // if (!isCurrentPeriod && reports[periodId]) {
+    //   console.log('✅ Data already loaded for previous period, skipping API call');
+    //   return;
+    // }
 
     if (isCurrentPeriod) {
       console.log(`🔄 Current ${viewType.slice(0, -2)} detected - using SMART CACHING system`);
@@ -1125,19 +1151,21 @@ function ReportsPageContent() {
         const [year, weekStr] = periodId.split('-W');
         const week = parseInt(weekStr || '1');
         
-        // Proper ISO week calculation - find the start date of the given ISO week
+        // CORRECTED ISO week calculation - find the start date of the given ISO week
         const yearNum = parseInt(year || new Date().getFullYear().toString());
         
-        // January 4th is always in week 1 of the ISO year
-        const jan4 = new Date(yearNum, 0, 4);
+        // Use UTC to avoid timezone issues
+        const jan4 = new Date(Date.UTC(yearNum, 0, 4));
+        const jan4Day = jan4.getUTCDay();
         
-        // Find the Monday of week 1
+        // Find the Monday of week 1 (ISO week starts on Monday)
+        const daysFromMonday = jan4Day === 0 ? 6 : jan4Day - 1; // Sunday = 6, Monday = 0
         const startOfWeek1 = new Date(jan4);
-        startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+        startOfWeek1.setUTCDate(jan4.getUTCDate() - daysFromMonday);
         
         // Calculate the start date of the target week
         const weekStartDate = new Date(startOfWeek1);
-        weekStartDate.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+        weekStartDate.setUTCDate(startOfWeek1.getUTCDate() + (week - 1) * 7);
         
         dateRange = getWeekBoundaries(weekStartDate);
         
@@ -1154,12 +1182,12 @@ function ReportsPageContent() {
         });
         
         // 🚨 CRITICAL DEBUG: Log the exact dates being used
-        console.log(`🚨 CRITICAL: Week ${week} of ${yearNum} should be:`, {
-          expectedStart: '2025-08-10', // Monday Aug 10
-          expectedEnd: '2025-08-16',   // Sunday Aug 16
+        console.log(`🚨 CRITICAL: Week ${week} of ${yearNum} calculated as:`, {
+          expectedForW36: week === 36 ? '2025-09-01 to 2025-09-07' : 'N/A',
           actualStart: dateRange.start,
           actualEnd: dateRange.end,
-          isCorrect: dateRange.start === '2025-08-10' && dateRange.end === '2025-08-16'
+          isW36Correct: week === 36 ? (dateRange.start === '2025-09-01' && dateRange.end === '2025-09-07') : 'N/A',
+          calculationMethod: 'CORRECTED UTC ISO week algorithm'
         });
       }
       
@@ -1358,6 +1386,18 @@ function ReportsPageContent() {
         data = await response.json();
         console.log(`✅ API call successful for ${periodId}:`, data);
         console.log(`🎯 ${isCurrentPeriod ? 'LIVE API DATA' : 'API DATA'} received for ${periodId}`);
+        
+        // 🔧 DEBUG: Check if API returned empty campaigns despite cache having data
+        const apiCampaigns = data.data?.campaigns || data.campaigns || [];
+        console.log(`🔍 API RESPONSE ANALYSIS:`, {
+          periodId,
+          apiSuccess: data.success,
+          apiCampaignCount: apiCampaigns.length,
+          apiFromCache: data.data?.fromCache || data.fromCache,
+          apiDateRange: data.data?.dateRange || data.dateRange,
+          expectedCacheData: '11 campaigns, 1723.33 PLN (from audit)',
+          possibleIssue: apiCampaigns.length === 0 ? 'API not returning cached data properly' : 'API data looks good'
+        });
         
         // 🚨 CRITICAL DEBUG: Check what the API actually returned
         console.log(`🚨 CRITICAL API RESPONSE:`, {

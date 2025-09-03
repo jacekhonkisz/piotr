@@ -51,7 +51,8 @@ function getPreviousYearDateRange(dateRange: { start: string; end: string }) {
 
 // Helper function to calculate percentage change
 function calculatePercentageChange(current: number, previous: number): number {
-  if (previous === 0) return current > 0 ? 100 : 0;
+  // If no previous data exists, don't show misleading percentage
+  if (previous === 0) return 0;
   return ((current - previous) / previous) * 100;
 }
 
@@ -91,6 +92,29 @@ export async function POST(request: NextRequest) {
 
     if (!clientId || !dateRange?.start || !dateRange?.end) {
       return createErrorResponse('Missing required parameters: clientId, dateRange.start, dateRange.end', 400);
+    }
+
+    // Validate if year-over-year comparison is appropriate for this date range
+    const startDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    const daysDifference = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Only allow year-over-year for complete monthly periods (28+ days)
+    if (daysDifference < 28) {
+      logger.info('❌ Year-over-year comparison blocked for short period', {
+        clientId,
+        dateRange,
+        daysDifference,
+        reason: 'Period too short for meaningful year-over-year comparison'
+      });
+      
+      return NextResponse.json({
+        current: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 },
+        previous: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 },
+        changes: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 },
+        blocked: true,
+        reason: 'Year-over-year comparisons are only shown for complete monthly periods'
+      });
     }
     
     // Get client data and validate access

@@ -2,45 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { fetchFreshGoogleAdsCurrentWeekData } from '../../../../lib/google-ads-smart-cache-helper';
 import logger from '../../../../lib/logger';
+import { getCurrentWeekInfo } from '../../../../lib/week-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Helper function to get current week info
-function getCurrentWeekInfo() {
-  const now = new Date();
-  
-  // Get Monday of current week
-  const currentDayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-  const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1; // If Sunday, go back 6 days
-  
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - daysToMonday);
-  monday.setHours(0, 0, 0, 0);
-  
-  // Get Sunday of current week
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  sunday.setHours(23, 59, 59, 999);
-  
-  // Calculate ISO week number
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-  const weekNumber = Math.ceil((((monday.getTime() - yearStart.getTime()) / 86400000) + yearStart.getDay() + 1) / 7);
-  
-  return {
-    periodId: `${now.getFullYear()}-W${weekNumber.toString().padStart(2, '0')}`,
-    year: now.getFullYear(),
-    week: weekNumber,
-    startDate: monday.toISOString().split('T')[0],
-    endDate: sunday.toISOString().split('T')[0]
-  };
-}
+// Using centralized getCurrentWeekInfo from week-utils.ts
 
 export async function GET() {
   // For Vercel cron jobs - they only support GET requests
-  return POST(new NextRequest('http://localhost:3000/api/automated/refresh-google-ads-current-week-cache', { method: 'GET' }));
+  return POST();
 }
 
 export async function POST() {
@@ -106,22 +79,22 @@ export async function POST() {
         // Fetch fresh Google Ads data for current week
         const refreshResult = await fetchFreshGoogleAdsCurrentWeekData(client.id);
         
-        if (refreshResult.success) {
+        if (refreshResult && refreshResult.campaigns) {
           console.log(`✅ Successfully refreshed Google Ads current week cache for ${client.name}`);
-          console.log(`   Campaigns: ${refreshResult.data?.campaigns?.length || 0}`);
-          console.log(`   Total Spend: ${refreshResult.data?.totals?.totalSpend || 0}`);
+          console.log(`   Campaigns: ${refreshResult.campaigns?.length || 0}`);
+          console.log(`   Total Spend: ${refreshResult.stats?.totalSpend || 0}`);
           
           successCount++;
           results.push({
             clientId: client.id,
             clientName: client.name,
             success: true,
-            campaigns: refreshResult.data?.campaigns?.length || 0,
-            totalSpend: refreshResult.data?.totals?.totalSpend || 0,
-            cacheKey: refreshResult.cacheKey
+            campaigns: refreshResult.campaigns?.length || 0,
+            totalSpend: refreshResult.stats?.totalSpend || 0,
+            cacheKey: `google_ads_${client.id}_current_week`
           });
         } else {
-          throw new Error(refreshResult.error || 'Unknown error in Google Ads cache refresh');
+          throw new Error('Failed to refresh Google Ads cache - no data returned');
         }
         
         // Add delay between clients to respect Google Ads API rate limits

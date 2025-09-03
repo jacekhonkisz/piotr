@@ -76,7 +76,8 @@ interface ReportData {
     booking_step_2: number;
   };
   reportType?: 'weekly' | 'monthly' | 'custom';
-  platform?: 'meta' | 'google'; // Add platform information for HTML generation
+  platform?: 'meta' | 'google' | 'unified'; // Add platform information for HTML generation
+  isUnifiedReport?: boolean; // Flag to indicate unified multi-platform report
   previousYearTotals?: {
     spend: number;
     impressions: number;
@@ -1218,7 +1219,7 @@ import logger from '../../../lib/logger';
                             </tr>
                         </thead>
                         <tbody>
-                            ${reportData.platform === 'meta' ? `
+                            ${reportData.platform === 'meta' || reportData.isUnifiedReport ? `
                             <!-- Meta Ads Section -->
                             <tr style="background: #f0f8ff;">
                                 <td colspan="4" style="padding: 12px 15px; border: 1px solid #dee2e6; font-weight: 600; color: #1877f2; text-align: center;">
@@ -1226,7 +1227,7 @@ import logger from '../../../lib/logger';
                                 </td>
                             </tr>
                             ` : ''}
-                            ${reportData.platform === 'meta' ? `
+                            ${reportData.platform === 'meta' || reportData.isUnifiedReport ? `
                             <tr>
                                 <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wydatki</td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
@@ -1250,7 +1251,7 @@ import logger from '../../../lib/logger';
                                 </td>
                             </tr>
                             ` : ''}
-                            ${reportData.platform === 'meta' ? `
+                            ${reportData.platform === 'meta' || reportData.isUnifiedReport ? `
                             <tr>
                                 <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Rezerwacje</td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
@@ -1297,7 +1298,7 @@ import logger from '../../../lib/logger';
                             </tr>
                             ` : ''}
                             
-                            ${reportData.platform === 'google' ? `
+                            ${reportData.platform === 'google' || reportData.isUnifiedReport ? `
                             <!-- Google Ads Section -->
                             <tr style="background: #f0fff0;">
                                 <td colspan="4" style="padding: 12px 15px; border: 1px solid #dee2e6; font-weight: 600; color: #34a853; text-align: center;">
@@ -1305,17 +1306,27 @@ import logger from '../../../lib/logger';
                                 </td>
                             </tr>
                             ` : ''}
-                            ${reportData.platform === 'google' ? `
+                            ${reportData.platform === 'google' || reportData.isUnifiedReport ? `
                             <tr>
                                 <td style="padding: 15px; padding-left: 30px; border: 1px solid #dee2e6; font-weight: 500;">Wydatki</td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
                                     ${formatCurrency(reportData.platformTotals?.google?.totalSpend || 0)}
                                 </td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
-                                    Brak danych*
+                                    ${reportData.previousYearTotals ? formatCurrency(reportData.previousYearTotals.spend) : 'Brak danych'}
                                 </td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
-                                    —
+                                    ${reportData.previousYearTotals && reportData.previousYearTotals.spend > 0 ? 
+                                        (() => {
+                                            const current = reportData.platformTotals?.google?.totalSpend || 0;
+                                            const previous = reportData.previousYearTotals.spend;
+                                            const change = ((current - previous) / previous) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            const color = change > 0 ? '#28a745' : change < 0 ? '#dc3545' : '#6c757d';
+                                            return `<span style="color: ${color};">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+                                        })() : '—'
+                                    }
                                 </td>
                             </tr>
                             <tr>
@@ -1324,10 +1335,20 @@ import logger from '../../../lib/logger';
                                     ${reportData.platformTotals?.google?.totalReservations || 0}
                                 </td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
-                                    Brak danych*
+                                    ${reportData.previousYearConversions ? reportData.previousYearConversions.reservations : 'Brak danych'}
                                 </td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
-                                    —
+                                    ${reportData.previousYearConversions && reportData.previousYearConversions.reservations > 0 ? 
+                                        (() => {
+                                            const current = reportData.platformTotals?.google?.totalReservations || 0;
+                                            const previous = reportData.previousYearConversions.reservations;
+                                            const change = ((current - previous) / previous) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            const color = change > 0 ? '#28a745' : change < 0 ? '#dc3545' : '#6c757d';
+                                            return `<span style="color: ${color};">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+                                        })() : '—'
+                                    }
                                 </td>
                             </tr>
                             <tr>
@@ -1336,10 +1357,20 @@ import logger from '../../../lib/logger';
                                     ${formatCurrency(reportData.platformTotals?.google?.totalReservationValue || 0)}
                                 </td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6; color: #6c757d;">
-                                    Brak danych*
+                                    ${reportData.previousYearConversions ? formatCurrency(reportData.previousYearConversions.reservation_value) : 'Brak danych'}
                                 </td>
                                 <td style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">
-                                    —
+                                    ${reportData.previousYearConversions && reportData.previousYearConversions.reservation_value > 0 ? 
+                                        (() => {
+                                            const current = reportData.platformTotals?.google?.totalReservationValue || 0;
+                                            const previous = reportData.previousYearConversions.reservation_value;
+                                            const change = ((current - previous) / previous) * 100;
+                                            const arrow = change > 0 ? '↗' : change < 0 ? '↘' : '→';
+                                            const sign = change > 0 ? '+' : '';
+                                            const color = change > 0 ? '#28a745' : change < 0 ? '#dc3545' : '#6c757d';
+                                            return `<span style="color: ${color};">${arrow} ${sign}${change.toFixed(1)}%</span>`;
+                                        })() : '—'
+                                    }
                                 </td>
                             </tr>
                             ` : ''}
@@ -1352,7 +1383,7 @@ import logger from '../../../lib/logger';
                     </p>
                     </div>
 
-                ${reportData.platform === 'meta' ? `
+                ${reportData.platform === 'meta' || reportData.isUnifiedReport ? `
                 <!-- Meta Ads Header -->
                 <h2 style="text-align: center; margin: 0 0 20px 0; color: #1877f2; font-size: 28px; font-weight: 600; width: 100%; display: block;">Meta Ads</h2>
                 
@@ -1448,7 +1479,7 @@ import logger from '../../../lib/logger';
             </div>
             ` : ''}
             
-            ${reportData.platform === 'google' ? `
+            ${reportData.platform === 'google' || reportData.isUnifiedReport ? `
             <!-- Page 3 - Google Ads Performance & Conversion Metrics -->
             <div style="page-break-before: always; padding: 40px; width: 100%; box-sizing: border-box; font-family: Arial, sans-serif;">
                 <!-- Google Ads Header -->
@@ -2372,8 +2403,11 @@ function getPreviousWeekDateRange(dateRange: { start: string; end: string }) {
   const currentStart = new Date(dateRange.start);
   
   // Previous week is exactly 7 days before current week start
-  const previousStart = new Date(currentStart.getTime() - (7 * 24 * 60 * 60 * 1000));
-  const previousEnd = new Date(previousStart.getTime() + (6 * 24 * 60 * 60 * 1000));
+  // 🔧 FIX: Use setDate instead of getTime() + milliseconds to avoid invalid dates
+  const previousStart = new Date(currentStart);
+  previousStart.setDate(currentStart.getDate() - 7);
+  const previousEnd = new Date(previousStart);
+  previousEnd.setDate(previousStart.getDate() + 6);
   
   const result = {
     start: previousStart.toISOString().split('T')[0],
@@ -2770,13 +2804,22 @@ export async function POST(request: NextRequest) {
     const client = directClient || clientData;
     logger.info('Success', client.name);
 
-    // Auto-detect platform based on client configuration if not explicitly provided
+    // Enhanced platform detection for unified reports
     let detectedPlatform = platform;
+    let shouldFetchBothPlatforms = false;
+    
     if (!platform || platform === 'meta') {
-      // Check if client has Google Ads enabled and should use Google Ads data
+      // Check if client has Google Ads enabled
       if (client.google_ads_enabled && client.google_ads_customer_id) {
-        detectedPlatform = 'google';
-        logger.info('🎯 Auto-detected Google Ads platform based on client configuration');
+        // If client has both Meta (ad_account_id) and Google Ads, fetch both for unified report
+        if (client.ad_account_id) {
+          detectedPlatform = 'meta'; // Keep Meta as primary for backward compatibility
+          shouldFetchBothPlatforms = true;
+          logger.info('🎯 Unified report mode: Client has both Meta and Google Ads - fetching both platforms');
+        } else {
+          detectedPlatform = 'google';
+          logger.info('🎯 Auto-detected Google Ads platform (no Meta account configured)');
+        }
       } else {
         detectedPlatform = 'meta';
         logger.info('🎯 Using Meta platform (default or client has no Google Ads)');
@@ -2786,7 +2829,9 @@ export async function POST(request: NextRequest) {
     logger.info(`📊 PDF Generation Platform: ${detectedPlatform}`, {
       requestedPlatform: platform,
       detectedPlatform,
+      shouldFetchBothPlatforms,
       hasGoogleAds: !!client.google_ads_enabled,
+      hasMetaAccount: !!client.ad_account_id,
       hasGoogleCustomerId: !!client.google_ads_customer_id
     });
 
@@ -2877,13 +2922,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fetch Google Ads data only if platform is Google or if we need both platforms
-    // For platform-specific reports, only fetch the relevant platform data
-    if (detectedPlatform === 'google') {
-      logger.info('🎯 Platform is Google Ads - fetching Google Ads data only');
+    // Fetch Google Ads data if platform is Google OR if unified report mode is enabled
+    if (detectedPlatform === 'google' || shouldFetchBothPlatforms) {
+      if (shouldFetchBothPlatforms) {
+        logger.info('🎯 [UNIFIED] Fetching Google Ads data for unified report');
+      } else {
+        logger.info('🎯 Platform is Google Ads - fetching Google Ads data only');
+      }
       googleCampaigns = await fetchGoogleAdsData();
     } else {
-      logger.info('🎯 Platform is Meta - skipping Google Ads data fetch for platform-specific report');
+      logger.info('🎯 Platform is Meta only - skipping Google Ads data fetch');
       googleCampaigns = []; // No Google Ads data for Meta-only reports
     }
 
@@ -3011,6 +3059,80 @@ export async function POST(request: NextRequest) {
     // ALWAYS fetch Google Ads data regardless of path (Meta or fallback)
     // Google Ads data already fetched at the beginning - no need for ensured fetch
     logger.info(`✅ [PRODUCTION] Google Ads data status: ${googleCampaigns.length} campaigns available`);
+
+    // Fetch Meta data if unified report mode is enabled
+    if (shouldFetchBothPlatforms && detectedPlatform === 'meta') {
+      logger.info('🔍 [UNIFIED] Fetching Meta data for unified report...');
+      try {
+        // Fetch Meta data using smart cache API
+        const metaResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-live-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            dateRange: {
+              start: dateRange.start,
+              end: dateRange.end
+            },
+            clientId: clientId,
+            platform: 'meta'
+          })
+        });
+
+        if (metaResponse.ok) {
+          const metaData = await metaResponse.json();
+          if (metaData.success && metaData.data?.campaigns) {
+            // Convert Meta campaigns to unified format
+            const fetchedMetaCampaigns = metaData.data.campaigns.map(convertMetaCampaignToUnified);
+            metaCampaigns = fetchedMetaCampaigns;
+            logger.info(`✅ [UNIFIED] Fetched ${metaCampaigns.length} Meta campaigns for unified report`);
+            
+            // Fetch Meta tables data separately for unified reports
+            try {
+              const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-meta-tables`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  dateRange: {
+                    start: dateRange.start,
+                    end: dateRange.end
+                  },
+                  clientId: clientId
+                })
+              });
+
+              if (metaTablesResponse.ok) {
+                const metaTablesResult = await metaTablesResponse.json();
+                if (metaTablesResult.success && metaTablesResult.data?.metaTables) {
+                  metaTablesData = metaTablesResult.data.metaTables;
+                  logger.info(`✅ [UNIFIED] Fetched Meta tables data: ${metaTablesData.demographicPerformance?.length || 0} demographic records`);
+                } else {
+                  logger.warn('⚠️ [UNIFIED] Meta tables API returned success but no metaTables data');
+                }
+              } else {
+                const errorText = await metaTablesResponse.text();
+                logger.warn('⚠️ [UNIFIED] Failed to fetch Meta tables data', {
+                  status: metaTablesResponse.status,
+                  statusText: metaTablesResponse.statusText,
+                  error: errorText
+                });
+              }
+            } catch (error) {
+              logger.error('❌ [UNIFIED] Error fetching Meta tables data:', error);
+            }
+          }
+        } else {
+          logger.warn('⚠️ [UNIFIED] Failed to fetch Meta data for unified report');
+        }
+      } catch (error) {
+        logger.error('❌ [UNIFIED] Error fetching Meta data:', error);
+      }
+    }
 
     // ALWAYS calculate platform totals after data fetching (regardless of path)
     try {
@@ -3159,6 +3281,52 @@ export async function POST(request: NextRequest) {
       } else {
         logger.info('❌ No previous year data returned from fetchPreviousYearDataFromDB');
       }
+      
+      // Fetch Meta tables data for unified reports in database-only path
+      logger.info('🔍 [DEBUG] Database path Meta tables check:', {
+        shouldFetchBothPlatforms,
+        detectedPlatform,
+        condition: shouldFetchBothPlatforms && detectedPlatform === 'meta'
+      });
+      
+      if (shouldFetchBothPlatforms && detectedPlatform === 'meta') {
+        logger.info('🔍 [UNIFIED-DB] Fetching Meta tables data for unified report (database path)...');
+        try {
+          const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-meta-tables`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              dateRange: {
+                start: dateRange.start,
+                end: dateRange.end
+              },
+              clientId: clientId
+            })
+          });
+
+          if (metaTablesResponse.ok) {
+            const metaTablesResult = await metaTablesResponse.json();
+            if (metaTablesResult.success && metaTablesResult.data?.metaTables) {
+              metaTablesData = metaTablesResult.data.metaTables;
+              logger.info(`✅ [UNIFIED-DB] Fetched Meta tables data: ${metaTablesData.demographicPerformance?.length || 0} demographic records`);
+            } else {
+              logger.warn('⚠️ [UNIFIED-DB] Meta tables API returned success but no metaTables data');
+            }
+          } else {
+            const errorText = await metaTablesResponse.text();
+            logger.warn('⚠️ [UNIFIED-DB] Failed to fetch Meta tables data', {
+              status: metaTablesResponse.status,
+              statusText: metaTablesResponse.statusText,
+              error: errorText
+            });
+          }
+        } catch (error) {
+          logger.error('❌ [UNIFIED-DB] Error fetching Meta tables data:', error);
+        }
+      }
     }
 
     // Use Meta Ads tables data if provided directly, otherwise skip (avoid 401 error)
@@ -3217,16 +3385,74 @@ export async function POST(request: NextRequest) {
       
       const cacheService = ExecutiveSummaryCacheService.getInstance();
       
-      // Check if summary exists in cache
-      const cachedSummary = await cacheService.getCachedSummary(clientId, dateRange);
+      // Check if summary exists in cache (skip cache in development mode)
+      const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_APP_URL?.includes('localhost');
+      const cachedSummary = isDevelopment ? null : await cacheService.getCachedSummary(clientId, dateRange);
       
-      if (cachedSummary) {
+      if (cachedSummary && !isDevelopment) {
         executiveSummary = cachedSummary.content;
         logger.info('✅ Using cached AI Executive Summary');
       } else {
-        logger.info('⚠️ No cached AI Executive Summary found, generating new one...');
+        if (isDevelopment) {
+          logger.info('🔄 [DEV MODE] Skipping cache - generating fresh AI summary for development');
+        } else {
+          logger.info('⚠️ No cached AI Executive Summary found, generating new one...');
+        }
         
-        // Generate new AI summary (AI API now fetches its own data)
+        // Generate new AI summary using the same data as PDF for consistency
+        // Prepare unified report data for AI summary to ensure data consistency
+        const unifiedReportData = {
+          account_summary: {
+            total_spend: platformTotals?.combined?.totalSpend || calculatedTotals?.spend || 0,
+            total_impressions: platformTotals?.combined?.totalImpressions || calculatedTotals?.impressions || 0,
+            total_clicks: platformTotals?.combined?.totalClicks || calculatedTotals?.clicks || 0,
+            total_conversions: platformTotals?.combined?.totalReservations || calculatedTotals?.conversions || 0,
+            average_ctr: platformTotals?.combined?.totalClicks && platformTotals?.combined?.totalImpressions ? 
+              (platformTotals.combined.totalClicks / platformTotals.combined.totalImpressions) * 100 : 0,
+            average_cpc: platformTotals?.combined?.totalClicks && platformTotals?.combined?.totalClicks > 0 ? 
+              (platformTotals?.combined?.totalSpend || 0) / platformTotals.combined.totalClicks : 0,
+            average_cpa: platformTotals?.combined?.totalReservations && platformTotals?.combined?.totalReservations > 0 ? 
+              (platformTotals?.combined?.totalSpend || 0) / platformTotals.combined.totalReservations : 0,
+            total_conversion_value: platformTotals?.combined?.totalReservationValue || 0,
+            roas: platformTotals?.combined?.averageRoas || 0,
+            // Platform-separated data for unified reports
+            meta_spend: platformTotals?.meta?.totalSpend || 0,
+            meta_impressions: platformTotals?.meta?.totalImpressions || 0,
+            meta_clicks: platformTotals?.meta?.totalClicks || 0,
+            meta_conversions: platformTotals?.meta?.totalReservations || 0,
+            google_spend: platformTotals?.google?.totalSpend || 0,
+            google_impressions: platformTotals?.google?.totalImpressions || 0,
+            google_clicks: platformTotals?.google?.totalClicks || 0,
+            google_conversions: platformTotals?.google?.totalReservations || 0
+          }
+        };
+        
+        logger.info('🤖 [DATA-SYNC] Passing PDF data to AI summary for consistency:', {
+          totalSpend: unifiedReportData.account_summary.total_spend,
+          metaSpend: unifiedReportData.account_summary.meta_spend,
+          googleSpend: unifiedReportData.account_summary.google_spend,
+          metaCampaigns: metaCampaigns.length,
+          googleCampaigns: googleCampaigns.length,
+          platformTotalsSource: platformTotals ? 'calculated' : 'fallback'
+        });
+        
+        // Debug: Log actual platform totals being used
+        if (platformTotals) {
+          logger.info('🔍 [DEBUG] Platform totals breakdown:', {
+            meta: {
+              spend: platformTotals.meta?.totalSpend,
+              campaigns: metaCampaigns.length
+            },
+            google: {
+              spend: platformTotals.google?.totalSpend,
+              campaigns: googleCampaigns.length
+            },
+            combined: {
+              spend: platformTotals.combined?.totalSpend
+            }
+          });
+        }
+        
         const generateResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/generate-executive-summary`, {
           method: 'POST',
           headers: {
@@ -3235,8 +3461,8 @@ export async function POST(request: NextRequest) {
           },
           body: JSON.stringify({
             clientId,
-            dateRange
-            // Note: Removed reportData - AI API now fetches its own data from smart cache/database
+            dateRange,
+            reportData: unifiedReportData // Pass the actual PDF data for consistency
           })
         });
 
@@ -3246,10 +3472,12 @@ export async function POST(request: NextRequest) {
             executiveSummary = generateData.summary;
             logger.info('✅ Generated new AI Executive Summary');
             
-            // Save to cache if within retention period (12 months)
-            if (cacheService.isWithinRetentionPeriod(dateRange)) {
+            // Save to cache if within retention period (12 months) and not in development mode
+            if (!isDevelopment && cacheService.isWithinRetentionPeriod(dateRange)) {
               await cacheService.saveSummary(clientId, dateRange, generateData.summary);
               logger.info('💾 Saved AI Executive Summary to cache');
+            } else if (isDevelopment) {
+              logger.info('🔄 [DEV MODE] Skipping cache save for development');
             } else {
               logger.info('⚠️ Summary not saved to cache (outside 12-month retention period)');
             }
@@ -3329,7 +3557,8 @@ export async function POST(request: NextRequest) {
       googleCampaigns: googleCampaigns || [],
       metaCampaigns: metaCampaigns || [],
       platformTotals,
-      platform: detectedPlatform // Add platform information for HTML generation
+      platform: shouldFetchBothPlatforms ? 'unified' : detectedPlatform, // Use 'unified' for multi-platform reports
+      isUnifiedReport: shouldFetchBothPlatforms // Add flag for template logic
     };
 
     // Production logging: Data summary before HTML generation
@@ -3475,11 +3704,19 @@ export async function POST(request: NextRequest) {
 
     logger.info('✅ PDF generated successfully');
 
+    // Encode filename to handle non-ASCII characters (Polish characters like ł, ą, ć, etc.)
+    const sanitizedClientName = client.name
+      .replace(/[^\w\s-]/g, '') // Remove special characters except word chars, spaces, and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .toLowerCase();
+    
+    const filename = `raport-${sanitizedClientName}-${dateRange.start}-${dateRange.end}.pdf`;
+    
     return new NextResponse(Buffer.from(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="raport-${client.name}-${dateRange.start}-${dateRange.end}.pdf"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
         'Content-Length': pdfBuffer.length.toString()
       }
     });

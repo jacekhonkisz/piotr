@@ -29,6 +29,8 @@ interface YearOverYearData {
     reservations: number;
     reservation_value: number;
   };
+  blocked?: boolean;
+  reason?: string;
 }
 
 interface UseYearOverYearComparisonProps {

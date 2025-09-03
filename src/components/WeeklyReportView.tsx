@@ -416,7 +416,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
   const reportIds = Object.keys(reports);
   
-  // Year-over-year comparison hook - moved outside of map
+  // Year-over-year comparison hook - DISABLED for weekly reports to prevent misleading +100% comparisons
   const firstReport = reportIds.length > 0 ? reports[reportIds[0]!] : null;
   const { data: yoyData, loading: yoyLoading } = useYearOverYearComparison({
     clientId: clientData?.id || '',
@@ -424,7 +424,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
       start: firstReport?.date_range_start || '',
       end: firstReport?.date_range_end || '',
     },
-    enabled: !!clientData?.id && !!firstReport?.date_range_start && !!firstReport?.date_range_end,
+    enabled: false, // ❌ DISABLED: Weekly reports should not show year-over-year comparisons
   });
   
   if (reportIds.length === 0) {
@@ -451,7 +451,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         
         // Helper function to format year-over-year change for MetricCard
         const formatYoyChange = (changePercent: number) => {
-          if (!yoyData || yoyLoading) return undefined;
+          // Don't show year-over-year for weekly reports (blocked or disabled)
+          if (!yoyData || yoyLoading || (yoyData as any).blocked) return undefined;
           
           return {
             value: Math.abs(changePercent),
@@ -496,13 +497,26 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         } else if (viewType === 'monthly') {
           reportTitle = 'Raport - Miesiąc';
         } else {
-          // 🚨 FIX: For weekly reports, use the reportId instead of corrupted database date
-          // reportId format: "2025-W33" -> extract year and week number
-          const [year, weekStr] = reportId.split('-W');
+          // 🔧 FIX: For weekly reports, handle both formats: "2025-W36" or "weekly-2025-W36"
+          let periodId = reportId;
+          
+          // If reportId starts with "weekly-", extract the period part
+          if (reportId.startsWith('weekly-')) {
+            periodId = reportId.replace('weekly-', '');
+          }
+          
+          // Now parse the period ID: "2025-W36" -> extract year and week number
+          const [year, weekStr] = periodId.split('-W');
           const weekNum = parseInt(weekStr || '1');
           const yearNum = parseInt(year || new Date().getFullYear().toString());
           
-          reportTitle = `Raport - ${getWeekDateRange(yearNum, weekNum)}`;
+          // Validate parsed values to avoid NaN
+          if (isNaN(yearNum) || isNaN(weekNum)) {
+            console.error('Failed to parse weekly period ID:', { reportId, periodId, year, weekStr, yearNum, weekNum });
+            reportTitle = 'Raport - Tydzień';
+          } else {
+            reportTitle = `Raport - ${getWeekDateRange(yearNum, weekNum)}`;
+          }
         }
 
         // Determine how many campaigns to show
@@ -533,23 +547,51 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   <div className="flex items-center space-x-6 text-sm text-gray-600">
                     <div className="flex items-center space-x-2">
                       <Calendar className="w-4 h-4" />
-                      {viewType === 'weekly' && reportId.includes('-W') ? (
-                        // 🚨 FIX: For weekly reports, calculate correct date range from reportId
+                      {viewType === 'weekly' && (reportId.includes('-W') || reportId.startsWith('weekly-')) ? (
+                        // 🔧 FIX: For weekly reports, calculate correct date range from reportId using safe date methods
                         (() => {
-                          const [year, weekStr] = reportId.split('-W');
+                          // Handle both formats: "2025-W36" or "weekly-2025-W36"
+                          let periodId = reportId;
+                          if (reportId.startsWith('weekly-')) {
+                            periodId = reportId.replace('weekly-', '');
+                          }
+                          
+                          const [year, weekStr] = periodId.split('-W');
                           const weekNum = parseInt(weekStr || '1');
                           const yearNum = parseInt(year || new Date().getFullYear().toString());
                           
-                          // Calculate proper week boundaries
+                          // Validate parsed values
+                          if (isNaN(yearNum) || isNaN(weekNum)) {
+                            console.error('Failed to parse weekly period for date display:', { reportId, periodId, year, weekStr });
+                            return <span>Nieprawidłowy okres</span>;
+                          }
+                          
+                          // Calculate proper week boundaries using safe date methods
                           const jan4 = new Date(yearNum, 0, 4);
                           const startOfWeek1 = new Date(jan4);
                           startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
                           const weekStartDate = new Date(startOfWeek1);
                           weekStartDate.setDate(startOfWeek1.getDate() + (weekNum - 1) * 7);
-                          const weekEndDate = new Date(weekStartDate.getTime() + 6 * 24 * 60 * 60 * 1000);
                           
-                          const weekStartDateStr = weekStartDate.toISOString().split('T')[0] || '';
-                          const weekEndDateStr = weekEndDate.toISOString().split('T')[0] || '';
+                          // 🔧 FIX: Use setDate instead of getTime() + milliseconds to avoid invalid dates
+                          const weekEndDate = new Date(weekStartDate);
+                          weekEndDate.setDate(weekStartDate.getDate() + 6);
+                          
+                          // Helper function for safe date formatting
+                          const formatDateSafe = (date: Date) => {
+                            try {
+                              const year = date.getFullYear();
+                              const month = String(date.getMonth() + 1).padStart(2, '0');
+                              const day = String(date.getDate()).padStart(2, '0');
+                              return `${year}-${month}-${day}`;
+                            } catch (error) {
+                              console.error('Date formatting error:', error);
+                              return 'Invalid Date';
+                            }
+                          };
+                          
+                          const weekStartDateStr = formatDateSafe(weekStartDate);
+                          const weekEndDateStr = formatDateSafe(weekEndDate);
                           
                           return (
                             <span>{formatDate(weekStartDateStr)} - {formatDate(weekEndDateStr)}</span>

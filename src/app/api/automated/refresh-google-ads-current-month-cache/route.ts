@@ -25,7 +25,7 @@ function getCurrentMonthInfo() {
 
 export async function GET() {
   // For Vercel cron jobs - they only support GET requests
-  return POST(new NextRequest('http://localhost:3000/api/automated/refresh-google-ads-current-month-cache', { method: 'GET' }));
+  return POST();
 }
 
 export async function POST() {
@@ -91,22 +91,22 @@ export async function POST() {
         // Fetch fresh Google Ads data for current month
         const refreshResult = await fetchFreshGoogleAdsCurrentMonthData(client.id);
         
-        if (refreshResult.success) {
+        if (refreshResult && refreshResult.campaigns) {
           console.log(`✅ Successfully refreshed Google Ads current month cache for ${client.name}`);
-          console.log(`   Campaigns: ${refreshResult.data?.campaigns?.length || 0}`);
-          console.log(`   Total Spend: ${refreshResult.data?.totals?.totalSpend || 0}`);
+          console.log(`   Campaigns: ${refreshResult.campaigns?.length || 0}`);
+          console.log(`   Total Spend: ${refreshResult.stats?.totalSpend || 0}`);
           
           successCount++;
           results.push({
             clientId: client.id,
             clientName: client.name,
             success: true,
-            campaigns: refreshResult.data?.campaigns?.length || 0,
-            totalSpend: refreshResult.data?.totals?.totalSpend || 0,
-            cacheKey: refreshResult.cacheKey
+            campaigns: refreshResult.campaigns?.length || 0,
+            totalSpend: refreshResult.stats?.totalSpend || 0,
+            cacheKey: `google_ads_${client.id}_current_month`
           });
         } else {
-          throw new Error(refreshResult.error || 'Unknown error in Google Ads cache refresh');
+          throw new Error('Failed to refresh Google Ads cache - no data returned');
         }
         
         // Add delay between clients to respect Google Ads API rate limits

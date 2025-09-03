@@ -13,7 +13,8 @@ import {
   AlertCircle,
   CheckCircle,
   Eye,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
@@ -107,13 +108,20 @@ export default function AdminCalendarPage() {
     }
   }, [user, profile, authLoading, router]);
 
-  // Reload data when currentDate changes (month navigation) - CONTROLLED refresh
+  // Update calendar display when month changes (without reloading data)
   useEffect(() => {
-    if (user && profile?.role === 'admin') {
-      console.log('📅 Calendar month changed, reloading data for:', currentDate.toLocaleDateString());
-      loadScheduledReports(); // Only reload scheduled reports, not clients
+    if (scheduledReports.length > 0) {
+      generateCalendarDays(scheduledReports);
     }
-  }, [currentDate, user, profile]);
+  }, [currentDate]);
+
+  // Auto-refresh disabled - data will only reload on manual refresh or initial load
+  // useEffect(() => {
+  //   if (user && profile?.role === 'admin') {
+  //     console.log('📅 Calendar month changed, reloading data for:', currentDate.toLocaleDateString());
+  //     loadScheduledReports(); // Only reload scheduled reports, not clients
+  //   }
+  // }, [currentDate, user, profile]);
 
   const loadData = async () => {
     try {
@@ -404,7 +412,7 @@ export default function AdminCalendarPage() {
   };
 
   const handleScheduleCreated = () => {
-    loadData();
+    // Auto-refresh disabled - user must manually refresh to see new schedules
     setShowCreateModal(false);
     setSelectedDate(null);
   };
@@ -425,8 +433,8 @@ export default function AdminCalendarPage() {
         throw new Error('Failed to send report');
       }
 
-      alert('Raport został wysłany pomyślnie');
-      loadData();
+      alert('Raport został wysłany pomyślnie. Odśwież stronę aby zobaczyć aktualizacje.');
+      // Auto-refresh disabled - user must manually refresh to see updates
     } catch (error) {
       console.error('Error sending manual report:', error);
       alert('Nie udało się wysłać raportu');
@@ -667,6 +675,25 @@ export default function AdminCalendarPage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
+              <button
+                onClick={() => router.push('/admin')}
+                className="group nav-premium-button hover:border-indigo-300"
+              >
+                <div className="flex items-center">
+                  <ChevronLeft className="h-4 w-4 mr-2 text-gray-600 group-hover:text-indigo-600 transition-colors" />
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-700">Dashboard</span>
+                </div>
+              </button>
+              <button
+                onClick={() => loadData()}
+                disabled={loading}
+                className="group nav-premium-button hover:border-orange-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center">
+                  <RefreshCw className={`h-4 w-4 mr-2 text-gray-600 group-hover:text-orange-600 transition-colors ${loading ? 'animate-spin' : ''}`} />
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-orange-700">Odśwież</span>
+                </div>
+              </button>
               <button
                 onClick={() => router.push('/admin')}
                 className="group nav-premium-button hover:border-blue-300"

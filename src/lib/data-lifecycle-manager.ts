@@ -392,6 +392,7 @@ export class DataLifecycleManager {
 
   /**
    * Get week start date from ISO week format (e.g., "2025-W33" -> "2025-08-10")
+   * FIXED: Now uses proper ISO week calculation instead of simple Monday-based calculation
    */
   private getWeekStartDate(periodId: string): string {
     const [year, weekStr] = periodId.split('-W');
@@ -400,21 +401,21 @@ export class DataLifecycleManager {
     }
     
     const weekNumber = parseInt(weekStr, 10);
+    const yearNum = parseInt(year, 10);
     
-    // Calculate first day of the year
-    const firstDay = new Date(parseInt(year, 10), 0, 1);
+    // ✅ FIXED: Use proper ISO week calculation (same as other parts of the system)
+    // January 4th is always in week 1 of the ISO year
+    const jan4 = new Date(yearNum, 0, 4);
     
-    // Find the first Monday of the year
-    const firstMonday = new Date(firstDay);
-    const dayOfWeek = firstDay.getDay();
-    const daysToMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
-    firstMonday.setDate(firstDay.getDate() + daysToMonday);
+    // Find the Monday of week 1
+    const startOfWeek1 = new Date(jan4);
+    startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
     
-    // Calculate the start of the target week
-    const targetWeek = new Date(firstMonday);
-    targetWeek.setDate(firstMonday.getDate() + (weekNumber - 1) * 7);
+    // Calculate the start date of the target week
+    const targetWeekStart = new Date(startOfWeek1);
+    targetWeekStart.setDate(startOfWeek1.getDate() + (weekNumber - 1) * 7);
     
-    return targetWeek.toISOString().split('T')[0] as string;
+    return targetWeekStart.toISOString().split('T')[0] as string;
   }
 
   /**

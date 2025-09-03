@@ -7,13 +7,12 @@
 
 export const EMAIL_CONFIG = {
   // Set to false when ready for production
-  MONITORING_MODE: true,
+  MONITORING_MODE: false, // ✅ PRODUCTION: Disabled monitoring mode
   
   // Monitoring email addresses (only used when MONITORING_MODE is true)
-  // Updated for custom domain - ready when pbmreports.pl is verified
+  // Updated to use verified Resend email address
   MONITORING_EMAILS: [
-    'jac.honkisz@gmail.com',
-    'kontakt@piotrbajerlein.pl'
+    // 'pbajerlein@gmail.com'  // Disabled for production
   ],
   
   // Email settings

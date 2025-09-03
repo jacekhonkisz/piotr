@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import logger from '../../../../lib/logger';
+import { getCurrentWeekInfo } from '../../../../lib/week-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,21 +20,7 @@ function getCurrentMonthInfo() {
   };
 }
 
-function getCurrentWeekInfo() {
-  const now = new Date();
-  const year = now.getFullYear();
-  
-  // Calculate week number (ISO week)
-  const startOfYear = new Date(year, 0, 1);
-  const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
-  const weekNumber = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
-  
-  return {
-    year,
-    weekNumber,
-    periodId: `${year}-W${String(weekNumber).padStart(2, '0')}`
-  };
-}
+// Using centralized getCurrentWeekInfo from week-utils.ts
 
 export async function GET() {
   // For Vercel cron jobs - they only support GET requests

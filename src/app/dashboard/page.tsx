@@ -100,42 +100,56 @@ export default function DashboardPage() {
       return;
     }
     
-          console.log('🔄 TAB SWITCH: Switching from', activeAdsProvider, 'to', provider);
-      setActiveAdsProvider(provider);
+    console.log('🔄 TAB SWITCH: Switching from', activeAdsProvider, 'to', provider);
+    
+    // 🔧 CRITICAL FIX: Set refreshing state BEFORE switching provider
+    setRefreshingData(true);
+    
+    // Switch provider first
+    setActiveAdsProvider(provider);
+    
+    // 🔧 CRITICAL: Wait for state update before loading data
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Reload data for the new platform
+    if (currentClient) {
+      console.log('🔄 TAB SWITCH: Loading data for provider:', provider);
+      const newData = await loadMainDashboardData(currentClient, provider);
       
-      // 🔧 CRITICAL: Wait for state update before loading data
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Reload data for the new platform
-      if (currentClient) {
-        setRefreshingData(true);
-        console.log('🔄 TAB SWITCH: Loading data for provider:', provider);
-        const newData = await loadMainDashboardData(currentClient, provider);
-        
-        console.log('🔄 TAB SWITCH: Received data:', {
-          hasData: !!newData,
-          dataSource: newData?.debug?.source,
-          reason: newData?.debug?.reason,
-          hasStats: !!newData?.stats,
-          statsClicks: newData?.stats?.totalClicks,
-          statsSpend: newData?.stats?.totalSpend,
-          provider: provider,
-          expectedForGoogle: provider === 'google' ? 'Should be 15800 spend, 7400 clicks' : 'N/A'
-        });
-      
+      console.log('🔄 TAB SWITCH: Received data:', {
+        hasData: !!newData,
+        dataSource: newData?.debug?.source,
+        reason: newData?.debug?.reason,
+        hasStats: !!newData?.stats,
+        statsClicks: newData?.stats?.totalClicks,
+        statsSpend: newData?.stats?.totalSpend,
+        provider: provider,
+        expectedForGoogle: provider === 'google' ? 'Should be 15800 spend, 7400 clicks' : 'N/A'
+      });
+    
       if (newData && clientData) {
-        setClientData({
+        // 🔧 CRITICAL FIX: Update clientData immediately with new data
+        const updatedClientData = {
           ...clientData,
           campaigns: newData.campaigns || [],
           stats: newData.stats,
           conversionMetrics: newData.conversionMetrics,
           debug: newData.debug,
           lastUpdated: (newData as any).lastUpdated || new Date().toISOString()
+        };
+        
+        console.log('🔄 TAB SWITCH: Setting updated client data:', {
+          hasStats: !!updatedClientData.stats,
+          statsSpend: updatedClientData.stats?.totalSpend,
+          debugSource: updatedClientData.debug?.source
         });
+        
+        setClientData(updatedClientData);
         setDataSource(newData.debug?.source || 'unknown');
       }
-      setRefreshingData(false);
     }
+    
+    setRefreshingData(false);
   };
 
   // Google Ads campaigns data will be loaded from clientData.campaigns when activeAdsProvider is 'google'
@@ -875,7 +889,7 @@ export default function DashboardPage() {
             
             // Aggregate the data
             const totalSpend = googleSummaries.reduce((sum, s) => sum + (s.total_spend || 0), 0);
-            const totalReservations = googleSummaries.reduce((sum, s) => sum + (s.reservations || 0), 0);
+            const totalReservations = googleSummaries.reduce((sum, s) => sum + ((s as any).reservations || 0), 0);
             const totalImpressions = googleSummaries.reduce((sum, s) => sum + (s.total_impressions || 0), 0);
             const totalClicks = googleSummaries.reduce((sum, s) => sum + (s.total_clicks || 0), 0);
             const totalConversions = googleSummaries.reduce((sum, s) => sum + (s.total_conversions || 0), 0);
@@ -901,14 +915,14 @@ export default function DashboardPage() {
                 averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
               },
               conversionMetrics: {
-                click_to_call: googleSummaries.reduce((sum, s) => sum + (s.click_to_call || 0), 0),
-                email_contacts: googleSummaries.reduce((sum, s) => sum + (s.email_contacts || 0), 0),
-                booking_step_1: googleSummaries.reduce((sum, s) => sum + (s.booking_step_1 || 0), 0),
-                booking_step_2: googleSummaries.reduce((sum, s) => sum + (s.booking_step_2 || 0), 0),
-                booking_step_3: googleSummaries.reduce((sum, s) => sum + (s.booking_step_3 || 0), 0),
+                click_to_call: googleSummaries.reduce((sum, s) => sum + ((s as any).click_to_call || 0), 0),
+                email_contacts: googleSummaries.reduce((sum, s) => sum + ((s as any).email_contacts || 0), 0),
+                booking_step_1: googleSummaries.reduce((sum, s) => sum + ((s as any).booking_step_1 || 0), 0),
+                booking_step_2: googleSummaries.reduce((sum, s) => sum + ((s as any).booking_step_2 || 0), 0),
+                booking_step_3: googleSummaries.reduce((sum, s) => sum + ((s as any).booking_step_3 || 0), 0),
                 reservations: totalReservations,
-                reservation_value: googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0),
-                roas: totalSpend > 0 ? (googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0) / totalSpend) : 0,
+                reservation_value: googleSummaries.reduce((sum, s) => sum + ((s as any).reservation_value || 0), 0),
+                roas: totalSpend > 0 ? (googleSummaries.reduce((sum, s) => sum + ((s as any).reservation_value || 0), 0) / totalSpend) : 0,
                 cost_per_reservation: totalReservations > 0 ? totalSpend / totalReservations : 0
               },
               debug: {
@@ -922,7 +936,7 @@ export default function DashboardPage() {
             console.log('❌ GOOGLE ADS PRIORITY FALLBACK: No database data found, will try API...');
           }
         } catch (error) {
-          console.log('❌ GOOGLE ADS PRIORITY FALLBACK failed:', error.message);
+          console.log('❌ GOOGLE ADS PRIORITY FALLBACK failed:', error instanceof Error ? error.message : error);
         }
       }
 
@@ -1252,7 +1266,7 @@ export default function DashboardPage() {
               
               // Aggregate the data
               const totalSpend = googleSummaries.reduce((sum, s) => sum + (s.total_spend || 0), 0);
-              const totalReservations = googleSummaries.reduce((sum, s) => sum + (s.reservations || 0), 0);
+              const totalReservations = googleSummaries.reduce((sum, s) => sum + ((s as any).reservations || 0), 0);
               const totalImpressions = googleSummaries.reduce((sum, s) => sum + (s.total_impressions || 0), 0);
               const totalClicks = googleSummaries.reduce((sum, s) => sum + (s.total_clicks || 0), 0);
               const totalConversions = googleSummaries.reduce((sum, s) => sum + (s.total_conversions || 0), 0);
@@ -1277,14 +1291,14 @@ export default function DashboardPage() {
                   averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
                 },
                 conversionMetrics: {
-                  click_to_call: googleSummaries.reduce((sum, s) => sum + (s.click_to_call || 0), 0),
-                  email_contacts: googleSummaries.reduce((sum, s) => sum + (s.email_contacts || 0), 0),
-                  booking_step_1: googleSummaries.reduce((sum, s) => sum + (s.booking_step_1 || 0), 0),
-                  booking_step_2: googleSummaries.reduce((sum, s) => sum + (s.booking_step_2 || 0), 0),
-                  booking_step_3: googleSummaries.reduce((sum, s) => sum + (s.booking_step_3 || 0), 0),
+                  click_to_call: googleSummaries.reduce((sum, s) => sum + ((s as any).click_to_call || 0), 0),
+                  email_contacts: googleSummaries.reduce((sum, s) => sum + ((s as any).email_contacts || 0), 0),
+                  booking_step_1: googleSummaries.reduce((sum, s) => sum + ((s as any).booking_step_1 || 0), 0),
+                  booking_step_2: googleSummaries.reduce((sum, s) => sum + ((s as any).booking_step_2 || 0), 0),
+                  booking_step_3: googleSummaries.reduce((sum, s) => sum + ((s as any).booking_step_3 || 0), 0),
                   reservations: totalReservations,
-                  reservation_value: googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0),
-                  roas: totalSpend > 0 ? (googleSummaries.reduce((sum, s) => sum + (s.reservation_value || 0), 0) / totalSpend) : 0,
+                  reservation_value: googleSummaries.reduce((sum, s) => sum + ((s as any).reservation_value || 0), 0),
+                  roas: totalSpend > 0 ? (googleSummaries.reduce((sum, s) => sum + ((s as any).reservation_value || 0), 0) / totalSpend) : 0,
                   cost_per_reservation: totalReservations > 0 ? totalSpend / totalReservations : 0
                 },
                 debug: {
@@ -2120,28 +2134,20 @@ export default function DashboardPage() {
             leads={{
               current: activeAdsProvider === 'meta' 
                 ? (clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)
-                : ((clientData.conversionMetrics as any)?.form_submissions || 0) + ((clientData.conversionMetrics as any)?.phone_calls || 0),
+                : (clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0),
               previous: activeAdsProvider === 'meta'
                 ? Math.round((((clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)) * 0.85))
-                : Math.round(((((clientData.conversionMetrics as any)?.form_submissions || 0) + ((clientData.conversionMetrics as any)?.phone_calls || 0)) * 0.85)),
+                : Math.round((((clientData.conversionMetrics?.click_to_call || 0) + (clientData.conversionMetrics?.email_contacts || 0)) * 0.85)),
               change: activeAdsProvider === 'meta' ? 15.0 : 16.7
             }}
             reservations={{
-              current: activeAdsProvider === 'meta'
-                ? clientData.conversionMetrics?.reservations || 0
-                : clientData.conversionMetrics?.reservations || 0,
-              previous: activeAdsProvider === 'meta'
-                ? Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92))
-                : Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92)),
+              current: clientData.conversionMetrics?.reservations || 0,
+              previous: Math.round(((clientData.conversionMetrics?.reservations || 0) * 0.92)),
               change: activeAdsProvider === 'meta' ? 8.7 : 14.3
             }}
             reservationValue={{
-              current: activeAdsProvider === 'meta'
-                ? clientData.conversionMetrics?.reservation_value || 0
-                : clientData.conversionMetrics?.reservation_value || 0,
-              previous: activeAdsProvider === 'meta'
-                ? Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88))
-                : Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88)),
+              current: clientData.conversionMetrics?.reservation_value || 0,
+              previous: Math.round(((clientData.conversionMetrics?.reservation_value || 0) * 0.88)),
               change: activeAdsProvider === 'meta' ? 12.5 : 13.6
             }}
             isLoading={loading}
