@@ -242,7 +242,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       booking_step_2: storedSummary.booking_step_2 || 0,
       booking_step_3: storedSummary.booking_step_3 || 0,
       roas: storedSummary.roas || 0,
-      cost_per_reservation: storedSummary.cost_per_reservation || 0
+      cost_per_reservation: storedSummary.cost_per_reservation || 0,
+      // Add performance metrics from meta_tables
+      reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
+      offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
+      offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
     };
     
     console.log(`📊 Using real conversion metrics from database:`, conversionMetrics);
@@ -258,7 +262,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
       roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
       cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
-        totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
+        totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0,
+      // Add performance metrics from meta_tables (fallback also uses stored data)
+      reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
+      offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
+      offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
     };
     
     console.log(`📊 Calculated conversion metrics from campaign data (fallback):`, conversionMetrics);

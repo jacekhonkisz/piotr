@@ -118,6 +118,8 @@ export type Database = {
           purchase: number | null
           purchase_value: number | null
           reach: number | null
+          reservations: number | null
+          reservation_value: number | null
           roas: number | null
           spend: number
           status: string
@@ -148,6 +150,8 @@ export type Database = {
           purchase?: number | null
           purchase_value?: number | null
           reach?: number | null
+          reservations?: number | null
+          reservation_value?: number | null
           roas?: number | null
           spend?: number
           status: string
@@ -178,6 +182,8 @@ export type Database = {
           purchase?: number | null
           purchase_value?: number | null
           reach?: number | null
+          reservations?: number | null
+          reservation_value?: number | null
           roas?: number | null
           spend?: number
           status?: string

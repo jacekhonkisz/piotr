@@ -656,7 +656,26 @@ export class MetaAPIService {
       }
 
       if (data.data) {
-
+        // If campaign names are missing, fetch them separately
+        const campaignNames = new Map<string, string>();
+        const insightsWithMissingNames = data.data.filter(insight => 
+          !insight.campaign_name && !insight.name && insight.campaign_id
+        );
+        
+        if (insightsWithMissingNames.length > 0) {
+          logger.info(`🔍 Fetching campaign names for ${insightsWithMissingNames.length} campaigns with missing names`);
+          try {
+            const campaigns = await this.getCampaigns(adAccountId);
+            campaigns.forEach(campaign => {
+              if (campaign.id && campaign.name) {
+                campaignNames.set(campaign.id, campaign.name);
+              }
+            });
+            logger.info(`✅ Fetched ${campaignNames.size} campaign names`);
+          } catch (error) {
+            logger.warn('⚠️ Failed to fetch campaign names:', error);
+          }
+        }
 
         const insights = data.data.map(insight => {
           // Parse conversion tracking data from actions
@@ -788,7 +807,7 @@ export class MetaAPIService {
           
           return {
             campaign_id: insight.campaign_id || 'unknown',
-            campaign_name: insight.campaign_name || 'Unknown Campaign',
+            campaign_name: insight.campaign_name || insight.name || campaignNames.get(insight.campaign_id) || 'Unknown Campaign',
             impressions: parseInt(insight.impressions || '0'),
             clicks: parseInt(insight.clicks || '0'),
             spend: spend,

@@ -78,7 +78,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
-  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'reservations' | 'roas' | 'reservation_value'>('roas');
+  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'roas'>('roas');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
@@ -420,9 +420,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                           CPC
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          CPA (CPP)
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           Ilość rezerwacji
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
@@ -459,9 +456,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                             </td>
                             <td className="px-6 py-4 text-right">
                               <span className="text-sm text-slate-900 tabular-nums">{formatCurrency(placement.cpc)}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{placement.cpp ? formatCurrency(placement.cpp) : 'N/A'}</span>
                             </td>
                             <td className="px-6 py-4 text-right">
                               <span className="text-sm text-slate-900 tabular-nums">{placement.reservations || 0}</span>
@@ -534,34 +528,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                       <span>ROAS</span>
                     </div>
                   </button>
-                  <button
-                    onClick={() => setDemographicMetric('reservations')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'reservations'
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                    
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Award className="h-4 w-4" />
-                      <span>Rezerwacje</span>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setDemographicMetric('reservation_value')}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'reservation_value'
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
-                    }`}
-                    
-                  >
-                    <div className="flex items-center space-x-2">
-                      <Users className="h-4 w-4" />
-                      <span>Wartość</span>
-                    </div>
-                  </button>
+
                   <button
                     onClick={() => setDemographicMetric('clicks')}
                     className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${

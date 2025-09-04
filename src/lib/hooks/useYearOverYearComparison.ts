@@ -14,6 +14,9 @@ interface YearOverYearData {
     clicks: number;
     reservations: number;
     reservation_value: number;
+    booking_step_1: number;
+    booking_step_2: number;
+    booking_step_3: number;
   };
   previous: {
     spend: number;
@@ -21,6 +24,9 @@ interface YearOverYearData {
     clicks: number;
     reservations: number;
     reservation_value: number;
+    booking_step_1: number;
+    booking_step_2: number;
+    booking_step_3: number;
   };
   changes: {
     spend: number;
@@ -28,6 +34,9 @@ interface YearOverYearData {
     clicks: number;
     reservations: number;
     reservation_value: number;
+    booking_step_1: number;
+    booking_step_2: number;
+    booking_step_3: number;
   };
   blocked?: boolean;
   reason?: string;

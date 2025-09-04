@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, ChevronDown, ChevronUp, Download, Eye, EyeOff, BarChart3, HelpCircle, MousePointer, PhoneCall, Mail, DollarSign, Percent, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useYearOverYearComparison } from '@/lib/hooks/useYearOverYearComparison';
+import ConversionFunnel from './ConversionFunnel';
 
 
 
@@ -46,6 +47,20 @@ interface WeeklyReport {
   date_range_end: string;
   generated_at?: string;
   campaigns: Campaign[];
+  conversionMetrics?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    booking_step_2: number;
+    booking_step_3: number;
+    roas: number;
+    cost_per_reservation: number;
+    reach: number;
+    offline_reservations: number;
+    offline_value: number;
+  };
 }
 
 interface WeeklyReportViewProps {
@@ -275,6 +290,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
   
+
+  
   // Fetch social insights when component mounts - MOVED BEFORE EARLY RETURN
   useEffect(() => {
     let mounted = true;
@@ -418,13 +435,27 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   
   // Year-over-year comparison hook - DISABLED for weekly reports to prevent misleading +100% comparisons
   const firstReport = reportIds.length > 0 ? reports[reportIds[0]!] : null;
+  
+  // Create a reasonable date range for YoY comparison (current month)
+  const getReasonableYoYDateRange = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    // Use current month for YoY comparison
+    const monthStart = new Date(currentYear, currentMonth, 1);
+    const monthEnd = new Date(currentYear, currentMonth + 1, 0);
+    
+    return {
+      start: monthStart.toISOString().split('T')[0] || '',
+      end: monthEnd.toISOString().split('T')[0] || ''
+    };
+  };
+  
   const { data: yoyData, loading: yoyLoading } = useYearOverYearComparison({
     clientId: clientData?.id || '',
-    dateRange: {
-      start: firstReport?.date_range_start || '',
-      end: firstReport?.date_range_end || '',
-    },
-    enabled: false, // ❌ DISABLED: Weekly reports should not show year-over-year comparisons
+    dateRange: getReasonableYoYDateRange(),
+    enabled: true, // ✅ ENABLED: Now showing year-over-year comparisons for funnel
   });
   
   if (reportIds.length === 0) {
@@ -449,6 +480,17 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         if (!report) return null;
         const campaigns = report.campaigns || [];
         
+        // DEBUG: Log YoY data
+        console.log('WeeklyReportView - YoY Debug:', {
+          yoyData,
+          yoyLoading,
+          blocked: (yoyData as any)?.blocked,
+          dateRange: {
+            start: firstReport?.date_range_start,
+            end: firstReport?.date_range_end
+          }
+        });
+
         // Helper function to format year-over-year change for MetricCard
         const formatYoyChange = (changePercent: number) => {
           // Don't show year-over-year for weekly reports (blocked or disabled)
@@ -627,96 +669,91 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 <p className="text-base text-slate-600">Wszystkie metryki reklamowe i konwersji</p>
               </div>
               
-              {/* Main Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                <MetricCard
-                  title="Wydana kwota"
-                  value={formatCurrency(campaignTotals.spend)}
-                  subtitle="Suma wydatków na reklamy"
-                  tooltip="Łączna kwota wydana na reklamy"
-                  icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.spend || 0)}
-                />
-                
-                <MetricCard
-                  title="Wyświetlenia"
-                  value={formatNumber(campaignTotals.impressions)}
-                  subtitle="Liczba wyświetleń reklam"
-                  tooltip="Całkowita liczba wyświetleń reklam"
-                  icon={<Eye className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.impressions || 0)}
-                />
-                
-                <MetricCard
-                  title="Kliknięcia linku"
-                  value={formatNumber(campaignTotals.clicks)}
-                  subtitle="Liczba kliknięć w reklamy"
-                  tooltip="Całkowita liczba kliknięć w reklamy"
-                  icon={<MousePointer className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
-                />
+              {/* Main Metrics - First Section */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 mb-8">
+                <div className="mb-6">
+                  <h3 className="text-2xl font-bold text-slate-900 mb-2">Podstawowe metryki</h3>
+                  <p className="text-slate-600">Wydatki i podstawowe wskaźniki wydajności</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                  <MetricCard
+                    title="Wydana kwota"
+                    value={formatCurrency(campaignTotals.spend)}
+                    subtitle="Suma wydatków na reklamy"
+                    tooltip="Łączna kwota wydana na reklamy"
+                    icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
+                    change={formatYoyChange(yoyData?.changes.spend || 0)}
+                  />
+                  
+                  <MetricCard
+                    title="Wyświetlenia"
+                    value={formatNumber(campaignTotals.impressions)}
+                    subtitle="Liczba wyświetleń reklam"
+                    tooltip="Całkowita liczba wyświetleń reklam"
+                    icon={<Eye className="w-5 h-5 text-slate-600" />}
+                    change={formatYoyChange(yoyData?.changes.impressions || 0)}
+                  />
+                  
+                  <MetricCard
+                    title="Kliknięcia linku"
+                    value={formatNumber(campaignTotals.clicks)}
+                    subtitle="Liczba kliknięć w reklamy"
+                    tooltip="Całkowita liczba kliknięć w reklamy"
+                    icon={<MousePointer className="w-5 h-5 text-slate-600" />}
+                    change={formatYoyChange(yoyData?.changes.clicks || 0)}
+                  />
+                  
+                  <MetricCard
+                    title="CTR"
+                    value={(() => {
+                      const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
+                      return ctr.toFixed(2) + '%';
+                    })()}
+                    subtitle="Click-through rate"
+                    tooltip="Wskaźnik klikalności - procent kliknięć w stosunku do wyświetleń"
+                    icon={<Target className="w-5 h-5 text-slate-600" />}
+                  />
+                  
+                  <MetricCard
+                    title="CPC"
+                    value={(() => {
+                      const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
+                      return formatCurrency(cpc);
+                    })()}
+                    subtitle="Cost per click"
+                    tooltip="Koszt za kliknięcie"
+                    icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+                  />
+                </div>
               </div>
 
-              {/* Booking Engine and Reservation Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                <MetricCard
-                  title="krok 1 w Booking Engine"
-                  value={campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0).toString()}
-                  subtitle="Pierwszy krok rezerwacji"
-                  tooltip="Liczba użytkowników, którzy rozpoczęli proces rezerwacji"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
-                />
-                
-                <MetricCard
-                  title="krok 2 w Booking Engine"
-                  value={campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0).toString()}
-                  subtitle="Drugi krok rezerwacji"
-                  tooltip="Liczba użytkowników, którzy przeszli do drugiego kroku"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
-                />
-                
-                <MetricCard
-                  title="krok 3 w Booking Engine"
-                  value={campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0).toString()}
-                  subtitle="Trzeci krok rezerwacji"
-                  tooltip="Liczba użytkowników, którzy ukończyli proces rezerwacji"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)}
-                />
-                
-                <MetricCard
-                  title="Ilość rezerwacji [purchase]"
-                  value={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0).toString()}
-                  subtitle="Liczba rezerwacji"
-                  tooltip="Całkowita liczba rezerwacji"
-                  icon={<Calendar className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.reservations || 0)}
-                />
-                
-                <MetricCard
-                  title="wartość rezerwacji online"
-                  value={formatCurrency(campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0))}
-                  subtitle="Wartość wszystkich rezerwacji online"
-                  tooltip="Łączna wartość wszystkich rezerwacji online"
-                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
-                />
-                
-                <MetricCard
-                  title="ROAS"
-                  value={(() => {
-                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                    const totalValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    return totalSpend > 0 ? (totalValue / totalSpend).toFixed(2) + 'x' : '0x';
-                  })()}
-                  subtitle="Return on Ad Spend"
-                  tooltip="Zwrot z wydatków na reklamy"
-                  icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
-                />
-              </div>
+              {/* Conversion Funnel - Second Section */}
+              <ConversionFunnel
+                step1={campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0)}
+                step2={campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0)}
+                step3={campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0)}
+                reservations={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)}
+                reservationValue={campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0)}
+                roas={(() => {
+                  const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+                  const totalValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                  return totalSpend > 0 ? totalValue / totalSpend : 0;
+                })()}
+                previousYear={yoyData ? {
+                  // Use real booking step data from database
+                  step1: yoyData.previous.booking_step_1,
+                  step2: yoyData.previous.booking_step_2,
+                  step3: yoyData.previous.booking_step_3,
+                  reservations: yoyData.previous.reservations
+                } : undefined}
+                yoyChanges={yoyData ? {
+                  step1: yoyData.changes.booking_step_1,
+                  step2: yoyData.changes.booking_step_2,
+                  step3: yoyData.changes.booking_step_3,
+                  reservations: yoyData.changes.reservations
+                } : undefined}
+                className="mb-8"
+              />
 
               {/* Summary Metrics */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -861,7 +898,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <MetricCard
                   title="Kliknięcia w adres e-mail"
-                  value={campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0).toString()}
+                  value={(report.conversionMetrics?.email_contacts || campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0)).toString()}
                   subtitle="Kontakt przez e-mail"
                   tooltip="Liczba kliknięć w adres e-mail"
                   icon={<Mail className="w-5 h-5 text-slate-600" />}
@@ -870,7 +907,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 
                 <MetricCard
                   title="Kliknięcia w numer telefonu"
-                  value={campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0).toString()}
+                  value={(report.conversionMetrics?.click_to_call || campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0)).toString()}
                   subtitle="Kontakt przez telefon"
                   tooltip="Liczba kliknięć w numer telefonu"
                   icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
@@ -883,6 +920,10 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 <MetricCard
                   title="Potencjalna ilość rezerwacji offline"
                   value={(() => {
+                    // Use API data if available, otherwise calculate from campaigns
+                    if (report.conversionMetrics?.offline_reservations !== undefined) {
+                      return report.conversionMetrics.offline_reservations.toString();
+                    }
                     const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
                     const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
                     const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
@@ -897,6 +938,10 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 <MetricCard
                   title="Potencjalna łączna wartość rezerwacji offline"
                   value={(() => {
+                    // Use API data if available, otherwise calculate from campaigns
+                    if (report.conversionMetrics?.offline_value !== undefined) {
+                      return formatCurrency(report.conversionMetrics.offline_value);
+                    }
                     const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
                     const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
                     const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
@@ -920,7 +965,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <MetricCard
                   title="Zasięg"
-                  value={formatNumber(campaignTotals.reach)}
+                  value={formatNumber(report.conversionMetrics?.reach || campaignTotals.reach)}
                   subtitle="Unikalni użytkownicy"
                   tooltip="Liczba unikalnych użytkowników, którzy zobaczyli reklamy"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
@@ -984,6 +1029,12 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
                           CPC
                         </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Ilość Rezerwacji
+                        </th>
+                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
+                          Wartość Rezerwacji
+                        </th>
                       </tr>
                     </thead>
                     <tbody style={{ backgroundColor: '#FFFFFF' }}>
@@ -1045,6 +1096,12 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                             </td>
                             <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatCurrency(cpc)}
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                              {formatNumber(campaign.reservations || 0)}
+                            </td>
+                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                              {formatCurrency(campaign.reservation_value || 0)}
                             </td>
                           </tr>
                         );

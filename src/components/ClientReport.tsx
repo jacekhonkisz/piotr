@@ -24,6 +24,8 @@ interface CampaignInsights {
   reach?: number;
   date_start: string;
   date_stop: string;
+  reservations?: number;
+  reservation_value?: number;
 }
 
 interface AccountSummary {
@@ -323,6 +325,12 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Conversions
                       </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Ilość Rezerwacji
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Wartość Rezerwacji
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -353,6 +361,12 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {formatNumber(campaign.conversions)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatNumber(campaign.reservations || 0)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatCurrency(campaign.reservation_value || 0)}
                         </td>
                       </tr>
                     ))}

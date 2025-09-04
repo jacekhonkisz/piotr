@@ -258,6 +258,7 @@ const CampaignTable: React.FC<{
               <th className="text-right py-3 px-2">CTR</th>
               <th className="text-right py-3 px-2">CPC</th>
               <th className="text-right py-3 px-2">Rezerwacje</th>
+              <th className="text-right py-3 px-2">Wartość Rezerwacji</th>
               <th className="text-right py-3 px-2">ROAS</th>
             </tr>
           </thead>
@@ -276,6 +277,7 @@ const CampaignTable: React.FC<{
                 <td className="text-right py-3 px-2">{campaign.ctr.toFixed(2)}%</td>
                 <td className="text-right py-3 px-2">{formatCurrency(campaign.cpc)}</td>
                 <td className="text-right py-3 px-2">{formatNumber(campaign.reservations || 0)}</td>
+                <td className="text-right py-3 px-2">{formatCurrency(campaign.reservation_value || 0)}</td>
                 <td className="text-right py-3 px-2">{(campaign.roas || 0).toFixed(2)}x</td>
               </tr>
             ))}

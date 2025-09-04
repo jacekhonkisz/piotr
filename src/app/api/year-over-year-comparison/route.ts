@@ -15,6 +15,9 @@ interface YearOverYearData {
     clicks: number;
     reservations: number;
     reservation_value: number;
+    booking_step_1: number;
+    booking_step_2: number;
+    booking_step_3: number;
   };
   previous: {
     spend: number;
@@ -22,6 +25,9 @@ interface YearOverYearData {
     clicks: number;
     reservations: number;
     reservation_value: number;
+    booking_step_1: number;
+    booking_step_2: number;
+    booking_step_3: number;
   };
   changes: {
     spend: number;
@@ -29,6 +35,9 @@ interface YearOverYearData {
     clicks: number;
     reservations: number;
     reservation_value: number;
+    booking_step_1: number;
+    booking_step_2: number;
+    booking_step_3: number;
   };
 }
 
@@ -64,12 +73,18 @@ function aggregateCampaignData(campaigns: any[]) {
     clicks: acc.clicks + (campaign.clicks || 0),
     reservations: acc.reservations + (campaign.reservations || 0),
     reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+    booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+    booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+    booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
   }), {
     spend: 0,
     impressions: 0,
     clicks: 0,
     reservations: 0,
     reservation_value: 0,
+    booking_step_1: 0,
+    booking_step_2: 0,
+    booking_step_3: 0,
   });
 }
 
@@ -109,9 +124,9 @@ export async function POST(request: NextRequest) {
       });
       
       return NextResponse.json({
-        current: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 },
-        previous: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 },
-        changes: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 },
+        current: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0, booking_step_1: 0, booking_step_2: 0, booking_step_3: 0 },
+        previous: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0, booking_step_1: 0, booking_step_2: 0, booking_step_3: 0 },
+        changes: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0, booking_step_1: 0, booking_step_2: 0, booking_step_3: 0 },
         blocked: true,
         reason: 'Year-over-year comparisons are only shown for complete monthly periods'
       });
@@ -168,6 +183,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch previous year data' }, { status: 500 });
     }
 
+
+
     // Aggregate current year data
     const currentData = currentSummaries?.reduce((acc: any, summary: any) => ({
       spend: acc.spend + (summary.total_spend || 0),
@@ -175,18 +192,27 @@ export async function POST(request: NextRequest) {
       clicks: acc.clicks + (summary.total_clicks || 0),
       reservations: acc.reservations + (summary.reservations || 0),
       reservation_value: acc.reservation_value + (summary.reservation_value || 0),
+      booking_step_1: acc.booking_step_1 + (summary.booking_step_1 || 0),
+      booking_step_2: acc.booking_step_2 + (summary.booking_step_2 || 0),
+      booking_step_3: acc.booking_step_3 + (summary.booking_step_3 || 0),
     }), {
       spend: 0,
       impressions: 0,
       clicks: 0,
       reservations: 0,
       reservation_value: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
     }) || {
       spend: 0,
       impressions: 0,
       clicks: 0,
       reservations: 0,
       reservation_value: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
     };
 
     // Aggregate previous year data
@@ -196,18 +222,27 @@ export async function POST(request: NextRequest) {
       clicks: acc.clicks + (summary.total_clicks || 0),
       reservations: acc.reservations + (summary.reservations || 0),
       reservation_value: acc.reservation_value + (summary.reservation_value || 0),
+      booking_step_1: acc.booking_step_1 + (summary.booking_step_1 || 0),
+      booking_step_2: acc.booking_step_2 + (summary.booking_step_2 || 0),
+      booking_step_3: acc.booking_step_3 + (summary.booking_step_3 || 0),
     }), {
       spend: 0,
       impressions: 0,
       clicks: 0,
       reservations: 0,
       reservation_value: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
     }) || {
       spend: 0,
       impressions: 0,
       clicks: 0,
       reservations: 0,
       reservation_value: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
     };
 
     // Calculate percentage changes
@@ -217,6 +252,9 @@ export async function POST(request: NextRequest) {
       clicks: calculatePercentageChange(currentData.clicks, previousData.clicks),
       reservations: calculatePercentageChange(currentData.reservations, previousData.reservations),
       reservation_value: calculatePercentageChange(currentData.reservation_value, previousData.reservation_value),
+      booking_step_1: calculatePercentageChange(currentData.booking_step_1, previousData.booking_step_1),
+      booking_step_2: calculatePercentageChange(currentData.booking_step_2, previousData.booking_step_2),
+      booking_step_3: calculatePercentageChange(currentData.booking_step_3, previousData.booking_step_3),
     };
 
     const result: YearOverYearData = {

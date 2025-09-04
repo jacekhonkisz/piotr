@@ -82,6 +82,20 @@ interface MonthlyReport {
   date_range_end: string;
   generated_at?: string;
   campaigns: Campaign[];
+  conversionMetrics?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    booking_step_2: number;
+    booking_step_3: number;
+    roas: number;
+    cost_per_reservation: number;
+    reach: number;
+    offline_reservations: number;
+    offline_value: number;
+  };
 }
 
 interface WeeklyReport {
@@ -90,6 +104,20 @@ interface WeeklyReport {
   date_range_end: string;
   generated_at?: string;
   campaigns: Campaign[];
+  conversionMetrics?: {
+    click_to_call: number;
+    email_contacts: number;
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+    booking_step_2: number;
+    booking_step_3: number;
+    roas: number;
+    cost_per_reservation: number;
+    reach: number;
+    offline_reservations: number;
+    offline_value: number;
+  };
 }
 
 const formatDate = (dateString: string) => {
@@ -577,7 +605,7 @@ function ReportsPageContent() {
           return {
             id: campaign.campaign_id || `campaign-${index}`,
             campaign_id: campaign.campaign_id || '',
-            campaign_name: campaign.campaign_name || 'Unknown Campaign',
+            campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
             spend: parseFloat(campaign.spend || '0'),
             impressions: parseInt(campaign.impressions || '0'),
             clicks: parseInt(campaign.clicks || '0'),
@@ -788,7 +816,7 @@ function ReportsPageContent() {
         return {
           id: campaign.campaign_id || `campaign-${index}`,
           campaign_id: campaign.campaign_id || '',
-          campaign_name: campaign.campaign_name || 'Unknown Campaign',
+          campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
           spend: parseFloat(campaign.spend || '0'),
           impressions: parseInt(campaign.impressions || '0'),
           clicks: parseInt(campaign.clicks || '0'),
@@ -1554,7 +1582,7 @@ function ReportsPageContent() {
         return {
           id: campaign.campaign_id || `campaign-${index}`,
           campaign_id: campaign.campaign_id || '',
-          campaign_name: campaign.campaign_name || 'Unknown Campaign',
+          campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
           spend: parseFloat(campaign.spend || '0'),
           impressions: parseInt(campaign.impressions || '0'),
           clicks: parseInt(campaign.clicks || '0'),
@@ -1657,11 +1685,13 @@ function ReportsPageContent() {
         date_range_start: correctStartDate,
         date_range_end: correctEndDate,
         generated_at: new Date().toISOString(),
-        campaigns: campaigns
+        campaigns: campaigns,
+        conversionMetrics: data.data?.conversionMetrics || data.conversionMetrics
       };
 
       console.log(`💾 Setting successful report for ${periodId}:`, report);
       console.log(`💾 Report campaigns count:`, report.campaigns.length);
+      console.log(`💾 Report conversionMetrics:`, report.conversionMetrics);
       if (report.campaigns.length > 0) {
         console.log(`💾 Sample campaign:`, report.campaigns[0]);
       }
@@ -2166,7 +2196,7 @@ function ReportsPageContent() {
             return {
               id: campaign.campaign_id || `campaign-${index}`,
               campaign_id: campaign.campaign_id || '',
-              campaign_name: campaign.campaign_name || 'Unknown Campaign',
+              campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
               spend: parseFloat(campaign.spend || '0'),
               impressions: parseInt(campaign.impressions || '0'),
               clicks: parseInt(campaign.clicks || '0'),

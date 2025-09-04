@@ -100,7 +100,7 @@ export function convertMetaCampaignToUnified(metaCampaign: any): UnifiedCampaign
   return {
     id: metaCampaign.id || metaCampaign.campaign_id,
     campaign_id: metaCampaign.campaign_id || '',
-    campaign_name: metaCampaign.campaign_name || 'Unknown Campaign',
+    campaign_name: metaCampaign.campaign_name || metaCampaign.name || 'Unknown Campaign',
     platform: 'meta' as PlatformType,
     status: metaCampaign.status || 'UNKNOWN',
     
@@ -138,7 +138,7 @@ export function convertGoogleCampaignToUnified(googleCampaign: any): UnifiedCamp
   return {
     id: googleCampaign.id || googleCampaign.campaignId || googleCampaign.campaign_id,
     campaign_id: googleCampaign.campaignId || googleCampaign.campaign_id || '',
-    campaign_name: googleCampaign.campaignName || googleCampaign.campaign_name || 'Unknown Campaign',
+    campaign_name: googleCampaign.campaignName || googleCampaign.campaign_name || googleCampaign.name || 'Unknown Campaign',
     platform: 'google' as PlatformType,
     status: googleCampaign.status || 'UNKNOWN',
     
