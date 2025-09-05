@@ -162,8 +162,10 @@ const generateTitleSection = (reportData: ReportData) => {
     willDisplayAiSection: !!reportData.aiSummary
   });
   
+  logger.info('🔍 TITLE SECTION: Generating without page break (should be page 1)');
+  
   const titleHtml = `
-    <div class="page-break-before">
+    <div class="title-page">
       <div class="page-content">
         <div class="clean-title-section">
         ${reportData.clientLogo ? `
@@ -208,7 +210,14 @@ const generateTitleSection = (reportData: ReportData) => {
 
 // Generate Section 2: Year-to-Year Comparison
 const generateYoYSection = (reportData: ReportData) => {
-  if (!reportData.yoyComparison) return '';
+  logger.info('🔍 YOY SECTION: Starting generation', {
+    hasYoyComparison: !!reportData.yoyComparison
+  });
+  
+  if (!reportData.yoyComparison) {
+    logger.info('🔍 YOY SECTION: No yoyComparison data, returning empty');
+    return '';
+  }
   
   const { meta, google } = reportData.yoyComparison;
   
@@ -218,8 +227,22 @@ const generateYoYSection = (reportData: ReportData) => {
   const hasGoogleData = (google.current.spend > 0 || google.previous.spend > 0) || 
                         (google.current.reservationValue > 0 || google.previous.reservationValue > 0);
   
+  logger.info('🔍 YOY SECTION: Data check', {
+    hasMetaData,
+    hasGoogleData,
+    metaCurrent: meta.current,
+    metaPrevious: meta.previous,
+    googleCurrent: google.current,
+    googlePrevious: google.previous
+  });
+  
   // Don't generate section if no meaningful data for either platform
-  if (!hasMetaData && !hasGoogleData) return '';
+  if (!hasMetaData && !hasGoogleData) {
+    logger.info('🔍 YOY SECTION: No meaningful data, returning empty');
+    return '';
+  }
+  
+  logger.info('🔍 YOY SECTION: Generating content with data');
   
   return `
     <div class="section-container">
@@ -1103,6 +1126,16 @@ function generatePDFHTML(reportData: ReportData): string {
     aiSummary: reportData.aiSummary?.replace(/[<>]/g, '') || undefined
   };
 
+  // Helper function to conditionally wrap content with page break
+  const generateConditionalSection = (content: string) => {
+    if (!content || content.trim() === '') {
+      logger.info('🔍 CONDITIONAL SECTION: Empty content, skipping page break');
+      return '';
+    }
+    logger.info('🔍 CONDITIONAL SECTION: Content found, adding page break');
+    return `<div style="page-break-before: always;">${content}</div>`;
+  };
+
   return `
     <!DOCTYPE html>
     <html lang="pl">
@@ -1153,6 +1186,11 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             /* A4 Page Layout */
+            .title-page {
+                padding: 0;
+                max-width: 210mm;
+            }
+            
             .page-break-before {
                 page-break-before: always;
                 padding: 0;
@@ -1692,11 +1730,11 @@ function generatePDFHTML(reportData: ReportData): string {
     </head>
     <body>
         ${generateTitleSection(sanitizedData)}
-        ${generateYoYSection(sanitizedData)}
-        ${generateMetaMetricsSection(sanitizedData)}
-        ${generateMetaFunnelSection(sanitizedData)}
-        ${generateGoogleMetricsSection(sanitizedData)}
-        ${generateGoogleFunnelSection(sanitizedData)}
+        ${generateConditionalSection(generateYoYSection(sanitizedData))}
+        ${generateConditionalSection(generateMetaMetricsSection(sanitizedData))}
+        ${generateConditionalSection(generateMetaFunnelSection(sanitizedData))}
+        ${generateConditionalSection(generateGoogleMetricsSection(sanitizedData))}
+        ${generateConditionalSection(generateGoogleFunnelSection(sanitizedData))}
         ${generateMetaCampaignDetailsSection(sanitizedData)}
         ${generateGoogleCampaignDetailsSection(sanitizedData)}
         ${generateFooter(sanitizedData)}
