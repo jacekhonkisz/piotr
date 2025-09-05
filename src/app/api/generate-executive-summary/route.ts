@@ -54,15 +54,17 @@ interface ExecutiveSummaryData {
 
 export async function POST(request: NextRequest) {
   try {
-    // Extract the authorization header
+    logger.info('🔑 AI Summary: Starting authentication (using same pattern as PDF generation)');
+    
+    // Use EXACT same authentication pattern as PDF generation (working)
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
-    // Create a new Supabase client with the user's access token
+    const token = authHeader.substring(7);
+    
+    // Create Supabase client with user JWT token (EXACT same as PDF generation)
     const userSupabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -75,14 +77,51 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    // Get the user from the token
+    // Get user from token (EXACT same as PDF generation)
     const { data: { user }, error: authError } = await userSupabase.auth.getUser();
+    
     if (authError || !user) {
+      logger.error('❌ AI Summary authentication failed:', { error: authError?.message });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    logger.info('✅ AI Summary: User authenticated:', { userId: user.id, email: user.email });
+    
+    // Get user profile using user-context client (EXACT same as PDF generation)
+    const { data: profile, error: profileError } = await userSupabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      logger.error('❌ AI Summary profile not found:', { error: profileError?.message });
+      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+    }
+
+    const authenticatedUser = {
+      id: user.id,
+      email: user.email!,
+      role: profile.role as 'admin' | 'client'
+    };
+
+    logger.info('✅ AI Summary: User profile loaded:', { role: authenticatedUser.role });
+
     // Parse request body
     const { clientId, dateRange, reportData } = await request.json();
+    
+    logger.info('🔍 [DEBUG] Raw request data structure:', {
+      hasClientId: !!clientId,
+      hasDateRange: !!dateRange,
+      hasReportData: !!reportData,
+      reportDataKeys: reportData ? Object.keys(reportData) : [],
+      reportDataType: typeof reportData,
+      hasMetaData: !!(reportData?.metaData),
+      hasGoogleData: !!(reportData?.googleData),
+      hasAccountSummary: !!(reportData?.account_summary),
+      metaDataStructure: reportData?.metaData ? Object.keys(reportData.metaData) : [],
+      googleDataStructure: reportData?.googleData ? Object.keys(reportData.googleData) : []
+    });
 
     if (!clientId || !dateRange) {
       return NextResponse.json({ 
@@ -90,16 +129,32 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get client information
-    const { data: client, error: clientError } = await supabase
+    // Get client data using user-context client (EXACT same as PDF generation)
+    logger.info('🔍 AI Summary: Querying client data with user context:', { clientId, userId: user.id, userRole: authenticatedUser.role });
+    const { data: client, error: clientError } = await userSupabase
       .from('clients')
       .select('*')
       .eq('id', clientId)
       .single();
+      
+    logger.info('📊 AI Summary: Client query result:', { 
+      found: !!client, 
+      error: clientError?.message,
+      errorCode: clientError?.code 
+    });
 
     if (clientError || !client) {
+      logger.error('❌ AI Summary: Client not found:', { clientId, error: clientError });
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
+    
+    // Check access control (EXACT same as PDF generation)
+    if (authenticatedUser.role === 'client' && client.email !== authenticatedUser.email) {
+      logger.error('❌ AI Summary: Client access denied:', { userEmail: authenticatedUser.email, clientEmail: client.email });
+      return NextResponse.json({ error: 'Access denied: You can only access your own data' }, { status: 403 });
+    }
+    
+    logger.info('✅ AI Summary: Client access verified:', { id: client.id, name: client.name, userRole: authenticatedUser.role });
 
     // Fetch data from smart cache/database instead of relying on passed data
     let actualReportData;
@@ -116,15 +171,68 @@ export async function POST(request: NextRequest) {
       shouldFetchUnifiedData
     });
     
-    if (reportData && reportData.account_summary) {
-      // If reportData is provided and has valid data, use it
-      actualReportData = reportData;
-      logger.info('📊 [DATA-SYNC] Using provided report data for AI summary:', {
+    if (reportData && (reportData.metaData || reportData.googleData)) {
+      // If reportData is provided with new structure (from PDF generation), convert it
+      logger.info('🔍 [DEBUG] Extracting data from new structure:', {
+        metaDataMetrics: reportData.metaData?.metrics,
+        googleDataMetrics: reportData.googleData?.metrics
+      });
+      
+      const metaSpend = reportData.metaData?.metrics?.totalSpend || 0;
+      const metaImpressions = reportData.metaData?.metrics?.totalImpressions || 0;
+      const metaClicks = reportData.metaData?.metrics?.totalClicks || 0;
+      const metaReservations = reportData.metaData?.metrics?.totalReservations || 0;
+      
+      const googleSpend = reportData.googleData?.metrics?.totalSpend || 0;
+      const googleImpressions = reportData.googleData?.metrics?.totalImpressions || 0;
+      const googleClicks = reportData.googleData?.metrics?.totalClicks || 0;
+      const googleReservations = reportData.googleData?.metrics?.totalReservations || 0;
+      
+      logger.info('🔍 [DEBUG] Extracted values:', {
+        metaSpend, metaImpressions, metaClicks, metaReservations,
+        googleSpend, googleImpressions, googleClicks, googleReservations,
+        totalSpend: metaSpend + googleSpend
+      });
+      
+      actualReportData = {
+        account_summary: {
+          total_spend: metaSpend + googleSpend,
+          total_impressions: metaImpressions + googleImpressions,
+          total_clicks: metaClicks + googleClicks,
+          total_conversions: metaReservations + googleReservations,
+          average_ctr: ((metaClicks + googleClicks) / (metaImpressions + googleImpressions)) * 100 || 0,
+          average_cpc: (metaSpend + googleSpend) / (metaClicks + googleClicks) || 0,
+          average_cpa: (metaSpend + googleSpend) / (metaReservations + googleReservations) || 0,
+          total_conversion_value: (reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0),
+          roas: ((reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0)) / (metaSpend + googleSpend) || 0,
+          micro_conversions: (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
+          meta_spend: metaSpend,
+          meta_impressions: metaImpressions,
+          meta_clicks: metaClicks,
+          meta_conversions: metaReservations,
+          google_spend: googleSpend,
+          google_impressions: googleImpressions,
+          google_clicks: googleClicks,
+          google_conversions: googleReservations
+        }
+      };
+      
+      logger.info('📊 [DATA-SYNC] Using provided report data (NEW STRUCTURE) for AI summary:', {
         totalSpend: actualReportData.account_summary.total_spend,
         metaSpend: actualReportData.account_summary.meta_spend,
         googleSpend: actualReportData.account_summary.google_spend,
         hasUnifiedData: !!(actualReportData.account_summary.meta_spend && actualReportData.account_summary.google_spend),
-        dataSource: 'provided_by_pdf'
+        dataSource: 'PROVIDED_BY_PDF_NEW_STRUCTURE'
+      });
+    } else if (reportData && reportData.account_summary) {
+      // If reportData is provided with old structure, use it
+      actualReportData = reportData;
+      logger.info('📊 [DATA-SYNC] Using provided report data (OLD STRUCTURE) for AI summary:', {
+        totalSpend: actualReportData.account_summary.total_spend,
+        metaSpend: actualReportData.account_summary.meta_spend,
+        googleSpend: actualReportData.account_summary.google_spend,
+        hasUnifiedData: !!(actualReportData.account_summary.meta_spend && actualReportData.account_summary.google_spend),
+        dataSource: 'PROVIDED_BY_PDF_OLD_STRUCTURE'
       });
     } else {
       // Fetch data from the same source as reports (smart cache/database)
@@ -245,7 +353,7 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': authHeader
           },
           body: JSON.stringify({
             dateRange,
@@ -259,7 +367,7 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': authHeader
           },
           body: JSON.stringify({
             dateRange,
@@ -411,7 +519,15 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Prepare data for AI summary
+    // Prepare data for AI summary (using correct API response structure)
+    logger.info('📊 AI Summary data extraction - API response structure:', {
+      hasStats: !!actualReportData.stats,
+      hasConversionMetrics: !!actualReportData.conversionMetrics,
+      hasAccountSummary: !!actualReportData.account_summary,
+      statsKeys: actualReportData.stats ? Object.keys(actualReportData.stats) : [],
+      conversionKeys: actualReportData.conversionMetrics ? Object.keys(actualReportData.conversionMetrics) : []
+    });
+    
     const summaryData: ExecutiveSummaryData = {
       totalSpend: actualReportData.account_summary?.total_spend || 0,
       totalImpressions: actualReportData.account_summary?.total_impressions || 0,
@@ -434,6 +550,17 @@ export async function POST(request: NextRequest) {
       platformSources: platformSources,
       platformBreakdown: platformBreakdown
     };
+
+    logger.info('✅ AI Summary data prepared successfully:', {
+      totalSpend: summaryData.totalSpend,
+      totalImpressions: summaryData.totalImpressions,
+      totalClicks: summaryData.totalClicks,
+      totalConversions: summaryData.totalConversions,
+      reservations: summaryData.reservations,
+      reservationValue: summaryData.reservationValue,
+      roas: summaryData.roas,
+      clientName: summaryData.clientName
+    });
 
     // Generate AI summary using OpenAI
     const aiSummary = await generateAISummary(summaryData);
@@ -473,8 +600,63 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Generate fallback summary for development mode
+function generateFallbackSummary(data: ExecutiveSummaryData): string {
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('pl-PL', {
+      style: 'currency',
+      currency: data.currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  };
+
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('pl-PL').format(num);
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('pl-PL', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  return `W okresie od ${formatDate(data.dateRange.start)} do ${formatDate(data.dateRange.end)} przeprowadziliśmy kampanie reklamowe o łącznym budżecie ${formatCurrency(data.totalSpend)}. Kampanie wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, osiągając CTR na poziomie ${(data.averageCtr * 100).toFixed(2)}%.
+
+Działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.costPerReservation || 0)}.
+
+[DEV MODE - Fallback Summary]`;
+}
+
 async function generateAISummary(data: ExecutiveSummaryData): Promise<string | null> {
   try {
+    // Check if we're in development mode or cheap mode is enabled
+    const isDevelopment = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_APP_URL?.includes('localhost');
+    const isCheapMode = process.env.AI_CHEAP_MODE === 'true';
+    
+    // Return fallback summary in development mode or cheap mode to save costs
+    if (isDevelopment || isCheapMode) {
+      logger.info(`🔄 [${isDevelopment ? 'DEV' : 'CHEAP'} MODE] Using fallback AI summary to save costs`);
+      return generateFallbackSummary(data);
+    }
+    
+    logger.info('🤖 Starting OpenAI API call for executive summary generation');
+    logger.info('🔑 OpenAI API Key check:', {
+      hasApiKey: !!process.env.OPENAI_API_KEY,
+      keyLength: process.env.OPENAI_API_KEY?.length || 0,
+      keyPrefix: process.env.OPENAI_API_KEY?.substring(0, 10) || 'missing'
+    });
+    logger.info('📊 Summary data for AI generation:', {
+      totalSpend: data.totalSpend,
+      totalImpressions: data.totalImpressions,
+      totalConversions: data.totalConversions,
+      clientName: data.clientName,
+      dateRange: `${data.dateRange.start} to ${data.dateRange.end}`,
+      hasValidData: data.totalSpend > 0 || data.totalImpressions > 0
+    });
+    
     // Format numbers for Polish locale
     const formatCurrency = (amount: number) => {
       return new Intl.NumberFormat('pl-PL', {
@@ -522,56 +704,16 @@ async function generateAISummary(data: ExecutiveSummaryData): Promise<string | n
 
     // Prepare the prompt for OpenAI
     const platformText = data.platformAttribution || 'kampanie reklamowe';
-    const prompt = `Napisz miesięczne podsumowanie wyników ${platformText} w języku polskim.
+    const prompt = `Podsumuj wyniki kampanii (${formatDateRange(data.dateRange.start, data.dateRange.end)}):
 
-Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy", "zaobserwowaliśmy").
-
-Nie używaj nazwy klienta ani firmy w tekście podsumowania. Możesz używać nazw platform reklamowych (Meta Ads, Google Ads) jeśli są one określone w danych.
-
-Nie wymyślaj danych ani zdarzeń – opieraj się tylko na dostarczonych liczbach.
-
-Jeśli są dane historyczne (poprzedni miesiąc, rok, 3-miesięczna zmiana), porównaj je rzeczowo (np. "W porównaniu do marca, liczba kliknięć wzrosła o 10%").
-
-Skup się na najważniejszych wskaźnikach: wydatki, wyświetlenia, kliknięcia, CTR, CPC, konwersje, CPA, zmiany miesiąc do miesiąca.
-
-Jeśli nie ma konwersji – zaznacz to krótko i rzeczowo, ewentualnie odnieś się do potencjalnych efektów pośrednich (np. wzrost świadomości marki).
-
-Nie dodawaj żadnych zwrotów grzecznościowych, podziękowań, ani formułek typu "cieszymy się", "dziękujemy" itp.
-
-Nie dopisuj planów na przyszłość, jeśli nie wynikają bezpośrednio z danych (np. "skupimy się na..." tylko jeśli wynika to z analizy spadków/wzrostów).
-
-Tekst ma być spójny, zwięzły, bez zbędnych akapitów czy pustych linii. Nie rozpoczynaj tekstu pustą linią, nie kończ pustą linią. Nie dodawaj żadnych spacji na początku tekstu.
-
-Dane do analizy:
-Okres: ${formatDateRange(data.dateRange.start, data.dateRange.end)}
-Całkowity koszt reklam: ${formatCurrency(data.totalSpend)}
-Liczba wyświetleń: ${formatNumber(data.totalImpressions)}
-Liczba kliknięć: ${formatNumber(data.totalClicks)}
+Budżet: ${formatCurrency(data.totalSpend)}
+Wyświetlenia: ${formatNumber(data.totalImpressions)}
+Kliknięcia: ${formatNumber(data.totalClicks)}
 CTR: ${formatPercentage(data.averageCtr)}
 CPC: ${formatCurrency(data.averageCpc)}
-Liczba konwersji: ${formatNumber(data.totalConversions)}
-CPA: ${formatCurrency(data.averageCpa)}
+${(data.reservations || 0) > 0 ? `Rezerwacje: ${formatNumber(data.reservations || 0)}, wartość: ${formatCurrency(data.reservationValue || 0)}, ROAS: ${(data.roas || 0).toFixed(2)}x` : `Konwersje: ${formatNumber(data.totalConversions)}`}
 
-${data.platformBreakdown ? `
-Podział według platform:
-Meta Ads: ${formatCurrency(data.platformBreakdown.meta?.spend || 0)} (${formatNumber(data.platformBreakdown.meta?.impressions || 0)} wyświetleń, ${formatNumber(data.platformBreakdown.meta?.clicks || 0)} kliknięć, ${formatNumber(data.platformBreakdown.meta?.conversions || 0)} konwersji)
-Google Ads: ${formatCurrency(data.platformBreakdown.google?.spend || 0)} (${formatNumber(data.platformBreakdown.google?.impressions || 0)} wyświetleń, ${formatNumber(data.platformBreakdown.google?.clicks || 0)} kliknięć, ${formatNumber(data.platformBreakdown.google?.conversions || 0)} konwersji)
-` : ''}
-
-${data.reservations ? `Liczba rezerwacji: ${formatNumber(data.reservations)}` : ''}
-${data.reservationValue ? `Wartość rezerwacji: ${formatCurrency(data.reservationValue)}` : ''}
-${data.roas ? `ROAS: ${formatPercentage(data.roas)}` : ''}
-${data.microConversions ? `Liczba mikrokonwersji: ${formatNumber(data.microConversions)}` : ''}
-${data.costPerReservation ? `Koszt pozyskania rezerwacji: ${formatCurrency(data.costPerReservation)}` : ''}
-
-Przykład stylu:
-
-${data.platformBreakdown ? 
-`W sierpniu wydaliśmy łącznie ${formatCurrency(data.totalSpend)} na ${platformText}. W ramach Meta Ads wydaliśmy ${formatCurrency(data.platformBreakdown.meta?.spend || 0)}, a na Google Ads ${formatCurrency(data.platformBreakdown.google?.spend || 0)}. Łącznie kampanie wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, co dało CTR na poziomie ${data.averageCtr.toFixed(2)}%. W wyniku tych działań zanotowaliśmy ${formatNumber(data.totalConversions)} konwersji.` :
-`W sierpniu wydaliśmy ${formatCurrency(data.totalSpend)} na ${platformText}, które wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, co dało CTR na poziomie ${data.averageCtr.toFixed(2)}%. Średni koszt kliknięcia wyniósł ${formatCurrency(data.averageCpc)}. W wyniku tych działań zanotowaliśmy ${formatNumber(data.totalConversions)} konwersji, co dało nam koszt pozyskania konwersji na poziomie ${formatCurrency(data.averageCpa)}.`}
-Działania przyniosły pozytywne rezultaty w zakresie pozyskiwania nowych klientów.
-
-Jeśli nie ma danych porównawczych, pomiń zdania porównujące. Zakończ podsumowanie, gdy przekażesz najważniejsze fakty.`;
+Napisz zwięzłe podsumowanie z perspektywy zespołu ("wydaliśmy", "osiągnęliśmy"). Bez nazw firm. Tylko fakty.`;
 
     // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -581,19 +723,19 @@ Jeśli nie ma danych porównawczych, pomiń zdania porównujące. Zakończ podsu
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
-            content: 'Jesteś ekspertem ds. marketingu cyfrowego specjalizującym się w Meta Ads. Tworzysz zwięzłe, rzeczowe podsumowania wyników kampanii reklamowych w języku polskim. Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy", "zaobserwowaliśmy"). Nie używaj nazw klientów, firm ani platform w tekście. Opieraj się tylko na dostarczonych danych. Nie dodawaj zwrotów grzecznościowych, podziękowań ani formułek. Nie dopisuj planów na przyszłość, jeśli nie wynikają bezpośrednio z danych. Tekst ma być spójny, zwięzły, bez zbędnych akapitów. Wszystkie liczby podaj w formacie polskim z walutą PLN (zł). Używaj polskich nazw miesięcy i polskiego formatowania liczb.'
+            content: 'Jesteś ekspertem ds. marketingu cyfrowego. Tworzysz zwięzłe podsumowania kampanii reklamowych w języku polskim. Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy"). Nie używaj nazw firm. Opieraj się tylko na danych. Tekst ma być zwięzły. Liczby w formacie polskim z PLN (zł).'
           },
           {
             role: 'user',
             content: prompt
           }
         ],
-        max_tokens: 500,
-        temperature: 0.7
+        max_tokens: 300,
+        temperature: 0.5
       })
     });
 
@@ -613,6 +755,16 @@ Jeśli nie ma danych porównawczych, pomiń zdania porównujące. Zakończ podsu
 
   } catch (error) {
     console.error('Error calling OpenAI API:', error);
+    
+    // If OpenAI fails (rate limit, etc.), provide a fallback summary
+    if (error instanceof Error && (error.message.includes('429') || error.message.includes('Too Many Requests'))) {
+      logger.warn('⚠️ OpenAI rate limit hit, generating fallback summary');
+      
+      const formatCurrency = (amount: number) => new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(amount);
+      const formatNumber = (num: number) => new Intl.NumberFormat('pl-PL').format(num);
+      
+      return `W okresie od ${data.dateRange.start} do ${data.dateRange.end} kampanie reklamowe dla ${data.clientName} wygenerowały wydatki w wysokości ${formatCurrency(data.totalSpend)}. Łącznie odnotowano ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, co dało średni CTR na poziomie ${data.averageCtr.toFixed(2)}%. Kampanie przyniosły ${formatNumber(data.totalConversions)} konwersji${(data.reservationValue && data.reservationValue > 0) ? ` o wartości ${formatCurrency(data.reservationValue)}` : ''}.`;
+    }
     
     // Return null if OpenAI fails - no summary will be generated
     return null;

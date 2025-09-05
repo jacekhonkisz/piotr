@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { BarChart3, Eye, MousePointer, Target, DollarSign, Calendar, PhoneCall, Mail } from 'lucide-react';
+import { BarChart3, Eye, MousePointer, Target, DollarSign, Calendar, PhoneCall, Mail, TrendingUp, Users, Zap, Award, Search, Activity } from 'lucide-react';
 import ConversionFunnel from './ConversionFunnel';
 
 interface PlatformData {
@@ -13,6 +13,18 @@ interface PlatformData {
     totalConversions: number;
     averageCtr: number;
     averageCpc: number;
+    averageCpa?: number;
+    averageCpm?: number;
+    // Meta-specific metrics
+    frequency?: number;
+    reach?: number;
+    relevanceScore?: number;
+    landingPageViews?: number;
+    // Google-specific metrics
+    searchImpressionShare?: number;
+    viewThroughConversions?: number;
+    qualityScore?: number;
+    searchBudgetLostImpressionShare?: number;
   };
   conversionMetrics: {
     click_to_call: number;
@@ -103,7 +115,8 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             )}
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Meta Core Metrics - Row 1 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             <MetricCard
               title="Wydana kwota"
               value={formatCurrency(metaData.stats.totalSpend)}
@@ -137,6 +150,63 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
               value={formatCurrency(metaData.stats.averageCpc)}
               subtitle="Meta Ads"
               icon={<DollarSign className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+          </div>
+
+          {/* Meta Additional Core Metrics - Row 2 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <MetricCard
+              title="Konwersje"
+              value={formatNumber(metaData.stats.totalConversions)}
+              subtitle="Meta Ads"
+              icon={<TrendingUp className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+            <MetricCard
+              title="CPA"
+              value={formatCurrency(metaData.stats.averageCpa || 0)}
+              subtitle="Meta Ads"
+              icon={<Target className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+            <MetricCard
+              title="CPM"
+              value={formatCurrency(metaData.stats.averageCpm || 0)}
+              subtitle="Meta Ads"
+              icon={<BarChart3 className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+            <MetricCard
+              title="Zasięg"
+              value={formatNumber(metaData.stats.reach || 0)}
+              subtitle="Meta Ads"
+              icon={<Users className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+          </div>
+
+          {/* Meta Specific Metrics - Row 3 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <MetricCard
+              title="Częstotliwość"
+              value={`${(metaData.stats.frequency || 0).toFixed(2)}x`}
+              subtitle="Meta Ads"
+              icon={<Activity className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+            <MetricCard
+              title="Ocena trafności"
+              value={`${(metaData.stats.relevanceScore || 0).toFixed(1)}/10`}
+              subtitle="Meta Ads"
+              icon={<Award className="w-5 h-5 text-blue-600" />}
+              color="bg-blue-50"
+            />
+            <MetricCard
+              title="Wyświetlenia strony docelowej"
+              value={formatNumber(metaData.stats.landingPageViews || 0)}
+              subtitle="Meta Ads"
+              icon={<Eye className="w-5 h-5 text-blue-600" />}
               color="bg-blue-50"
             />
           </div>
@@ -192,7 +262,8 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             )}
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          {/* Google Core Metrics - Row 1 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
             <MetricCard
               title="Wydana kwota"
               value={formatCurrency(googleData.stats.totalSpend)}
@@ -226,6 +297,63 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
               value={formatCurrency(googleData.stats.averageCpc)}
               subtitle="Google Ads"
               icon={<DollarSign className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+          </div>
+
+          {/* Google Additional Core Metrics - Row 2 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <MetricCard
+              title="Konwersje"
+              value={formatNumber(googleData.stats.totalConversions)}
+              subtitle="Google Ads"
+              icon={<TrendingUp className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+            <MetricCard
+              title="CPA"
+              value={formatCurrency(googleData.stats.averageCpa || 0)}
+              subtitle="Google Ads"
+              icon={<Target className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+            <MetricCard
+              title="CPM"
+              value={formatCurrency(googleData.stats.averageCpm || 0)}
+              subtitle="Google Ads"
+              icon={<BarChart3 className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+            <MetricCard
+              title="Konwersje wyświetleniowe"
+              value={formatNumber(googleData.stats.viewThroughConversions || 0)}
+              subtitle="Google Ads"
+              icon={<Eye className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+          </div>
+
+          {/* Google Specific Metrics - Row 3 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <MetricCard
+              title="Udział wyświetleń w wyszukiwaniu"
+              value={`${((googleData.stats.searchImpressionShare || 0) * 100).toFixed(1)}%`}
+              subtitle="Google Ads"
+              icon={<Search className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+            <MetricCard
+              title="Ocena jakości"
+              value={`${(googleData.stats.qualityScore || 0).toFixed(1)}/10`}
+              subtitle="Google Ads"
+              icon={<Award className="w-5 h-5 text-green-600" />}
+              color="bg-green-50"
+            />
+            <MetricCard
+              title="Utracone wyświetlenia (budżet)"
+              value={`${((googleData.stats.searchBudgetLostImpressionShare || 0) * 100).toFixed(1)}%`}
+              subtitle="Google Ads"
+              icon={<Zap className="w-5 h-5 text-green-600" />}
               color="bg-green-50"
             />
           </div>
@@ -275,7 +403,8 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
           <p className="text-slate-700">Suma wyników ze wszystkich platform</p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        {/* Combined Core Metrics - Row 1 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
           <MetricCard
             title="Wydana kwota"
             value={formatCurrency(combinedData.stats.totalSpend)}
@@ -309,6 +438,31 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             value={formatCurrency(combinedData.stats.averageCpc)}
             subtitle="Wszystkie platformy"
             icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+            color="bg-slate-50"
+          />
+        </div>
+
+        {/* Combined Additional Metrics - Row 2 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          <MetricCard
+            title="Konwersje"
+            value={formatNumber(combinedData.stats.totalConversions)}
+            subtitle="Wszystkie platformy"
+            icon={<TrendingUp className="w-5 h-5 text-slate-600" />}
+            color="bg-slate-50"
+          />
+          <MetricCard
+            title="CPA"
+            value={formatCurrency((combinedData.stats.averageCpa || 0))}
+            subtitle="Wszystkie platformy"
+            icon={<Target className="w-5 h-5 text-slate-600" />}
+            color="bg-slate-50"
+          />
+          <MetricCard
+            title="CPM"
+            value={formatCurrency((combinedData.stats.averageCpm || 0))}
+            subtitle="Wszystkie platformy"
+            icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
             color="bg-slate-50"
           />
         </div>

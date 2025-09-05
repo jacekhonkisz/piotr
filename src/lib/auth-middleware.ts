@@ -56,9 +56,14 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
     const { data: { user }, error: authError } = await jwtClient.auth.getUser();
     
     if (authError || !user) {
+      logger.error('Auth middleware - token validation failed:', { 
+        error: authError?.message,
+        tokenLength: token?.length,
+        tokenPreview: token?.substring(0, 20) + '...'
+      });
       return {
         success: false,
-        error: 'Unauthorized - Invalid token',
+        error: `Unauthorized - Invalid token: ${authError?.message || 'No user found'}`,
         statusCode: 401
       };
     }
