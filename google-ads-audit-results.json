@@ -1,0 +1,37 @@
+{
+  "databaseStructure": {
+    "google_ads_campaigns": {
+      "exists": false,
+      "error": "TypeError: fetch failed"
+    },
+    "google_ads_tables_data": {
+      "exists": false,
+      "error": "TypeError: fetch failed"
+    },
+    "google_ads_daily_data": {
+      "exists": false,
+      "error": "TypeError: fetch failed"
+    },
+    "campaign_summaries": {
+      "exists": false,
+      "error": "TypeError: fetch failed"
+    }
+  },
+  "smartCaching": {
+    "/api/google-ads-smart-cache": {
+      "working": false,
+      "status": 401,
+      "error": "{\"error\":\"Unauthorized - Invalid token: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired\"}"
+    },
+    "/api/google-ads-smart-weekly-cache": {
+      "working": false,
+      "status": 401,
+      "error": "{\"error\":\"Unauthorized - Invalid token: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired\"}"
+    }
+  },
+  "dataComparison": {},
+  "recommendations": [
+    "Create missing tables: google_ads_campaigns, google_ads_tables_data, google_ads_daily_data, campaign_summaries",
+    "Fix cache endpoints: /api/google-ads-smart-cache, /api/google-ads-smart-weekly-cache"
+  ]
+}

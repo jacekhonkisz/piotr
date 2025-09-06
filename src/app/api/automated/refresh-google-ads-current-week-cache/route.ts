@@ -77,7 +77,7 @@ export async function POST() {
         }
         
         // Fetch fresh Google Ads data for current week
-        const refreshResult = await fetchFreshGoogleAdsCurrentWeekData(client.id);
+        const refreshResult = await fetchFreshGoogleAdsCurrentWeekData(client);
         
         if (refreshResult && refreshResult.campaigns) {
           console.log(`✅ Successfully refreshed Google Ads current week cache for ${client.name}`);

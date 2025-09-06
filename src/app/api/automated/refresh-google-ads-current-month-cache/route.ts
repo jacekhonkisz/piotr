@@ -89,7 +89,7 @@ export async function POST() {
         }
         
         // Fetch fresh Google Ads data for current month
-        const refreshResult = await fetchFreshGoogleAdsCurrentMonthData(client.id);
+        const refreshResult = await fetchFreshGoogleAdsCurrentMonthData(client);
         
         if (refreshResult && refreshResult.campaigns) {
           console.log(`✅ Successfully refreshed Google Ads current month cache for ${client.name}`);

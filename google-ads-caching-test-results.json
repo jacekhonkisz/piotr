@@ -1,0 +1,44 @@
+{
+  "cachingTests": {
+    "Monthly Smart Cache": {
+      "working": false,
+      "status": 401,
+      "error": "{\"error\":\"Missing or invalid authorization header\"}"
+    },
+    "Weekly Smart Cache": {
+      "working": false,
+      "status": 401,
+      "error": "{\"error\":\"Missing or invalid authorization header\"}"
+    },
+    "Refresh Current Month Cache": {
+      "working": true,
+      "status": 200,
+      "success": true,
+      "message": "Google Ads current month cache refresh completed"
+    },
+    "Refresh Current Week Cache": {
+      "working": true,
+      "status": 200,
+      "success": true,
+      "message": "Google Ads current week cache refresh completed"
+    }
+  },
+  "dataPopulation": {
+    "August 2025": {
+      "success": false,
+      "error": "{\"error\":\"Missing or invalid authorization header\"}"
+    },
+    "July 2025": {
+      "success": false,
+      "error": "{\"error\":\"Missing or invalid authorization header\"}"
+    },
+    "Current Week": {
+      "success": false,
+      "error": "{\"error\":\"Missing or invalid authorization header\"}"
+    }
+  },
+  "recommendations": [
+    "Fix 2 broken cache endpoints",
+    "Fix data fetching for 3 periods"
+  ]
+}
