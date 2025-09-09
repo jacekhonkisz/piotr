@@ -26,10 +26,15 @@ interface PreviewData {
     totalSpend: number;
     totalImpressions: number;
     totalClicks: number;
-    totalConversions: number;
+    totalConversions?: number;
     ctr: number;
     cpc: number;
-    cpm: number;
+    cpm?: number;
+    potentialOfflineReservations?: number;
+    totalPotentialValue?: number;
+    costPercentage?: number;
+    reservations?: number;
+    reservationValue?: number;
   };
 }
 
@@ -92,7 +97,18 @@ export default function EmailPreviewModal({
       const totalConversions = finalTotals.conversions || 0;
       const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
       const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-      const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
+      
+      // Calculate new metrics using same logic as WeeklyReportView
+      const totalEmailContacts = finalCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+      const totalPhoneContacts = finalCampaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+      const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+      
+      const totalReservationValue = finalCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+      const totalReservations = finalCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+      const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+      const totalPotentialValue = potentialOfflineValue + totalReservationValue;
+      const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
 
       // Check if period has ended and try to get real summary from generated report
       const now = new Date();
@@ -137,7 +153,13 @@ export default function EmailPreviewModal({
         totalConversions,
         ctr: ctr / 100, // Convert to decimal for consistency
         cpc,
-        cpm
+        // New metrics
+        potentialOfflineReservations,
+        totalPotentialValue,
+        costPercentage,
+        // Conversion metrics
+        reservations: totalReservations,
+        reservationValue: totalReservationValue
       };
 
       // Generate Polish email template (fully editable) - Updated to show only podsumowanie
@@ -326,8 +348,7 @@ Zespół Meta Ads`;
     }
     
     if (totalConversions > 0) {
-      const costPerConversion = totalConversions > 0 ? totalSpend / totalConversions : 0;
-      summaryParts.push(`W tym okresie zaobserwowaliśmy ${formatNumber(totalConversions)} konwersje, co przekłada się na koszt pozyskania konwersji (CPA) na poziomie ${formatCurrency(costPerConversion)}.`);
+      summaryParts.push(`W tym okresie zaobserwowaliśmy ${formatNumber(totalConversions)} konwersje.`);
     }
     
     return summaryParts.join(' ');
@@ -533,10 +554,6 @@ Zespół Meta Ads`;
                 <span class="metric-value">${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
                 <span class="metric-label">CPC</span>
               </div>
-              <div class="metric-card">
-                <span class="metric-value">${reportData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">CPM</span>
-              </div>
             </div>
             
             <div class="pdf-notice">
@@ -584,7 +601,6 @@ ${content.summary}
 - Clicks: ${reportData.totalClicks.toLocaleString('pl-PL')}
 - CTR: ${(reportData.ctr * 100).toFixed(2)}%
 - CPC: ${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
-- CPM: ${reportData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 
 Complete detailed report is attached as PDF. Open the PDF attachment for comprehensive analysis, charts, and campaign details.
 

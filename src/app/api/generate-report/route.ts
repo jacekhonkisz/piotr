@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
       combinedStats.totalSpend / combinedStats.totalClicks : 0;
     
     // Combine conversion metrics
-    const combinedConversionMetrics = {
+    const combinedConversionMetrics: any = {
       click_to_call: (metaData?.conversionMetrics?.click_to_call || 0) + (googleData?.conversionMetrics?.click_to_call || 0),
       email_contacts: (metaData?.conversionMetrics?.email_contacts || 0) + (googleData?.conversionMetrics?.email_contacts || 0),
       booking_step_1: (metaData?.conversionMetrics?.booking_step_1 || 0) + (googleData?.conversionMetrics?.booking_step_1 || 0),
@@ -221,6 +221,24 @@ export async function POST(request: NextRequest) {
       combinedConversionMetrics.reservation_value / combinedStats.totalSpend : 0;
     combinedConversionMetrics.cost_per_reservation = combinedConversionMetrics.reservations > 0 ? 
       combinedStats.totalSpend / combinedConversionMetrics.reservations : 0;
+    
+    // Calculate new metrics using same logic as WeeklyReportView
+    const totalEmailContacts = combinedCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+    const totalPhoneContacts = combinedCampaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+    
+    const totalReservationValue = combinedCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+    const totalReservations = combinedCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+    const totalPotentialValue = potentialOfflineValue + totalReservationValue;
+    const costPercentage = totalPotentialValue > 0 ? (combinedStats.totalSpend / totalPotentialValue) * 100 : 0;
+    
+    // Add new calculated metrics to conversion metrics
+    combinedConversionMetrics.potential_offline_reservations = potentialOfflineReservations;
+    combinedConversionMetrics.potential_offline_value = potentialOfflineValue;
+    combinedConversionMetrics.total_potential_value = totalPotentialValue;
+    combinedConversionMetrics.cost_percentage = costPercentage;
     
     // Create unified report structure
     const report = {

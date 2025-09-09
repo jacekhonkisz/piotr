@@ -328,8 +328,6 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
     { key: 'averageCtr', label: 'CTR (%)', value: metrics.averageCtr, formatter: formatPercentage },
     { key: 'averageCpc', label: 'CPC (zł)', value: metrics.averageCpc, formatter: formatCurrency },
-    { key: 'averageCpa', label: 'CPA (zł)', value: metrics.averageCpa, formatter: formatCurrency },
-    { key: 'averageCpm', label: 'CPM (zł)', value: metrics.averageCpm, formatter: formatCurrency }
   ].filter(metric => hasData(metric.value));
   
   // Meta-specific metrics
@@ -604,8 +602,6 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
     { key: 'averageCtr', label: 'CTR (%)', value: metrics.averageCtr, formatter: formatPercentage },
     { key: 'averageCpc', label: 'CPC (zł)', value: metrics.averageCpc, formatter: formatCurrency },
-    { key: 'averageCpa', label: 'CPA (zł)', value: metrics.averageCpa, formatter: formatCurrency },
-    { key: 'averageCpm', label: 'CPM (zł)', value: metrics.averageCpm, formatter: formatCurrency }
   ].filter(metric => hasData(metric.value));
   
   // Google-specific metrics

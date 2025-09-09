@@ -73,16 +73,117 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate sample report data (in a real implementation, this would come from the actual report)
-    const sampleReportData = {
-      dateRange: reportData ? `${reportData.date_range_start} to ${reportData.date_range_end}` : 'Last 30 days',
-      totalSpend: 12500.50,
-      totalImpressions: 250000,
-      totalClicks: 5000,
-      ctr: 0.02, // 2%
-      cpc: 2.50,
-      cpm: 50.00
-    };
+    // Generate real report data using same logic as reports
+    let realReportData;
+    
+    if (reportData && reportData.report_data) {
+      // Use stored report data if available
+      const storedData = reportData.report_data;
+      const campaigns = storedData.campaigns || [];
+      const stats = storedData.account_summary || {};
+      const conversionMetrics = storedData.conversionMetrics || {};
+      
+      // Calculate new metrics using same logic as WeeklyReportView
+      const totalEmailContacts = campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0);
+      const totalPhoneContacts = campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0);
+      const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+      
+      const totalReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+      const totalReservations = campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0);
+      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+      const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+      const totalPotentialValue = potentialOfflineValue + totalReservationValue;
+      const costPercentage = totalPotentialValue > 0 ? (stats.totalSpend / totalPotentialValue) * 100 : 0;
+      
+      realReportData = {
+        dateRange: `${reportData.date_range_start} to ${reportData.date_range_end}`,
+        totalSpend: stats.totalSpend || 0,
+        totalImpressions: stats.totalImpressions || 0,
+        totalClicks: stats.totalClicks || 0,
+        ctr: stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) : 0,
+        cpc: stats.totalClicks > 0 ? (stats.totalSpend / stats.totalClicks) : 0,
+        // New metrics
+        potentialOfflineReservations,
+        totalPotentialValue,
+        costPercentage,
+        // Conversion metrics
+        reservations: conversionMetrics.reservations || 0,
+        reservationValue: conversionMetrics.reservation_value || 0
+      } as any;
+    } else {
+      // Fallback: fetch fresh data using same system as reports
+      try {
+        const { StandardizedDataFetcher } = await import('../../../lib/standardized-data-fetcher');
+        
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - 30); // Last 30 days
+        
+        const fetchResult = await StandardizedDataFetcher.fetchData({
+          clientId: client.id,
+          dateRange: {
+            start: startDate.toISOString().split('T')[0]!,
+            end: endDate.toISOString().split('T')[0]!
+          },
+          platform: 'meta',
+          reason: 'email-report-generation'
+        });
+        
+        if (fetchResult.success && fetchResult.data) {
+          const data = fetchResult.data;
+          const campaigns = data.campaigns || [];
+          const stats = data.stats || {};
+          const conversionMetrics = data.conversionMetrics || {};
+          
+          // Calculate new metrics using same logic as WeeklyReportView
+          const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+          const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+          const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+          
+          const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+          const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+          const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+          const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+          const totalPotentialValue = potentialOfflineValue + totalReservationValue;
+          const costPercentage = totalPotentialValue > 0 ? (stats.totalSpend / totalPotentialValue) * 100 : 0;
+          
+          realReportData = {
+            dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
+            totalSpend: stats.totalSpend || 0,
+            totalImpressions: stats.totalImpressions || 0,
+            totalClicks: stats.totalClicks || 0,
+            totalConversions: stats.totalConversions || 0,
+            ctr: stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) : 0,
+            cpc: stats.totalClicks > 0 ? (stats.totalSpend / stats.totalClicks) : 0,
+            // New metrics
+            potentialOfflineReservations,
+            totalPotentialValue,
+            costPercentage,
+            // Conversion metrics
+            reservations: conversionMetrics.reservations || 0,
+            reservationValue: conversionMetrics.reservation_value || 0
+          };
+        } else {
+          throw new Error('Failed to fetch fresh data');
+        }
+      } catch (error) {
+        logger.error('Failed to fetch real report data, using minimal fallback:', error);
+        realReportData = {
+          dateRange: 'Last 30 days',
+          totalSpend: 0,
+          totalImpressions: 0,
+          totalClicks: 0,
+          totalConversions: 0,
+          ctr: 0,
+          cpc: 0,
+          potentialOfflineReservations: 0,
+          totalPotentialValue: 0,
+          costPercentage: 0,
+          reservations: 0,
+          reservationValue: 0
+        };
+      }
+    }
 
     // Generate PDF if requested (placeholder for now)
     let pdfBuffer: Buffer | undefined;
@@ -102,7 +203,7 @@ export async function POST(request: NextRequest) {
         const emailResult = await emailService.sendReportEmail(
           email,
           client.name,
-          sampleReportData,
+          realReportData,
           pdfBuffer
         );
         emailResults.push({ email, success: emailResult.success, error: emailResult.error });
@@ -135,7 +236,7 @@ export async function POST(request: NextRequest) {
           admin_id: user.id,
           email_type: 'report',
           recipient_email: result.email,
-          subject: `Your Meta Ads Report - ${sampleReportData.dateRange}`,
+          subject: `Your Meta Ads Report - ${realReportData.dateRange}`,
           message_id: result.success ? 'sent' : null,
           sent_at: new Date().toISOString(),
           status: result.success ? 'sent' : 'failed',
@@ -171,10 +272,10 @@ export async function POST(request: NextRequest) {
           report_period: reportPeriod,
           status: 'sent',
           meta: {
-            dateRange: sampleReportData.dateRange,
-            totalSpend: sampleReportData.totalSpend,
-            totalImpressions: sampleReportData.totalImpressions,
-            totalClicks: sampleReportData.totalClicks
+            dateRange: realReportData.dateRange,
+            totalSpend: realReportData.totalSpend,
+            totalImpressions: realReportData.totalImpressions,
+            totalClicks: realReportData.totalClicks
           }
         });
 

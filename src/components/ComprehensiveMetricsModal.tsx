@@ -453,18 +453,6 @@ const ComprehensiveMetricsModal: React.FC<ComprehensiveMetricsModalProps> = ({
                 {/* Additional Core Metrics */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                   <MetricCard
-                    icon={Target}
-                    label="CPA (Koszt konwersji)"
-                    value={formatCurrency(metricsData.cpa)}
-                    color="indigo"
-                  />
-                  <MetricCard
-                    icon={BarChart3}
-                    label="CPM (Koszt 1000 wyświetleń)"
-                    value={formatCurrency(metricsData.cpm)}
-                    color="purple"
-                  />
-                  <MetricCard
                     icon={Users}
                     label="Zasięg"
                     value={formatNumber(metricsData.reach || 0)}

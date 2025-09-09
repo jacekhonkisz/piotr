@@ -66,8 +66,6 @@ interface MonthlyStats {
   totalReach: number;
   averageCtr: number;
   averageCpc: number;
-  averageCpm: number;
-  averageCpa: number;
   averageFrequency: number;
   campaignCount: number;
   reportCount: number;
@@ -88,12 +86,9 @@ interface MonthlyStats {
     totalReach: number;
     averageCtr: number;
     averageCpc: number;
-    averageCpm: number;
-    averageCpa: number;
     averageFrequency: number;
   };
   benchmarks: {
-    cpa: number;
     ctr: number;
     cpc: number;
   };
@@ -167,8 +162,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
       
       const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
       const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-      const averageCpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
-      const averageCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
       const averageFrequency = totalReach > 0 ? totalImpressions / totalReach : 0;
       
       // Get top 5 campaigns by spend
@@ -185,8 +178,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
         totalReach: totalReach * 0.90,
         averageCtr: averageCtr * 0.96,
         averageCpc: averageCpc * 1.05,
-        averageCpm: averageCpm * 1.02,
-        averageCpa: averageCpa * 1.08,
         averageFrequency: averageFrequency * 0.98,
       };
 
@@ -201,7 +192,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
       };
 
       // Generate insights
-      const insights = generateInsights(performanceChange, averageCpa, averageCtr, totalConversions);
+      const insights = generateInsights(performanceChange, averageCtr, totalConversions);
 
       // Simulate ad variants data
       const adVariants = {
@@ -213,7 +204,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
       // Set benchmarks (industry standards)
       const benchmarks = {
-        cpa: 50, // $50 target CPA
         ctr: 2.5, // 2.5% target CTR
         cpc: 2.5, // $2.50 target CPC
       };
@@ -226,8 +216,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
         totalReach,
         averageCtr,
         averageCpc,
-        averageCpm,
-        averageCpa,
         averageFrequency,
         campaignCount: allCampaigns.length,
         reportCount: monthReports.length,
@@ -243,16 +231,13 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
     }, 800); // Simulate loading time
   };
 
-  const generateInsights = (changes: any, cpa: number, ctr: number, conversions: number): string[] => {
+  const generateInsights = (changes: any, ctr: number, conversions: number): string[] => {
     const insights: string[] = [];
     
     if (changes.conversions > 10) {
       insights.push(`Świetny wynik! ${changes.conversions.toFixed(1)}% wzrost w konwersjach w tym miesiącu`);
     }
     
-    if (cpa < 50) {
-      insights.push(`Świetna optymalizacja! CPA w wysokości $${cpa.toFixed(0)} jest poniżej średniej branżowej`);
-    }
     
     if (ctr > 2.5) {
       insights.push(`Dobry wynik CTR w ${ctr.toFixed(2)}% - powyżej celu`);
@@ -355,7 +340,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
     // Performance overview chart data - showing key metrics
     const performanceData = {
-      labels: ['Wydatki', 'CTR', 'Leady', 'CPA'],
+      labels: ['Wydatki', 'CTR', 'Leady'],
       datasets: [
         {
           label: 'Bieżący miesiąc',
@@ -363,7 +348,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
             monthlyStats.totalSpend / 100, // Scale down for better visualization
             monthlyStats.averageCtr * 10, // Scale up for visibility
             monthlyStats.totalConversions,
-            monthlyStats.averageCpa / 10 // Scale down for visibility
+            monthlyStats.averageCtr * 10 // Scale up for visibility
           ],
           backgroundColor: [
             'rgba(59, 130, 246, 0.8)',
@@ -585,13 +570,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                 <p className="text-xl font-bold text-gray-900">{formatNumber(monthlyStats.totalClicks)}</p>
               </div>
 
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-2">
-                  <BarChart className="h-5 w-5 text-gray-600" />
-                </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">CPM</p>
-                <p className="text-xl font-bold text-gray-900">{formatCurrency(monthlyStats.averageCpm)}</p>
-              </div>
 
               <div className="text-center">
                 <div className="flex items-center justify-center mb-2">
@@ -739,15 +717,15 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
                     <div className="p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">CPA Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCpa, monthlyStats.benchmarks.cpa, true) === 'osiągnięty' ? (
+                        <span className="text-sm font-medium text-gray-700">CTR Target</span>
+                        {getBenchmarkStatus(monthlyStats.averageCtr, monthlyStats.benchmarks.ctr, false) === 'osiągnięty' ? (
                           <CheckCircle className="h-4 w-4 text-green-500" />
                         ) : (
                           <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
-                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyStats.averageCpa)}</div>
-                      <div className="text-sm text-gray-600">Target: {formatCurrency(monthlyStats.benchmarks.cpa)}</div>
+                      <div className="text-2xl font-bold text-gray-900">{monthlyStats.averageCtr.toFixed(2)}%</div>
+                      <div className="text-sm text-gray-600">Target: {monthlyStats.benchmarks.ctr}%</div>
                     </div>
                   </div>
                 </div>

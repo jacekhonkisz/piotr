@@ -151,10 +151,8 @@ async function testGoogleAdsRealData() {
       console.log(`      Clicks: ${clicks.toLocaleString()}`);
       console.log(`      CTR: ${ctr.toFixed(2)}%`);
       console.log(`      CPC: $${cpc.toFixed(2)}`);
-      console.log(`      CPM: $${cpm.toFixed(2)}`);
       console.log(`      Conversions: ${conversions}`);
       console.log(`      All Conversions: ${allConversions}`);
-      console.log(`      CPA: $${conversions > 0 ? (spend / conversions).toFixed(2) : '0.00'}`);
       console.log('');
       
       console.log('   💎 CONVERSION VALUES (Wartość Rezerwacji):');
@@ -187,10 +185,8 @@ async function testGoogleAdsRealData() {
     console.log(`🖱️  Total Clicks: ${totalClicks.toLocaleString()}`);
     console.log(`📈 Overall CTR: ${totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(2) : 0}%`);
     console.log(`💵 Average CPC: $${totalClicks > 0 ? (totalSpend / totalClicks).toFixed(2) : 0}`);
-    console.log(`📊 Average CPM: $${totalImpressions > 0 ? (totalSpend / totalImpressions * 1000).toFixed(2) : 0}`);
     console.log(`🎯 Total Conversions: ${totalConversions}`);
     console.log(`🎯 Total All Conversions: ${totalAllConversions}`);
-    console.log(`💸 Overall CPA: $${totalConversions > 0 ? (totalSpend / totalConversions).toFixed(2) : 0}`);
     console.log('');
     
     console.log('💎 CONVERSION VALUES SUMMARY (Wartość Rezerwacji)');

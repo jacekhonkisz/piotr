@@ -164,20 +164,6 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
               color="bg-blue-50"
             />
             <MetricCard
-              title="CPA"
-              value={formatCurrency(metaData.stats.averageCpa || 0)}
-              subtitle="Meta Ads"
-              icon={<Target className="w-5 h-5 text-blue-600" />}
-              color="bg-blue-50"
-            />
-            <MetricCard
-              title="CPM"
-              value={formatCurrency(metaData.stats.averageCpm || 0)}
-              subtitle="Meta Ads"
-              icon={<BarChart3 className="w-5 h-5 text-blue-600" />}
-              color="bg-blue-50"
-            />
-            <MetricCard
               title="Zasięg"
               value={formatNumber(metaData.stats.reach || 0)}
               subtitle="Meta Ads"
@@ -311,20 +297,6 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
               color="bg-green-50"
             />
             <MetricCard
-              title="CPA"
-              value={formatCurrency(googleData.stats.averageCpa || 0)}
-              subtitle="Google Ads"
-              icon={<Target className="w-5 h-5 text-green-600" />}
-              color="bg-green-50"
-            />
-            <MetricCard
-              title="CPM"
-              value={formatCurrency(googleData.stats.averageCpm || 0)}
-              subtitle="Google Ads"
-              icon={<BarChart3 className="w-5 h-5 text-green-600" />}
-              color="bg-green-50"
-            />
-            <MetricCard
               title="Konwersje wyświetleniowe"
               value={formatNumber(googleData.stats.viewThroughConversions || 0)}
               subtitle="Google Ads"
@@ -449,20 +421,6 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             value={formatNumber(combinedData.stats.totalConversions)}
             subtitle="Wszystkie platformy"
             icon={<TrendingUp className="w-5 h-5 text-slate-600" />}
-            color="bg-slate-50"
-          />
-          <MetricCard
-            title="CPA"
-            value={formatCurrency((combinedData.stats.averageCpa || 0))}
-            subtitle="Wszystkie platformy"
-            icon={<Target className="w-5 h-5 text-slate-600" />}
-            color="bg-slate-50"
-          />
-          <MetricCard
-            title="CPM"
-            value={formatCurrency((combinedData.stats.averageCpm || 0))}
-            subtitle="Wszystkie platformy"
-            icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
             color="bg-slate-50"
           />
         </div>

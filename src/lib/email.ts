@@ -981,28 +981,42 @@ If you didn't request this access, please contact us immediately.
             <div class="metrics-grid">
               <div class="metric-card">
                 <span class="metric-value">${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">Total Spend</span>
+                <span class="metric-label">Wydana kwota</span>
               </div>
               <div class="metric-card">
                 <span class="metric-value">${reportData.totalImpressions.toLocaleString('pl-PL')}</span>
-                <span class="metric-label">Impressions</span>
+                <span class="metric-label">Wyświetlenia</span>
               </div>
               <div class="metric-card">
                 <span class="metric-value">${reportData.totalClicks.toLocaleString('pl-PL')}</span>
-                <span class="metric-label">Clicks</span>
+                <span class="metric-label">Kliknięcia linku</span>
               </div>
               <div class="metric-card">
                 <span class="metric-value">${(reportData.ctr * 100).toFixed(2)}%</span>
-                <span class="metric-label">CTR</span>
+                <span class="metric-label">Wskaźnik klikalności</span>
               </div>
               <div class="metric-card">
                 <span class="metric-value">${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">CPC</span>
+                <span class="metric-label">Koszt za kliknięcie</span>
               </div>
+              ${reportData.potentialOfflineReservations !== undefined ? `
               <div class="metric-card">
-                <span class="metric-value">${reportData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">CPM</span>
+                <span class="metric-value">${reportData.potentialOfflineReservations}</span>
+                <span class="metric-label">Potencjalna ilość rezerwacji offline</span>
               </div>
+              ` : ''}
+              ${reportData.totalPotentialValue !== undefined ? `
+              <div class="metric-card">
+                <span class="metric-value">${reportData.totalPotentialValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
+                <span class="metric-label">Łączna wartość potencjalnych rezerwacji</span>
+              </div>
+              ` : ''}
+              ${reportData.costPercentage !== undefined ? `
+              <div class="metric-card">
+                <span class="metric-value">${reportData.costPercentage.toFixed(1)}%</span>
+                <span class="metric-label">Koszt pozyskania rezerwacji</span>
+              </div>
+              ` : ''}
             </div>
             
             <div class="pdf-notice">

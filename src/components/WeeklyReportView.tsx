@@ -27,7 +27,6 @@ interface Campaign {
   ad_type?: string;
   objective?: string;
   status?: string;
-  cpm?: number;
   
   // Conversion tracking metrics
   click_to_call?: number;
@@ -523,7 +522,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         // Calculate derived campaign metrics
         const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
         const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
-        const cpm = campaignTotals.impressions > 0 ? (campaignTotals.spend / campaignTotals.impressions) * 1000 : 0;
 
 
 
@@ -670,7 +668,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               </div>
               
               {/* Main Metrics - First Section */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 mb-8">
+              <div className="mb-8">
                 <div className="mb-6">
                   <h3 className="text-2xl font-bold text-slate-900 mb-2">Podstawowe metryki</h3>
                   <p className="text-slate-600">Wydatki i podstawowe wskaźniki wydajności</p>
@@ -709,7 +707,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                       const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
                       return ctr.toFixed(2) + '%';
                     })()}
-                    subtitle="Click-through rate"
+                    subtitle="Wskaźnik klikalności"
                     tooltip="Wskaźnik klikalności - procent kliknięć w stosunku do wyświetleń"
                     icon={<Target className="w-5 h-5 text-slate-600" />}
                   />
@@ -720,7 +718,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                       const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
                       return formatCurrency(cpc);
                     })()}
-                    subtitle="Cost per click"
+                    subtitle="Koszt za kliknięcie"
                     tooltip="Koszt za kliknięcie"
                     icon={<DollarSign className="w-5 h-5 text-slate-600" />}
                   />
@@ -755,66 +753,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 className="mb-8"
               />
 
-              {/* Summary Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <MetricCard
-                  title="Łączna wartość potencjalnych rezerwacji online + offline"
-                  value={(() => {
-                    // Calculate potential offline value
-                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                    
-                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-                    
-                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
-                    
-                    // Calculate online value
-                    const onlineValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    
-                    // Total potential value
-                    const totalPotentialValue = potentialOfflineValue + onlineValue;
-                    
-                    return `${formatCurrency(totalPotentialValue)} zł`;
-                  })()}
-                  subtitle="Suma wartości rezerwacji online i potencjalnych offline"
-                  tooltip="Łączna wartość wszystkich rezerwacji online plus szacowana wartość offline"
-                  icon={<Target className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
-                />
-                
-                <MetricCard
-                  title="Koszt pozyskania rezerwacji"
-                  value={(() => {
-                    // Calculate total spend
-                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                    
-                    // Calculate total potential value (same calculation as above)
-                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                    
-                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-                    
-                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
-                    const onlineValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    const totalPotentialValue = potentialOfflineValue + onlineValue;
-                    
-                    // Calculate cost percentage
-                    const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
-                    
-                    return `${costPercentage.toFixed(2)}%`;
-                  })()}
-                  subtitle="(wydana kwota / łączna wartość potencjalnych rezerwacji) × 100"
-                  tooltip="Procent kosztów w stosunku do łącznej wartości potencjalnych rezerwacji"
-                  icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.spend || 0)}
-                />
-              </div>
 
               {/* Social Media Metrics - Temporarily Hidden */}
               {/* 
@@ -920,10 +858,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 <MetricCard
                   title="Potencjalna ilość rezerwacji offline"
                   value={(() => {
-                    // Use API data if available, otherwise calculate from campaigns
-                    if (report.conversionMetrics?.offline_reservations !== undefined) {
-                      return report.conversionMetrics.offline_reservations.toString();
-                    }
                     const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
                     const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
                     const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
@@ -936,28 +870,40 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 />
                 
                 <MetricCard
-                  title="Potencjalna łączna wartość rezerwacji offline"
+                  title="Koszt pozyskania rezerwacji"
                   value={(() => {
-                    // Use API data if available, otherwise calculate from campaigns
+                    // Calculate offline value
+                    let potentialOfflineValue = 0;
                     if (report.conversionMetrics?.offline_value !== undefined) {
-                      return formatCurrency(report.conversionMetrics.offline_value);
+                      potentialOfflineValue = report.conversionMetrics.offline_value;
+                    } else {
+                      const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                      const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                      const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                      
+                      const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                      const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                      
+                      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                      potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
                     }
-                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
                     
-                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    // Calculate online value
+                    const onlineReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
                     
-                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+                    // Total potential value
+                    const totalPotentialValue = potentialOfflineValue + onlineReservationValue;
                     
-                    return formatCurrency(potentialOfflineValue);
+                    // Calculate cost percentage
+                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+                    const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
+                    
+                    return `${costPercentage.toFixed(1)}%`;
                   })()}
-                  subtitle="(wartość rezerwacji/ilość rezerwacji) × potencjalna ilość offline"
-                  tooltip="Szacowana wartość rezerwacji offline"
-                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.reservation_value || 0)}
+                  subtitle="(wydana kwota / łączna wartość potencjalnych rezerwacji) × 100"
+                  tooltip="Procentowy koszt pozyskania rezerwacji w stosunku do ich wartości"
+                  icon={<Percent className="w-5 h-5 text-slate-600" />}
+                  change={formatYoyChange(yoyData?.changes.spend || 0)}
                 />
               </div>
               
