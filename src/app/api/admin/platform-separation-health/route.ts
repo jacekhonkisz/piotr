@@ -66,7 +66,7 @@ async function checkMetaPlatformHealth() {
       .limit(1);
 
     if (recentFetches && recentFetches.length > 0) {
-      lastSuccessfulFetch = recentFetches[0].updated_at;
+      lastSuccessfulFetch = recentFetches[0]?.updated_at;
       const lastFetchTime = new Date(lastSuccessfulFetch).getTime();
       const hoursSinceLastFetch = (Date.now() - lastFetchTime) / (1000 * 60 * 60);
       
@@ -181,7 +181,7 @@ async function checkGooglePlatformHealth() {
       .limit(1);
 
     if (recentFetches && recentFetches.length > 0) {
-      lastSuccessfulFetch = recentFetches[0].updated_at;
+      lastSuccessfulFetch = recentFetches[0]?.updated_at;
       const lastFetchTime = new Date(lastSuccessfulFetch).getTime();
       const hoursSinceLastFetch = (Date.now() - lastFetchTime) / (1000 * 60 * 60);
       

@@ -3,10 +3,33 @@ import { MetaAPIService } from './meta-api';
 import logger from './logger';
 import { getCurrentWeekInfo, parseWeekPeriodId, isCurrentWeekPeriod } from './week-utils';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Create Supabase client - only used server-side
+const supabaseClient = (() => {
+  // Only create client on server-side
+  if (typeof window !== 'undefined') {
+    return null;
+  }
+  
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('⚠️ Supabase environment variables not configured');
+    return null;
+  }
+  
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+})();
+
+// Safe supabase wrapper that throws meaningful errors
+const supabase = {
+  from: (table: string) => {
+    if (!supabaseClient) {
+      throw new Error('Supabase client not available - this function should only be called server-side');
+    }
+    return supabaseClient.from(table);
+  }
+};
 
 // Cache duration: 3 hours (restored from 6 hours)
 const CACHE_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
@@ -80,6 +103,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
 
     // 🔧 NEW: Fetch real conversion metrics from daily_kpi_data for current month
     logger.info('📊 Fetching real conversion metrics from daily_kpi_data...');
+    
     const { data: dailyKpiData, error: kpiError } = await supabase
       .from('daily_kpi_data')
       .select('*')

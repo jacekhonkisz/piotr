@@ -57,7 +57,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     const genderMap = new Map<string, number>();
     
     data.forEach(item => {
-      const gender = item.gender || 'Unknown';
+      const gender = item.gender || 'Nieznane';
       const value = item[metric];
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
     });
@@ -80,7 +80,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     const ageMap = new Map<string, number>();
     
     data.forEach(item => {
-      const age = item.age || 'Unknown';
+      const age = item.age || 'Nieznane';
       const value = item[metric];
       ageMap.set(age, (ageMap.get(age) || 0) + value);
     });
@@ -100,6 +100,23 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
 
   const genderData = processGenderData();
   const ageData = processAgeData();
+
+  // Helper function to translate gender labels
+  const translateGenderLabel = (label: string) => {
+    switch (label.toLowerCase()) {
+      case 'male': return 'Mężczyźni';
+      case 'female': return 'Kobiety';
+      case 'nieznane': return 'Nieznane';
+      case 'unknown': return 'Nieznane';
+      default: return 'Nieznane';
+    }
+  };
+
+  // Helper function to translate age labels  
+  const translateAgeLabel = (label: string) => {
+    if (label === 'Nieznane' || label === 'Unknown' || label === 'unknown') return 'Nieznane';
+    return label; // Age ranges like "25-34" don't need translation
+  };
 
   // Color schemes
   const genderColors = ['#8B5CF6', '#3B82F6', '#6B7280']; // Purple, Blue, Gray
@@ -200,7 +217,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
             {genderData.data.length > 0 ? (
               <Pie
                 data={{
-                  labels: genderData.labels,
+                  labels: genderData.labels.map(translateGenderLabel),
                   datasets: [{
                     data: genderData.data,
                     backgroundColor: genderColors,
@@ -236,7 +253,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
                     className="w-4 h-4 rounded-full"
                     style={{ backgroundColor: genderColors[index] }}
                   />
-                  <span className="font-medium text-gray-900 capitalize">{label}</span>
+                  <span className="font-medium text-gray-900 capitalize">{translateGenderLabel(label)}</span>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-bold text-gray-900">
@@ -262,7 +279,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
             {ageData.data.length > 0 ? (
               <Pie
                 data={{
-                  labels: ageData.labels,
+                  labels: ageData.labels.map(translateAgeLabel),
                   datasets: [{
                     data: ageData.data,
                     backgroundColor: ageColors,
@@ -298,7 +315,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
                     className="w-4 h-4 rounded-full"
                     style={{ backgroundColor: ageColors[index] }}
                   />
-                  <span className="font-medium text-gray-900">{label}</span>
+                  <span className="font-medium text-gray-900">{translateAgeLabel(label)}</span>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-bold text-gray-900">

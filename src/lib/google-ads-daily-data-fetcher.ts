@@ -81,11 +81,11 @@ export class GoogleAdsDailyDataFetcher {
 
       const googleAdsCredentials = {
         refreshToken,
-        clientId: settings.google_ads_client_id,
-        clientSecret: settings.google_ads_client_secret,
-        developmentToken: settings.google_ads_developer_token,
+        clientId: settings.google_ads_client_id || '',
+        clientSecret: settings.google_ads_client_secret || '',
+        developmentToken: settings.google_ads_developer_token || '',
         customerId: client.google_ads_customer_id,
-        managerCustomerId: settings.google_ads_manager_customer_id,
+        managerCustomerId: settings.google_ads_manager_customer_id || '',
       };
 
       // Initialize Google Ads API service

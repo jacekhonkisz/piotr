@@ -183,7 +183,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                   </div>
                   <div className="text-center">
                     <div className={`text-xl font-bold ${card.color}`}>
-                      {typeof card.value === 'string' ? card.value : card.value.toLocaleString()}
+                      {typeof card.value === 'string' ? card.value : (card.value as number).toLocaleString()}
                     </div>
                     <div className={`text-xs ${card.color}`}>
                       {card.label}

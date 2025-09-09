@@ -9,10 +9,6 @@
       "schedule": "1 0 * * *"
     },
     {
-      "path": "/api/background/cleanup-old-data",
-      "schedule": "0 4 * * 0"
-    },
-    {
       "path": "/api/background/cleanup-executive-summaries",
       "schedule": "0 5 * * 0"
     },
@@ -43,6 +39,10 @@
     {
       "path": "/api/automated/daily-kpi-collection",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/automated/google-ads-daily-collection",
+      "schedule": "15 2 * * *"
     },
     {
       "path": "/api/automated/refresh-google-ads-current-month-cache",

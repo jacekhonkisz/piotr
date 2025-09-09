@@ -105,19 +105,37 @@ export async function POST(request: NextRequest) {
 
           console.log(`📊 Found ${campaigns.length} campaigns for ${client.name}`);
 
-          // Aggregate daily totals
+          // Aggregate daily totals INCLUDING conversion metrics
           const dailyTotals = campaigns.reduce((totals: any, campaign: any) => ({
             totalClicks: totals.totalClicks + (parseInt(campaign.clicks) || 0),
             totalImpressions: totals.totalImpressions + (parseInt(campaign.impressions) || 0),
             totalSpend: totals.totalSpend + (parseFloat(campaign.spend) || 0),
             totalConversions: totals.totalConversions + (parseInt(campaign.conversions) || 0),
-            campaignsCount: totals.campaignsCount + 1
+            campaignsCount: totals.campaignsCount + 1,
+            // 🔧 FIX: Add conversion metrics aggregation INCLUDING reach and booking_step_3
+            clickToCall: totals.clickToCall + (parseInt(campaign.click_to_call) || 0),
+            emailContacts: totals.emailContacts + (parseInt(campaign.email_contacts) || 0),
+            bookingStep1: totals.bookingStep1 + (parseInt(campaign.booking_step_1) || 0),
+            bookingStep2: totals.bookingStep2 + (parseInt(campaign.booking_step_2) || 0),
+            bookingStep3: totals.bookingStep3 + (parseInt(campaign.booking_step_3) || 0),
+            reservations: totals.reservations + (parseInt(campaign.reservations) || 0),
+            reservationValue: totals.reservationValue + (parseFloat(campaign.reservation_value) || 0),
+            reach: totals.reach + (parseInt(campaign.reach) || 0)
           }), {
             totalClicks: 0,
             totalImpressions: 0,
             totalSpend: 0,
             totalConversions: 0,
-            campaignsCount: 0
+            campaignsCount: 0,
+            // 🔧 FIX: Initialize conversion metrics INCLUDING reach and booking_step_3
+            clickToCall: 0,
+            emailContacts: 0,
+            bookingStep1: 0,
+            bookingStep2: 0,
+            bookingStep3: 0,
+            reservations: 0,
+            reservationValue: 0,
+            reach: 0
           });
 
           // Calculate derived metrics
@@ -138,7 +156,16 @@ export async function POST(request: NextRequest) {
             average_cpc: Math.round(averageCPC * 100) / 100,
             campaigns_count: dailyTotals.campaignsCount,
             data_source: 'meta_api',
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            // 🔧 FIX: Include conversion metrics in database record INCLUDING reach and booking_step_3
+            click_to_call: dailyTotals.clickToCall,
+            email_contacts: dailyTotals.emailContacts,
+            booking_step_1: dailyTotals.bookingStep1,
+            booking_step_2: dailyTotals.bookingStep2,
+            booking_step_3: dailyTotals.bookingStep3,
+            reservations: dailyTotals.reservations,
+            reservation_value: Math.round(dailyTotals.reservationValue * 100) / 100,
+            reach: dailyTotals.reach
           };
 
           const { error: insertError } = await supabaseAdmin
@@ -196,23 +223,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Clean up old data
-    logger.info('\n🧹 Cleaning up old daily KPI data...');
-    const today = new Date();
-    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const cutoffDate = new Date(currentMonthStart);
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
-    const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+    // 🏭 PRODUCTION: Use production data manager for cleanup (90 days retention)
+    logger.info('\n🏭 Using production data retention policy (90 days)...');
+    
+    const { ProductionDataManager } = await import('../../../../lib/production-data-manager');
+    const cleanupResults = await ProductionDataManager.cleanupOldData();
+    
+    console.log(`✅ Production cleanup completed:`, {
+      dailyDeleted: cleanupResults.dailyDeleted,
+      monthlyDeleted: cleanupResults.monthlyDeleted
+    });
 
-    const { error: cleanupError } = await supabaseAdmin
+    // Also check current data completeness
+    const { data: currentData, error: checkError } = await supabaseAdmin
       .from('daily_kpi_data')
-      .delete()
-      .lt('date', cutoffDateStr);
+      .select('date, client_id')
+      .gte('date', cutoffDateStr)
+      .order('date', { ascending: false });
 
-    if (cleanupError) {
-      console.warn('⚠️ Cleanup warning:', cleanupError);
-    } else {
-      console.log(`✅ Cleaned up data older than ${cutoffDateStr}`);
+    if (!checkError && currentData) {
+      const uniqueDates = [...new Set(currentData.map(d => d.date))];
+      console.log(`📊 Current daily_kpi_data coverage: ${uniqueDates.length} days, ${currentData.length} total records`);
+      console.log(`📅 Date range: ${uniqueDates[uniqueDates.length - 1]} to ${uniqueDates[0]}`);
     }
 
     logger.info('\n📊 Collection Summary:');

@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import KPICarousel, { KPI } from './KPICarousel';
 import { RefreshCw, Clock, Database } from 'lucide-react';
+import { DailyMetricsCache } from '../lib/daily-metrics-cache';
+import { DataSourceIndicator } from './DataSourceIndicator';
 
 interface MetaPerformanceLiveProps {
   clientId: string;
@@ -77,6 +79,14 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
   const [spendBars, setSpendBars] = useState<number[]>([]);
   const [conversionsBars, setConversionsBars] = useState<number[]>([]);
   const [ctrBars, setCtrBars] = useState<number[]>([]);
+  
+  // Daily metrics cache state
+  const [dailyMetricsSource, setDailyMetricsSource] = useState<{
+    source: string;
+    completeness?: number;
+    cacheAge?: number;
+    fromCache: boolean;
+  } | null>(null);
   
   // Add request deduplication
   const requestInProgress = useRef(false);
@@ -532,96 +542,97 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     };
   }, [clientId]);
 
-  // Fetch daily data points for chart - DATABASE FIRST approach
+  // 🔧 STANDARDIZED: Fetch daily data using smart cache (same pattern as reports)
   const fetchDailyDataPoints = async () => {
     try {
-      console.log('📊 Fetching daily data from DATABASE for clientId:', clientId);
+      console.log('📊 Fetching daily data using smart cache for clientId:', clientId);
       console.log('📅 Date range:', dateRange);
       
-      // Get data directly from database for the last 7 completed days
-      const { data: dailyData, error } = await supabase
-        .from('daily_kpi_data')
-        .select('date, total_clicks, total_spend, total_conversions, average_ctr, data_source')
-        .eq('client_id', clientId)
-        .gte('date', dateRange.start)
-        .lte('date', dateRange.end)
-        .order('date', { ascending: true }); // Chronological order
-
-      if (error) {
-        console.error('❌ Database error fetching daily data:', error);
+      // Ensure dateRange has valid values
+      if (!dateRange.start || !dateRange.end) {
+        console.error('❌ Invalid date range for daily metrics cache:', dateRange);
         setClicksBars([]);
         setSpendBars([]);
         setConversionsBars([]);
         setCtrBars([]);
         return false;
       }
+      
+      // Use new daily metrics cache (same pattern as reports)
+      const result = await DailyMetricsCache.getDailyMetrics(
+        clientId, 
+        { start: dateRange.start, end: dateRange.end }, 
+        'meta'
+      );
+      
+      // Update daily metrics source info
+      setDailyMetricsSource({
+        source: result.source,
+        completeness: result.completeness,
+        cacheAge: result.cacheAge,
+        fromCache: result.fromCache
+      });
+      
+      if (result.success && result.data.length > 0) {
+        console.log(`✅ Got ${result.data.length} daily data points from ${result.source} (${Math.round((result.completeness || 0) * 100)}% complete)`);
+        
+        // Same data processing as before
+        const clicksBarsData = result.data.map((day, index) => {
+          const clicks = day.total_clicks || 0;
+          const spend = day.total_spend || 0;
+          const conversions = day.total_conversions || 0;
+          const ctr = day.average_ctr || 0;
+          console.log(`📊 Day ${index + 1} (${day.date}): ${clicks} clicks, ${spend} spend, ${conversions} conversions, CTR: ${ctr}%`);
+          return clicks;
+        });
+        
+        const spendBarsData = result.data.map(day => day.total_spend || 0);
+        const conversionsBarsData = result.data.map(day => day.total_conversions || 0);
+        const ctrBarsData = result.data.map(day => day.average_ctr || 0);
 
-      if (!dailyData || dailyData.length === 0) {
-        console.log('⚠️ No daily data found in database for client:', clientId);
-        console.log('📅 Expected date range:', dateRange);
+        console.log('📈 Using smart cache daily data:', {
+          totalDays: result.data.length,
+          source: result.source,
+          completeness: Math.round((result.completeness || 0) * 100) + '%',
+          clicksRange: clicksBarsData.length > 0 ? {
+            min: Math.min(...clicksBarsData),
+            max: Math.max(...clicksBarsData)
+          } : null,
+          spendRange: spendBarsData.length > 0 ? {
+            min: Math.min(...spendBarsData),
+            max: Math.max(...spendBarsData)
+          } : null,
+          totalClicks: clicksBarsData.reduce((a: number, b: number) => a + b, 0),
+          totalSpend: spendBarsData.reduce((a: number, b: number) => a + b, 0),
+          dates: result.data.map(d => d.date)
+        });
+
+        setClicksBars(clicksBarsData);
+        setSpendBars(spendBarsData);
+        setConversionsBars(conversionsBarsData);
+        setCtrBars(ctrBarsData);
+        
+        // Debug: Log what's being stored in each KPI array
+        console.log('🔍 DEBUG: Smart cache data being stored in KPI arrays:');
+        console.log('- clicksBars:', clicksBarsData);
+        console.log('- spendBars:', spendBarsData);
+        console.log('- conversionsBars:', conversionsBarsData);
+        console.log('- ctrBars:', ctrBarsData);
+        console.log('- dates:', result.data.map(d => d.date));
+
+        return true;
+      } else {
+        console.log('⚠️ No daily data available from smart cache');
+        // Set empty arrays (same as before)
         setClicksBars([]);
         setSpendBars([]);
         setConversionsBars([]);
         setCtrBars([]);
         return false;
       }
-
-      console.log('✅ Found daily data in database:', {
-        recordCount: dailyData.length,
-        dateRange: {
-          start: dailyData[0]?.date,
-          end: dailyData[dailyData.length - 1]?.date
-        },
-        sources: Array.from(new Set(dailyData.map(d => d.data_source)))
-      });
-
-      // Data is already in chronological order, no need to reverse
-      const clicksBarsData = dailyData.map((day: any, index: number) => {
-        const clicks = day.total_clicks || 0;
-        const spend = day.total_spend || 0;
-        const conversions = day.total_conversions || 0;
-        const ctr = day.average_ctr || 0;
-        console.log(`📊 Day ${index + 1} (${day.date}): ${clicks} clicks, €${spend}, ${conversions} conversions, CTR: ${ctr}%`);
-        return clicks;
-      });
-      
-      const spendBarsData = dailyData.map(day => day.total_spend || 0);
-      const conversionsBarsData = dailyData.map(day => day.total_conversions || 0);
-      const ctrBarsData = dailyData.map(day => day.average_ctr || 0);
-
-      console.log('📈 Using database daily data:', {
-        totalDays: dailyData.length,
-        clicksRange: {
-          min: Math.min(...clicksBarsData),
-          max: Math.max(...clicksBarsData)
-        },
-        spendRange: {
-          min: Math.min(...spendBarsData),
-          max: Math.max(...spendBarsData)
-        },
-        totalClicks: clicksBarsData.reduce((a: number, b: number) => a + b, 0),
-        totalSpend: spendBarsData.reduce((a: number, b: number) => a + b, 0),
-        dataSource: 'database',
-        dates: dailyData.map(d => d.date)
-      });
-
-      setClicksBars(clicksBarsData);
-      setSpendBars(spendBarsData);
-      setConversionsBars(conversionsBarsData);
-      setCtrBars(ctrBarsData);
-      
-      // Debug: Log what's being stored in each KPI array
-      console.log('🔍 DEBUG: Data being stored in KPI arrays:');
-      console.log('- clicksBars:', clicksBarsData);
-      console.log('- spendBars:', spendBarsData);
-      console.log('- conversionsBars:', conversionsBarsData);
-      console.log('- ctrBars:', ctrBarsData);
-      console.log('- dates:', dailyData.map(d => d.date));
-
-      return true;
-
     } catch (error) {
-      console.error('❌ Error fetching daily data from database:', error);
+      console.error('❌ Error fetching daily data from smart cache:', error);
+      // Set empty arrays on error (same as before)
       setClicksBars([]);
       setSpendBars([]);
       setConversionsBars([]);
@@ -708,35 +719,58 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         }
         
         return (
-          <KPICarousel
-            items={[
-              {
-                id: 'clicks',
-                label: 'Kliknięcia',
-                value: stats.totalClicks.toLocaleString('pl-PL'),
-                sublabel: 'Bieżący miesiąc',
-                bars: clicksBars,
-                dateForMarker: new Date().toISOString()
-              },
-              {
-                id: 'spend',
-                label: 'Wydatki',
-                value: formatCurrency(stats.totalSpend),
-                sublabel: 'Bieżący miesiąc',
-                bars: spendBars,
-                dateForMarker: new Date().toISOString()
-              },
-              {
-                id: 'conversions',
-                label: 'Konwersje',
-                value: safeConversion(stats.totalConversions).toLocaleString('pl-PL'),
-                sublabel: 'Bieżący miesiąc',
-                bars: conversionsBars,
-                dateForMarker: new Date().toISOString()
-              }
-            ] as KPI[]}
-            variant="light"
-          />
+          <div>
+            {/* Enhanced Daily Metrics Data Source Indicator (Week 3) */}
+            {dailyMetricsSource && (
+              <div className="mb-4">
+                <div className="text-sm text-gray-600 mb-2">Daily Metrics:</div>
+                <DataSourceIndicator 
+                  debug={{
+                    source: dailyMetricsSource.source,
+                    responseTime: dailyMetricsSource.cacheAge
+                  }}
+                  showCacheAge={true}
+                  cacheAge={dailyMetricsSource.cacheAge}
+                  completeness={dailyMetricsSource.completeness}
+                  onRefresh={() => {
+                    console.log('🔄 Manual refresh requested for Meta daily metrics');
+                    fetchDailyDataPoints();
+                  }}
+                  isRefreshing={loading}
+                />
+              </div>
+            )}
+            
+            <KPICarousel
+              items={[
+                {
+                  id: 'clicks',
+                  label: 'Kliknięcia',
+                  value: stats.totalClicks.toLocaleString('pl-PL'),
+                  sublabel: 'Bieżący miesiąc',
+                  bars: clicksBars,
+                  dateForMarker: new Date().toISOString()
+                },
+                {
+                  id: 'spend',
+                  label: 'Wydatki',
+                  value: formatCurrency(stats.totalSpend),
+                  sublabel: 'Bieżący miesiąc',
+                  bars: spendBars,
+                  dateForMarker: new Date().toISOString()
+                },
+                {
+                  id: 'conversions',
+                  label: 'Konwersje',
+                  value: safeConversion(stats.totalConversions).toLocaleString('pl-PL'),
+                  sublabel: 'Bieżący miesiąc',
+                  bars: conversionsBars,
+                  dateForMarker: new Date().toISOString()
+                }
+              ] as KPI[]}
+              variant="light"
+            />
+          </div>
         );
       })()}
     </div>

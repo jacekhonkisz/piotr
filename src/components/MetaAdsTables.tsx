@@ -136,8 +136,15 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         console.log('🔍 MetaAdsTables ad relevance data type:', typeof result.data.metaTables?.adRelevanceResults, Array.isArray(result.data.metaTables?.adRelevanceResults));
 
         const placementArray = result.data.metaTables?.placementPerformance || [];
-        const demographicArray = result.data.metaTables?.demographicPerformance || [];
+        const rawDemographicArray = result.data.metaTables?.demographicPerformance || [];
         const adRelevanceArray = result.data.metaTables?.adRelevanceResults || [];
+        
+        // Clean up demographic data to ensure Polish labels
+        const demographicArray = rawDemographicArray.map((item: any) => ({
+          ...item,
+          gender: item.gender === 'Unknown' || item.gender === 'unknown' ? 'Nieznane' : item.gender,
+          age: item.age === 'Unknown' || item.age === 'unknown' ? 'Nieznane' : item.age
+        }));
         
         console.log('🔍 MetaAdsTables BEFORE setState:', {
           placementArray: placementArray.length,
@@ -342,7 +349,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           }`}
         >
           <BarChart3 className="h-4 w-4" />
-          <span>Top Placement Performance</span>
+          <span>Najlepsze Miejsca Docelowe</span>
         </button>
         <button
           onClick={() => setActiveTab('demographic')}
@@ -353,7 +360,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           }`}
         >
           <Users className="h-4 w-4" />
-          <span>Demographic Performance</span>
+          <span>Wyniki Demograficzne</span>
         </button>
         <button
           onClick={() => setActiveTab('adRelevance')}
@@ -364,7 +371,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           }`}
         >
           <Award className="h-4 w-4" />
-          <span>Ad Relevance & Results</span>
+          <span>Trafność Reklam i Wyniki</span>
         </button>
       </div>
 
@@ -380,7 +387,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           <div>
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Top Placement Performance</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Najlepsze Miejsca Docelowe</h3>
                 <p className="text-sm text-slate-600">
                   Skuteczność reklam według placementów
                   {placementData.length > 5 && !expandedSections['placement'] && ` • Pokazano top 5`}
@@ -391,7 +398,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium"
               >
                 <FileSpreadsheet className="h-4 w-4" />
-                <span>Export CSV</span>
+                <span>Eksportuj CSV</span>
               </button>
             </div>
             
@@ -402,16 +409,16 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
                         <th className="px-6 py-4 text-left text-sm font-medium text-slate-700">
-                          Placement
+                          Miejsce Docelowe
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Spend
+                          Wydatki
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Impressions
+                          Wyświetlenia
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Clicks
+                          Kliknięcia
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           CTR
@@ -494,8 +501,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             ) : (
               <div className="text-center py-12">
                 <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o placementach</h3>
-                <p className="text-slate-600">Nie znaleziono danych o placementach dla wybranego okresu.</p>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o miejscach docelowych</h3>
+                <p className="text-slate-600">Nie znaleziono danych o miejscach docelowych dla wybranego okresu.</p>
               </div>
             )}
           </div>
@@ -505,7 +512,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           <div>
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Demographic Performance</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Wyniki Demograficzne</h3>
                 <p className="text-sm text-slate-600">
                   Skuteczność reklam według demografii
                   {demographicData.length > 5 && !expandedSections['demographic'] && ` • Pokazano top 5`}
@@ -549,7 +556,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                   className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
-                  <span>Export CSV</span>
+                  <span>Eksportuj CSV</span>
                 </button>
               </div>
             </div>
@@ -587,10 +594,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                             Płeć
                           </th>
                           <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Spend
+                            Wydatki
                           </th>
                           <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Clicks
+                            Kliknięcia
                           </th>
                           <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                             Rezerwacje
@@ -628,11 +635,11 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                               <td className="px-4 py-4">
                                 <div className="flex items-center">
                                   <RankingBadge rank={index + 1} index={index} />
-                                  <span className="text-sm font-medium text-slate-900">{demographic.age}</span>
+                                  <span className="text-sm font-medium text-slate-900">{demographic.age === 'Unknown' || demographic.age === 'unknown' ? 'Nieznane' : demographic.age}</span>
                                 </div>
                               </td>
                               <td className="px-4 py-4">
-                                <span className="text-sm text-slate-900">{demographic.gender}</span>
+                                <span className="text-sm text-slate-900">{demographic.gender === 'male' ? 'Mężczyźni' : demographic.gender === 'female' ? 'Kobiety' : demographic.gender === 'Unknown' || demographic.gender === 'unknown' ? 'Nieznane' : demographic.gender}</span>
                               </td>
                               <td className="px-4 py-4">
                                 <span className="text-sm font-semibold text-slate-900">{formatCurrency(demographic.spend)}</span>
@@ -708,7 +715,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           <div>
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Ad Relevance & Results</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-1">Trafność Reklam i Wyniki</h3>
                 <p className="text-sm text-slate-600">
                   Skuteczność reklam według relevance
                   {adRelevanceData.length > 5 && !expandedSections['adRelevance'] && ` • Pokazano top 5`}
@@ -719,7 +726,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
               >
                 <FileSpreadsheet className="h-4 w-4" />
-                <span>Export CSV</span>
+                <span>Eksportuj CSV</span>
               </button>
             </div>
             
@@ -733,13 +740,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                           Nazwa Reklamy
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Spend
+                          Wydatki
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Impressions
+                          Wyświetlenia
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Clicks
+                          Kliknięcia
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                           CPP
@@ -805,8 +812,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             ) : (
               <div className="text-center py-12">
                 <Award className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o relevance</h3>
-                <p className="text-slate-600">Nie znaleziono danych o relevance reklam dla wybranego okresu.</p>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o trafności</h3>
+                <p className="text-slate-600">Nie znaleziono danych o trafności reklam dla wybranego okresu.</p>
               </div>
             )}
           </div>

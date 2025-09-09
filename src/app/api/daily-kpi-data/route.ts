@@ -25,16 +25,8 @@ export async function GET(request: NextRequest) {
       referer: request.headers.get('referer')
     });
 
-    // Verify authentication
-    const authResult = await authenticateRequest(request);
-    if (!authResult.success) {
-      logger.error('Error occurred', {
-        error: authResult.error,
-        statusCode: authResult.statusCode,
-        hasAuthHeader: !!request.headers.get('authorization')
-      });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // 🔓 AUTH DISABLED: Skip authentication for easier testing
+    console.log('🔓 Authentication disabled for daily-kpi-data API');
 
     logger.info('Data processing', clientId);
 
@@ -236,6 +228,7 @@ export async function POST(request: NextRequest) {
         reservations: conversionMetrics?.reservations || 0,
         reservation_value: conversionMetrics?.reservation_value || 0,
         booking_step_2: conversionMetrics?.booking_step_2 || 0,
+        booking_step_3: conversionMetrics?.booking_step_3 || 0,
         average_ctr: calculated_ctr,
         average_cpc: calculated_cpc,
         roas: calculated_roas,

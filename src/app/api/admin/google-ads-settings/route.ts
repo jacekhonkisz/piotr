@@ -331,21 +331,20 @@ export async function POST(request: NextRequest) {
           return createErrorResponse(`Failed to update ${setting.key}`, 500);
         }
       }
+      // Test the new settings
+      const health = await checkTokenHealth(settings);
+
+      logger.info('Google Ads settings updated successfully', {
+        user: authResult.user.email,
+        tokenHealth: health.status
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Settings updated successfully',
+        health
+      });
     }
-
-    // Test the new settings
-    const health = await checkTokenHealth(settings);
-
-    logger.info('Google Ads settings updated successfully', {
-      user: authResult.user.email,
-      tokenHealth: health.status
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Settings updated successfully',
-      health
-    });
 
   } catch (error) {
     logger.error('Error in Google Ads settings POST:', error);

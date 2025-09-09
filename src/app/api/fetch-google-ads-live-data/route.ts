@@ -492,20 +492,18 @@ export async function POST(request: NextRequest) {
     console.log('🎯 ABOUT TO CHECK DATABASE/LIVE API DECISION...');
 
     // Check if we should use database for historical data (not current month/week)
-    // SPECIAL CASE: Force database usage for August 2025 since we have good data there
+    // Dynamic database usage decision based on current period
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const isCurrentPeriod = new Date(startDate) >= currentMonthStart;
     
-    // Override: Always use database for August 2025 (we have good data there)
-    const isAugust2025 = startDate === '2025-08-01' && (endDate === '2025-08-27' || endDate === '2025-08-31');
-    const shouldUseDatabase = !isCurrentPeriod || isAugust2025;
+    // Use database for historical periods, live API for current period
+    const shouldUseDatabase = !isCurrentPeriod;
     
     console.log('🎯 DATABASE USAGE DECISION:', {
       startDate,
       endDate,
       isCurrentPeriod,
-      isAugust2025,
       shouldUseDatabase,
       forceFresh
     });

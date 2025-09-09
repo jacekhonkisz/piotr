@@ -82,9 +82,9 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
-          client_id: settings.google_ads_client_id,
-          client_secret: settings.google_ads_client_secret,
-          refresh_token: settings.google_ads_manager_refresh_token,
+          client_id: settings.google_ads_client_id || '',
+          client_secret: settings.google_ads_client_secret || '',
+          refresh_token: settings.google_ads_manager_refresh_token || '',
           grant_type: 'refresh_token'
         })
       });
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${testResults.oauthTest.accessToken}`,
-            'developer-token': settings.google_ads_developer_token
+            'developer-token': settings.google_ads_developer_token || ''
           }
         });
 

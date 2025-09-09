@@ -4,6 +4,9 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import KPICarousel, { KPI } from './KPICarousel';
 import { RefreshCw, Clock, Database, Target } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { DailyMetricsCache } from '../lib/daily-metrics-cache';
+import { DataSourceIndicator } from './DataSourceIndicator';
 
 interface GoogleAdsPerformanceLiveProps {
   clientId: string;
@@ -57,6 +60,14 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
   const [spendBars, setSpendBars] = useState<number[]>([]);
   const [conversionsBars, setConversionsBars] = useState<number[]>([]);
   const [ctrBars, setCtrBars] = useState<number[]>([]);
+  
+  // Daily metrics cache state
+  const [dailyMetricsSource, setDailyMetricsSource] = useState<{
+    source: string;
+    completeness?: number;
+    cacheAge?: number;
+    fromCache: boolean;
+  } | null>(null);
   
   const requestInProgress = useRef(false);
   const [isRequesting, setIsRequesting] = useState(false);
@@ -156,58 +167,74 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     }
   }, [clientId]);
 
-  // Fetch REAL daily data points for charts via API
+  // 🔧 STANDARDIZED: Fetch daily data using smart cache (same pattern as Meta component)
   const fetchDailyDataPoints = useCallback(async () => {
     try {
-      console.log('🔄 GoogleAdsPerformanceLive: Fetching REAL daily data points via API...');
+      console.log('📊 GoogleAdsPerformanceLive: Fetching daily data using smart cache for clientId:', clientId);
       
-      // Call our API endpoint instead of direct database access
-      const response = await fetch(`/api/google-ads-daily-data?clientId=${clientId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
+      // Calculate date range for last 7 days (same as Meta component)
+      const today = new Date();
+      const last7Days = [];
+      
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(today.getDate() - i - 1); // -1 to exclude today
+        const dateStr = date.toISOString().split('T')[0];
+        last7Days.push(dateStr);
       }
-
-      const result = await response.json();
-      const dailyData = result.data || [];
-
-      if (dailyData && dailyData.length > 0) {
-        console.log(`✅ GoogleAdsPerformanceLive: Got ${dailyData.length} real daily data points from API`);
+      
+      const startDate = last7Days[0];
+      const endDate = last7Days[last7Days.length - 1];
+      
+      if (!startDate || !endDate) {
+        console.error('❌ Invalid date range for Google Ads daily metrics cache');
+        const emptyData = Array.from({ length: 7 }, () => 0);
+        setClicksBars(emptyData);
+        setSpendBars(emptyData);
+        setConversionsBars(emptyData);
+        setCtrBars(emptyData);
+        return false;
+      }
+      
+      const dateRange = { start: startDate, end: endDate };
+      console.log('📅 Google Ads date range:', dateRange);
+      
+      // Use daily metrics cache (same pattern as Meta component)
+      const result = await DailyMetricsCache.getDailyMetrics(
+        clientId, 
+        dateRange, 
+        'google'
+      );
+      
+      // Update daily metrics source info
+      setDailyMetricsSource({
+        source: result.source,
+        completeness: result.completeness,
+        cacheAge: result.cacheAge,
+        fromCache: result.fromCache
+      });
+      
+      if (result.success && result.data.length > 0) {
+        console.log(`✅ GoogleAdsPerformanceLive: Got ${result.data.length} daily data points from ${result.source} (${Math.round((result.completeness || 0) * 100)}% complete)`);
         
-        // Create arrays for the last 7 days (fill missing days with 0)
-        const last7Days = [];
-        const today = new Date();
-        
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date(today);
-          date.setDate(today.getDate() - i - 1); // -1 to exclude today
-          const dateStr = date.toISOString().split('T')[0];
-          last7Days.push(dateStr);
-        }
-        
-        // Map daily data to arrays
+        // Map daily data to arrays (same logic as before)
         const clicksData = last7Days.map(date => {
-          const dayData = dailyData.find((d: any) => d.date === date);
+          const dayData = result.data.find(d => d.date === date);
           return dayData ? dayData.total_clicks : 0;
         });
         
         const spendData = last7Days.map(date => {
-          const dayData = dailyData.find((d: any) => d.date === date);
+          const dayData = result.data.find(d => d.date === date);
           return dayData ? dayData.total_spend : 0;
         });
         
         const conversionsData = last7Days.map(date => {
-          const dayData = dailyData.find((d: any) => d.date === date);
+          const dayData = result.data.find(d => d.date === date);
           return dayData ? dayData.total_conversions : 0;
         });
         
         const ctrData = last7Days.map(date => {
-          const dayData = dailyData.find((d: any) => d.date === date);
+          const dayData = result.data.find(d => d.date === date);
           if (!dayData || dayData.total_impressions === 0) return 0;
           return (dayData.total_clicks / dayData.total_impressions) * 100;
         });
@@ -217,17 +244,18 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
         setConversionsBars(conversionsData);
         setCtrBars(ctrData);
 
-        console.log('📊 GoogleAdsPerformanceLive: Set real daily data bars:', {
+        console.log('📊 GoogleAdsPerformanceLive: Set smart cache daily data bars:', {
+          source: result.source,
           clicks: clicksData,
           spend: spendData,
           conversions: conversionsData,
           ctr: ctrData,
-          source: result.debug?.source
+          completeness: Math.round((result.completeness || 0) * 100) + '%'
         });
 
         return true;
       } else {
-        console.log('ℹ️ No Google Ads daily data available - using empty arrays');
+        console.log('ℹ️ No Google Ads daily data available from smart cache - using empty arrays');
         const emptyData = Array.from({ length: 7 }, () => 0);
         setClicksBars(emptyData);
         setSpendBars(emptyData);
@@ -236,7 +264,7 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
         return false;
       }
     } catch (error) {
-      console.error('❌ Failed to fetch daily Google Ads data via API:', error);
+      console.error('❌ Failed to fetch Google Ads daily data from smart cache:', error);
       const emptyData = Array.from({ length: 7 }, () => 0);
       setClicksBars(emptyData);
       setSpendBars(emptyData);
@@ -436,35 +464,58 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
         });
 
         return (
-          <KPICarousel
-            items={[
+          <div>
+            {/* Enhanced Daily Metrics Data Source Indicator (Week 3) */}
+            {dailyMetricsSource && (
+              <div className="mb-4">
+                <div className="text-sm text-gray-600 mb-2">Daily Metrics:</div>
+                <DataSourceIndicator 
+                  debug={{
+                    source: dailyMetricsSource.source,
+                    responseTime: dailyMetricsSource.cacheAge
+                  }}
+                  showCacheAge={true}
+                  cacheAge={dailyMetricsSource.cacheAge}
+                  completeness={dailyMetricsSource.completeness}
+                  onRefresh={() => {
+                    console.log('🔄 Manual refresh requested for Google Ads daily metrics');
+                    fetchDailyDataPoints();
+                  }}
+                  isRefreshing={loading}
+                />
+              </div>
+            )}
+            
+            <KPICarousel
+              items={[
+                {
+                  id: 'clicks',
+                  label: 'Kliknięcia',
+                  value: stats.totalClicks.toLocaleString('pl-PL'),
+                  sublabel: 'Bieżący miesiąc',
+                  bars: clicksBars,
+                  dateForMarker: new Date().toISOString()
+                },
               {
-                id: 'clicks',
-                label: 'Kliknięcia',
-                value: stats.totalClicks.toLocaleString('pl-PL'),
+                id: 'spend',
+                label: 'Wydatki',
+                value: formatCurrency(stats.totalSpend),
                 sublabel: 'Bieżący miesiąc',
-                bars: clicksBars,
+                bars: spendBars,
                 dateForMarker: new Date().toISOString()
               },
-            {
-              id: 'spend',
-              label: 'Wydatki',
-              value: formatCurrency(stats.totalSpend),
-              sublabel: 'Bieżący miesiąc',
-              bars: spendBars,
-              dateForMarker: new Date().toISOString()
-            },
-            {
-              id: 'conversions',
-              label: 'Konwersje',
-              value: stats.totalConversions.toLocaleString('pl-PL'),
-              sublabel: 'Bieżący miesiąc',
-              bars: conversionsBars,
-              dateForMarker: new Date().toISOString()
-            }
-          ] as KPI[]}
-          variant="light"
-        />
+              {
+                id: 'conversions',
+                label: 'Konwersje',
+                value: stats.totalConversions.toLocaleString('pl-PL'),
+                sublabel: 'Bieżący miesiąc',
+                bars: conversionsBars,
+                dateForMarker: new Date().toISOString()
+              }
+            ] as KPI[]}
+              variant="light"
+            />
+          </div>
         );
       })() : (
         <div className="flex items-center justify-center py-12">

@@ -82,6 +82,23 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     return new Intl.NumberFormat('pl-PL').format(value);
   };
 
+  // Helper function to translate gender labels
+  const translateGenderLabel = (label: string) => {
+    switch (label.toLowerCase()) {
+      case 'male': return 'Mężczyźni';
+      case 'female': return 'Kobiety';
+      case 'nieznane': return 'Nieznane';
+      case 'unknown': return 'Nieznane';
+      default: return 'Nieznane';
+    }
+  };
+
+  // Helper function to translate age labels  
+  const translateAgeLabel = (label: string) => {
+    if (label === 'Nieznane' || label === 'Unknown' || label === 'unknown') return 'Nieznane';
+    return label; // Age ranges like "25-34" don't need translation
+  };
+
   // Process data for gender breakdown
   const genderData = React.useMemo(() => {
     const genderMap = new Map<string, number>();
@@ -97,13 +114,14 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     const total = values.reduce((sum, val) => sum + val, 0);
 
     return {
-      labels,
+      labels: labels.map(translateGenderLabel),
       datasets: [{
         data: values,
         backgroundColor: ['#6366f1', '#8b5cf6', '#6b7280'],
         borderWidth: 0,
       }],
-      total
+      total,
+      originalLabels: labels // Keep original labels for legend mapping
     };
   }, [data, metric]);
 
@@ -122,13 +140,14 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     const total = values.reduce((sum, val) => sum + val, 0);
 
     return {
-      labels,
+      labels: labels.map(translateAgeLabel),
       datasets: [{
         data: values,
         backgroundColor: ['#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ef4444', '#6b7280', '#f97316'],
         borderWidth: 0,
       }],
-      total
+      total,
+      originalLabels: labels // Keep original labels for legend mapping
     };
   }, [data, metric]);
 
@@ -192,7 +211,7 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
             Podział według Płci
           </h4>
           <p className="text-sm text-slate-600 mb-6 text-center">
-            Udział metryka według płci
+            Udział {getMetricLabel().toLowerCase()} według płci
           </p>
           <div className="h-80">
             <Pie data={genderData} options={chartOptions} />
@@ -213,7 +232,7 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
                     style={{ backgroundColor: color }}
                   />
                   <span className="text-sm font-medium text-slate-700 capitalize">
-                    {label === 'male' ? 'Mężczyźni' : label === 'female' ? 'Kobiety' : 'Nieznana'}
+                    {label}
                   </span>
                 </div>
                 <div className="text-right">
@@ -236,7 +255,7 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
             Podział według Grup Wiekowych
           </h4>
           <p className="text-sm text-slate-600 mb-6 text-center">
-            Udział metryka według wieku
+            Udział {getMetricLabel().toLowerCase()} według wieku
           </p>
           <div className="h-80">
             <Pie data={ageData} options={chartOptions} />

@@ -249,18 +249,46 @@ body {
 /* Enhanced button styles with proper contrast */
 .btn-primary {
   @apply px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-medium;
+  color: white !important;
 }
 
 .btn-secondary {
   @apply px-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-xl hover:border-gray-400 hover:shadow-md transition-all duration-200 font-medium;
+  color: #111827 !important; /* gray-900 */
+  background-color: white !important;
 }
 
 .btn-success {
   @apply px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-medium;
+  color: white !important;
 }
 
 .btn-danger {
   @apply px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl hover:from-red-700 hover:to-rose-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-medium;
+  color: white !important;
+}
+
+/* Disabled button states with proper contrast */
+button:disabled,
+.btn-disabled {
+  background-color: #e5e7eb !important; /* gray-200 */
+  color: #6b7280 !important; /* gray-500 */
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}
+
+/* Ensure button text is never invisible */
+button {
+  color: inherit;
+}
+
+button.text-white {
+  color: white !important;
+}
+
+button.text-gray-900,
+button.text-black {
+  color: #111827 !important;
 }
 
 /* Card enhancements with proper contrast */
@@ -480,9 +508,38 @@ body {
   color: var(--text-on-light);
 }
 
+.form-input::placeholder {
+  color: #9ca3af !important; /* gray-400 */
+  opacity: 1;
+}
+
 .form-select {
   @apply w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm hover:shadow-md transition-all duration-200;
   color: var(--text-on-light);
+}
+
+/* Global placeholder styling for better contrast */
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280 !important; /* gray-500 - better contrast */
+  opacity: 1 !important;
+}
+
+select {
+  color: var(--text-on-light) !important;
+}
+
+/* Ensure all form elements have proper text color */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+textarea,
+select {
+  color: var(--text-on-light) !important;
+  background-color: white !important;
 }
 
 /* Navigation enhancements with proper contrast */
@@ -778,6 +835,55 @@ body {
 
 .text-muted-on-dark {
   color: var(--text-muted-on-dark) !important;
+}
+
+/* Production-safe contrast fixes */
+.contrast-safe-text {
+  color: #111827 !important; /* Always dark text */
+  background-color: white !important; /* Always white background */
+}
+
+.contrast-safe-placeholder::placeholder {
+  color: #6b7280 !important; /* Always gray-500 placeholder */
+  opacity: 1 !important;
+}
+
+/* Fix for any remaining white-on-white issues */
+.bg-white input,
+.bg-white select,
+.bg-white textarea {
+  color: #111827 !important;
+  background-color: white !important;
+}
+
+.bg-white input::placeholder,
+.bg-white textarea::placeholder {
+  color: #6b7280 !important;
+  opacity: 1 !important;
+}
+
+/* Ensure text is always visible on light backgrounds */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-blue-50,
+.bg-green-50,
+.bg-yellow-50,
+.bg-red-50,
+.bg-purple-50,
+.bg-indigo-50 {
+  color: #111827 !important;
+}
+
+/* Ensure text is always visible on dark backgrounds */
+.bg-gray-800,
+.bg-gray-900,
+.bg-blue-900,
+.bg-green-900,
+.bg-red-900,
+.bg-purple-900,
+.bg-indigo-900 {
+  color: white !important;
 }
 
 /* Enhanced button hover states with proper contrast */

@@ -110,8 +110,8 @@ export async function POST(request: NextRequest) {
       authenticatedUser: user.email
     });
     
-    let dailyData;
-    let dataSource;
+    let dailyData: any[] = [];
+    let dataSource: string;
     
     if (forceRefresh) {
       logger.info('Force refresh requested, fetching fresh Google Ads daily data...');

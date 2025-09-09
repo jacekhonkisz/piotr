@@ -46,6 +46,197 @@ const formatDateRange = (start: string, end: string): string => {
   return `${startDate.toLocaleDateString('pl-PL')} - ${endDate.toLocaleDateString('pl-PL')}`;
 };
 
+// 🔧 DATA SOURCE INDICATOR: Component to show which data source is being used
+const DataSourceIndicator = ({ validation, debug }: { 
+  validation?: any; 
+  debug?: any; 
+}) => {
+  if (!validation && !debug) return null;
+
+  const getSourceColor = (source: string) => {
+    // Handle fresh cache sources (monthly and weekly)
+    if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
+      return 'bg-green-100 text-green-800'; // Fresh cache
+    }
+    
+    // Handle stale cache sources (monthly and weekly)  
+    if (source.includes('stale') || source.includes('cache-miss')) {
+      return 'bg-yellow-100 text-yellow-800'; // Stale cache
+    }
+    
+    // Handle database sources
+    if (source.includes('database') || source.includes('historical')) {
+      return 'bg-blue-100 text-blue-800'; // Database
+    }
+    
+    // Handle live API sources (but not if it contains 'cache' which indicates cached live data)
+    if ((source.includes('live') || source.includes('api') || source.includes('refresh')) && !source.includes('cache')) {
+      return 'bg-red-100 text-red-800'; // Live API
+    }
+    
+    // Specific cases
+    switch (source) {
+      case 'smart-cache-fresh': case 'weekly-cache': case 'monthly-cache': 
+        return 'bg-green-100 text-green-800';
+      case 'smart-cache-stale': case 'stale-weekly-cache': case 'stale-monthly-cache':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'database': case 'database-historical': 
+        return 'bg-blue-100 text-blue-800';
+      case 'live-api': case 'force-weekly-refresh': case 'force-monthly-refresh':
+        return 'bg-red-100 text-red-800';
+      default: 
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getSourceIcon = (source: string) => {
+    // Handle fresh cache sources (monthly and weekly)
+    if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
+      return '🟢'; // Fresh cache
+    }
+    
+    // Handle stale cache sources (monthly and weekly)
+    if (source.includes('stale') || source.includes('cache-miss')) {
+      return '🟡'; // Stale cache
+    }
+    
+    // Handle database sources
+    if (source.includes('database') || source.includes('historical')) {
+      return '🔵'; // Database
+    }
+    
+    // Handle live API sources (but not if it contains 'cache' which indicates cached live data)
+    if ((source.includes('live') || source.includes('api') || source.includes('refresh')) && !source.includes('cache')) {
+      return '🔴'; // Live API
+    }
+    
+    // Specific cases
+    switch (source) {
+      case 'smart-cache-fresh': case 'weekly-cache': case 'monthly-cache':
+        return '🟢';
+      case 'smart-cache-stale': case 'stale-weekly-cache': case 'stale-monthly-cache':
+        return '🟡';
+      case 'database': case 'database-historical':
+        return '🔵';
+      case 'live-api': case 'force-weekly-refresh': case 'force-monthly-refresh':
+        return '🔴';
+      default:
+        return '⚪';
+    }
+  };
+
+  const source = debug?.source || validation?.actualSource || 'unknown';
+  const cachePolicy = debug?.cachePolicy || 'unknown';
+  const potentialBypass = validation?.potentialCacheBypassed;
+
+  return (
+    <div className="mb-4 p-3 rounded-lg border bg-gray-50">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <span className="text-sm font-medium text-gray-700">Źródło danych:</span>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSourceColor(source)}`}>
+            {getSourceIcon(source)} {source}
+          </span>
+          {potentialBypass && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+              ⚠️ Potencjalne ominięcie cache
+            </span>
+          )}
+        </div>
+        <div className="text-xs text-gray-500">
+          Polityka: {cachePolicy}
+        </div>
+      </div>
+      {validation && (
+        <div className="mt-2 text-xs text-gray-600">
+          Oczekiwane: {validation.expectedSource} | Rzeczywiste: {validation.actualSource}
+          {validation.cacheFirstEnforced && ' | Cache-first: włączone'}
+          {source.includes('weekly') && ' | Typ: Tygodniowy'}
+          {source.includes('monthly') && ' | Typ: Miesięczny'}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// 🔧 STANDARDIZED DATA FETCHING: Use StandardizedDataFetcher for all report data requests
+const fetchReportDataUnified = async (params: {
+  dateRange: { start: string; end: string };
+  clientId: string;
+  platform?: string;
+  forceFresh?: boolean;
+  reason?: string;
+  session?: any;
+}) => {
+  const { dateRange, clientId, platform = 'meta', forceFresh = false, reason, session } = params;
+  
+  console.log('📡 🔧 STANDARDIZED DATA FETCH (REPORTS):', {
+    dateRange,
+    clientId,
+    platform,
+    forceFresh,
+    reason,
+    timestamp: new Date().toISOString()
+  });
+
+  console.log('🎯 STANDARDIZED REPORTS FETCH: Using consistent logic for all periods');
+
+  try {
+    // Import StandardizedDataFetcher dynamically to avoid SSR issues
+    const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+    
+    console.log('🎯 Using StandardizedDataFetcher for reports...');
+    
+    const result = await StandardizedDataFetcher.fetchData({
+      clientId,
+      dateRange,
+      platform: platform as 'meta' | 'google',
+      reason: reason || 'reports-standardized',
+      sessionToken: session?.access_token
+    });
+    
+    // Transform StandardizedDataFetcher result to match expected format
+    if (result.success && result.data) {
+      const transformedResult = {
+        success: true,
+        data: {
+          campaigns: result.data.campaigns || [],
+          stats: result.data.stats,
+          conversionMetrics: result.data.conversionMetrics,
+          dataSourceValidation: {
+            expectedSource: 'daily_kpi_data',
+            actualSource: result.debug?.source || 'unknown',
+            isConsistent: result.validation?.isConsistent || false
+          }
+        },
+        debug: {
+          source: result.debug?.source || 'standardized-fetcher',
+          cachePolicy: result.debug?.cachePolicy || 'database-first-standardized',
+          responseTime: result.debug?.responseTime || 0,
+          reason: result.debug?.reason || reason,
+          periodType: result.debug?.periodType || 'unknown'
+        },
+        validation: result.validation
+      };
+      
+      console.log('✅ STANDARDIZED REPORTS FETCH SUCCESS:', {
+        source: transformedResult.debug.source,
+        periodType: transformedResult.debug.periodType,
+        totalSpend: transformedResult.data.stats?.totalSpend,
+        reservations: transformedResult.data.conversionMetrics?.reservations
+      });
+      
+      return transformedResult;
+    } else {
+      throw new Error('StandardizedDataFetcher returned no data');
+    }
+    
+  } catch (error) {
+    console.error('❌ Standardized reports fetch failed:', error);
+    throw error;
+  }
+};
+
 
 
 interface Campaign {
@@ -204,6 +395,13 @@ function ReportsPageContent() {
     adRelevanceResults: any[];
   } | null>(null);
   const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('meta');
+  
+  // 🔧 DATA SOURCE VALIDATION: Track data source information for debugging
+  const [dataSourceInfo, setDataSourceInfo] = useState<{
+    validation?: any;
+    debug?: any;
+    lastUpdated?: string;
+  }>({});
 
   // Loading timeout mechanism to prevent infinite loading states
   useEffect(() => {
@@ -319,14 +517,14 @@ function ReportsPageContent() {
     const urlParams = new URLSearchParams(window.location.search);
     const clientIdFromUrl = urlParams.get('clientId') || urlParams.get('clientid');
     
-    if (profileData.role === 'admin' && clientIdFromUrl) {
+    if (profileData.role === 'admin') {
+      if (clientIdFromUrl) {
       // Admin viewing specific client
       console.log('🔍 Admin viewing specific client:', clientIdFromUrl);
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .select('*')
         .eq('id', clientIdFromUrl)
-        .eq('admin_id', currentUser.id) // Ensure admin owns this client
         .single();
 
       if (clientError) {
@@ -335,6 +533,68 @@ function ReportsPageContent() {
       }
       
       return clientData;
+      } else {
+        // Admin without specific client - find first client with recent data
+        console.log('🔍 Admin without clientId - finding client with recent data');
+        
+        // Get current month range for data check
+        const now = new Date();
+        const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const today = now.toISOString().split('T')[0];
+        
+        // Find clients with data in current month
+        const { data: clientsWithData, error: dataError } = await supabase
+          .from('daily_kpi_data')
+          .select('client_id, clients!inner(*)')
+          .gte('date', currentMonthStart)
+          .lte('date', today)
+          .order('date', { ascending: false })
+          .limit(1);
+        
+        if (!dataError && clientsWithData && clientsWithData.length > 0) {
+          const clientWithData = clientsWithData[0]?.clients;
+          if (clientWithData) {
+            console.log(`✅ Found client with current month data: ${clientWithData.name}`);
+            return clientWithData;
+          }
+        }
+        
+        // Fallback: Find client with any recent data (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+        
+        const { data: recentDataClients, error: recentError } = await supabase
+          .from('daily_kpi_data')
+          .select('client_id, clients!inner(*)')
+          .gte('date', thirtyDaysAgoStr)
+          .order('date', { ascending: false })
+          .limit(1);
+        
+        if (!recentError && recentDataClients && recentDataClients.length > 0) {
+          const clientWithRecentData = recentDataClients[0]?.clients;
+          if (clientWithRecentData) {
+            console.log(`✅ Found client with recent data: ${clientWithRecentData.name}`);
+            return clientWithRecentData;
+          }
+        }
+        
+        // Final fallback: First available client
+        console.log('🔄 No clients with recent data, using first available client');
+        const { data: fallbackClient, error: fallbackError } = await supabase
+          .from('clients')
+          .select('*')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .single();
+        
+        if (fallbackError) {
+          throw new Error('Failed to load any client data');
+        }
+        
+        console.log(`⚠️ Using fallback client: ${fallbackClient.name} (may not have current data)`);
+        return fallbackClient;
+      }
     } else if (profileData.role === 'client') {
       // Client viewing their own data
       console.log('🔍 Client viewing their own data');
@@ -505,39 +765,38 @@ function ReportsPageContent() {
       
       console.log(`📡 Making OPTIMIZED single API call for entire date range:`, requestBody);
       
-      // Determine API endpoint based on active provider
-      const apiEndpoint = activeAdsProvider === 'meta' 
-        ? '/api/fetch-live-data'
-        : '/api/fetch-google-ads-live-data';
+      // 🎯 USE STANDARDIZED DATA FETCHER (loadAllTimeData)
+      console.log('🎯 Using StandardizedDataFetcher for all-time data...');
       
-      console.log(`📡 Using ${activeAdsProvider} API endpoint: ${apiEndpoint}`);
-      
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+      const response = await fetchReportDataUnified({
+        dateRange: {
+          start: startDate,
+          end: endDate
         },
-        body: JSON.stringify(requestBody)
+        clientId: selectedClient.id,
+        platform: activeAdsProvider,
+        forceFresh: false,
+        reason: 'all-time-standardized',
+        session
       });
 
-      console.log(`📡 Response for optimized all-time call:`, {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText
+      console.log(`✅ StandardizedDataFetcher all-time response:`, {
+        success: response.success,
+        source: response.debug?.source,
+        cachePolicy: response.debug?.cachePolicy
       });
 
-      if (response.ok) {
-        const data = await response.json();
+      if (response.success) {
+        const data = response;
         console.log(`📊 Optimized all-time data result:`, {
           hasData: !!data,
           hasDataProperty: !!data.data,
           campaignsInData: data.data?.campaigns?.length || 0,
-          campaignsDirect: data.campaigns?.length || 0,
+          campaignsDirect: data.data?.campaigns?.length || 0,
           dataKeys: Object.keys(data || {})
         });
         
-        const allCampaigns = data.data?.campaigns || data.campaigns || [];
+        const allCampaigns = data.data?.campaigns || [];
         
         console.log(`📊 All-time data collection complete. Total campaigns found: ${allCampaigns.length}`);
         
@@ -676,13 +935,8 @@ function ReportsPageContent() {
         });
 
       } else {
-        console.log(`⚠️ Optimized API call failed`);
-        try {
-          const errorData = await response.json();
-          console.log(`❌ Error details for optimized call:`, errorData);
-        } catch (e) {
-          console.log(`❌ Could not parse error response for optimized call`);
-        }
+        console.log(`⚠️ Standardized fetch failed:`, response.debug?.reason);
+        console.log(`❌ Error details:`, response.debug);
         
         // Fallback to empty report
         const emptyReport: MonthlyReport | WeeklyReport = {
@@ -779,28 +1033,22 @@ function ReportsPageContent() {
       console.log('📡 Making custom date API call with request body:', requestBody);
       
       // Determine API endpoint based on active provider
-      const apiEndpoint = activeAdsProvider === 'meta' 
-        ? '/api/fetch-live-data'
-        : '/api/fetch-google-ads-live-data'; // Use proper Google Ads API with separated data
+      // 🎯 USE STANDARDIZED DATA FETCHER (loadCustomDateData)
+      console.log('🎯 Using StandardizedDataFetcher for custom date data...');
       
-      console.log(`📡 Using ${activeAdsProvider} API endpoint: ${apiEndpoint}`);
-      
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify(requestBody)
+      const data = await fetchReportDataUnified({
+        dateRange: requestBody.dateRange,
+        clientId: requestBody.clientId,
+        platform: activeAdsProvider,
+        forceFresh: false,
+        reason: 'custom-date-standardized',
+        session
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'Failed to load custom date data');
+      if (!data.success) {
+        throw new Error(data.debug?.reason || 'Failed to load custom date data');
       }
-
-      const data = await response.json();
-      const rawCampaigns = data.data?.campaigns || data.campaigns || [];
+      const rawCampaigns = data.data?.campaigns || data.data?.campaigns || [];
       
       const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
         // Use already-parsed conversion tracking data from API response
@@ -1142,23 +1390,24 @@ function ReportsPageContent() {
         const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
         
         if (isCurrentMonth) {
-          // For current month: use first day of month to today
-          const startDate = new Date(Date.UTC(year, month - 1, 1));
-          const endDate = new Date(); // Today
+          // 🔧 FIX: For current month, cap end date to today to avoid future date API errors
+          const monthBoundaries = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
+          const todayISO = new Date().toISOString().split('T')[0];
+          const today: string = todayISO || new Date().toISOString().substring(0, 10); // Ensure string type
           
           dateRange = {
-            start: startDate.toISOString().split('T')[0] || '',
-            end: endDate.toISOString().split('T')[0] || ''
+            start: monthBoundaries.start,
+            end: today // Cap to today to avoid "future date" API errors (e.g., Sept 1-8 if today is Sept 8)
           };
           
-          console.log(`📅 Current month date parsing:`, {
+          console.log(`📅 Current month date parsing (FIXED):`, {
             periodId,
             year,
             month,
             startDate: dateRange.start,
             endDate: dateRange.end,
             isCurrentMonth: true,
-            note: 'Using first day of month to today for current month'
+            note: 'Capped end date to today to avoid future date API errors'
           });
         } else {
           // For past months: use the full month boundaries
@@ -1211,11 +1460,11 @@ function ReportsPageContent() {
         
         // 🚨 CRITICAL DEBUG: Log the exact dates being used
         console.log(`🚨 CRITICAL: Week ${week} of ${yearNum} calculated as:`, {
-          expectedForW36: week === 36 ? '2025-09-01 to 2025-09-07' : 'N/A',
           actualStart: dateRange.start,
           actualEnd: dateRange.end,
-          isW36Correct: week === 36 ? (dateRange.start === '2025-09-01' && dateRange.end === '2025-09-07') : 'N/A',
-          calculationMethod: 'CORRECTED UTC ISO week algorithm'
+          calculationMethod: 'CORRECTED UTC ISO week algorithm',
+          weekNumber: week,
+          year: yearNum
         });
       }
       
@@ -1334,68 +1583,34 @@ function ReportsPageContent() {
         console.log(`📅 Previous ${viewType.slice(0, -2)} detected - using database (should be fast)`);
       }
       
-      // Determine API endpoint based on active provider
-      const apiEndpoint = activeAdsProvider === 'meta' 
-        ? '/api/fetch-live-data'
-        : '/api/fetch-google-ads-live-data'; // Use proper Google Ads API with separated data
+      // 🎯 USE STANDARDIZED DATA FETCHER (loadPeriodDataWithClient)
+      console.log('🎯 Using StandardizedDataFetcher for period data...');
       
-      console.log(`📡 Using ${activeAdsProvider} API endpoint: ${apiEndpoint}`);
-      
-      // Direct fetch without timeout to allow Google Ads API to complete
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify(requestBody)
+      const response = await fetchReportDataUnified({
+        dateRange,
+        clientId: clientData.id,
+        platform: activeAdsProvider,
+        forceFresh: forceClearCache,
+        reason: `period-${periodId}-standardized`,
+        session
       });
       
-      console.log('📡 API call completed, processing response...');
+      console.log('✅ StandardizedDataFetcher completed, processing response...');
 
-      console.log('📡 API response received:', {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
+      console.log('✅ StandardizedDataFetcher response:', {
+        success: response.success,
+        source: response.debug?.source,
+        cachePolicy: response.debug?.cachePolicy
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error(`❌ API call failed for ${periodId}:`, errorData);
+      if (!response.success) {
+        const errorReason = response.debug?.reason || 'Unknown error';
+        console.error(`❌ StandardizedDataFetcher failed for ${periodId}:`, errorReason);
         
-        // 🔍 ENHANCED ERROR DEBUG for Google Ads
-        if (activeAdsProvider === 'google') {
-          console.error('🚨 GOOGLE ADS API ERROR RESPONSE:', {
-            periodId,
-            status: response.status,
-            statusText: response.statusText,
-            errorData,
-            headers: Object.fromEntries(response.headers.entries()),
-            url: response.url
-          });
-        }
+        // Show error message
+        setError(`Failed to load ${activeAdsProvider} data for ${periodId}: ${errorReason}`);
         
-        // Show specific error messages based on provider
-        if (activeAdsProvider === 'meta') {
-          if (errorData.error?.includes('permission') || errorData.error?.includes('ads_management')) {
-            setError(`Meta API Permission Error: Your access token doesn't have the required permissions (ads_management or ads_read). Please contact support to update your token.`);
-          } else if (errorData.error?.includes('Invalid Meta Ads token')) {
-            setError(`Invalid Meta API Token: Your access token is invalid or expired. Please contact support to refresh your token.`);
-          } else {
-            setError(`Failed to load Meta Ads data for ${periodId}: ${errorData.error || 'Unknown error'}`);
-          }
-        } else {
-          if (errorData.error?.includes('Google Ads credentials')) {
-            setError(`Google Ads API Error: ${errorData.error}. Please check your Google Ads configuration.`);
-          } else if (errorData.error?.includes('Customer ID')) {
-            setError(`Google Ads Customer ID Error: ${errorData.error}. Please verify your customer ID.`);
-          } else {
-            setError(`Failed to load Google Ads data for ${periodId}: ${errorData.error || 'Unknown error'}`);
-          }
-        }
-        
-        // Add empty period if API fails
+        // Add empty period if fetch fails
         const emptyReport: MonthlyReport | WeeklyReport = {
           id: periodId,
           date_range_start: periodStartDate,
@@ -1409,20 +1624,27 @@ function ReportsPageContent() {
         return;
       }
 
-      let data;
-      try {
-        data = await response.json();
-        console.log(`✅ API call successful for ${periodId}:`, data);
-        console.log(`🎯 ${isCurrentPeriod ? 'LIVE API DATA' : 'API DATA'} received for ${periodId}`);
+      const data = response; // fetchReportDataUnified already returns processed data
+      console.log(`✅ StandardizedDataFetcher successful for ${periodId}:`, data);
+      console.log(`🎯 STANDARDIZED DATA received for ${periodId}`);
+        
+        // 🔧 DATA SOURCE TRACKING: Store validation info for UI display
+        if (data.data?.dataSourceValidation || data.debug) {
+          setDataSourceInfo({
+            validation: data.data?.dataSourceValidation,
+            debug: data.debug,
+            lastUpdated: new Date().toISOString()
+          });
+        }
         
         // 🔧 DEBUG: Check if API returned empty campaigns despite cache having data
-        const apiCampaigns = data.data?.campaigns || data.campaigns || [];
+      const apiCampaigns = data.data?.campaigns || data.data?.campaigns || [];
         console.log(`🔍 API RESPONSE ANALYSIS:`, {
           periodId,
           apiSuccess: data.success,
           apiCampaignCount: apiCampaigns.length,
-          apiFromCache: data.data?.fromCache || data.fromCache,
-          apiDateRange: data.data?.dateRange || data.dateRange,
+        apiFromCache: 'standardized-fetch',
+        apiDateRange: 'standardized-fetch',
           expectedCacheData: '11 campaigns, 1723.33 PLN (from audit)',
           possibleIssue: apiCampaigns.length === 0 ? 'API not returning cached data properly' : 'API data looks good'
         });
@@ -1432,41 +1654,29 @@ function ReportsPageContent() {
           periodId,
           activeAdsProvider,
           responseSuccess: data.success,
-          apiDateRange: data.data?.dateRange || data.dateRange,
-          apiFromCache: data.data?.fromCache || data.fromCache,
-          apiLastUpdated: data.data?.lastUpdated || data.lastUpdated,
-          apiSource: data.debug?.source || data.source,
-          campaignsCount: data.data?.campaigns?.length || data.campaigns?.length || 0,
+        apiDateRange: 'standardized-fetch',
+        apiFromCache: 'standardized-fetch',
+        apiLastUpdated: 'standardized-fetch',
+        apiSource: data.debug?.source || 'standardized-fetch',
+        campaignsCount: data.data?.campaigns?.length || data.data?.campaigns?.length || 0,
           totalSpend: data.data?.stats?.totalSpend || 'not available',
           isCurrentPeriod: isCurrentPeriod,
-          hasError: !!data.error,
-          errorMessage: data.error
+        hasError: !data.success,
+        errorMessage: data.debug?.reason || 'none'
         });
         
         // 🔍 GOOGLE ADS SPECIFIC DEBUG
         if (activeAdsProvider === 'google') {
           console.log('🔍 GOOGLE ADS SPECIFIC DEBUG:', {
-            responseOk: response.ok,
-            responseStatus: response.status,
-            responseStatusText: response.statusText,
-            dataSuccess: data.success,
-            dataError: data.error,
+          success: data.success,
+          source: data.debug?.source,
+          cachePolicy: data.debug?.cachePolicy,
             hasDataProperty: !!data.data,
             dataKeys: data.data ? Object.keys(data.data) : [],
             campaignsInData: data.data?.campaigns?.length || 0,
             statsInData: data.data?.stats ? Object.keys(data.data.stats) : [],
             totalSpendInStats: data.data?.stats?.totalSpend
           });
-          
-          // Check if this is an authentication error
-          if (response.status === 401 || response.status === 403) {
-            console.log('🚨 AUTHENTICATION ERROR for Google Ads API');
-          }
-          
-          // Check if this is a server error
-          if (response.status >= 500) {
-            console.log('🚨 SERVER ERROR for Google Ads API');
-          }
         }
         
         console.log(`📊 Raw API response structure:`, {
@@ -1474,70 +1684,24 @@ function ReportsPageContent() {
           hasData: !!data.data,
           dataKeys: data.data ? Object.keys(data.data) : [],
           campaignsInData: data.data?.campaigns?.length || 0,
-          campaignsDirect: data.campaigns?.length || 0,
-          isPartialData: !!data.data?.partialData,
-          hasTimeoutError: !!data.data?.timeoutError
-        });
-        
-        // 🔧 FIX: Handle Google Ads API response structure differences
-        if (activeAdsProvider === 'google' && !data.success && !data.data && data.campaigns) {
-          console.log('🔧 GOOGLE ADS FIX: Normalizing response structure');
-          // Google Ads API returns campaigns directly, normalize to match Meta structure
-          data = {
-            success: true,
-            data: {
-              campaigns: data.campaigns,
-              dateRange: data.dateRange,
-              fromCache: data.fromCache,
-              lastUpdated: data.lastUpdated,
-              stats: data.stats
-            },
-            debug: data.debug
-          };
-          console.log('🔧 NORMALIZED RESPONSE:', data);
-        }
-        
-      } catch (error) {
-        console.error('❌ Failed to parse API response:', error);
-        let responseText = '';
-        try {
-          responseText = await response.text();
-          console.log('📄 Raw response text:', responseText);
-        } catch (textError) {
-          console.error('❌ Failed to get response text:', textError);
-        }
-        
-        // 🔧 FIX: Ensure loading state is cleared even on parse errors
-        console.log('🔧 PARSE ERROR FIX: Clearing loading state and showing error');
-        const emptyReport: MonthlyReport | WeeklyReport = {
-          id: periodId,
-          date_range_start: periodStartDate || '',
-          date_range_end: periodEndDate || '',
-          generated_at: new Date().toISOString(),
-          campaigns: []
-        };
-        
-        setReports(prev => ({ ...prev, [periodId]: emptyReport }));
-        setError(`Failed to parse ${activeAdsProvider} API response. Please try again or contact support.`);
-        return; // Exit early, finally block will clear loading state
-      }
-      console.log(`📊 Campaigns count: ${data.campaigns?.length || 0}`);
-      console.log(`📊 Data structure:`, {
-        hasData: !!data,
-        hasCampaigns: !!data.campaigns,
-        campaignsLength: data.campaigns?.length || 0,
-        dataKeys: Object.keys(data || {})
+        isPartialData: false,
+        hasTimeoutError: false
       });
 
-      // Transform API response to our report format
-      // The API returns data in a nested structure: { success: true, data: { campaigns: [...] } }
-      const rawCampaigns = data.data?.campaigns || data.campaigns || [];
+      // Transform API response to our report format  
+      const rawCampaigns = data.data?.campaigns || [];
+      console.log(`📊 Campaigns count: ${rawCampaigns.length}`);
+      console.log(`📊 Data structure:`, {
+        hasData: !!data,
+        hasCampaigns: !!rawCampaigns,
+        campaignsLength: rawCampaigns.length || 0,
+        dataKeys: Object.keys(data || {})
+      });
       
       console.log(`📊 Processing campaigns:`, {
         hasData: !!data,
         hasDataProperty: !!data.data,
         campaignsFromData: data.data?.campaigns?.length || 0,
-        campaignsDirect: data.campaigns?.length || 0,
         rawCampaigns: rawCampaigns.length
       });
       
@@ -1558,8 +1722,8 @@ function ReportsPageContent() {
       }
       
       // 🔧 ENHANCED: Check if we have conversionMetrics from the enhanced API
-      const hasEnhancedConversionMetrics = !!data.data?.conversionMetrics || !!data.conversionMetrics;
-      const enhancedConversionMetrics = data.data?.conversionMetrics || data.conversionMetrics;
+      const hasEnhancedConversionMetrics = !!data.data?.conversionMetrics;
+      const enhancedConversionMetrics = data.data?.conversionMetrics;
       
       console.log(`🔧 Enhanced conversion metrics check:`, {
         hasEnhancedConversionMetrics,
@@ -1637,14 +1801,26 @@ function ReportsPageContent() {
         // 🔍 DATA FRESHNESS AUDIT
         console.log(`🕐 DATA FRESHNESS AUDIT:`, {
           dataSource: data.debug?.source || 'unknown',
-          generatedAt: data.data?.lastUpdated || data.lastUpdated || 'unknown',
-          isFromCache: data.data?.fromCache || false,
-          cacheAge: data.data?.cacheAge ? `${Math.round(data.data.cacheAge / 1000)}s` : 'unknown',
+          generatedAt: new Date().toISOString(),
+          isFromCache: false,
+          cacheAge: 'standardized-fetch',
           totalCampaigns: campaigns.length,
           totalSpend: campaigns.reduce((sum, c) => sum + c.spend, 0),
           dateRange: `${periodStartDate} to ${periodEndDate}`,
-          isCurrentWeek: periodId === '2025-W33',
-          shouldBeFreshData: periodId === '2025-W33' ? 'YES - Current week' : 'NO - Historical'
+          isCurrentWeek: (() => {
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentWeekNumber = getWeekNumber(currentDate);
+            const currentWeekId = `${currentYear}-W${currentWeekNumber}`;
+            return periodId === currentWeekId;
+          })(),
+          shouldBeFreshData: (() => {
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentWeekNumber = getWeekNumber(currentDate);
+            const currentWeekId = `${currentYear}-W${currentWeekNumber}`;
+            return periodId === currentWeekId ? 'YES - Current week' : 'NO - Historical';
+          })()
         });
       }
       
@@ -1664,10 +1840,9 @@ function ReportsPageContent() {
           campaignCount: campaigns.length
         });
       } else {
-        // For monthly reports, use API response dates if available
-        const apiDateRange = data.data?.dateRange || data.dateRange;
-        correctStartDate = apiDateRange?.start || periodStartDate;
-        correctEndDate = apiDateRange?.end || periodEndDate;
+        // For monthly reports, use the period dates (StandardizedDataFetcher doesn't return dateRange)
+        correctStartDate = periodStartDate;
+        correctEndDate = periodEndDate;
       }
       
       console.log(`🔧 REPORT OBJECT FIX:`, {
@@ -1686,7 +1861,12 @@ function ReportsPageContent() {
         date_range_end: correctEndDate,
         generated_at: new Date().toISOString(),
         campaigns: campaigns,
-        conversionMetrics: data.data?.conversionMetrics || data.conversionMetrics
+        conversionMetrics: {
+          ...data.data?.conversionMetrics,
+          reach: 0,
+          offline_reservations: 0,
+          offline_value: 0
+        }
       };
 
       console.log(`💾 Setting successful report for ${periodId}:`, report);
@@ -1708,7 +1888,6 @@ function ReportsPageContent() {
         });
         return newState;
       });
-
     } catch (error) {
       console.error(`❌ Error loading ${viewType} data for ${periodId}:`, error);
       
@@ -1928,23 +2107,24 @@ function ReportsPageContent() {
             const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
             
             if (isCurrentMonth) {
-              // For current month: use first day of month to today
-              const startDate = new Date(Date.UTC(year, month - 1, 1));
-              const endDate = new Date(); // Today
+              // 🔧 FIX: For current month, cap end date to today to avoid future date API errors
+              const monthBoundaries = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
+              const todayISO = new Date().toISOString().split('T')[0];
+              const today: string = todayISO || new Date().toISOString().substring(0, 10); // Ensure string type
               
               dateRange = {
-                start: startDate.toISOString().split('T')[0] || '',
-                end: endDate.toISOString().split('T')[0] || ''
+                start: monthBoundaries.start,
+                end: today // Cap to today to avoid "future date" API errors (e.g., Sept 1-8 if today is Sept 8)
               };
               
-              console.log(`🔧 DEV: Current month date parsing:`, {
+              console.log(`🔧 DEV: Current month date parsing (FIXED):`, {
                 periodId,
                 year,
                 month,
                 startDate: dateRange.start,
                 endDate: dateRange.end,
                 isCurrentMonth: true,
-                note: 'Using first day of month to today for current month'
+                note: 'Capped end date to today to avoid future date API errors'
               });
             } else {
               // For past months: use the full month boundaries
@@ -2092,46 +2272,33 @@ function ReportsPageContent() {
           
           console.log('⏱️ Starting API call (no timeout - allowing full completion)...');
           
-          // Determine API endpoint based on active provider
-          const apiEndpoint = activeAdsProvider === 'meta' 
-            ? '/api/fetch-live-data'
-            : '/api/fetch-google-ads-live-data'; // Use proper Google Ads API with separated data
+          // 🎯 USE STANDARDIZED DATA FETCHER (dev function)
+          console.log('🎯 Using StandardizedDataFetcher for dev fresh data...');
           
-          console.log(`📡 Using ${activeAdsProvider} API endpoint: ${apiEndpoint}`);
-          
-          // Direct fetch without timeout to allow Google Ads API to complete
-          const response = await fetch(apiEndpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
-            },
-            body: JSON.stringify(requestBody)
+          const response = await fetchReportDataUnified({
+            dateRange,
+            clientId: clientData.id,
+            platform: activeAdsProvider,
+            forceFresh: true, // Dev function always forces fresh
+            reason: `dev-${periodId}-standardized`,
+            session
           });
           
-          console.log('📡 API call completed, processing response...');
+          console.log('✅ StandardizedDataFetcher completed, processing response...');
 
-          console.log('📡 API response received:', {
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            headers: Object.fromEntries(response.headers.entries())
+          console.log('✅ StandardizedDataFetcher response:', {
+            success: response.success,
+            source: response.debug?.source,
+            cachePolicy: response.debug?.cachePolicy
           });
 
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            console.error(`❌ API call failed for ${periodId}:`, errorData);
+          if (!response.success) {
+            const errorReason = response.debug?.reason || 'Unknown error';
+            console.error(`❌ StandardizedDataFetcher failed for ${periodId}:`, errorReason);
             
-            // Show specific error messages for permission issues (same logic as original)
-            if (errorData.error?.includes('permission') || errorData.error?.includes('ads_management')) {
-              setError(`Meta API Permission Error: Your access token doesn't have the required permissions (ads_management or ads_read). Please contact support to update your token.`);
-            } else if (errorData.error?.includes('Invalid Meta Ads token')) {
-              setError(`Invalid Meta API Token: Your access token is invalid or expired. Please contact support to refresh your token.`);
-            } else {
-              setError(`Failed to load data for ${periodId}: ${errorData.error || 'Unknown error'}`);
-            }
+            setError(`Failed to load ${activeAdsProvider} data for ${periodId}: ${errorReason}`);
             
-            // Add empty period if API fails (same logic as original)
+            // Add empty period if fetch fails
             const emptyReport: MonthlyReport | WeeklyReport = {
               id: periodId,
               date_range_start: periodStartDate,
@@ -2145,40 +2312,32 @@ function ReportsPageContent() {
             return;
           }
 
-          let data;
-          try {
-            data = await response.json();
-            console.log(`✅ API call successful for ${periodId}:`, data);
-            console.log(`🎯 DEV FRESH API DATA received for ${periodId}`);
-            console.log(`📊 Raw API response structure:`, {
+          const data = response; // fetchReportDataUnified already returns processed data
+          console.log(`✅ StandardizedDataFetcher successful for ${periodId}:`, data);
+          console.log(`🎯 DEV STANDARDIZED DATA received for ${periodId}`);
+          console.log(`📊 Standardized response structure:`, {
               hasSuccess: !!data.success,
               hasData: !!data.data,
               dataKeys: data.data ? Object.keys(data.data) : [],
               campaignsInData: data.data?.campaigns?.length || 0,
-              campaignsDirect: data.campaigns?.length || 0
-            });
-          } catch (error) {
-            console.error('❌ Failed to parse API response:', error);
-            const responseText = await response.text();
-            console.log('📄 Raw response text:', responseText);
-            throw new Error('Failed to parse API response');
-          }
-          console.log(`📊 Campaigns count: ${data.campaigns?.length || 0}`);
+            source: data.debug?.source
+          });
+          console.log(`📊 Campaigns count: ${data.data?.campaigns?.length || 0}`);
           console.log(`📊 Data structure:`, {
             hasData: !!data,
-            hasCampaigns: !!data.campaigns,
-            campaignsLength: data.campaigns?.length || 0,
+            hasCampaigns: !!data.data?.campaigns,
+            campaignsLength: data.data?.campaigns?.length || 0,
             dataKeys: Object.keys(data || {})
           });
 
           // Transform API response to our report format (same logic as original)
-          const rawCampaigns = data.data?.campaigns || data.campaigns || [];
+          const rawCampaigns = data.data?.campaigns || data.data?.campaigns || [];
           
           console.log(`📊 Processing campaigns:`, {
             hasData: !!data,
             hasDataProperty: !!data.data,
             campaignsFromData: data.data?.campaigns?.length || 0,
-            campaignsDirect: data.campaigns?.length || 0,
+            campaignsDirect: data.data?.campaigns?.length || 0,
             rawCampaigns: rawCampaigns.length
           });
           
@@ -2226,20 +2385,19 @@ function ReportsPageContent() {
             console.log(`📊 Sample campaign:`, campaigns[0]);
           }
           
-          // 🚨 FIX: Use correct dates from API response instead of potentially corrupted periodStartDate/periodEndDate
-          const apiDateRange = data.data?.dateRange || data.dateRange;
-          const correctStartDate = apiDateRange?.start || periodStartDate;
-          const correctEndDate = apiDateRange?.end || periodEndDate;
+          // 🚨 FIX: Use period dates (StandardizedDataFetcher doesn't return dateRange)
+          const correctStartDate = periodStartDate;
+          const correctEndDate = periodEndDate;
           
           console.log(`🔧 REPORT OBJECT FIX:`, {
             periodId,
             originalStart: periodStartDate,
             originalEnd: periodEndDate,
-            apiReturnedStart: apiDateRange?.start,
-            apiReturnedEnd: apiDateRange?.end,
+            apiReturnedStart: 'standardized-fetch',
+            apiReturnedEnd: 'standardized-fetch',
             usingStart: correctStartDate,
             usingEnd: correctEndDate,
-            isUsingAPIResponse: !!(apiDateRange?.start && apiDateRange?.end)
+            isUsingAPIResponse: false
           });
           
           const report: MonthlyReport | WeeklyReport = {
@@ -3780,6 +3938,12 @@ function ReportsPageContent() {
 
         {selectedReport && !loadingPeriod && (
           <>
+            {/* 🔧 DATA SOURCE INDICATOR: Show which data source is being used */}
+            <DataSourceIndicator 
+              validation={dataSourceInfo.validation} 
+              debug={dataSourceInfo.debug} 
+            />
+            
             {(() => {
               const totals = getSelectedPeriodTotals();
               

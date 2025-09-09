@@ -165,6 +165,11 @@ export default function AdminSettingsPage() {
   const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
   const [emailLogSearch, setEmailLogSearch] = useState('');
   
+  // Cache management state (Week 3 enhancement)
+  const [cacheStats, setCacheStats] = useState<any>(null);
+  const [loadingCacheStats, setLoadingCacheStats] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  
   // Monitoring state
   const [systemMetrics, setSystemMetrics] = useState<any>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
@@ -277,6 +282,7 @@ export default function AdminSettingsPage() {
       loadTokenHealthData();
       loadEmailLogs();
       loadSystemMetrics();
+      loadCacheStats(); // Week 3 enhancement
       
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -340,6 +346,44 @@ export default function AdminSettingsPage() {
       console.error('Error loading email logs:', error);
     } finally {
       setLoadingEmailLogs(false);
+    }
+  };
+
+  // Cache management functions (Week 3 enhancement)
+  const loadCacheStats = async () => {
+    try {
+      setLoadingCacheStats(true);
+      const response = await fetch('/api/admin/daily-metrics-cache-stats');
+      if (response.ok) {
+        const stats = await response.json();
+        setCacheStats(stats);
+      }
+    } catch (error) {
+      console.error('Error loading cache stats:', error);
+    } finally {
+      setLoadingCacheStats(false);
+    }
+  };
+
+  const clearDailyMetricsCache = async (clientId?: string) => {
+    try {
+      setClearingCache(true);
+      const url = clientId 
+        ? `/api/admin/clear-daily-metrics-cache?clientId=${clientId}`
+        : '/api/admin/clear-daily-metrics-cache';
+      
+      const response = await fetch(url, { method: 'POST' });
+      if (response.ok) {
+        await loadCacheStats(); // Refresh stats
+        alert(clientId ? `Cache cleared for client ${clientId}` : 'All daily metrics cache cleared');
+      } else {
+        throw new Error('Failed to clear cache');
+      }
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+      alert('Error clearing cache');
+    } finally {
+      setClearingCache(false);
     }
   };
 
@@ -625,14 +669,14 @@ export default function AdminSettingsPage() {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Server className="w-4 h-4 text-blue-500" />
                   Email Provider
                 </label>
                 <select
                   value={emailConfig.email_provider}
                   onChange={(e) => setEmailConfig(prev => ({ ...prev, email_provider: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                 >
                   <option value="smtp">SMTP</option>
                   <option value="sendgrid">SendGrid</option>
@@ -644,7 +688,7 @@ export default function AdminSettingsPage() {
                 <>
                   <div className="grid grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <Globe className="w-4 h-4 text-blue-500" />
                         SMTP Host
                       </label>
@@ -652,12 +696,12 @@ export default function AdminSettingsPage() {
                         type="text"
                         value={emailConfig.smtp_host}
                         onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_host: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                         placeholder="smtp.gmail.com"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <Server className="w-4 h-4 text-blue-500" />
                         SMTP Port
                       </label>
@@ -665,14 +709,14 @@ export default function AdminSettingsPage() {
                         type="number"
                         value={emailConfig.smtp_port}
                         onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_port: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <UserCheck className="w-4 h-4 text-blue-500" />
                         Username
                       </label>
@@ -680,11 +724,11 @@ export default function AdminSettingsPage() {
                         type="text"
                         value={emailConfig.smtp_username}
                         onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_username: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <Lock className="w-4 h-4 text-blue-500" />
                         Password
                       </label>
@@ -693,7 +737,7 @@ export default function AdminSettingsPage() {
                           type={showPassword ? 'text' : 'password'}
                           value={emailConfig.smtp_password}
                           onChange={(e) => setEmailConfig(prev => ({ ...prev, smtp_password: e.target.value }))}
-                          className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                          className="w-full px-4 py-3 pr-12 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                         />
                         <button
                           type="button"
@@ -724,7 +768,7 @@ export default function AdminSettingsPage() {
 
               {emailConfig.email_provider === 'sendgrid' && (
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Key className="w-4 h-4 text-blue-500" />
                     SendGrid API Key
                   </label>
@@ -732,7 +776,7 @@ export default function AdminSettingsPage() {
                     type="password"
                     value={emailConfig.sendgrid_api_key}
                     onChange={(e) => setEmailConfig(prev => ({ ...prev, sendgrid_api_key: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                     placeholder="SG.xxxxxxxxxxxxxxxxxxxxx"
                   />
                 </div>
@@ -740,7 +784,7 @@ export default function AdminSettingsPage() {
 
               {emailConfig.email_provider === 'mailgun' && (
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Key className="w-4 h-4 text-blue-500" />
                     Mailgun API Key
                   </label>
@@ -748,7 +792,7 @@ export default function AdminSettingsPage() {
                     type="password"
                     value={emailConfig.mailgun_api_key}
                     onChange={(e) => setEmailConfig(prev => ({ ...prev, mailgun_api_key: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                     placeholder="key-xxxxxxxxxxxxxxxxxxxxx"
                   />
                 </div>
@@ -756,7 +800,7 @@ export default function AdminSettingsPage() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <UserCheck className="w-4 h-4 text-blue-500" />
                     From Name
                   </label>
@@ -764,12 +808,12 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={emailConfig.email_from_name}
                     onChange={(e) => setEmailConfig(prev => ({ ...prev, email_from_name: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                     placeholder="Your Company"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Mail className="w-4 h-4 text-blue-500" />
                     From Email
                   </label>
@@ -777,7 +821,7 @@ export default function AdminSettingsPage() {
                     type="email"
                     value={emailConfig.email_from_address}
                     onChange={(e) => setEmailConfig(prev => ({ ...prev, email_from_address: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                     placeholder="reports@yourcompany.com"
                   />
                 </div>
@@ -830,14 +874,14 @@ export default function AdminSettingsPage() {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-green-500" />
                   Default Reporting Frequency
                 </label>
                 <select
                   value={reportingConfig.default_reporting_frequency}
                   onChange={(e) => setReportingConfig(prev => ({ ...prev, default_reporting_frequency: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 transition-all duration-200"
                 >
                   <option value="monthly">Monthly</option>
                   <option value="weekly">Weekly</option>
@@ -847,7 +891,7 @@ export default function AdminSettingsPage() {
 
               {reportingConfig.default_reporting_frequency === 'monthly' && (
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-green-500" />
                     Day of Month
                   </label>
@@ -857,21 +901,21 @@ export default function AdminSettingsPage() {
                     max="31"
                     value={reportingConfig.default_reporting_day}
                     onChange={(e) => setReportingConfig(prev => ({ ...prev, default_reporting_day: parseInt(e.target.value) }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 transition-all duration-200"
                   />
                 </div>
               )}
 
               {reportingConfig.default_reporting_frequency === 'weekly' && (
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-green-500" />
                     Day of Week
                   </label>
                   <select
                     value={reportingConfig.default_reporting_weekday}
                     onChange={(e) => setReportingConfig(prev => ({ ...prev, default_reporting_weekday: parseInt(e.target.value) }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 transition-all duration-200"
                   >
                     <option value={1}>Monday</option>
                     <option value={2}>Tuesday</option>
@@ -936,7 +980,7 @@ export default function AdminSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Database className="w-4 h-4 text-green-500" />
                   Report Retention (days)
                 </label>
@@ -946,7 +990,7 @@ export default function AdminSettingsPage() {
                   max="3650"
                   value={reportingConfig.report_retention_days}
                   onChange={(e) => setReportingConfig(prev => ({ ...prev, report_retention_days: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 transition-all duration-200"
                 />
               </div>
 
@@ -1018,14 +1062,14 @@ export default function AdminSettingsPage() {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-purple-500" />
                   Default Client Status
                 </label>
                 <select
                   value={clientConfig.default_client_status}
                   onChange={(e) => setClientConfig(prev => ({ ...prev, default_client_status: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white text-gray-900 transition-all duration-200"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -1062,7 +1106,7 @@ export default function AdminSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Users className="w-4 h-4 text-purple-500" />
                   Max Clients per Admin
                 </label>
@@ -1072,7 +1116,7 @@ export default function AdminSettingsPage() {
                   max="1000"
                   value={clientConfig.max_clients_per_admin}
                   onChange={(e) => setClientConfig(prev => ({ ...prev, max_clients_per_admin: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white text-gray-900 transition-all duration-200"
                 />
               </div>
 
@@ -1101,7 +1145,7 @@ export default function AdminSettingsPage() {
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-red-500" />
                   Session Timeout (hours)
                 </label>
@@ -1111,12 +1155,12 @@ export default function AdminSettingsPage() {
                   max="168"
                   value={securityConfig.session_timeout_hours}
                   onChange={(e) => setSecurityConfig(prev => ({ ...prev, session_timeout_hours: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 transition-all duration-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Lock className="w-4 h-4 text-red-500" />
                   Require Password Change (days)
                 </label>
@@ -1126,12 +1170,12 @@ export default function AdminSettingsPage() {
                   max="365"
                   value={securityConfig.require_password_change_days}
                   onChange={(e) => setSecurityConfig(prev => ({ ...prev, require_password_change_days: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 transition-all duration-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-red-500" />
                   Max Login Attempts
                 </label>
@@ -1141,12 +1185,12 @@ export default function AdminSettingsPage() {
                   max="10"
                   value={securityConfig.max_login_attempts}
                   onChange={(e) => setSecurityConfig(prev => ({ ...prev, max_login_attempts: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 transition-all duration-200"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-500" />
                   Lockout Duration (minutes)
                 </label>
@@ -1156,7 +1200,7 @@ export default function AdminSettingsPage() {
                   max="1440"
                   value={securityConfig.lockout_duration_minutes}
                   onChange={(e) => setSecurityConfig(prev => ({ ...prev, lockout_duration_minutes: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white text-gray-900 transition-all duration-200"
                 />
               </div>
 
@@ -1199,7 +1243,7 @@ export default function AdminSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Key className="w-4 h-4 text-blue-500" />
                   Developer Token
                 </label>
@@ -1207,14 +1251,14 @@ export default function AdminSettingsPage() {
                   type="password"
                   value={googleAdsConfig.google_ads_developer_token}
                   onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_developer_token: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                   placeholder="Your Google Ads Developer Token"
                 />
                 <p className="text-xs text-gray-500 mt-1">Your Google Ads API developer token for API access</p>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Users className="w-4 h-4 text-blue-500" />
                   Manager Customer ID
                 </label>
@@ -1222,7 +1266,7 @@ export default function AdminSettingsPage() {
                   type="text"
                   value={googleAdsConfig.google_ads_manager_customer_id}
                   onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_manager_customer_id: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                   placeholder="XXX-XXX-XXXX"
                 />
                 <p className="text-xs text-gray-500 mt-1">Manager account Customer ID (format: XXX-XXX-XXXX)</p>
@@ -1230,7 +1274,7 @@ export default function AdminSettingsPage() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Globe className="w-4 h-4 text-blue-500" />
                     OAuth Client ID
                   </label>
@@ -1238,12 +1282,12 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={googleAdsConfig.google_ads_client_id}
                     onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_client_id: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                     placeholder="OAuth Client ID"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Lock className="w-4 h-4 text-blue-500" />
                     OAuth Client Secret
                   </label>
@@ -1251,7 +1295,7 @@ export default function AdminSettingsPage() {
                     type="password"
                     value={googleAdsConfig.google_ads_client_secret}
                     onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_client_secret: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/50 backdrop-blur-sm transition-all duration-200"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                     placeholder="OAuth Client Secret"
                   />
                 </div>
@@ -1415,6 +1459,131 @@ export default function AdminSettingsPage() {
             <div className="text-center py-12">
               <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No token data available</p>
+            </div>
+          )}
+        </div>
+
+        {/* Cache Management Section (Week 3 Enhancement) */}
+        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-3 rounded-2xl shadow-lg">
+                <Database className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Cache Management</h2>
+                <p className="text-sm text-gray-600">Monitor and manage daily metrics cache performance</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={loadCacheStats}
+                disabled={loadingCacheStats}
+                className="group nav-premium-button hover:border-emerald-300 flex items-center gap-2 px-4 py-2"
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-emerald-600 transition-colors ${loadingCacheStats ? 'animate-spin' : ''}`} />
+                <span className="text-sm font-medium text-gray-700 group-hover:text-emerald-700">
+                  {loadingCacheStats ? 'Loading...' : 'Refresh'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {cacheStats ? (
+            <div className="space-y-6">
+              {/* Cache Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-2xl border border-emerald-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-emerald-500 p-2 rounded-lg">
+                      <Database className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-2xl font-bold text-emerald-600">{cacheStats.size || 0}</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-1">Cached Entries</h3>
+                  <p className="text-sm text-gray-600">Active cache entries</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-blue-500 p-2 rounded-lg">
+                      <Clock className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-2xl font-bold text-blue-600">3h</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-1">Cache TTL</h3>
+                  <p className="text-sm text-gray-600">Time to live</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-2xl border border-purple-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="bg-purple-500 p-2 rounded-lg">
+                      <Zap className="w-5 h-5 text-white" />
+                    </div>
+                    <span className="text-2xl font-bold text-purple-600">Fast</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-1">Performance</h3>
+                  <p className="text-sm text-gray-600">Cache hit rate</p>
+                </div>
+              </div>
+
+              {/* Cache Keys */}
+              {cacheStats.keys && cacheStats.keys.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Active Cache Keys</h3>
+                  <div className="bg-gray-50 rounded-xl p-4 max-h-64 overflow-y-auto">
+                    <div className="space-y-2">
+                      {cacheStats.keys.map((key: string, index: number) => (
+                        <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
+                          <code className="text-sm text-gray-700 font-mono">{key}</code>
+                          <button
+                            onClick={() => {
+                              const clientId = key.split('_')[2]; // Extract client ID from cache key
+                              if (clientId) clearDailyMetricsCache(clientId);
+                            }}
+                            disabled={clearingCache}
+                            className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Cache Actions */}
+              <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Cache Actions</h3>
+                  <p className="text-sm text-gray-600">Manage cache data and performance</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => clearDailyMetricsCache()}
+                    disabled={clearingCache}
+                    className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Database className="w-4 h-4" />
+                    {clearingCache ? 'Clearing...' : 'Clear All Cache'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              {loadingCacheStats ? (
+                <div className="flex items-center justify-center">
+                  <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+                  <span className="ml-3 text-gray-600">Loading cache statistics...</span>
+                </div>
+              ) : (
+                <>
+                  <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">No cache data available</p>
+                </>
+              )}
             </div>
           )}
         </div>

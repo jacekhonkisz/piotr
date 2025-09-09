@@ -763,6 +763,24 @@ export class MetaAPIService {
             });
           }
 
+          // 🔍 ENHANCED META API DEBUG - Track all action types and reach data
+          logger.info('🔍 META API DEBUG - Campaign Analysis:', {
+            campaign: insight.campaign_name,
+            date_start: insight.date_start,
+            date_stop: insight.date_stop,
+            totalActions: actionsArray.length,
+            actionTypes: actionsArray.map((a: any) => ({
+              type: a.action_type || a.type,
+              value: a.value
+            })),
+            booking_step_3_found: booking_step_3 > 0,
+            booking_step_3_value: booking_step_3,
+            reach_found: !!insight.reach,
+            reach_value: insight.reach,
+            impressions: insight.impressions,
+            spend: insight.spend
+          });
+
           // 5. Wartość rezerwacji - handle both action_values and value fields
           const actionValuesArray = (insight.action_values && Array.isArray(insight.action_values)) ? insight.action_values : [];
           actionValuesArray.forEach((actionValue: any) => {
@@ -1579,8 +1597,8 @@ export class MetaAPIService {
       if (data.data) {
         const demographics = data.data.map(insight => {
           // Basic demographic data
-          const age = insight.age || 'Unknown';
-          const gender = insight.gender || 'Unknown';
+          const age = insight.age || 'Nieznane';
+          const gender = insight.gender || 'Nieznane';
           const spend = parseFloat(insight.spend || '0');
           const impressions = parseInt(insight.impressions || '0');
           const clicks = parseInt(insight.clicks || '0');

@@ -1,5 +1,3 @@
-const { withSentryConfig } = require("@sentry/nextjs");
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Ensure environment variables are available in browser
@@ -62,10 +60,4 @@ const nextConfig = {
   },
 }
 
-const sentryWebpackPluginOptions = {
-  silent: true,
-  org: "your-org",
-  project: "meta-ads-reporting",
-};
-
-module.exports = withSentryConfig(nextConfig, sentryWebpackPluginOptions); 
+module.exports = nextConfig; 

@@ -786,7 +786,7 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     // Process gender data for the specific metric
   const genderMap = new Map();
     validData.forEach(item => {
-    const gender = item.gender || 'Unknown';
+    const gender = item.gender || 'Nieznane';
       const value = metric === 'roas' ? (item.roas || 0) : (item.clicks || 0);
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
   });
@@ -794,7 +794,7 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     // Process age data for the specific metric
   const ageMap = new Map();
     validData.forEach(item => {
-    const age = item.age || 'Unknown';
+    const age = item.age || 'Nieznane';
       const value = metric === 'roas' ? (item.roas || 0) : (item.clicks || 0);
       ageMap.set(age, (ageMap.get(age) || 0) + value);
   });
@@ -2507,7 +2507,7 @@ export async function POST(request: NextRequest) {
     const filename = `raport_kampanii_${sanitizedClientName}_${new Date().toISOString().split('T')[0]}.pdf`;
     const encodedFilename = encodeURIComponent(filename);
     
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(pdfBuffer as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

@@ -182,8 +182,11 @@ export function validateDateRange(startDate: string, endDate: string): {
   // For current month: allow up to today
   // For current week: allow up to end of current week (even if in future)
   // For past months: allow up to end of that month
-  const currentMonth = currentDate.getFullYear() === start.getFullYear() && 
-                      currentDate.getMonth() === start.getMonth();
+  
+  // 🔧 FIX: Check if END date is in current month, not start date
+  // This fixes cross-month ranges like Aug 31 - Sep 29
+  const currentMonth = currentDate.getFullYear() === end.getFullYear() && 
+                      currentDate.getMonth() === end.getMonth();
   
   // Check if this is a current week request (7 days or less, includes today)
   const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -197,9 +200,20 @@ export function validateDateRange(startDate: string, endDate: string): {
     maxAllowedEnd.setHours(23, 59, 59, 999);
     logger.info('📅 Current week detected, allowing future dates within week');
   } else if (currentMonth) {
-    // Current month: allow up to today (set to end of today for comparison)
-    maxAllowedEnd = new Date(currentDate);
-    maxAllowedEnd.setHours(23, 59, 59, 999); // End of today
+    // 🔧 FIX: For current month, allow full month range (not just up to today)
+    // This supports monthly views that need complete month boundaries
+    const isMonthlyRequest = daysDiff >= 28; // Monthly requests are typically 28-31 days
+    
+    if (isMonthlyRequest) {
+      // Monthly request: allow up to end of current month
+      maxAllowedEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      maxAllowedEnd.setHours(23, 59, 59, 999); // End of last day of month
+      logger.info('📅 Monthly request for current month detected, allowing full month range');
+    } else {
+      // Daily/custom request: allow up to today (set to end of today for comparison)
+      maxAllowedEnd = new Date(currentDate);
+      maxAllowedEnd.setHours(23, 59, 59, 999); // End of today
+    }
   } else {
     // Past month: allow up to end of that month
     maxAllowedEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);

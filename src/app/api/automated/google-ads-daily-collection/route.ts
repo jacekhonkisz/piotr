@@ -212,8 +212,44 @@ export async function POST(request: NextRequest) {
             throw new Error(`Failed to store Google Ads summary: ${insertError.message}`);
           }
 
+          // 🔧 FIX: Also store in daily_kpi_data for consistency with Meta data
+          const dailyKpiRecord = {
+            client_id: client.id,
+            date: targetDate!,
+            total_clicks: dailyTotals.clicks,
+            total_impressions: dailyTotals.impressions,
+            total_spend: Math.round(dailyTotals.spend * 100) / 100,
+            total_conversions: dailyTotals.conversions,
+            average_ctr: Math.round(ctr * 100) / 100,
+            average_cpc: Math.round(cpc * 100) / 100,
+            campaigns_count: campaigns.length,
+            data_source: 'google_ads_api',
+            created_at: new Date().toISOString(),
+            // Include conversion metrics
+            click_to_call: dailyTotals.click_to_call,
+            email_contacts: dailyTotals.email_contacts,
+            booking_step_1: dailyTotals.booking_step_1,
+            booking_step_2: dailyTotals.booking_step_2,
+            booking_step_3: dailyTotals.booking_step_3 || 0,
+            reservations: dailyTotals.reservations,
+            reservation_value: Math.round(dailyTotals.reservation_value * 100) / 100
+          };
+
+          const { error: dailyKpiError } = await supabaseAdmin!
+            .from('daily_kpi_data')
+            .upsert(dailyKpiRecord, {
+              onConflict: 'client_id,date,data_source'
+            });
+
+          if (dailyKpiError) {
+            console.warn(`⚠️ Failed to store Google Ads daily KPI data: ${dailyKpiError.message}`);
+          } else {
+            console.log(`✅ Also stored Google Ads data in daily_kpi_data table`);
+          }
+
           console.log(`✅ Successfully stored Google Ads daily summary for ${client.name}`);
           console.log(`   Spend: ${dailyTotals.spend}, Impressions: ${dailyTotals.impressions}, Clicks: ${dailyTotals.clicks}`);
+          console.log(`   Conversions: ${dailyTotals.reservations} reservations, ${dailyTotals.reservation_value} PLN value`);
           
           successCount++;
           clientSuccess = true;
@@ -250,6 +286,30 @@ export async function POST(request: NextRequest) {
       if (!clientSuccess) {
         console.error(`❌ All attempts failed for ${client.name}`);
       }
+    }
+
+    // Clean up old Google Ads daily data (7-day rolling window)
+    logger.info('\n🧹 Cleaning up old Google Ads daily KPI data (7-day rolling window)...');
+    
+    const today = new Date();
+    const cutoffDate = new Date(today);
+    cutoffDate.setDate(cutoffDate.getDate() - 7); // Keep 7 days of data
+    const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+
+    console.log(`🗑️ Removing Google Ads daily_kpi_data older than: ${cutoffDateStr}`);
+
+    const { data: deletedRows, error: cleanupError } = await supabaseAdmin!
+      .from('daily_kpi_data')
+      .delete()
+      .lt('date', cutoffDateStr)
+      .like('data_source', '%google%') // Only clean up Google Ads data
+      .select('date, client_id');
+
+    if (cleanupError) {
+      console.warn('⚠️ Google Ads cleanup warning:', cleanupError);
+    } else {
+      const deletedCount = deletedRows?.length || 0;
+      console.log(`✅ Cleaned up ${deletedCount} old Google Ads daily KPI records older than ${cutoffDateStr}`);
     }
 
     const responseTime = Date.now() - startTime;

@@ -83,29 +83,29 @@ export default function QuickAddClient({ onSuccess, onCancel }: QuickAddClientPr
 
   const copyInstructions = () => {
     const instructions = `
-Hi ${formData.name},
+Cześć ${formData.name},
 
-Your dashboard access has been set up! Here's what you need to do:
+Dostęp do Twojego dashboardu został skonfigurowany! Oto co musisz zrobić:
 
-1. Go to: https://business.facebook.com/
-2. Click "Business Settings" (gear icon)
-3. Go to "Users" → "People"
-4. Click "Add" → "Add People"
-5. Enter: [YOUR_EMAIL]
-6. Role: "Admin"
-7. Click "Add"
+1. Przejdź do: https://business.facebook.com/
+2. Kliknij "Ustawienia biznesowe" (ikona koła zębatego)
+3. Przejdź do "Użytkownicy" → "Osoby"
+4. Kliknij "Dodaj" → "Dodaj osoby"
+5. Wprowadź: [TWÓJ_EMAIL]
+6. Rola: "Administrator"
+7. Kliknij "Dodaj"
 
-Once you've added us as an admin, we'll activate your permanent access.
+Po dodaniu nas jako administratora, aktywujemy Twój stały dostęp.
 
-Your login credentials:
+Twoje dane logowania:
 - Email: ${formData.email}
-- Password: [We'll send this separately]
+- Hasło: [Wyślemy osobno]
 
-Best regards,
-[Your Name]
+Pozdrawiam,
+[Twoje Imię]
     `;
     navigator.clipboard.writeText(instructions);
-    alert('Instructions copied to clipboard!');
+    alert('Instrukcje skopiowane do schowka!');
   };
 
   const addAnotherClient = () => {
@@ -123,7 +123,7 @@ Best regards,
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Quick Add Client</h2>
+      <h2 className="text-2xl font-bold mb-6">Szybkie Dodanie Klienta</h2>
       
       {step === 1 && (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -131,7 +131,7 @@ Best regards,
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Client Name *
+                Nazwa Klienta *
               </label>
               <input
                 type="text"
@@ -139,7 +139,7 @@ Best regards,
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter client name"
+                placeholder="Wprowadź nazwę klienta"
               />
             </div>
             
@@ -160,15 +160,15 @@ Best regards,
 
           {/* Meta Account Info */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Meta Account Name
-            </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Nazwa Konta Meta
+              </label>
             <input
               type="text"
               value={formData.metaAccountName}
               onChange={(e) => setFormData({...formData, metaAccountName: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., Client's Business Manager Name"
+              placeholder="np. Nazwa Business Manager klienta"
             />
           </div>
 
@@ -176,33 +176,33 @@ Best regards,
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Business Manager ID
+                ID Business Manager
               </label>
               <input
                 type="text"
                 value={formData.businessManagerId}
                 onChange={(e) => setFormData({...formData, businessManagerId: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., 123456789"
+                placeholder="np. 123456789"
               />
               <p className="text-sm text-gray-500 mt-1">
-                Optional - can add later
+                Opcjonalne - można dodać później
               </p>
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Ad Account ID
+                ID Konta Reklamowego
               </label>
               <input
                 type="text"
                 value={formData.adAccountId}
                 onChange={(e) => setFormData({...formData, adAccountId: e.target.value})}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., 703853679965014"
+                placeholder="np. 703853679965014"
               />
               <p className="text-sm text-gray-500 mt-1">
-                Optional - can add later
+                Opcjonalne - można dodać później
               </p>
             </div>
           </div>

@@ -138,7 +138,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
 
     // Transform device data
     const transformedDevicePerformance: GoogleAdsDevicePerformance[] = devicePerformance.map((device: any) => ({
-      device: device.device || 'Unknown',
+      device: device.device || 'Nieznane',
       spend: device.spend || 0,
       impressions: device.impressions || 0,
       clicks: device.clicks || 0,
@@ -151,7 +151,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
 
     // Transform keyword data
     const transformedKeywordPerformance: GoogleAdsKeywordPerformance[] = keywordPerformance.map((keyword: any) => ({
-      keyword: keyword.keyword || 'Unknown',
+      keyword: keyword.keyword || 'Nieznane',
       spend: keyword.spend || 0,
       impressions: keyword.impressions || 0,
       clicks: keyword.clicks || 0,

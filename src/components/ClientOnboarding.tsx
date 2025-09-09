@@ -87,12 +87,12 @@ export default function ClientOnboarding({ onSuccess, onCancel }: ClientOnboardi
 
       if (updateError) throw updateError;
 
-      setStatus('Client onboarding completed successfully!');
+      setStatus('Onboarding klienta zakończony pomyślnie!');
       onSuccess?.();
 
     } catch (error) {
       console.error('Onboarding error:', error);
-      setStatus(`Error: ${(error as any).message}`);
+      setStatus(`Błąd: ${(error as any).message}`);
     } finally {
       setLoading(false);
     }
@@ -100,38 +100,38 @@ export default function ClientOnboarding({ onSuccess, onCancel }: ClientOnboardi
 
   const generateInstructions = () => {
     return `
-# Client Onboarding Instructions
+# Instrukcje Onboardingu Klienta
 
-## For: ${formData.name} (${formData.email})
+## Dla: ${formData.name} (${formData.email})
 
-### Step 1: Business Manager Access
-1. Go to: https://business.facebook.com/
-2. Click "Business Settings" (gear icon)
-3. Go to "Users" → "People"
-4. Click "Add" → "Add People"
-5. Enter: [YOUR_EMAIL]
-6. Role: "Admin"
-7. Click "Add"
+### Krok 1: Dostęp do Business Manager
+1. Przejdź do: https://business.facebook.com/
+2. Kliknij "Ustawienia biznesowe" (ikona koła zębatego)
+3. Przejdź do "Użytkownicy" → "Osoby"
+4. Kliknij "Dodaj" → "Dodaj osoby"
+5. Wprowadź: [TWÓJ_EMAIL]
+6. Rola: "Administrator"
+7. Kliknij "Dodaj"
 
-### Step 2: Provide Information
-Please provide us with:
-- Business Manager ID: [Ask client to find this in Business Settings]
-- Ad Account ID: [Ask client to find this in Ads Manager]
+### Krok 2: Podaj informacje
+Proszę podać nam:
+- ID Business Manager: [Poproś klienta o znalezienie w Ustawieniach biznesowych]
+- ID Konta reklamowego: [Poproś klienta o znalezienie w Ads Manager]
 
-### Step 3: We'll Handle the Rest
-Once you have access, we'll:
-1. Create a System User for this client
-2. Generate a permanent API token
-3. Connect their ad accounts
-4. Set up their dashboard
+### Krok 3: My zajmiemy się resztą
+Po uzyskaniu dostępu:
+1. Utworzymy użytkownika systemowego dla tego klienta
+2. Wygenerujemy stały token API
+3. Połączymy ich konta reklamowe
+4. Skonfigurujemy ich dashboard
 
-### Estimated Time: 10-15 minutes
+### Szacowany czas: 10-15 minut
     `;
   };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Client Onboarding</h2>
+      <h2 className="text-2xl font-bold mb-6">Onboarding Klienta</h2>
       
       {step === 1 && (
         <form onSubmit={handleSubmit} className="space-y-4">
