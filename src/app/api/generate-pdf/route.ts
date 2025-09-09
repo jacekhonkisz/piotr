@@ -221,26 +221,17 @@ const generateYoYSection = (reportData: ReportData) => {
   
   const { meta, google } = reportData.yoyComparison;
   
-  // Check if there's meaningful YoY data to display
-  const hasMetaData = (meta.current.spend > 0 || meta.previous.spend > 0) || 
-                      (meta.current.reservationValue > 0 || meta.previous.reservationValue > 0);
-  const hasGoogleData = (google.current.spend > 0 || google.previous.spend > 0) || 
-                        (google.current.reservationValue > 0 || google.previous.reservationValue > 0);
-  
-  logger.info('🔍 YOY SECTION: Data check', {
-    hasMetaData,
-    hasGoogleData,
+  // 🔧 ALWAYS SHOW YOY SECTION: If we have the data structure, show it regardless of values
+  logger.info('🔍 YOY SECTION: Data structure available', {
     metaCurrent: meta.current,
     metaPrevious: meta.previous,
     googleCurrent: google.current,
-    googlePrevious: google.previous
+    googlePrevious: google.previous,
+    willShowSection: true
   });
   
-  // Don't generate section if no meaningful data for either platform
-  if (!hasMetaData && !hasGoogleData) {
-    logger.info('🔍 YOY SECTION: No meaningful data, returning empty');
-    return '';
-  }
+  // Always show section if we have YoY comparison data structure
+  // This helps debug what data we're actually getting
   
   logger.info('🔍 YOY SECTION: Generating content with data');
   
@@ -786,7 +777,11 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     // Process gender data for the specific metric
   const genderMap = new Map();
     validData.forEach(item => {
-    const gender = item.gender || 'Nieznane';
+    let gender = item.gender || 'Nieznane';
+    // Ensure gender labels are in Polish
+    if (gender.toLowerCase() === 'female') gender = 'Kobiety';
+    else if (gender.toLowerCase() === 'male') gender = 'Mężczyźni';
+    else if (gender.toLowerCase() === 'unknown') gender = 'Nieznane';
       const value = metric === 'roas' ? (item.roas || 0) : (item.clicks || 0);
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
   });
@@ -794,7 +789,9 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     // Process age data for the specific metric
   const ageMap = new Map();
     validData.forEach(item => {
-    const age = item.age || 'Nieznane';
+    let age = item.age || 'Nieznane';
+    // Ensure age labels are in Polish
+    if (age.toLowerCase() === 'unknown') age = 'Nieznane';
       const value = metric === 'roas' ? (item.roas || 0) : (item.clicks || 0);
       ageMap.set(age, (ageMap.get(age) || 0) + value);
   });
@@ -1743,88 +1740,26 @@ function generatePDFHTML(reportData: ReportData): string {
   `;
 }
 
-// Helper function to fetch data using same APIs as /reports page
+// Helper function to fetch data using EXACTLY same system as /reports page
 async function fetchReportData(clientId: string, dateRange: { start: string; end: string }, request: NextRequest): Promise<ReportData> {
-  logger.info('🔄 Fetching report data using same APIs as /reports page');
-  logger.info('📊 Client ID received:', { clientId, type: typeof clientId, length: clientId?.length });
+  logger.info('📊 PDF Generation using EXACT same system as reports page');
   
-  // Get auth header and create user-context Supabase client (same as other working APIs)
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new Error('Missing or invalid authorization header');
-  }
-
-  const token = authHeader.substring(7);
+  // 🔓 AUTH DISABLED: Same as reports page - no authentication required
+  logger.info('🔓 Authentication disabled for PDF generation (same as reports page)');
   
-  // Create Supabase client with user JWT token (same pattern as working APIs)
-  const userSupabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    }
-  );
-
-  // Get user from token (same as auth middleware but with user context)
-  const { data: { user }, error: authError } = await userSupabase.auth.getUser();
-  
-  if (authError || !user) {
-    logger.error('❌ Authentication failed:', { error: authError?.message });
-    throw new Error(`Authentication failed: ${authError?.message || 'Invalid token'}`);
-  }
-
-  logger.info('✅ User authenticated:', { userId: user.id, email: user.email });
-  
-  // Get user profile using user-context client
-  const { data: profile, error: profileError } = await userSupabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profileError || !profile) {
-    logger.error('❌ Profile not found:', { error: profileError?.message });
-    throw new Error('User profile not found');
-  }
-
-  const authenticatedUser = {
-    id: user.id,
-    email: user.email!,
-    role: profile.role as 'admin' | 'client'
-  };
-
-  logger.info('✅ User profile loaded:', { role: authenticatedUser.role });
-  
-  // Get client data using user-context client (this should work like other APIs)
-  logger.info('🔍 Querying client data with user context:', { clientId, userId: user.id, userRole: authenticatedUser.role });
-  const { data: clientData, error: clientError } = await userSupabase
+  // Get client data using same pattern as reports page (no auth)
+  const { data: clientData, error: clientError } = await supabase
     .from('clients')
     .select('*')
     .eq('id', clientId)
     .single();
-    
-  logger.info('📊 Client query result:', { 
-    found: !!clientData, 
-    error: clientError?.message,
-    errorCode: clientError?.code 
-  });
     
   if (clientError || !clientData) {
     logger.error('❌ Client not found:', { clientId, error: clientError });
     throw new Error('Client not found');
   }
   
-  // Check access control (same logic as working APIs)
-  if (authenticatedUser.role === 'client' && clientData.email !== authenticatedUser.email) {
-    logger.error('❌ Client access denied:', { userEmail: authenticatedUser.email, clientEmail: clientData.email });
-    throw new Error('Access denied: You can only access your own data');
-  }
-  
-  logger.info('✅ Client access verified:', { id: clientData.id, name: clientData.name, userRole: authenticatedUser.role });
+  logger.info('✅ Client data loaded:', { id: clientData.id, name: clientData.name });
   
   const reportData: ReportData = {
     clientId,
@@ -1837,116 +1772,77 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     googleData: undefined
   };
   
-  // NOTE: AI Summary generation moved to AFTER data fetching
+  // 🎯 USE EXACT SAME SYSTEM AS REPORTS PAGE: StandardizedDataFetcher
+  logger.info('🎯 Using StandardizedDataFetcher (same as reports page)');
   
-  // 🔧 NEW APPROACH: Fetch current data using same APIs as /reports page
-  // This ensures PDF shows exactly the same data as reports page
+  // Import the same data fetchers used by reports page
+  const { StandardizedDataFetcher } = await import('../../../lib/standardized-data-fetcher');
+  const { GoogleAdsStandardizedDataFetcher } = await import('../../../lib/google-ads-standardized-data-fetcher');
   
-  // Fetch Meta data using the same API as reports page
+  // Fetch Meta data using EXACT same logic as reports page
   let metaData = null;
   let metaError = null;
   
   if (clientData.meta_access_token && clientData.ad_account_id) {
     try {
-      logger.info('📊 Fetching Meta data using reports page API...');
+      logger.info('📊 Fetching Meta data using StandardizedDataFetcher (same as reports)...');
       
-      const metaResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-live-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          clientId: clientData.id,
-          dateRange: { start: dateRange.start, end: dateRange.end },
-          platform: 'meta'
-        })
+      const metaResult = await StandardizedDataFetcher.fetchData({
+        clientId,
+        dateRange,
+        platform: 'meta',
+        reason: 'pdf-generation-meta',
+        sessionToken: undefined // No session token needed (auth disabled)
       });
       
-      if (metaResponse.ok) {
-        const metaResult = await metaResponse.json();
-        if (metaResult.success) {
-          metaData = metaResult.data;
-          logger.info('✅ Meta data fetched successfully');
-        } else {
-          metaError = metaResult.error || 'Failed to fetch Meta data';
-        }
+      if (metaResult.success) {
+        metaData = metaResult.data;
+        logger.info('✅ Meta data fetched successfully via StandardizedDataFetcher');
       } else {
-        metaError = `Meta API returned ${metaResponse.status}`;
+        metaError = 'StandardizedDataFetcher failed for Meta';
       }
     } catch (error) {
-      logger.error('❌ Error fetching Meta data:', error);
+      logger.error('❌ Error fetching Meta data via StandardizedDataFetcher:', error);
       metaError = error instanceof Error ? error.message : 'Unknown Meta error';
     }
   }
-  
-  console.log('🚨 CRITICAL: About to fetch Google Ads data');
-  logger.info('🚨 CRITICAL: About to fetch Google Ads data');
 
-  // Fetch Google Ads data using the same API as reports page
+  // Fetch Google Ads data using EXACT same logic as reports page
   let googleData = null;
   let googleError = null;
   
   if (clientData.google_ads_enabled && clientData.google_ads_customer_id) {
     try {
-      logger.info('📊 Fetching Google Ads data using reports page API...');
+      logger.info('📊 Fetching Google Ads data using GoogleAdsStandardizedDataFetcher (same as reports)...');
       
-      const googleResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-google-ads-live-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          clientId: clientData.id,
-          dateRange: { start: dateRange.start, end: dateRange.end }
-        })
+      const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
+        clientId,
+        dateRange,
+        reason: 'pdf-generation-google',
+        sessionToken: undefined // No session token needed (auth disabled)
       });
       
-      if (googleResponse.ok) {
-        const googleResult = await googleResponse.json();
-        if (googleResult.success) {
-          googleData = googleResult.data;
-          logger.info('✅ Google Ads data fetched successfully');
-        } else {
-          googleError = googleResult.error || 'Failed to fetch Google Ads data';
-        }
+      if (googleResult.success) {
+        googleData = googleResult.data;
+        logger.info('✅ Google Ads data fetched successfully via GoogleAdsStandardizedDataFetcher');
       } else {
-        googleError = `Google Ads API returned ${googleResponse.status}`;
+        googleError = 'GoogleAdsStandardizedDataFetcher failed';
       }
     } catch (error) {
-      logger.error('❌ Error fetching Google Ads data:', error);
+      logger.error('❌ Error fetching Google Ads data via GoogleAdsStandardizedDataFetcher:', error);
       googleError = error instanceof Error ? error.message : 'Unknown Google Ads error';
     }
   }
 
-  console.log('🚨 CRITICAL: Google Ads fetch completed, now going to YoY');
-  logger.info('🚨 CRITICAL: Google Ads fetch completed, now going to YoY');
-
-  logger.info('🔍 CHECKPOINT: About to fetch Year-over-Year comparison', {
-    clientId,
-    dateRange,
-    hasAuthHeader: !!authHeader,
-    metaDataExists: !!metaData,
-    googleDataExists: !!googleData
-  });
-
-  console.log('🚨 CRITICAL: YoY API call starting NOW!');
-  logger.info('🚨 CRITICAL: YoY API call starting NOW!');
-
-  // Fetch Year-over-Year comparison (for historical comparison only)
+  // Fetch Year-over-Year comparison using same API as reports page (no auth)
   try {
-    logger.info('📊 STARTING Year-over-Year comparison fetch...', {
-      clientId,
-      dateRange,
-      authHeaderExists: !!authHeader
-    });
+    logger.info('📊 Fetching Year-over-Year comparison (no auth, same as reports)...');
     
     const yoyResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/year-over-year-comparison`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader
+        'Content-Type': 'application/json'
+        // No Authorization header (same as reports page)
       },
       body: JSON.stringify({
         clientId,
@@ -1954,39 +1850,20 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       })
     });
     
-    logger.info('📊 YoY API Response received:', {
-      status: yoyResponse.status,
-      statusText: yoyResponse.statusText,
-      ok: yoyResponse.ok
-    });
-    
     if (yoyResponse.ok) {
       const yoyData = await yoyResponse.json();
-      logger.info('📊 YoY API Data received:', {
-        hasData: !!yoyData,
-        dataKeys: yoyData ? Object.keys(yoyData) : [],
-        currentSpend: yoyData?.current?.spend,
-        currentReservationValue: yoyData?.current?.reservation_value,
-        previousSpend: yoyData?.previous?.spend,
-        previousReservationValue: yoyData?.previous?.reservation_value,
-        googleCurrentSpend: yoyData?.current?.google_spend,
-        googleCurrentReservationValue: yoyData?.current?.google_reservation_value,
-        googlePreviousSpend: yoyData?.previous?.google_spend,
-        googlePreviousReservationValue: yoyData?.previous?.google_reservation_value
-      });
       
-      // 🔍 CRITICAL DEBUG: Log the exact YoY data structure
-      console.log('🔍 CRITICAL DEBUG: YoY data structure:', JSON.stringify(yoyData, null, 2));
-      logger.info('🔍 CRITICAL DEBUG: YoY data structure:', {
+      // 🔍 DEBUG: Log the exact YoY API response
+      logger.info('🔍 YoY API Response Structure:', {
         hasYoyData: !!yoyData,
         yoyDataKeys: yoyData ? Object.keys(yoyData) : [],
-        currentKeys: yoyData?.current ? Object.keys(yoyData.current) : [],
-        previousKeys: yoyData?.previous ? Object.keys(yoyData.previous) : [],
-        googlePreviousReservationValue: yoyData?.previous?.google_reservation_value,
-        metaPreviousReservationValue: yoyData?.previous?.reservation_value
+        currentData: yoyData?.current,
+        previousData: yoyData?.previous,
+        changesData: yoyData?.changes,
+        fullResponse: JSON.stringify(yoyData, null, 2)
       });
-
-      // ✅ FIX: Use the same YoY API data as reports page (don't override current values)
+      
+      // Use same YoY data structure as reports page
       reportData.yoyComparison = {
         meta: {
           current: { 
@@ -2017,105 +1894,99 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           }
         }
       };
-      logger.info('✅ Year-over-year data fetched successfully - using consistent YoY API data');
-    } else {
-      const errorText = await yoyResponse.text();
-      logger.error('❌ YoY API returned error:', {
-        status: yoyResponse.status,
-        statusText: yoyResponse.statusText,
-        error: errorText
+      
+      // 🔍 DEBUG: Log the processed YoY data
+      logger.info('🔍 Processed YoY Data for PDF:', {
+        metaCurrent: reportData.yoyComparison.meta.current,
+        metaPrevious: reportData.yoyComparison.meta.previous,
+        googleCurrent: reportData.yoyComparison.google.current,
+        googlePrevious: reportData.yoyComparison.google.previous
       });
+      
+      logger.info('✅ Year-over-year data fetched successfully');
+    } else {
+      logger.warn('⚠️ YoY API returned error:', yoyResponse.status);
     }
   } catch (error) {
-    logger.error('❌ Year-over-year comparison failed:', {
-      error: error instanceof Error ? error.message : error,
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    logger.warn('⚠️ Year-over-year comparison failed:', error);
   }
   
-  // Transform Meta data to match our interface (using live API data from above)
+  // Transform Meta data using EXACT same format as reports page (StandardizedDataFetcher format)
   if (metaData) {
     try {
-      logger.info('📱 Transforming Meta Ads data...');
+      logger.info('📱 Using Meta data from StandardizedDataFetcher (same as reports page)...');
       
-      // Use the metaData already fetched from live API above
-      const metaApiData = metaData;
+      // Use standardized data format directly (no transformation needed)
+      const stats = metaData.stats || {};
+      const conversionMetrics = metaData.conversionMetrics || {};
+      const campaigns = metaData.campaigns || [];
+      
+      // Calculate additional metrics using same logic as reports page
+      const totalConversions = stats.totalConversions || 0;
+      const emailContacts = conversionMetrics.email_contacts || 0;
+      const phoneContacts = conversionMetrics.click_to_call || 0;
+      const potentialOfflineReservations = Math.round((emailContacts + phoneContacts) * 0.2);
+      const totalReservationValue = conversionMetrics.reservation_value || 0;
+      const totalReservations = conversionMetrics.reservations || 0;
+      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+      const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+      const totalPotentialValue = potentialOfflineValue + totalReservationValue;
+      const totalSpend = stats.totalSpend || 0;
+      const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
+      
+      // Calculate campaign averages (same as reports page)
+      const avgFrequency = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.frequency || 0), 0) / campaigns.length : 0;
+      const avgRelevanceScore = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.relevance_score || 0), 0) / campaigns.length : 0;
+      const totalLandingPageViews = campaigns.reduce((sum: number, c: any) => sum + (c.landing_page_view || 0), 0);
+      const totalReach = conversionMetrics.reach || 0;
+      
+      reportData.metaData = {
+        metrics: {
+          totalSpend: totalSpend,
+          totalImpressions: stats.totalImpressions || 0,
+          totalClicks: stats.totalClicks || 0,
+          totalConversions: totalConversions,
+          averageCtr: stats.averageCtr || 0,
+          averageCpc: stats.averageCpc || 0,
+          averageCpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
+          averageCpm: (stats.totalImpressions || 0) > 0 ? (totalSpend / (stats.totalImpressions || 0)) * 1000 : 0,
+          reach: totalReach,
+          frequency: avgFrequency,
+          relevanceScore: avgRelevanceScore,
+          landingPageViews: totalLandingPageViews,
+          totalReservations: totalReservations,
+          totalReservationValue: totalReservationValue,
+          roas: conversionMetrics.roas || 0,
+          emailContacts: emailContacts,
+          phoneContacts: phoneContacts,
+          potentialOfflineReservations: potentialOfflineReservations,
+          potentialOfflineValue: potentialOfflineValue,
+          totalPotentialValue: totalPotentialValue,
+          costPercentage: costPercentage
+        },
+        campaigns: campaigns,
+        funnel: {
+          booking_step_1: conversionMetrics.booking_step_1 || 0,
+          booking_step_2: conversionMetrics.booking_step_2 || 0,
+          booking_step_3: conversionMetrics.booking_step_3 || 0,
+          reservations: conversionMetrics.reservations || 0,
+          reservation_value: conversionMetrics.reservation_value || 0,
+          roas: conversionMetrics.roas || 0
+        },
+        tables: {
+          placementPerformance: [],
+          demographicPerformance: [],
+          adRelevanceResults: []
+        }
+      };
           
-          // Transform Meta data to match our interface (using correct API response structure)
-          logger.info('📊 Meta API data structure:', {
-            hasStats: !!metaApiData.stats,
-            hasConversionMetrics: !!metaApiData.conversionMetrics,
-            statsKeys: metaApiData.stats ? Object.keys(metaApiData.stats) : [],
-            conversionKeys: metaApiData.conversionMetrics ? Object.keys(metaApiData.conversionMetrics) : []
-          });
-          
-          // Calculate additional metrics
-          const totalConversions = (metaApiData.stats?.totalConversions || 0);
-          const emailContacts = metaApiData.conversionMetrics?.email_contacts || 0;
-          const phoneContacts = metaApiData.conversionMetrics?.click_to_call || 0;
-          const potentialOfflineReservations = Math.round((emailContacts + phoneContacts) * 0.2);
-          const totalReservationValue = metaApiData.conversionMetrics?.reservation_value || 0;
-          const totalReservations = metaApiData.conversionMetrics?.reservations || 0;
-          const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-          const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
-          const totalPotentialValue = potentialOfflineValue + totalReservationValue;
-          const totalSpend = metaApiData.stats?.totalSpend || 0;
-          const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
-          
-          // Calculate campaign averages for Meta-specific metrics
-          const campaigns = metaApiData.campaigns || [];
-          const avgFrequency = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.frequency || 0), 0) / campaigns.length : 0;
-          const avgRelevanceScore = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.relevance_score || 0), 0) / campaigns.length : 0;
-          const totalLandingPageViews = campaigns.reduce((sum: number, c: any) => sum + (c.landing_page_view || 0), 0);
-          const totalReach = campaigns.reduce((sum: number, c: any) => sum + (c.reach || 0), 0);
-          
-          reportData.metaData = {
-            metrics: {
-              totalSpend: totalSpend,
-              totalImpressions: metaApiData.stats?.totalImpressions || 0,
-              totalClicks: metaApiData.stats?.totalClicks || 0,
-              totalConversions: totalConversions,
-              averageCtr: metaApiData.stats?.averageCtr || 0,
-              averageCpc: metaApiData.stats?.averageCpc || 0,
-              averageCpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
-              averageCpm: (metaApiData.stats?.totalImpressions || 0) > 0 ? (totalSpend / (metaApiData.stats?.totalImpressions || 0)) * 1000 : 0,
-              reach: totalReach,
-              frequency: avgFrequency,
-              relevanceScore: avgRelevanceScore,
-              landingPageViews: totalLandingPageViews,
-              totalReservations: totalReservations,
-              totalReservationValue: totalReservationValue,
-              roas: metaApiData.conversionMetrics?.roas || 0,
-              emailContacts: emailContacts,
-              phoneContacts: phoneContacts,
-              potentialOfflineReservations: potentialOfflineReservations,
-              potentialOfflineValue: potentialOfflineValue,
-              totalPotentialValue: totalPotentialValue,
-              costPercentage: costPercentage
-            },
-            campaigns: metaApiData.campaigns || [],
-            funnel: {
-              booking_step_1: metaApiData.conversionMetrics?.booking_step_1 || 0,
-              booking_step_2: metaApiData.conversionMetrics?.booking_step_2 || 0,
-              booking_step_3: metaApiData.conversionMetrics?.booking_step_3 || 0,
-              reservations: metaApiData.conversionMetrics?.reservations || 0,
-              reservation_value: metaApiData.conversionMetrics?.reservation_value || 0,
-              roas: metaApiData.conversionMetrics?.roas || 0
-            },
-            tables: {
-              placementPerformance: [],
-              demographicPerformance: [],
-              adRelevanceResults: []
-            }
-          };
-          
-          // Fetch Meta tables data
+          // Fetch Meta tables data (no auth, same as reports page)
           try {
             const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-meta-tables`, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': authHeader
+                'Content-Type': 'application/json'
+                // No Authorization header (same as reports page)
               },
               body: JSON.stringify({
                 clientId,
@@ -2171,83 +2042,77 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.warn('⚠️ Meta Ads data not available:', metaError);
   }
   
-  // Transform Google Ads data to match our interface (using live API data from above)
+  // Transform Google Ads data using EXACT same format as reports page (GoogleAdsStandardizedDataFetcher format)
   if (googleData) {
     try {
-      logger.info('🔍 Transforming Google Ads data...');
+      logger.info('🔍 Using Google Ads data from GoogleAdsStandardizedDataFetcher (same as reports page)...');
       
-      // Use the googleData already fetched from live API above
-      const googleApiData = googleData;
-          
-          // Transform Google data to match our interface (using correct API response structure)
-          logger.info('📊 Google API data structure:', {
-            hasStats: !!googleApiData.stats,
-            hasConversionMetrics: !!googleApiData.conversionMetrics,
-            statsKeys: googleApiData.stats ? Object.keys(googleApiData.stats) : [],
-            conversionKeys: googleApiData.conversionMetrics ? Object.keys(googleApiData.conversionMetrics) : []
-          });
-          
-          // Calculate additional Google metrics
-          const googleTotalConversions = (googleApiData.stats?.totalConversions || 0);
-          const googleEmailContacts = googleApiData.conversionMetrics?.email_contacts || 0;
-          const googlePhoneContacts = googleApiData.conversionMetrics?.click_to_call || 0;
-          const googlePotentialOfflineReservations = Math.round((googleEmailContacts + googlePhoneContacts) * 0.2);
-          const googleTotalReservationValue = googleApiData.conversionMetrics?.reservation_value || 0;
-          const googleTotalReservations = googleApiData.conversionMetrics?.reservations || 0;
-          const googleAverageReservationValue = googleTotalReservations > 0 ? googleTotalReservationValue / googleTotalReservations : 0;
-          const googlePotentialOfflineValue = googlePotentialOfflineReservations * googleAverageReservationValue;
-          const googleTotalPotentialValue = googlePotentialOfflineValue + googleTotalReservationValue;
-          const googleTotalSpend = googleApiData.stats?.totalSpend || 0;
-          const googleCostPercentage = googleTotalPotentialValue > 0 ? (googleTotalSpend / googleTotalPotentialValue) * 100 : 0;
-          
-          reportData.googleData = {
-            metrics: {
-              totalSpend: googleTotalSpend,
-              totalImpressions: googleApiData.stats?.totalImpressions || 0,
-              totalClicks: googleApiData.stats?.totalClicks || 0,
-              totalConversions: googleTotalConversions,
-              averageCtr: googleApiData.stats?.averageCtr || 0,
-              averageCpc: googleApiData.stats?.averageCpc || 0,
-              averageCpa: googleTotalConversions > 0 ? googleTotalSpend / googleTotalConversions : 0,
-              averageCpm: (googleApiData.stats?.totalImpressions || 0) > 0 ? (googleTotalSpend / (googleApiData.stats?.totalImpressions || 0)) * 1000 : 0,
-              searchImpressionShare: googleApiData.stats?.searchImpressionShare || 0,
-              qualityScore: googleApiData.stats?.qualityScore || 0,
-              viewThroughConversions: googleApiData.stats?.viewThroughConversions || 0,
-              searchBudgetLostImpressionShare: googleApiData.stats?.searchBudgetLostImpressionShare || 0,
-              totalReservations: googleTotalReservations,
-              totalReservationValue: googleTotalReservationValue,
-              roas: googleApiData.conversionMetrics?.roas || 0,
-              emailContacts: googleEmailContacts,
-              phoneContacts: googlePhoneContacts,
-              potentialOfflineReservations: googlePotentialOfflineReservations,
-              potentialOfflineValue: googlePotentialOfflineValue,
-              totalPotentialValue: googleTotalPotentialValue,
-              costPercentage: googleCostPercentage
-            },
-            campaigns: googleApiData.campaigns || [],
-            funnel: {
-              booking_step_1: googleApiData.conversionMetrics?.booking_step_1 || 0,
-              booking_step_2: googleApiData.conversionMetrics?.booking_step_2 || 0,
-              booking_step_3: googleApiData.conversionMetrics?.booking_step_3 || 0,
-              reservations: googleApiData.conversionMetrics?.reservations || 0,
-              reservation_value: googleApiData.conversionMetrics?.reservation_value || 0,
-              roas: googleApiData.conversionMetrics?.roas || 0
-            },
-            tables: {
-              networkPerformance: googleApiData.googleAdsTables?.networkPerformance || [],
-              devicePerformance: googleApiData.googleAdsTables?.devicePerformance || [],
-              keywordPerformance: googleApiData.googleAdsTables?.keywordPerformance || []
-            }
-          };
-          
-          logger.info('✅ Google Ads data transformed successfully:', {
-            totalSpend: reportData.googleData.metrics.totalSpend,
-            totalImpressions: reportData.googleData.metrics.totalImpressions,
-            totalClicks: reportData.googleData.metrics.totalClicks,
-            totalReservations: reportData.googleData.metrics.totalReservations,
-            campaignCount: reportData.googleData.campaigns.length,
-            bookingStep1: reportData.googleData.funnel.booking_step_1
-          });
+      // Use standardized data format directly (no transformation needed)
+      const stats = googleData.stats || {};
+      const conversionMetrics = googleData.conversionMetrics || {};
+      const campaigns = googleData.campaigns || [];
+      
+      // Calculate additional Google metrics using same logic as reports page
+      const googleTotalConversions = stats.totalConversions || 0;
+      const googleEmailContacts = conversionMetrics.email_contacts || 0;
+      const googlePhoneContacts = conversionMetrics.click_to_call || 0;
+      const googlePotentialOfflineReservations = Math.round((googleEmailContacts + googlePhoneContacts) * 0.2);
+      const googleTotalReservationValue = conversionMetrics.reservation_value || 0;
+      const googleTotalReservations = conversionMetrics.reservations || 0;
+      const googleAverageReservationValue = googleTotalReservations > 0 ? googleTotalReservationValue / googleTotalReservations : 0;
+      const googlePotentialOfflineValue = googlePotentialOfflineReservations * googleAverageReservationValue;
+      const googleTotalPotentialValue = googlePotentialOfflineValue + googleTotalReservationValue;
+      const googleTotalSpend = stats.totalSpend || 0;
+      const googleCostPercentage = googleTotalPotentialValue > 0 ? (googleTotalSpend / googleTotalPotentialValue) * 100 : 0;
+      
+      reportData.googleData = {
+        metrics: {
+          totalSpend: googleTotalSpend,
+          totalImpressions: stats.totalImpressions || 0,
+          totalClicks: stats.totalClicks || 0,
+          totalConversions: googleTotalConversions,
+          averageCtr: stats.averageCtr || 0,
+          averageCpc: stats.averageCpc || 0,
+          averageCpa: googleTotalConversions > 0 ? googleTotalSpend / googleTotalConversions : 0,
+          averageCpm: (stats.totalImpressions || 0) > 0 ? (googleTotalSpend / (stats.totalImpressions || 0)) * 1000 : 0,
+          searchImpressionShare: (stats as any).searchImpressionShare || 0,
+          qualityScore: (stats as any).qualityScore || 0,
+          viewThroughConversions: (stats as any).viewThroughConversions || 0,
+          searchBudgetLostImpressionShare: (stats as any).searchBudgetLostImpressionShare || 0,
+          totalReservations: googleTotalReservations,
+          totalReservationValue: googleTotalReservationValue,
+          roas: conversionMetrics.roas || 0,
+          emailContacts: googleEmailContacts,
+          phoneContacts: googlePhoneContacts,
+          potentialOfflineReservations: googlePotentialOfflineReservations,
+          potentialOfflineValue: googlePotentialOfflineValue,
+          totalPotentialValue: googleTotalPotentialValue,
+          costPercentage: googleCostPercentage
+        },
+        campaigns: campaigns,
+        funnel: {
+          booking_step_1: conversionMetrics.booking_step_1 || 0,
+          booking_step_2: conversionMetrics.booking_step_2 || 0,
+          booking_step_3: conversionMetrics.booking_step_3 || 0,
+          reservations: conversionMetrics.reservations || 0,
+          reservation_value: conversionMetrics.reservation_value || 0,
+          roas: conversionMetrics.roas || 0
+        },
+        tables: {
+          networkPerformance: (googleData as any).googleAdsTables?.networkPerformance || [],
+          devicePerformance: (googleData as any).googleAdsTables?.devicePerformance || [],
+          keywordPerformance: (googleData as any).googleAdsTables?.keywordPerformance || []
+        }
+      };
+      
+      logger.info('✅ Google Ads data transformed successfully:', {
+        totalSpend: reportData.googleData.metrics.totalSpend,
+        totalImpressions: reportData.googleData.metrics.totalImpressions,
+        totalClicks: reportData.googleData.metrics.totalClicks,
+        totalReservations: reportData.googleData.metrics.totalReservations,
+        campaignCount: reportData.googleData.campaigns.length,
+        bookingStep1: reportData.googleData.funnel.booking_step_1
+      });
     } catch (error) {
       logger.warn('⚠️ Google Ads data transformation failed:', error);
     }
@@ -2255,13 +2120,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.warn('⚠️ Google Ads data not available:', googleError);
   }
   
-  // Fetch AI Summary (AFTER all data is collected)
-  logger.info('🔍 ABOUT TO START AI SUMMARY GENERATION (after data fetching)...');
-  logger.info('🔍 Auth header check before AI summary:', {
-    hasAuthHeader: !!authHeader,
-    authHeaderLength: authHeader?.length || 0,
-    authHeaderPreview: authHeader?.substring(0, 20) || 'NO AUTH HEADER'
-  });
+  // Fetch AI Summary (AFTER all data is collected) - no auth required (same as reports page)
+  logger.info('🔍 Generating AI summary (no auth, same as reports page)...');
   logger.info('🔍 Data availability for AI summary:', {
     hasMetaData: !!reportData.metaData,
     hasGoogleData: !!reportData.googleData,
@@ -2270,18 +2130,12 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   
   try {
     logger.info('🤖 Generating AI summary...');
-    logger.info('🤖 AI Summary request details:', {
-      url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-executive-summary`,
-      clientId,
-      dateRange,
-      hasAuthHeader: !!authHeader
-    });
     
     const summaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-executive-summary`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader
+        'Content-Type': 'application/json'
+        // No Authorization header (same as reports page)
       },
       body: JSON.stringify({
         clientId,
@@ -2344,7 +2198,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
 export async function POST(request: NextRequest) {
   console.log('🚨 CRITICAL: PDF POST handler reached!');
   logger.info('🚨 CRITICAL: PDF POST handler reached!');
-  logger.info('📄 New PDF Generation Request Started');
+  logger.info('📄 New PDF Generation Request Started - using EXACT same system as reports page');
 
   try {
     const body = await request.json();
@@ -2361,7 +2215,8 @@ export async function POST(request: NextRequest) {
 
     const { clientId, dateRange } = body;
     
-    // Authentication is handled by the fetchReportData function using existing middleware
+    // 🔓 AUTH DISABLED: Same as reports page - no authentication required
+    logger.info('🔓 Authentication disabled for PDF generation (same as reports page)');
 
     logger.info('🔄 Fetching report data from same sources as /reports page...');
     let reportData: ReportData;

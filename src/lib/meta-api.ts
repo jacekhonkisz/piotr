@@ -1598,7 +1598,11 @@ export class MetaAPIService {
         const demographics = data.data.map(insight => {
           // Basic demographic data
           const age = insight.age || 'Nieznane';
-          const gender = insight.gender || 'Nieznane';
+          // Translate gender labels to Polish
+          let gender = insight.gender || 'Nieznane';
+          if (gender.toLowerCase() === 'female') gender = 'Kobiety';
+          else if (gender.toLowerCase() === 'male') gender = 'Mężczyźni';
+          else if (gender.toLowerCase() === 'unknown') gender = 'Nieznane';
           const spend = parseFloat(insight.spend || '0');
           const impressions = parseInt(insight.impressions || '0');
           const clicks = parseInt(insight.clicks || '0');

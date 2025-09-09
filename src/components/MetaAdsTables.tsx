@@ -77,6 +77,23 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [adRelevanceData, setAdRelevanceData] = useState<AdRelevanceResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Helper function to translate gender labels
+  const translateGenderLabel = (label: string) => {
+    switch (label.toLowerCase()) {
+      case 'male': return 'Mężczyźni';
+      case 'female': return 'Kobiety';
+      case 'nieznane': return 'Nieznane';
+      case 'unknown': return 'Nieznane';
+      default: return 'Nieznane';
+    }
+  };
+
+  // Helper function to translate age labels  
+  const translateAgeLabel = (label: string) => {
+    if (label === 'Nieznane' || label === 'Unknown' || label === 'unknown') return 'Nieznane';
+    return label; // Age ranges like "25-34" don't need translation
+  };
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
   const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'roas'>('roas');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
@@ -142,8 +159,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         // Clean up demographic data to ensure Polish labels
         const demographicArray = rawDemographicArray.map((item: any) => ({
           ...item,
-          gender: item.gender === 'Unknown' || item.gender === 'unknown' ? 'Nieznane' : item.gender,
-          age: item.age === 'Unknown' || item.age === 'unknown' ? 'Nieznane' : item.age
+          gender: translateGenderLabel(item.gender || 'Nieznane'),
+          age: translateAgeLabel(item.age || 'Nieznane')
         }));
         
         console.log('🔍 MetaAdsTables BEFORE setState:', {
@@ -635,11 +652,11 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                               <td className="px-4 py-4">
                                 <div className="flex items-center">
                                   <RankingBadge rank={index + 1} index={index} />
-                                  <span className="text-sm font-medium text-slate-900">{demographic.age === 'Unknown' || demographic.age === 'unknown' ? 'Nieznane' : demographic.age}</span>
+                                  <span className="text-sm font-medium text-slate-900">{translateAgeLabel(demographic.age)}</span>
                                 </div>
                               </td>
                               <td className="px-4 py-4">
-                                <span className="text-sm text-slate-900">{demographic.gender === 'male' ? 'Mężczyźni' : demographic.gender === 'female' ? 'Kobiety' : demographic.gender === 'Unknown' || demographic.gender === 'unknown' ? 'Nieznane' : demographic.gender}</span>
+                                <span className="text-sm text-slate-900">{translateGenderLabel(demographic.gender)}</span>
                               </td>
                               <td className="px-4 py-4">
                                 <span className="text-sm font-semibold text-slate-900">{formatCurrency(demographic.spend)}</span>

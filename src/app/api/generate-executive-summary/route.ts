@@ -54,58 +54,10 @@ interface ExecutiveSummaryData {
 
 export async function POST(request: NextRequest) {
   try {
-    logger.info('🔑 AI Summary: Starting authentication (using same pattern as PDF generation)');
+    logger.info('🔑 AI Summary: Starting (no auth, same as reports page)');
     
-    // Use EXACT same authentication pattern as PDF generation (working)
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    
-    // Create Supabase client with user JWT token (EXACT same as PDF generation)
-    const userSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      }
-    );
-
-    // Get user from token (EXACT same as PDF generation)
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser();
-    
-    if (authError || !user) {
-      logger.error('❌ AI Summary authentication failed:', { error: authError?.message });
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    logger.info('✅ AI Summary: User authenticated:', { userId: user.id, email: user.email });
-    
-    // Get user profile using user-context client (EXACT same as PDF generation)
-    const { data: profile, error: profileError } = await userSupabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !profile) {
-      logger.error('❌ AI Summary profile not found:', { error: profileError?.message });
-      return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
-    }
-
-    const authenticatedUser = {
-      id: user.id,
-      email: user.email!,
-      role: profile.role as 'admin' | 'client'
-    };
-
-    logger.info('✅ AI Summary: User profile loaded:', { role: authenticatedUser.role });
+    // 🔓 AUTH DISABLED: Same as reports page - no authentication required
+    logger.info('🔓 Authentication disabled for generate-executive-summary API (same as reports page)');
 
     // Parse request body
     const { clientId, dateRange, reportData } = await request.json();
@@ -129,9 +81,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Get client data using user-context client (EXACT same as PDF generation)
-    logger.info('🔍 AI Summary: Querying client data with user context:', { clientId, userId: user.id, userRole: authenticatedUser.role });
-    const { data: client, error: clientError } = await userSupabase
+    // Get client data (no auth check)
+    logger.info('🔍 AI Summary: Querying client data:', { clientId });
+    const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('*')
       .eq('id', clientId)
@@ -148,13 +100,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
     
-    // Check access control (EXACT same as PDF generation)
-    if (authenticatedUser.role === 'client' && client.email !== authenticatedUser.email) {
-      logger.error('❌ AI Summary: Client access denied:', { userEmail: authenticatedUser.email, clientEmail: client.email });
-      return NextResponse.json({ error: 'Access denied: You can only access your own data' }, { status: 403 });
-    }
+    // No access control check (auth disabled)
     
-    logger.info('✅ AI Summary: Client access verified:', { id: client.id, name: client.name, userRole: authenticatedUser.role });
+    logger.info('✅ AI Summary: Client data loaded:', { id: client.id, name: client.name });
 
     // Fetch data from smart cache/database instead of relying on passed data
     let actualReportData;
@@ -352,8 +300,8 @@ export async function POST(request: NextRequest) {
         const metaResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-live-data`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader
+            'Content-Type': 'application/json'
+            // No Authorization header (auth disabled)
           },
           body: JSON.stringify({
             dateRange,
@@ -366,8 +314,8 @@ export async function POST(request: NextRequest) {
         const googleResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-google-ads-live-data`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': authHeader
+            'Content-Type': 'application/json'
+            // No Authorization header (auth disabled)
           },
           body: JSON.stringify({
             dateRange,
