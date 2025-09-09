@@ -764,16 +764,34 @@ export default function DashboardPage() {
       console.log('🔧 DASHBOARD: Using unified data fetching with provider:', effectiveProvider);
 
       try {
-        // 🔧 STANDARDIZED: Use new standardized fetcher for consistent data
+        // 🔧 STANDARDIZED: Use appropriate fetcher based on platform
         console.log('🎯 Using STANDARDIZED DATA FETCHER for consistent results');
         
-        const result = await StandardizedDataFetcher.fetchData({
-          clientId: currentClient.id,
-          dateRange,
-          platform: effectiveProvider,
-          reason: 'dashboard-standardized-load',
-          sessionToken: session?.access_token
-        });
+        let result;
+        
+        if (effectiveProvider === 'google') {
+          // Use separate Google Ads system
+          console.log('🎯 Using GoogleAdsStandardizedDataFetcher for dashboard...');
+          const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+          
+          result = await GoogleAdsStandardizedDataFetcher.fetchData({
+            clientId: currentClient.id,
+            dateRange,
+            reason: 'google-ads-dashboard-standardized-load',
+            sessionToken: session?.access_token
+          });
+        } else {
+          // Use Meta system
+          console.log('🎯 Using StandardizedDataFetcher for Meta dashboard...');
+          
+          result = await StandardizedDataFetcher.fetchData({
+            clientId: currentClient.id,
+            dateRange,
+            platform: 'meta',
+            reason: 'meta-dashboard-standardized-load',
+            sessionToken: session?.access_token
+          });
+        }
 
         if (result.success && result.data) {
           console.log('✅ DASHBOARD: Unified fetch successful:', {

@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
             clientName: client.name,
             platform: 'meta',
             success: true,
-            spend: metaSummary.total_spend || 0,
-            reservations: metaSummary.reservations || 0
+            spend: (metaSummary as any).total_spend || 0,
+            reservations: (metaSummary as any).reservations || 0
           });
           successCount++;
           logger.info(`✅ Meta summary generated for ${client.name}`);
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
             clientName: client.name,
             platform: 'google',
             success: true,
-            spend: googleSummary.total_spend || 0,
-            reservations: googleSummary.reservations || 0
+            spend: (googleSummary as any).total_spend || 0,
+            reservations: (googleSummary as any).reservations || 0
           });
           successCount++;
           logger.info(`✅ Google summary generated for ${client.name}`);

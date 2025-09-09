@@ -578,7 +578,7 @@ export class StandardizedDataFetcher {
       
       if (weeklyResults && weeklyResults.length > 0) {
         storedSummary = weeklyResults[0];
-        console.log(`✅ Found weekly summary for ${dateRange.start}: ${storedSummary.total_spend} PLN spend`);
+        console.log(`✅ Found weekly summary for ${dateRange.start}: ${storedSummary?.total_spend} PLN spend`);
       } else {
         error = weeklyError;
         console.log(`⚠️ No weekly summary found for ${dateRange.start}`);
@@ -598,7 +598,7 @@ export class StandardizedDataFetcher {
       
       if (monthlyResults && monthlyResults.length > 0) {
         storedSummary = monthlyResults[0];
-        console.log(`✅ Found monthly summary for ${dateRange.start}: ${storedSummary.total_spend} PLN spend`);
+        console.log(`✅ Found monthly summary for ${dateRange.start}: ${storedSummary?.total_spend} PLN spend`);
       } else {
         error = monthlyError;
         console.log(`⚠️ No monthly summary found for ${dateRange.start}`);
@@ -624,18 +624,18 @@ export class StandardizedDataFetcher {
           averageCpc: storedSummary.average_cpc || 0
         },
         conversionMetrics: {
-          click_to_call: storedSummary.click_to_call || 0,
-          email_contacts: storedSummary.email_contacts || 0,
-          booking_step_1: storedSummary.booking_step_1 || 0,
-          booking_step_2: storedSummary.booking_step_2 || 0,
+          click_to_call: (storedSummary as any).click_to_call || 0,
+          email_contacts: (storedSummary as any).email_contacts || 0,
+          booking_step_1: (storedSummary as any).booking_step_1 || 0,
+          booking_step_2: (storedSummary as any).booking_step_2 || 0,
           booking_step_3: (storedSummary as any).booking_step_3 || 0,
-          reservations: storedSummary.reservations || 0,
-          reservation_value: storedSummary.reservation_value || 0,
-          roas: storedSummary.reservation_value && storedSummary.total_spend ? storedSummary.reservation_value / storedSummary.total_spend : 0,
-          cost_per_reservation: storedSummary.reservations && storedSummary.total_spend ? storedSummary.total_spend / storedSummary.reservations : 0,
+          reservations: (storedSummary as any).reservations || 0,
+          reservation_value: (storedSummary as any).reservation_value || 0,
+          roas: (storedSummary as any).reservation_value && storedSummary.total_spend ? (storedSummary as any).reservation_value / storedSummary.total_spend : 0,
+          cost_per_reservation: (storedSummary as any).reservations && storedSummary.total_spend ? storedSummary.total_spend / (storedSummary as any).reservations : 0,
           reach: (storedSummary as any).reach || 0
         },
-        campaigns: storedSummary.campaign_data || []
+        campaigns: (storedSummary.campaign_data as any[]) || []
       }
     };
   }

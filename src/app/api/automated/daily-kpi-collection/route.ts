@@ -234,11 +234,14 @@ export async function POST(request: NextRequest) {
       monthlyDeleted: cleanupResults.monthlyDeleted
     });
 
-    // Also check current data completeness
+    // Also check current data completeness (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
     const { data: currentData, error: checkError } = await supabaseAdmin
       .from('daily_kpi_data')
       .select('date, client_id')
-      .gte('date', cutoffDateStr)
+      .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
       .order('date', { ascending: false });
 
     if (!checkError && currentData) {

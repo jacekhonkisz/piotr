@@ -182,18 +182,32 @@ const fetchReportDataUnified = async (params: {
   console.log('🎯 STANDARDIZED REPORTS FETCH: Using consistent logic for all periods');
 
   try {
-    // Import StandardizedDataFetcher dynamically to avoid SSR issues
-    const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+    let result;
     
-    console.log('🎯 Using StandardizedDataFetcher for reports...');
-    
-    const result = await StandardizedDataFetcher.fetchData({
-      clientId,
-      dateRange,
-      platform: platform as 'meta' | 'google',
-      reason: reason || 'reports-standardized',
-      sessionToken: session?.access_token
-    });
+    if (platform === 'google') {
+      // Use separate Google Ads system
+      console.log('🎯 Using GoogleAdsStandardizedDataFetcher for Google Ads reports...');
+      const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+      
+      result = await GoogleAdsStandardizedDataFetcher.fetchData({
+        clientId,
+        dateRange,
+        reason: reason || 'google-ads-reports-standardized',
+        sessionToken: session?.access_token
+      });
+    } else {
+      // Use Meta system
+      console.log('🎯 Using StandardizedDataFetcher for Meta reports...');
+      const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+      
+      result = await StandardizedDataFetcher.fetchData({
+        clientId,
+        dateRange,
+        platform: 'meta',
+        reason: reason || 'meta-reports-standardized',
+        sessionToken: session?.access_token
+      });
+    }
     
     // Transform StandardizedDataFetcher result to match expected format
     if (result.success && result.data) {
@@ -1271,10 +1285,11 @@ function ReportsPageContent() {
     // Layer 3: Check if we already have this data and it's not forced
     // 🔧 TEMPORARY FIX: Force refresh for all weekly data to clear corrupted cache
     const forceWeeklyRefresh = viewType === 'weekly';
-    if (!forceClearCache && !forceWeeklyRefresh && reports[periodId] && reports[periodId].campaigns && reports[periodId].campaigns.length > 0) {
+    const existingReport = reports[periodId];
+    if (!forceClearCache && !forceWeeklyRefresh && existingReport && existingReport.campaigns && existingReport.campaigns.length > 0) {
       console.log('🚫 BLOCKED: Data already exists (Layer 3)', {
         periodId,
-        campaignCount: reports[periodId].campaigns.length
+        campaignCount: existingReport.campaigns.length
       });
       return;
     }
@@ -1744,9 +1759,9 @@ function ReportsPageContent() {
         const booking_step_3 = campaign.booking_step_3 || 0;
 
         return {
-          id: campaign.campaign_id || `campaign-${index}`,
-          campaign_id: campaign.campaign_id || '',
-          campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
+          id: campaign.campaign_id || campaign.campaignId || `campaign-${index}`,
+          campaign_id: campaign.campaign_id || campaign.campaignId || '',
+          campaign_name: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
           spend: parseFloat(campaign.spend || '0'),
           impressions: parseInt(campaign.impressions || '0'),
           clicks: parseInt(campaign.clicks || '0'),

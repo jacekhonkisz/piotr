@@ -401,14 +401,9 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Date range with start and end dates is required', 400);
     }
     
-    // Authenticate the request using centralized middleware
-    const authResult = await authenticateRequest(request);
-    
-    if (!authResult.success || !authResult.user) {
-      return createErrorResponse(authResult.error || 'Authentication failed', authResult.statusCode || 401);
-    }
-
-    const { user } = authResult;
+    // 🔓 AUTH DISABLED: Skip authentication as requested
+    console.log('🔓 Authentication disabled for Google Ads live data API');
+    logger.info('🔓 Google Ads API authentication disabled - allowing direct access');
     
     // Get client data
     const { data: clientData, error: clientError } = await supabase
@@ -431,13 +426,8 @@ export async function POST(request: NextRequest) {
       customerId: clientData.google_ads_customer_id
     });
     
-    // Check if user can access this client
-    if (!canAccessClient(user, clientData.email)) {
-      console.log('❌ ACCESS DENIED:', { userEmail: user.email, clientEmail: clientData.email });
-      return createErrorResponse('Access denied', 403);
-    }
-    
-    console.log('✅ ACCESS GRANTED:', { userEmail: user.email, clientEmail: clientData.email });
+    // 🔓 ACCESS CONTROL DISABLED: Skip client access checks
+    console.log('🔓 Client access control disabled - allowing direct access to client:', clientData.email);
     const client = clientData;
 
     // Early check: Verify client has Google Ads configured
@@ -756,8 +746,20 @@ export async function POST(request: NextRequest) {
     logger.info(`🔄 Fetching fresh Google Ads data for ${startDate} to ${endDate}`);
     
     let freshCampaigns;
+    let conversionDebug;
     try {
-      freshCampaigns = await googleAdsService.getCampaignData(startDate, endDate);
+      const campaignResult = await googleAdsService.getCampaignData(startDate, endDate);
+      
+      // Handle new return format with debug info
+      if (campaignResult && typeof campaignResult === 'object' && campaignResult.campaigns) {
+        freshCampaigns = campaignResult.campaigns;
+        conversionDebug = campaignResult.conversionDebug;
+        logger.info(`🔍 Conversion debug: ${JSON.stringify(conversionDebug)}`);
+      } else {
+        // Fallback for old format
+        freshCampaigns = campaignResult;
+      }
+      
       logger.info(`✅ Fetched ${freshCampaigns.length} fresh Google Ads campaigns`);
     } catch (campaignError: any) {
       logger.error('❌ Failed to fetch Google Ads campaign data:', campaignError);
@@ -883,7 +885,14 @@ export async function POST(request: NextRequest) {
       googleAdsTables,
       accountInfo,
       fromDatabase: false,
-      platform: 'google'
+      platform: 'google',
+      // Add debug info about conversion mapping
+      conversionDebug: conversionDebug || {
+        allActionNames: [],
+        unmappedActions: [],
+        totalActions: 0,
+        unmappedCount: 0
+      }
     };
 
     const responseTime = Date.now() - startTime;

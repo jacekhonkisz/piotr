@@ -181,10 +181,10 @@ export class ProductionDataManager {
       email_contacts: acc.email_contacts + (record.email_contacts || 0),
       booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
       booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
-      booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0),
-      reservations: acc.reservations + (record.reservations || 0),
-      reservation_value: acc.reservation_value + (record.reservation_value || 0),
-      reach: acc.reach + (record.reach || 0),
+      booking_step_3: acc.booking_step_3 + ((record as any).booking_step_3 || 0),
+      reservations: acc.reservations + ((record as any).reservations || 0),
+      reservation_value: acc.reservation_value + ((record as any).reservation_value || 0),
+      reach: acc.reach + ((record as any).reach || 0),
       campaigns_count: Math.max(acc.campaigns_count, record.campaigns_count || 0)
     }), {
       total_spend: 0,
@@ -427,10 +427,10 @@ export class ProductionDataManager {
       email_contacts: acc.email_contacts + (record.email_contacts || 0),
       booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
       booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
-      booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0),
-      reservations: acc.reservations + (record.reservations || 0),
-      reservation_value: acc.reservation_value + (record.reservation_value || 0),
-      reach: acc.reach + (record.reach || 0)
+      booking_step_3: acc.booking_step_3 + ((record as any).booking_step_3 || 0),
+      reservations: acc.reservations + ((record as any).reservations || 0),
+      reservation_value: acc.reservation_value + ((record as any).reservation_value || 0),
+      reach: acc.reach + ((record as any).reach || 0)
     }), {
       totalSpend: 0,
       totalImpressions: 0,
@@ -470,10 +470,10 @@ export class ProductionDataManager {
       email_contacts: record.email_contacts || 0,
       booking_step_1: record.booking_step_1 || 0,
       booking_step_2: record.booking_step_2 || 0,
-      booking_step_3: record.booking_step_3 || 0,
-      reservations: record.reservations || 0,
-      reservation_value: record.reservation_value || 0,
-      reach: record.reach || 0
+      booking_step_3: (record as any).booking_step_3 || 0,
+      reservations: (record as any).reservations || 0,
+      reservation_value: (record as any).reservation_value || 0,
+      reach: (record as any).reach || 0
     }));
     
     return {
@@ -534,7 +534,7 @@ export class ProductionDataManager {
           averageCtr: summary.average_ctr || 0,
           averageCpc: summary.average_cpc || 0
         },
-        conversionMetrics: summary.conversion_metrics || {},
+        conversionMetrics: (summary as any).conversion_metrics || {},
         campaigns: summary.campaign_data || []
       }
     };
