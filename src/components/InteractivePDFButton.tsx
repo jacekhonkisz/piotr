@@ -189,31 +189,35 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       <button
         onClick={generateInteractivePDF}
         disabled={isGenerating}
-        className={`
-          flex items-center space-x-2 transition-all duration-200
-          ${isGenerating 
-            ? 'bg-gray-400 text-white cursor-not-allowed opacity-75' 
-            : className || 'px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg text-sm font-medium shadow-sm'
-          }
-        `}
+        className={
+          isGenerating 
+            ? 'flex items-center space-x-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed px-4 py-2 !bg-slate-800 !text-white rounded-lg text-sm font-medium shadow-sm border border-slate-700 !opacity-100'
+            : className || 'flex items-center space-x-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md rounded-lg text-sm font-medium shadow-sm border border-slate-700 opacity-100'
+        }
+        style={isGenerating ? { backgroundColor: '#1e293b', color: 'white', opacity: 1 } : undefined}
+        aria-label={isGenerating ? "Generating PDF report, please wait" : "Download PDF report with Meta and Google Ads data"}
       >
         {isGenerating ? (
           <>
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span>Generowanie PDF...</span>
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            <span className="whitespace-nowrap">Generowanie raportu...</span>
           </>
         ) : (
           <>
-            <FileText className="h-5 w-5" />
+            <FileText className="h-5 w-5" aria-hidden="true" />
             <span>Pobierz PDF (Meta + Google)</span>
           </>
         )}
       </button>
       
       {error && (
-        <div className="mt-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
-          <p className="font-medium">Error generating PDF:</p>
-          <p>{error}</p>
+        <div 
+          className="mt-2 text-sm text-red-800 bg-red-100 p-3 rounded-lg border border-red-300 shadow-sm"
+          role="alert"
+          aria-live="polite"
+        >
+          <p className="font-semibold">Błąd generowania PDF:</p>
+          <p className="mt-1">{error}</p>
         </div>
       )}
     </>
