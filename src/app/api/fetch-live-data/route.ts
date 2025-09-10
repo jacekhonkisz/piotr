@@ -769,6 +769,12 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           if (smartCacheResult.success && smartCacheResult.data) {
             const responseTime = Date.now() - startTime;
             console.log(`🚀 ✅ SMART CACHE SUCCESS: Current month data loaded in ${responseTime}ms`);
+            console.log(`📊 Smart cache data structure:`, {
+              hasCampaigns: !!smartCacheResult.data.campaigns,
+              campaignsCount: smartCacheResult.data.campaigns?.length || 0,
+              hasStats: !!smartCacheResult.data.stats,
+              totalSpend: smartCacheResult.data.stats?.totalSpend || 0
+            });
             
             return NextResponse.json({
               success: true,
