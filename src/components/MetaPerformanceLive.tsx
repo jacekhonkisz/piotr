@@ -721,7 +721,28 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
                 {
                   id: 'conversions',
                   label: 'Konwersje',
-                  value: safeConversion(stats.totalConversions).toLocaleString('pl-PL'),
+                  value: (() => {
+                    const allBookingSteps = 
+                      (metrics?.click_to_call || 0) + 
+                      (metrics?.email_contacts || 0) + 
+                      (metrics?.booking_step_1 || 0) + 
+                      (metrics?.booking_step_2 || 0) + 
+                      (metrics?.booking_step_3 || 0) + 
+                      (metrics?.reservations || 0);
+                    
+                    console.log('🎯 MetaPerformanceLive: All booking steps calculation:', {
+                      click_to_call: metrics?.click_to_call || 0,
+                      email_contacts: metrics?.email_contacts || 0,
+                      booking_step_1: metrics?.booking_step_1 || 0,
+                      booking_step_2: metrics?.booking_step_2 || 0,
+                      booking_step_3: metrics?.booking_step_3 || 0,
+                      reservations: metrics?.reservations || 0,
+                      total: allBookingSteps,
+                      statsTotalConversions: stats?.totalConversions || 0
+                    });
+                    
+                    return allBookingSteps.toLocaleString('pl-PL');
+                  })(),
                   sublabel: 'Bieżący miesiąc',
                   bars: conversionsBars,
                   dateForMarker: new Date().toISOString()

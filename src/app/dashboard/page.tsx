@@ -94,6 +94,7 @@ export default function DashboardPage() {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('meta');
   const [loadingSafetyTimeout, setLoadingSafetyTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [renderKey, setRenderKey] = useState(0);
   
   // 🔧 DATA SOURCE VALIDATION: Track data source information for debugging (same as reports)
   const [dataSourceInfo, setDataSourceInfo] = useState<{
@@ -540,6 +541,9 @@ export default function DashboardPage() {
       setDataSource('live-api-cached');
       setLoading(false); // 🔧 FIX: Properly set loading to false
       
+      // Force re-render to ensure display updates
+      setRenderKey(prev => prev + 1);
+      
       // Note: Smart caching is now handled by the API, no need for localStorage cache
     } catch (error) {
       console.error('Error loading client dashboard:', error);
@@ -682,6 +686,9 @@ export default function DashboardPage() {
       setDataSource('database');
       saveToCache(finalDashboardData, 'database');
       
+      // Force re-render to ensure display updates
+      setRenderKey(prev => prev + 1);
+      
       console.log('📊 Loaded past months data:', {
         campaigns: pastCampaigns?.length || 0,
         totalSpend: stats.totalSpend,
@@ -695,6 +702,7 @@ export default function DashboardPage() {
 
   const loadMainDashboardData = async (currentClient: any, forceProvider?: 'meta' | 'google') => {
     console.log('🚀 DASHBOARD: loadMainDashboardData called for client:', currentClient?.id);
+    console.log('🔄 DASHBOARD: Force refresh timestamp:', Date.now());
     try {
       // 🔧 USE SAME DATE LOGIC AS SMART CACHE HELPER: Ensures proper cache detection
       const currentMonthInfo = getCurrentMonthInfo();
@@ -763,7 +771,7 @@ export default function DashboardPage() {
             clientId: currentClient.id,
             dateRange,
             platform: 'meta',
-            reason: 'meta-dashboard-standardized-load'
+            reason: 'meta-dashboard-standardized-load-force-refresh'
           });
         }
 
@@ -823,6 +831,21 @@ export default function DashboardPage() {
             reservation_value: conversionMetrics.reservation_value,
             click_to_call: conversionMetrics.click_to_call,
             source: 'standardized-fetcher'
+          });
+
+          // 🔍 DEBUG: Calculate total booking steps for verification
+          const totalBookingSteps = 
+            (conversionMetrics.click_to_call || 0) + 
+            (conversionMetrics.email_contacts || 0) + 
+            (conversionMetrics.booking_step_1 || 0) + 
+            (conversionMetrics.booking_step_2 || 0) + 
+            (conversionMetrics.booking_step_3 || 0) + 
+            (conversionMetrics.reservations || 0);
+          
+          console.log('🔍 DASHBOARD: Total booking steps calculation:', {
+            totalBookingSteps,
+            statsTotalConversions: stats.totalConversions,
+            difference: totalBookingSteps - stats.totalConversions
           });
                 
                 return {
@@ -1122,8 +1145,25 @@ export default function DashboardPage() {
                     <Target className="h-5 w-5 text-orange-600" />
                   </div>
                 </div>
-                <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
-                  {formatNumber(clientData.stats.totalConversions)}
+                <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums" key={`conversions-${renderKey}`}>
+                  {(() => {
+                    const allBookingSteps = 
+                      (clientData.conversionMetrics.click_to_call || 0) + 
+                      (clientData.conversionMetrics.email_contacts || 0) + 
+                      (clientData.conversionMetrics.booking_step_1 || 0) + 
+                      (clientData.conversionMetrics.booking_step_2 || 0) + 
+                      (clientData.conversionMetrics.booking_step_3 || 0) + 
+                      (clientData.conversionMetrics.reservations || 0);
+                    
+                    console.log('🎯 DASHBOARD DISPLAY: Rendering conversions:', {
+                      allBookingSteps,
+                      formatted: formatNumber(allBookingSteps),
+                      renderKey,
+                      timestamp: Date.now()
+                    });
+                    
+                    return formatNumber(allBookingSteps);
+                  })()}
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
                   Bieżący miesiąc
