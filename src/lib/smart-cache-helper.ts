@@ -345,6 +345,8 @@ export async function fetchFreshCurrentMonthData(client: any) {
           period_id: currentMonth.periodId,
           cache_data: cacheData,
           last_updated: new Date().toISOString()
+        }, {
+          onConflict: 'client_id,period_id'
         });
       
       logger.info('💾 Fresh data cached successfully');
@@ -660,6 +662,8 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
         cache_data: freshData,
         last_updated: new Date().toISOString(),
         period_id: currentMonth.periodId
+      }, {
+        onConflict: 'client_id,period_id'
       });
     logger.info(`✅ Fresh ${platform} data cached successfully`);
   } catch (cacheError) {
@@ -1076,6 +1080,8 @@ async function executeSmartWeeklyCacheRequest(clientId: string, targetWeek: any,
         cache_data: freshData,
         last_updated: new Date().toISOString(),
         period_id: targetWeek.periodId
+      }, {
+        onConflict: 'client_id,period_id'
       });
     logger.info('✅ Fresh weekly data cached successfully');
   } catch (cacheError) {
@@ -1129,6 +1135,8 @@ async function refreshWeeklyCacheInBackground(clientId: string, periodId: string
         cache_data: freshData,
         last_updated: new Date().toISOString(),
         period_id: periodId
+      }, {
+        onConflict: 'client_id,period_id'
       });
 
     logger.info(`✅ Weekly background refresh completed for ${clientId}`);
