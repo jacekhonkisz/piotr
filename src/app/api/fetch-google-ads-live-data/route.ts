@@ -751,9 +751,9 @@ export async function POST(request: NextRequest) {
       const campaignResult = await googleAdsService.getCampaignData(startDate, endDate);
       
       // Handle new return format with debug info
-      if (campaignResult && typeof campaignResult === 'object' && campaignResult.campaigns) {
-        freshCampaigns = campaignResult.campaigns;
-        conversionDebug = campaignResult.conversionDebug;
+      if (campaignResult && typeof campaignResult === 'object' && (campaignResult as any).campaigns) {
+        freshCampaigns = (campaignResult as any).campaigns;
+        conversionDebug = (campaignResult as any).conversionDebug;
         logger.info(`🔍 Conversion debug: ${JSON.stringify(conversionDebug)}`);
       } else {
         // Fallback for old format
@@ -767,10 +767,10 @@ export async function POST(request: NextRequest) {
     }
     
     // Calculate totals from fresh data
-    const totalSpend = freshCampaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
-    const totalImpressions = freshCampaigns.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
-    const totalClicks = freshCampaigns.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
-    const totalConversions = freshCampaigns.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+    const totalSpend = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
+    const totalImpressions = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
+    const totalClicks = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
+    const totalConversions = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -801,13 +801,13 @@ export async function POST(request: NextRequest) {
       console.log(`✅ Found ${dailyKpiData.length} Google Ads KPI records for conversion metrics`);
       
       realConversionMetrics = {
-        click_to_call: dailyKpiData.reduce((sum, day) => sum + (day.click_to_call || 0), 0),
-        email_contacts: dailyKpiData.reduce((sum, day) => sum + (day.email_contacts || 0), 0),
-        booking_step_1: dailyKpiData.reduce((sum, day) => sum + (day.booking_step_1 || 0), 0),
-        reservations: dailyKpiData.reduce((sum, day) => sum + (day.reservations || 0), 0),
-        reservation_value: dailyKpiData.reduce((sum, day) => sum + (day.reservation_value || 0), 0),
-        booking_step_2: dailyKpiData.reduce((sum, day) => sum + (day.booking_step_2 || 0), 0),
-        booking_step_3: dailyKpiData.reduce((sum, day) => sum + (day.booking_step_3 || 0), 0),
+        click_to_call: dailyKpiData.reduce((sum: number, day: any) => sum + (day.click_to_call || 0), 0),
+        email_contacts: dailyKpiData.reduce((sum: number, day: any) => sum + (day.email_contacts || 0), 0),
+        booking_step_1: dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_1 || 0), 0),
+        reservations: dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservations || 0), 0),
+        reservation_value: dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservation_value || 0), 0),
+        booking_step_2: dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_2 || 0), 0),
+        booking_step_3: dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_3 || 0), 0),
         roas: 0, // Will be calculated below
         cost_per_reservation: 0 // Will be calculated below
       };
@@ -823,16 +823,16 @@ export async function POST(request: NextRequest) {
       
       // Fallback to campaign-level conversion data
       realConversionMetrics = {
-        click_to_call: freshCampaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0),
-        email_contacts: freshCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0),
-        booking_step_1: freshCampaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0),
-        reservations: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
-        reservation_value: freshCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0),
-        booking_step_2: freshCampaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0),
-        booking_step_3: freshCampaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0),
-        roas: totalSpend > 0 ? freshCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0) / totalSpend : 0,
-        cost_per_reservation: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) > 0 ? 
-          totalSpend / freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) : 0
+        click_to_call: freshCampaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
+        email_contacts: freshCampaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+        booking_step_1: freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+        reservations: freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
+        reservation_value: freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
+        booking_step_2: freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+        booking_step_3: freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
+        roas: totalSpend > 0 ? freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totalSpend : 0,
+        cost_per_reservation: freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
+          totalSpend / freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
       };
     }
 

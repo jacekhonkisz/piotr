@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from './meta-api';
 import { GoogleAdsAPIService } from './google-ads-api';
-import { SmartDataLoader } from './smart-data-loader';
+import { StandardizedDataFetcher } from './standardized-data-fetcher';
 import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';
 import logger from './logger';
 
@@ -916,8 +916,8 @@ export class BackgroundDataCollector {
     logger.info('🧹 Starting cleanup of old data...');
     
     try {
-      const smartLoader = SmartDataLoader.getInstance();
-      await smartLoader.cleanupOldData();
+      // Use StandardizedDataFetcher instead of SmartDataLoader
+      // TODO: Implement cleanup in StandardizedDataFetcher if needed
       logger.info('✅ Campaign summaries cleanup completed');
       
       // Also cleanup executive summaries

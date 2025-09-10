@@ -12,7 +12,7 @@
  */
 
 import { supabase } from './supabase';
-import { fetchUnifiedData } from './unified-data-fetcher';
+import { StandardizedDataFetcher } from './standardized-data-fetcher';
 
 export interface DailyMetrics {
   date: string;
@@ -107,7 +107,7 @@ export class DailyMetricsCache {
       console.log('⚠️ Daily Metrics: daily_kpi_data incomplete, using unified fetcher fallback');
       const unifiedResult = await this.fetchFromUnifiedAPI(clientId, dateRange, platform);
       
-      if (unifiedResult.success) {
+      if (unifiedResult.success && 'data' in unifiedResult && unifiedResult.data) {
         // Extract daily metrics from campaigns
         const dailyMetrics = this.extractDailyMetrics(unifiedResult.data, dateRange);
         const completeness = this.calculateCompleteness(dailyMetrics, dateRange);
@@ -210,13 +210,11 @@ export class DailyMetricsCache {
       const { data: { session } } = await supabase.auth.getSession();
       
       // Use same unified fetcher as reports
-      const result = await fetchUnifiedData({
+      const result = await StandardizedDataFetcher.fetchData({
         dateRange,
         clientId,
-        platform,
-        forceFresh: false,
-        reason: 'daily-metrics-fallback',
-        session
+        platform: platform as 'meta' | 'google',
+        reason: 'daily-metrics-fallback'
       });
       
       return result;

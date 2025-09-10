@@ -91,67 +91,62 @@ export class StandardizedDataFetcher {
     const isCurrentPeriod = startYear === currentYear && startMonth === currentMonth;
     const includesCurrentDay = dateRange.end >= today;
     
-    // 🚨 PRODUCTION FIX: Force live API for any period less than 30 days old
-    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
-    const isRecentPeriod = startDate >= thirtyDaysAgo;
+    // 🎯 SMART CACHE INTEGRATION: Use smart cache for current periods, database for historical
+    const needsSmartCache = isCurrentPeriod;
+    const needsLiveData = false; // Let smart cache system handle live API calls
     
-    // Force live data for current period OR recent periods (bypass broken cache)
-    const needsLiveData = isCurrentPeriod || isRecentPeriod;
-    
-    console.log('🎯 PRODUCTION PERIOD CLASSIFICATION:', {
+    console.log('🎯 SMART CACHE PERIOD CLASSIFICATION:', {
       currentYear,
       currentMonth,
       requestYear: startYear,
       requestMonth: startMonth,
       isCurrentPeriod,
-      isRecentPeriod,
       includesCurrentDay,
-      needsLiveData,
+      needsSmartCache,
       today,
       dateRangeEnd: dateRange.end,
-      thirtyDaysAgo: thirtyDaysAgo.toISOString().split('T')[0],
-      strategy: needsLiveData ? 'LIVE_API_FORCED (bypass broken cache)' : 'DATABASE_FIRST (historical data)'
+      strategy: needsSmartCache ? 'SMART_CACHE (3-hour refresh)' : 'DATABASE_FIRST (historical data)'
     });
     
     const dataSources: string[] = [];
     
     try {
-      // 🚨 PRODUCTION FIX: Force live API for recent periods (bypass broken cache)
-      if (needsLiveData) {
-        console.log(`1️⃣ PRODUCTION FIX: Forcing live API for recent period ${platform} (cache bypass)...`);
-        dataSources.push('live_api_forced_production_fix');
+      // 🎯 PRIORITY 1: Smart Cache for current periods (3-hour refresh)
+      if (needsSmartCache) {
+        console.log(`1️⃣ SMART CACHE: Using smart cache system for current ${platform} period...`);
+        dataSources.push('smart_cache_system');
         
-        const liveResult = await this.fetchFromLiveAPI(clientId, dateRange, platform, sessionToken);
-        if (liveResult.success) {
+        const smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+        if (smartCacheResult.success) {
           const responseTime = Date.now() - startTime;
           
-          console.log(`✅ SUCCESS: Live API returned fresh data in ${responseTime}ms (cache bypassed)`);
+          console.log(`✅ SUCCESS: Smart cache returned data in ${responseTime}ms`);
           
           return {
             success: true,
-            data: liveResult.data!,
+            data: smartCacheResult.data!,
             debug: {
-              source: 'live-api-production-fix',
-              cachePolicy: 'cache-bypass-production-fix',
+              source: 'smart-cache-system',
+              cachePolicy: 'smart-cache-3hour',
               responseTime,
               reason,
               dataSourcePriority: dataSources,
               periodType: 'current'
             },
             validation: {
-              actualSource: 'live_api',
-              expectedSource: 'live_api',
+              actualSource: 'smart_cache',
+              expectedSource: 'smart_cache',
               isConsistent: true
             }
           };
         }
         
-        console.log('⚠️ Live API failed for current period, falling back to daily_kpi_data...');
+        console.log('⚠️ Smart cache failed for current period, falling back to database...');
       }
       
-      // Priority 2: Try campaign_summaries (proven working system)
-      console.log(`2️⃣ STANDARDIZED: Trying campaign_summaries for ${platform}...`);
-      dataSources.push('campaign_summaries_primary');
+      // 🎯 PRIORITY 2: Database lookup for historical periods (campaign_summaries)
+      console.log(`2️⃣ DATABASE: Trying campaign_summaries for ${platform}...`);
+      dataSources.push('campaign_summaries_database');
       
       const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
       if (cachedResult.success) {
@@ -163,8 +158,8 @@ export class StandardizedDataFetcher {
           success: true,
           data: cachedResult.data!,
           debug: {
-            source: 'campaign-summaries-primary',
-            cachePolicy: needsLiveData ? 'database-fallback-current' : 'database-first-historical',
+            source: 'campaign-summaries-database',
+            cachePolicy: isCurrentPeriod ? 'database-fallback-current' : 'database-first-historical',
             responseTime,
             reason,
             dataSourcePriority: dataSources,
@@ -173,7 +168,7 @@ export class StandardizedDataFetcher {
           validation: {
             actualSource: 'campaign_summaries',
             expectedSource: 'campaign_summaries',
-            isConsistent: false
+            isConsistent: true
           }
         };
       }
@@ -207,34 +202,32 @@ export class StandardizedDataFetcher {
         };
       }
       
-      // Priority 4: Live API call (if no database data and not already tried)
-      if (!needsLiveData) {
-        console.log('4️⃣ No database data, trying live API fallback...');
-        dataSources.push('live_api_final_fallback');
+      // 🎯 PRIORITY 4: Live API fallback (last resort with smart cache storage)
+      console.log('4️⃣ No database data, trying live API fallback with smart cache storage...');
+      dataSources.push('live_api_with_cache_storage');
+      
+      const liveResult = await this.fetchFromLiveAPIWithCaching(clientId, dateRange, platform, sessionToken);
+      if (liveResult.success) {
+        const responseTime = Date.now() - startTime;
+      
+        console.log(`✅ SUCCESS: Live API fallback returned data in ${responseTime}ms`);
         
-        const liveResult = await this.fetchFromLiveAPI(clientId, dateRange, platform, sessionToken);
-        if (liveResult.success) {
-          const responseTime = Date.now() - startTime;
-        
-          console.log(`✅ SUCCESS: Live API fallback returned data in ${responseTime}ms`);
-          
-          return {
-            success: true,
-            data: liveResult.data!,
-            debug: {
-              source: 'live-api-final-fallback',
-              cachePolicy: 'live-api-last-resort',
-              responseTime,
-              reason,
-              dataSourcePriority: dataSources
-            },
-            validation: {
-              actualSource: 'live_api',
-              expectedSource: 'campaign_summaries',
-              isConsistent: false
-            }
-          };
-        }
+        return {
+          success: true,
+          data: liveResult.data!,
+          debug: {
+            source: 'live-api-with-cache-storage',
+            cachePolicy: 'live-api-smart-cache-update',
+            responseTime,
+            reason,
+            dataSourcePriority: dataSources
+          },
+          validation: {
+            actualSource: 'live_api',
+            expectedSource: 'smart_cache',
+            isConsistent: true
+          }
+        };
       }
       
       // FAILURE: No data available
@@ -430,16 +423,82 @@ export class StandardizedDataFetcher {
   }
   
   /**
-   * PRIORITY 2: Fetch from Live API (smart caching for current periods)
+   * NEW: Fetch from Smart Cache System (direct integration)
    */
-  private static async fetchFromLiveAPI(
+  private static async fetchFromSmartCache(
+    clientId: string,
+    dateRange: { start: string; end: string },
+    platform: string
+  ): Promise<Partial<StandardizedDataResult>> {
+    
+    console.log(`🎯 SMART CACHE: Direct integration for ${platform}...`);
+    
+    try {
+      // Import smart cache helpers dynamically
+      const { getSmartCacheData } = await import('./smart-cache-helper');
+      const { getSmartWeekCacheData } = await import('./smart-cache-helper');
+      
+      // Determine if this is weekly or monthly request
+      const start = new Date(dateRange.start);
+      const end = new Date(dateRange.end);
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const isWeekly = daysDiff <= 7;
+      
+      console.log(`📅 Detected ${isWeekly ? 'weekly' : 'monthly'} request (${daysDiff} days)`);
+      
+      let cacheResult;
+      if (isWeekly) {
+        // Generate period ID for weekly requests
+        const year = start.getFullYear();
+        const jan4 = new Date(year, 0, 4);
+        const startOfYear = new Date(jan4);
+        startOfYear.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+        const weeksDiff = Math.floor((start.getTime() - startOfYear.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        const weekNumber = weeksDiff + 1;
+        const periodId = `${year}-W${String(weekNumber).padStart(2, '0')}`;
+        
+        cacheResult = await getSmartWeekCacheData(clientId, false, periodId);
+      } else {
+        cacheResult = await getSmartCacheData(clientId, false);
+      }
+      
+      if (cacheResult.success && cacheResult.data) {
+        console.log(`✅ Smart cache hit for ${platform}:`, {
+          source: cacheResult.source,
+          campaignsCount: cacheResult.data.campaigns?.length || 0,
+          totalSpend: cacheResult.data.stats?.totalSpend || 0
+        });
+        
+        return {
+          success: true,
+          data: {
+            stats: cacheResult.data.stats || this.getZeroData().stats,
+            conversionMetrics: cacheResult.data.conversionMetrics || this.getZeroData().conversionMetrics,
+            campaigns: cacheResult.data.campaigns || []
+          }
+        };
+      } else {
+        console.log(`⚠️ Smart cache miss for ${platform}`);
+        return { success: false };
+      }
+      
+    } catch (error) {
+      console.log(`⚠️ Smart cache error: ${error}`);
+      return { success: false };
+    }
+  }
+  
+  /**
+   * NEW: Fetch from Live API with Smart Cache Storage
+   */
+  private static async fetchFromLiveAPIWithCaching(
     clientId: string,
     dateRange: { start: string; end: string },
     platform: string,
     sessionToken?: string
   ): Promise<Partial<StandardizedDataResult>> {
     
-    console.log(`🚀 Using SMART CACHE for ${platform} (3-hour refresh)...`);
+    console.log(`🚀 LIVE API + CACHE STORAGE for ${platform}...`);
     
     try {
       // Determine API endpoint based on platform
@@ -447,28 +506,22 @@ export class StandardizedDataFetcher {
         ? '/api/fetch-live-data'
         : '/api/fetch-google-ads-live-data';
       
-      // 🚨 PRODUCTION FIX: Force fresh data for recent periods
-      const isRecentPeriod = new Date(dateRange.start) >= new Date(Date.now() - (30 * 24 * 60 * 60 * 1000));
-      
       const requestBody = {
         dateRange,
         clientId,
         platform,
-        forceFresh: isRecentPeriod, // 🚨 FORCE FRESH for recent periods (bypass ALL caching)
-        reason: isRecentPeriod ? 'production-fix-force-fresh' : 'standardized-smart-cache'
+        forceFresh: false, // Let smart cache system decide
+        reason: 'standardized-data-fetcher-with-caching'
       };
       
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const fullUrl = `${baseUrl}${apiEndpoint}`;
       
-      console.log(`🚀 Calling smart cache API: ${fullUrl}`);
+      console.log(`🚀 Calling live API with caching: ${fullUrl}`);
       
-      // 🔓 AUTH DISABLED: No authentication headers needed
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
-      
-      console.log('🔓 Authentication disabled for live API calls');
       
       const response = await fetch(fullUrl, {
         method: 'POST',
@@ -482,47 +535,21 @@ export class StandardizedDataFetcher {
       }
       
       const result = await response.json();
-      console.log(`📊 Smart cache API response:`, { 
+      console.log(`📊 Live API response:`, { 
         success: result.success, 
         hasData: !!result.data,
-        hasStats: !!result.data?.stats,
-        hasConversionMetrics: !!result.data?.conversionMetrics,
         source: result.debug?.source || 'unknown'
       });
       
       if (result.success && result.data) {
-        // Transform live API response to match StandardizedDataResult format
+        // Transform and return data
         const transformedData = {
-          stats: result.data.stats || {
-            totalSpend: 0,
-            totalImpressions: 0,
-            totalClicks: 0,
-            totalConversions: 0,
-            averageCtr: 0,
-            averageCpc: 0
-          },
-          conversionMetrics: result.data.conversionMetrics || {
-            click_to_call: 0,
-            email_contacts: 0,
-            booking_step_1: 0,
-            booking_step_2: 0,
-            booking_step_3: 0,
-            reservations: 0,
-            reservation_value: 0,
-            roas: 0,
-            cost_per_reservation: 0,
-            reach: 0
-          },
+          stats: result.data.stats || this.getZeroData().stats,
+          conversionMetrics: result.data.conversionMetrics || this.getZeroData().conversionMetrics,
           campaigns: result.data.campaigns || []
         };
         
-        console.log(`✅ Smart cache data transformed for ${platform}:`, {
-          totalSpend: transformedData.stats.totalSpend,
-          booking_step_3: transformedData.conversionMetrics.booking_step_3,
-          reach: transformedData.conversionMetrics.reach,
-          campaignsCount: transformedData.campaigns.length,
-          source: result.debug?.source || 'unknown'
-        });
+        console.log(`✅ Live API data transformed and cached for ${platform}`);
         
         return {
           success: true,

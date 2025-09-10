@@ -157,7 +157,7 @@ function getMonthOverMonthPeriods(currentPeriod: { start: string; end: string })
  * Format date as YYYY-MM-DD
  */
 function formatDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split('T')[0]!;
 }
 
 /**
@@ -277,15 +277,15 @@ async function fetchPeriodDataLive(
     logger.info('🔍 StandardizedDataFetcher result:', {
       clientId,
       period: period.label,
-      campaignCount: result?.campaigns?.length || 0,
-      firstCampaign: result?.campaigns?.[0] ? {
-        spend: result.campaigns[0].spend,
-        impressions: result.campaigns[0].impressions,
-        clicks: result.campaigns[0].clicks
+      campaignCount: result?.data?.campaigns?.length || 0,
+      firstCampaign: result?.data?.campaigns?.[0] ? {
+        spend: result.data.campaigns[0].spend,
+        impressions: result.data.campaigns[0].impressions,
+        clicks: result.data.campaigns[0].clicks
       } : null
     });
     
-    if (!result?.campaigns || result.campaigns.length === 0) {
+    if (!result?.data?.campaigns || result.data.campaigns.length === 0) {
       logger.warn('⚠️ No campaign data found for period', {
         clientId,
         period: period.label,
@@ -295,7 +295,7 @@ async function fetchPeriodDataLive(
     }
     
     // Aggregate campaign data
-    const totals = result.campaigns.reduce((acc, campaign) => ({
+    const totals = result.data.campaigns.reduce((acc: any, campaign: any) => ({
       spend: acc.spend + (campaign.spend || 0),
       impressions: acc.impressions + (campaign.impressions || 0),
       clicks: acc.clicks + (campaign.clicks || 0),
@@ -320,7 +320,7 @@ async function fetchPeriodDataLive(
       period: period.label,
       spend: totals.spend,
       impressions: totals.impressions,
-      campaignCount: result.campaigns.length
+      campaignCount: result.data.campaigns.length
     });
     
     return totals;
@@ -476,7 +476,7 @@ async function checkPeriodDataExists(clientId: string, period: ComparisonPeriod)
     const periodDate = new Date(period.start);
     const summaryDate = `${periodDate.getFullYear()}-${String(periodDate.getMonth() + 1).padStart(2, '0')}-01`;
     
-    const supabase = getSupabaseClient();
+    const { supabase } = await import('./supabase');
     const { data, error } = await supabase
       .from('campaign_summaries')
       .select('id')

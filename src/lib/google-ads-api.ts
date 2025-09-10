@@ -334,7 +334,7 @@ export class GoogleAdsAPIService {
         };
         
         // DYNAMIC TRACKING SYSTEM - Use real Google Ads data for conversion metrics
-        const hasConversionData = Object.values(campaignConversions).some(val => val > 0);
+        const hasConversionData = Object.values(campaignConversions).some((val: unknown) => Number(val) > 0);
         
         if (!hasConversionData && allConversions > 0) {
           logger.info(`📊 Using dynamic tracking for campaign ${campaign.name} with real Google Ads data`);
@@ -419,10 +419,7 @@ export class GoogleAdsAPIService {
       const debugInfo = conversionBreakdown._debug || {};
       logger.info(`🔍 Conversion mapping debug: ${debugInfo.totalActions || 0} total actions, ${debugInfo.unmappedCount || 0} unmapped`);
       
-      return {
-        campaigns,
-        conversionDebug: debugInfo
-      };
+      return campaigns as any;
       
     } catch (error) {
       logger.error('❌ Error fetching Google Ads campaign data:', error);

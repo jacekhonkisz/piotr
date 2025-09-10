@@ -14,7 +14,7 @@ import {
   Zap
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
-import { getIntegratedReportData } from '../../lib/integrated-cache-manager';
+import { StandardizedDataFetcher } from '../../lib/standardized-data-fetcher';
 import { getMonthBoundaries, getWeekBoundaries } from '../../lib/date-range-utils';
 import type { Database } from '../../lib/database.types';
 
@@ -68,7 +68,12 @@ export default function OptimizedReportsPage() {
         dateRange
       });
 
-      const result = await getIntegratedReportData(selectedClient.id, dateRange);
+      const result = await StandardizedDataFetcher.fetchData({
+        clientId: selectedClient.id,
+        dateRange,
+        platform: 'meta',
+        reason: 'optimized-reports-page'
+      });
       const loadTime = performance.now() - startTime;
 
       if (result.success) {
@@ -76,12 +81,12 @@ export default function OptimizedReportsPage() {
         setDataSource(getDataSourceIndicator(result, loadTime));
         
         console.log('✅ Optimized data loaded:', {
-          source: result.source,
+          source: result.debug?.source || 'unknown',
           loadTime: `${loadTime.toFixed(2)}ms`,
           dataSize: result.data ? Object.keys(result.data).length : 0
         });
       } else {
-        throw new Error(result.error || 'Failed to load data');
+        throw new Error('Failed to load data');
       }
     } catch (err: any) {
       console.error('❌ Error loading optimized data:', err);

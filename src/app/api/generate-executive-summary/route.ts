@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
       
       try {
         // Import the smart cache helper
-        const { getUnifiedSmartCacheData } = await import('../../../lib/unified-smart-cache-helper');
+        const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
         
         // Determine if this is current month to use smart cache
         const now = new Date();
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
         
         if (isCurrentMonth) {
           // Use smart cache for current month
-          const cacheResult = await getUnifiedSmartCacheData(clientId, false);
+          const cacheResult = await getSmartCacheData(clientId, false);
           
           // Extract platform-specific data
           const metaStats = cacheResult.data.meta?.stats || {};

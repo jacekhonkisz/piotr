@@ -20,7 +20,7 @@ import type { Database } from '../../lib/database.types';
 import { DashboardLoading } from '../../components/LoadingSpinner';
 import { getCurrentMonthInfo } from '../../lib/date-utils';
 import AdsDataToggle from '../../components/AdsDataToggle';
-import { fetchUnifiedData } from '../../lib/unified-data-fetcher';
+// Removed unified-data-fetcher import - using StandardizedDataFetcher instead
 import { DataSourceIndicator } from '../../components/DataSourceIndicator';
 import { MonthlyFromDailyCalculator } from '../../lib/monthly-from-daily-calculator';
 import { StandardizedDataFetcher } from '../../lib/standardized-data-fetcher';
@@ -37,8 +37,7 @@ type Client = Database['public']['Tables']['clients']['Row'];
 type Report = Database['public']['Tables']['reports']['Row'];
 type Campaign = Database['public']['Tables']['campaigns']['Row'];
 
-// 🔧 STANDARDIZED: Now using the same unified data fetcher as reports page
-// The fetchUnifiedData function is imported from src/lib/unified-data-fetcher.ts
+// 🔧 STANDARDIZED: Now using StandardizedDataFetcher as single source of truth
 
 interface ClientDashboardData {
   client: Client;
