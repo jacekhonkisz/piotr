@@ -450,7 +450,8 @@ export class StandardizedDataFetcher {
         body: JSON.stringify({
           clientId,
           platform,
-          forceRefresh: false
+          forceRefresh: false,
+          dateRange // Add dateRange to smart cache call
         })
       });
       

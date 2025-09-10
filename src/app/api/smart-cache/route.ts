@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
-    const { clientId, platform = 'meta', forceRefresh = false } = body;
+    const { clientId, platform = 'meta', forceRefresh = false, dateRange } = body;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -22,11 +22,20 @@ export async function POST(request: NextRequest) {
       clientId,
       platform,
       forceRefresh,
+      dateRange,
       authenticatedUser: 'auth-disabled'
     });
     
-    // Use the shared smart cache helper with platform parameter
-    const result = await getSmartCacheData(clientId, forceRefresh, platform);
+    // 🔧 FIX: Handle dateRange parameter for specific period requests
+    let result;
+    if (dateRange) {
+      // For specific date ranges, use the appropriate cache function
+      const { getSmartCacheDataForPeriod } = await import('../../../lib/smart-cache-helper');
+      result = await getSmartCacheDataForPeriod(clientId, dateRange, platform, forceRefresh);
+    } else {
+      // For current period, use the existing function
+      result = await getSmartCacheData(clientId, forceRefresh, platform);
+    }
     
     const responseTime = Date.now() - startTime;
     

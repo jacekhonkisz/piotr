@@ -482,6 +482,37 @@ async function refreshCacheInBackground(clientId: string, periodId: string, plat
 // Global request cache to prevent duplicate API calls
 const globalRequestCache = new Map<string, Promise<any>>();
 
+// Smart cache function for specific date ranges
+export async function getSmartCacheDataForPeriod(
+  clientId: string, 
+  dateRange: { start: string; end: string }, 
+  platform: string = 'meta', 
+  forceRefresh: boolean = false
+) {
+  const startDate = new Date(dateRange.start);
+  const endDate = new Date(dateRange.end);
+  const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  
+  // Determine if this is a weekly or monthly request
+  const isWeekly = daysDiff <= 8;
+  const periodId = isWeekly ? 
+    getCurrentWeekInfo().periodId : // For now, use current week logic
+    `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+  
+  logger.info('📅 Smart cache request for specific period:', {
+    clientId,
+    platform,
+    dateRange,
+    isWeekly,
+    periodId,
+    forceRefresh
+  });
+  
+  // For now, delegate to the existing function
+  // TODO: Implement proper period-specific caching
+  return await getSmartCacheData(clientId, forceRefresh, platform);
+}
+
 // Main smart cache function
 export async function getSmartCacheData(clientId: string, forceRefresh: boolean = false, platform: string = 'meta') {
   const currentMonth = getCurrentMonthInfo();
