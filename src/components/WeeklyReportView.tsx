@@ -499,16 +499,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   
   const yoyDateRange = getReasonableYoYDateRange();
   
-  console.log('🔍 WeeklyReportView YoY Debug:', {
-    firstReport: firstReport ? {
-      id: firstReport.id,
-      date_range_start: firstReport.date_range_start,
-      date_range_end: firstReport.date_range_end
-    } : null,
-    yoyDateRange,
-    clientId: clientData?.id,
-    viewType
-  });
+  // Year-over-year comparison configuration
 
   const { data: yoyData, loading: yoyLoading } = useYearOverYearComparison({
     clientId: clientData?.id || '',
@@ -539,29 +530,16 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         if (!report) return null;
         const campaigns = report.campaigns || [];
         
-        // DEBUG: Log YoY data
-        console.log('WeeklyReportView - Year-over-Year Debug:', {
-          yoyData,
-          yoyLoading,
-          viewType,
-          currentPeriod: {
-            start: firstReport?.date_range_start,
-            end: firstReport?.date_range_end,
-            reportId: firstReport?.id
-          },
-          yoyDateRange: getReasonableYoYDateRange(),
-          clientId: clientData?.id,
-          hasYoyData: !!yoyData,
-          spendChange: yoyData?.changes?.spend,
-          impressionsChange: yoyData?.changes?.impressions,
-          note: 'Comparing current period with same period from previous year'
-        });
+        // Year-over-year comparison data loaded
 
         // Helper function to format comparison change for MetricCard
         const formatComparisonChange = (changePercent: number) => {
           // ✅ PRODUCTION SYSTEM: Only show if we have real comparison data
           // Don't check for changePercent === 0 because real changes can be significant
           if (!yoyData || yoyLoading) return undefined;
+          
+          // Handle special case for unreliable historical data
+          if (changePercent === -999) return undefined; // Don't show comparison for unreliable data
           
           // Only show if we have meaningful change (not exactly 0)
           if (Math.abs(changePercent) < 0.01) return undefined;

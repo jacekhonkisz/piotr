@@ -206,6 +206,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
               { key: 'reservations', label: 'Reservations' }
             ].map((item, index) => {
               const change = yoyChanges[item.key as keyof typeof yoyChanges];
+              const isNoHistoricalData = change === -999; // Special value for unreliable historical data
               const isPositive = change > 0;
               const isNeutral = change === 0;
               
@@ -216,7 +217,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
                   className={`px-2 py-1 rounded-lg text-center min-w-[90px] text-xs font-medium shadow-md ${
-                    isNeutral 
+                    isNoHistoricalData || isNeutral
                       ? 'bg-slate-800 text-white border border-slate-900' 
                       : isPositive 
                         ? 'bg-orange-500 text-white border border-orange-600' 
@@ -226,9 +227,11 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                 >
                   <div className="text-center">
                     <div className="font-bold">
-                      {isNeutral ? 'N/A' : `${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1)}%`}
+                      {isNoHistoricalData ? 'N/A' : isNeutral ? 'N/A' : `${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1)}%`}
                     </div>
-                    <div className="text-[10px] mt-1">vs rok temu</div>
+                    <div className="text-[10px] mt-1">
+                      {isNoHistoricalData ? 'brak danych' : 'vs rok temu'}
+                    </div>
                   </div>
                 </motion.div>
               );

@@ -49,7 +49,8 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('🔄 REAL DATA COMPARISON API');
+  const requestId = Math.random().toString(36).substring(2, 8);
+  console.log(`🔄 REAL DATA COMPARISON API [${requestId}]`);
   
   try {
     const body = await request.json();
@@ -59,28 +60,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
     
-    console.log(`🔄 Fetching REAL ${platform} data for comparison:`, { clientId: clientId.substring(0,8), dateRange, platform });
+    console.log(`🔄 [${requestId}] Fetching REAL ${platform} data for comparison:`, { clientId: clientId.substring(0,8), dateRange, platform });
     
     // Calculate previous year date range
-    const currentStart = new Date(dateRange.start);
-    const currentEnd = new Date(dateRange.end);
-    
-    const prevYearStart = new Date(currentStart);
-    prevYearStart.setFullYear(prevYearStart.getFullYear() - 1);
-    
-    const prevYearEnd = new Date(currentEnd);
-    prevYearEnd.setFullYear(prevYearEnd.getFullYear() - 1);
-    
+      const currentStart = new Date(dateRange.start);
+      const currentEnd = new Date(dateRange.end);
+      
+      const prevYearStart = new Date(currentStart);
+      prevYearStart.setFullYear(prevYearStart.getFullYear() - 1);
+      
+      const prevYearEnd = new Date(currentEnd);
+      prevYearEnd.setFullYear(prevYearEnd.getFullYear() - 1);
+      
     const prevDateRange = {
       start: prevYearStart.toISOString().split('T')[0],
       end: prevYearEnd.toISOString().split('T')[0]
     };
     
     console.log('🔄 Year-over-year periods:', {
-      current: dateRange,
-      previous: prevDateRange,
+        current: dateRange,
+        previous: prevDateRange,
       platform
-    });
+      });
     
     // Fetch REAL current data using the same system as reports
     let currentData = null;
@@ -154,83 +155,265 @@ export async function POST(request: NextRequest) {
     
     // Fetch previous year data from database (historical data)
     try {
-      const prevMonth = `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 1).padStart(2, '0')}-01`;
-      const prevMonthEnd = `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 1).padStart(2, '0')}-30`;
-      
-      console.log('🔄 Fetching previous year from database:', { prevMonth, prevMonthEnd, platform });
-      
       const tableName = platform === 'google' ? 'google_ads_campaign_summaries' : 'campaign_summaries';
+      const dateColumn = platform === 'google' ? 'period_start' : 'summary_date';
+      const typeColumn = platform === 'google' ? 'period_type' : 'summary_type';
       
-      console.log('🔍 Database query details:', {
-        tableName,
-        clientId: clientId.substring(0,8),
-        dateColumn: platform === 'google' ? 'period_start' : 'summary_date',
-        searchDates: [prevMonth, prevMonthEnd],
-        typeColumn: platform === 'google' ? 'period_type' : 'summary_type'
+      // 🔧 FIX: Determine if this is a weekly or monthly comparison based on date range duration
+      const currentStartDate = new Date(dateRange.start);
+      const currentEndDate = new Date(dateRange.end);
+      const daysDifference = Math.ceil((currentEndDate.getTime() - currentStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
+      // Determine comparison type: weekly (≤ 7 days) or monthly (> 7 days)
+      const isWeeklyComparison = daysDifference <= 7;
+      const comparisonType = isWeeklyComparison ? 'weekly' : 'monthly';
+      
+      console.log(`🔍 [${requestId}] Comparison type analysis:`, {
+        currentDateRange: dateRange,
+        previousDateRange: { start: prevYearStart.toISOString().split('T')[0], end: prevYearEnd.toISOString().split('T')[0] },
+        daysDifference,
+        comparisonType,
+        platform,
+        clientId: clientId.substring(0,8)
       });
-
-      // Fetch weekly data for better funnel metrics (Meta has funnel data in weekly summaries)
-      const { data: weeklyData, error: weeklyError } = await supabase
-        .from(tableName)
-        .select(platform === 'google' 
-          ? 'total_spend, total_impressions, total_clicks, total_booking_step_1, total_booking_step_2, total_booking_step_3, total_reservations, period_start'
-          : 'total_spend, total_impressions, total_clicks, booking_step_1, booking_step_2, booking_step_3, reservations, summary_date'
-        )
-        .eq('client_id', clientId)
-        .eq(platform === 'google' ? 'period_type' : 'summary_type', 'weekly')
-        .gte(platform === 'google' ? 'period_start' : 'summary_date', `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 1).padStart(2, '0')}-01`)
-        .lt(platform === 'google' ? 'period_start' : 'summary_date', `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 2).padStart(2, '0')}-01`);
-
-      // Also try monthly as fallback - include campaign_data for Meta
-      const { data: monthlyData, error: monthlyError } = await supabase
-        .from(tableName)
-        .select(platform === 'google' 
-          ? 'total_spend, total_impressions, total_clicks, total_booking_step_1, total_booking_step_2, total_booking_step_3, total_reservations, period_start'
-          : 'total_spend, total_impressions, total_clicks, booking_step_1, booking_step_2, booking_step_3, reservations, summary_date, campaign_data'
-        )
-        .eq('client_id', clientId)
-        .eq(platform === 'google' ? 'period_type' : 'summary_type', 'monthly')
-        .gte(platform === 'google' ? 'period_start' : 'summary_date', `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 1).padStart(2, '0')}-01`)
-        .lt(platform === 'google' ? 'period_start' : 'summary_date', `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 2).padStart(2, '0')}-01`)
-        .limit(1)
-        .single() as { 
-          data: any; 
-          error: any; 
-        };
-
-      // Prioritize monthly data for funnel metrics (has campaign_data), use weekly as fallback
+      
       let prevData = null;
       let dbError = null;
+      
+      if (isWeeklyComparison) {
+        // 🔧 WEEKLY COMPARISON: Use live fetch for historical data (stored weekly data is unreliable)
+        console.log(`🔄 [${requestId}] Fetching WEEKLY comparison data via live fetch (stored data unreliable)...`);
+        
+        try {
+          // Try to live fetch historical data first
+          const historicalResult = platform === 'google' 
+            ? await (await import('../../../lib/google-ads-standardized-data-fetcher')).GoogleAdsStandardizedDataFetcher.fetchData({
+                clientId,
+                dateRange: {
+                  start: prevDateRange.start!,
+                  end: prevDateRange.end!
+                },
+                reason: 'comparison-historical-google',
+                sessionToken: undefined
+              })
+            : await (await import('../../../lib/standardized-data-fetcher')).StandardizedDataFetcher.fetchData({
+                clientId,
+                dateRange: {
+                  start: prevDateRange.start!,
+                  end: prevDateRange.end!
+                },
+                platform: 'meta',
+                reason: 'comparison-historical-meta',
+                sessionToken: undefined
+              });
 
-      if (monthlyData) {
-        // Use monthly data first (has campaign_data with correct funnel metrics)
-        prevData = monthlyData;
-        dbError = monthlyError;
-        console.log('✅ Using monthly data (has campaign_data with correct funnel metrics):', prevData);
-      } else if (weeklyData && weeklyData.length > 0) {
-        // Fallback to aggregated weekly data
-        prevData = {
-          total_spend: weeklyData.reduce((sum: number, week: any) => sum + (parseFloat(week.total_spend) || 0), 0),
-          total_impressions: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_impressions) || 0), 0),
-          total_clicks: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_clicks) || 0), 0),
-          // Use platform-specific column names for funnel data
-          ...(platform === 'google' ? {
-            total_booking_step_1: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_booking_step_1) || 0), 0),
-            total_booking_step_2: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_booking_step_2) || 0), 0),
-            total_booking_step_3: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_booking_step_3) || 0), 0),
-            total_reservations: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_reservations) || 0), 0)
-          } : {
-            booking_step_1: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.booking_step_1) || 0), 0),
-            booking_step_2: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.booking_step_2) || 0), 0),
-            booking_step_3: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.booking_step_3) || 0), 0),
-            reservations: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.reservations) || 0), 0)
-          })
-        };
-        console.log('📊 Fallback to aggregated weekly data:', prevData);
-        console.log(`📊 Found ${weeklyData.length} weekly summaries for aggregation`);
+          if (historicalResult?.success && historicalResult.data?.stats) {
+            const stats = historicalResult.data.stats as any;
+            const campaigns = historicalResult.data.campaigns as any[] || [];
+            
+            previousData = {
+              spend: stats.totalSpend || 0,
+              impressions: stats.totalImpressions || 0,
+              clicks: stats.totalClicks || 0,
+              // Note: Funnel data from live fetch of historical data
+              booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+              booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+              booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
+              reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0)
+            };
+            
+            console.log(`✅ [${requestId}] Live fetch historical data successful:`, {
+              period: prevDateRange,
+              spend: previousData.spend,
+              funnel: `${previousData.booking_step_1}→${previousData.booking_step_2}→${previousData.booking_step_3}→${previousData.reservations}`
+            });
+          } else {
+            console.log(`⚠️ [${requestId}] Live fetch historical failed, falling back to stored data`);
+            throw new Error('Live fetch failed, will try stored data');
+          }
+        } catch (liveError) {
+          console.log(`⚠️ [${requestId}] Live fetch error: ${liveError instanceof Error ? liveError.message : 'Unknown error'}, trying stored data...`);
+          
+          // Fallback to stored data query
+          console.log(`🔄 [${requestId}] Falling back to stored weekly data...`);
+        
+          // For weekly comparisons, look for data that matches the exact week period
+          const { data: weeklyData, error: weeklyError } = await supabase
+          .from(tableName)
+          .select(platform === 'google' 
+            ? 'total_spend, total_impressions, total_clicks, total_booking_step_1, total_booking_step_2, total_booking_step_3, total_reservations, period_start, period_end'
+            : 'total_spend, total_impressions, total_clicks, booking_step_1, booking_step_2, booking_step_3, reservations, summary_date, campaign_data'
+          )
+          .eq('client_id', clientId)
+          .eq(typeColumn, 'weekly')
+          .gte(dateColumn, prevYearStart.toISOString().split('T')[0])
+          .lte(dateColumn, prevYearEnd.toISOString().split('T')[0]) as { data: any[] | null; error: any; };
+
+        console.log(`🔍 [${requestId}] Weekly database query:`, {
+          tableName,
+          clientId: clientId.substring(0,8),
+          dateColumn,
+          searchRange: [prevYearStart.toISOString().split('T')[0], prevYearEnd.toISOString().split('T')[0]],
+          foundRecords: weeklyData?.length || 0,
+          actualRecords: weeklyData?.map(r => ({ 
+            date: (r as any).summary_date || (r as any).period_start, 
+            spend: (r as any).total_spend 
+          }))
+        });
+
+        if (weeklyData && weeklyData.length > 0) {
+          // Filter out weeks with obviously placeholder/default funnel data
+          const validWeeks = weeklyData.filter(week => {
+            const spend = parseFloat((week as any).total_spend || '0');
+            const step1 = parseInt((week as any).booking_step_1 || '0');
+            const step2 = parseInt((week as any).booking_step_2 || '0');
+            const step3 = parseInt((week as any).booking_step_3 || '0');
+            const reservations = parseInt((week as any).reservations || '0');
+            
+            // Check for placeholder data patterns:
+            // 1. All funnel steps are the same small number (like 2,2,2,2)
+            // 2. High spend but very low funnel numbers (indicates data quality issues)
+            const allSameSmallNumbers = (step1 === step2 && step2 === step3 && step1 <= 5);
+            const highSpendLowFunnel = (spend > 1000 && step1 <= 5);
+            const isPlaceholderData = allSameSmallNumbers || highSpendLowFunnel;
+            
+            console.log(`🔍 [${requestId}] Week ${(week as any).summary_date || (week as any).period_start} validation:`, {
+              spend,
+              funnel: `${step1}→${step2}→${step3}→${reservations}`,
+              allSameSmallNumbers,
+              highSpendLowFunnel,
+              isPlaceholderData: isPlaceholderData ? 'YES (FILTERED OUT)' : 'NO (VALID)'
+            });
+            
+            return !isPlaceholderData;
+          });
+          
+          console.log(`🔍 [${requestId}] Filtered weeks: ${weeklyData.length} total → ${validWeeks.length} valid`);
+          
+          if (validWeeks.length === 0) {
+            console.log(`⚠️ [${requestId}] No valid weekly data found (all weeks appear to have placeholder data)`);
+            prevData = null;
+            dbError = { message: 'No valid historical weekly data available' };
+          } else {
+            // Find the best matching week from valid weeks
+            let bestMatch = validWeeks[0];
+            let bestMatchScore = Infinity;
+            
+            for (const week of validWeeks) {
+              let weekStart: Date;
+              let matchScore: number;
+              
+              if (platform === 'google') {
+                // Google Ads has period_start and period_end
+                weekStart = new Date((week as any).period_start);
+                const weekEnd = new Date((week as any).period_end);
+                const startDiff = Math.abs(weekStart.getTime() - prevYearStart.getTime());
+                const endDiff = Math.abs(weekEnd.getTime() - prevYearEnd.getTime());
+                matchScore = startDiff + endDiff;
+              } else {
+                // Meta only has summary_date (start of the week)
+                weekStart = new Date((week as any).summary_date);
+                const startDiff = Math.abs(weekStart.getTime() - prevYearStart.getTime());
+                matchScore = startDiff;
+              }
+              
+              if (matchScore < bestMatchScore) {
+                bestMatch = week;
+                bestMatchScore = matchScore;
+              }
+            }
+          
+            prevData = bestMatch;
+            dbError = weeklyError;
+            console.log(`✅ [${requestId}] Found weekly match:`, {
+              matchedWeek: platform === 'google' 
+                ? `${(bestMatch as any).period_start} to ${(bestMatch as any).period_end}`
+                : `Week starting ${(bestMatch as any).summary_date}`,
+              totalSpend: (bestMatch as any).total_spend,
+              matchScore: bestMatchScore,
+              funnelData: `${(bestMatch as any).booking_step_1}→${(bestMatch as any).booking_step_2}→${(bestMatch as any).booking_step_3}→${(bestMatch as any).reservations}`
+            });
+          }
+        } else {
+          dbError = weeklyError;
+          console.log(`❌ [${requestId}] No weekly data found for comparison period`);
+        }
+        
+        } // End of catch block for live fetch fallback
+        
       } else {
-        dbError = weeklyError || monthlyError;
-        console.log('❌ No weekly or monthly data found');
+        // 🔧 MONTHLY COMPARISON: Use month-based logic (existing behavior)
+        console.log('🔄 Fetching MONTHLY comparison data from database...');
+        
+        const prevMonth = `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 1).padStart(2, '0')}-01`;
+        const prevMonthEnd = `${prevYearStart.getFullYear()}-${String(prevYearStart.getMonth() + 2).padStart(2, '0')}-01`;
+        
+        console.log('🔍 Monthly database query:', {
+          tableName,
+          clientId: clientId.substring(0,8),
+          dateColumn,
+          searchRange: [prevMonth, prevMonthEnd]
+        });
+
+        // Try monthly data first
+        const { data: monthlyData, error: monthlyError } = await supabase
+          .from(tableName)
+          .select(platform === 'google' 
+            ? 'total_spend, total_impressions, total_clicks, total_booking_step_1, total_booking_step_2, total_booking_step_3, total_reservations, period_start'
+            : 'total_spend, total_impressions, total_clicks, booking_step_1, booking_step_2, booking_step_3, reservations, summary_date, campaign_data'
+          )
+          .eq('client_id', clientId)
+          .eq(typeColumn, 'monthly')
+          .gte(dateColumn, prevMonth)
+          .lt(dateColumn, prevMonthEnd)
+          .limit(1)
+          .single() as { data: any; error: any; };
+
+        if (monthlyData) {
+          prevData = monthlyData;
+          dbError = monthlyError;
+          console.log('✅ Found monthly data:', { totalSpend: monthlyData.total_spend });
+        } else {
+          // Fallback to aggregated weekly data for the month
+          const { data: weeklyData, error: weeklyError } = await supabase
+            .from(tableName)
+            .select(platform === 'google' 
+              ? 'total_spend, total_impressions, total_clicks, total_booking_step_1, total_booking_step_2, total_booking_step_3, total_reservations, period_start'
+              : 'total_spend, total_impressions, total_clicks, booking_step_1, booking_step_2, booking_step_3, reservations, summary_date'
+            )
+            .eq('client_id', clientId)
+            .eq(typeColumn, 'weekly')
+            .gte(dateColumn, prevMonth)
+            .lt(dateColumn, prevMonthEnd) as { data: any[] | null; error: any; };
+
+          if (weeklyData && weeklyData.length > 0) {
+            // Aggregate weekly data into monthly totals
+            prevData = {
+              total_spend: weeklyData.reduce((sum: number, week: any) => sum + (parseFloat(week.total_spend) || 0), 0),
+              total_impressions: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_impressions) || 0), 0),
+              total_clicks: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_clicks) || 0), 0),
+              ...(platform === 'google' ? {
+                total_booking_step_1: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_booking_step_1) || 0), 0),
+                total_booking_step_2: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_booking_step_2) || 0), 0),
+                total_booking_step_3: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_booking_step_3) || 0), 0),
+                total_reservations: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.total_reservations) || 0), 0)
+              } : {
+                booking_step_1: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.booking_step_1) || 0), 0),
+                booking_step_2: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.booking_step_2) || 0), 0),
+                booking_step_3: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.booking_step_3) || 0), 0),
+                reservations: weeklyData.reduce((sum: number, week: any) => sum + (parseInt(week.reservations) || 0), 0)
+              })
+            };
+            dbError = weeklyError;
+            console.log('📊 Aggregated weekly data into monthly totals:', { 
+              weekCount: weeklyData.length, 
+              totalSpend: prevData.total_spend 
+            });
+          } else {
+            dbError = monthlyError || weeklyError;
+            console.log('❌ No monthly or weekly data found');
+          }
+        }
       }
       
       console.log('🔍 Database query result:', { prevData, dbError });
@@ -258,16 +441,70 @@ export async function POST(request: NextRequest) {
           reservations: 0
         };
 
-        // Check if campaign_data exists and has the real funnel data
+        console.log(`🔍 [${requestId}] Extracting funnel data from prevData:`, {
+          hasCampaignData: !!(prevData as any).campaign_data,
+          campaignDataType: typeof (prevData as any).campaign_data,
+          campaignDataLength: Array.isArray((prevData as any).campaign_data) ? (prevData as any).campaign_data.length : 'not array',
+          directColumns: {
+            booking_step_1: (prevData as any).booking_step_1,
+            booking_step_2: (prevData as any).booking_step_2,
+            booking_step_3: (prevData as any).booking_step_3,
+            reservations: (prevData as any).reservations,
+            total_booking_step_1: (prevData as any).total_booking_step_1,
+            total_booking_step_2: (prevData as any).total_booking_step_2,
+            total_booking_step_3: (prevData as any).total_booking_step_3,
+            total_reservations: (prevData as any).total_reservations
+          }
+        });
+
+        // Check if campaign_data exists and has meaningful funnel data
         if ((prevData as any).campaign_data && Array.isArray((prevData as any).campaign_data)) {
           const campaigns = (prevData as any).campaign_data;
-          funnelData = {
+          const campaignFunnelData = {
             booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
             booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
             booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
             reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0)
           };
-          console.log('✅ Using campaign_data for funnel metrics:', funnelData);
+          
+          // Check if campaign_data has meaningful funnel data (not all zeros)
+          const hasMeaningfulCampaignData = (
+            campaignFunnelData.booking_step_1 > 0 ||
+            campaignFunnelData.booking_step_2 > 0 ||
+            campaignFunnelData.booking_step_3 > 0 ||
+            campaignFunnelData.reservations > 0
+          );
+          
+          if (hasMeaningfulCampaignData) {
+            funnelData = campaignFunnelData;
+            console.log(`✅ [${requestId}] Using campaign_data for funnel metrics:`, funnelData);
+          } else {
+            // Campaign data exists but has no meaningful funnel data, fall back to direct columns
+            console.log(`⚠️ [${requestId}] Campaign data exists but has no funnel data, falling back to direct columns`);
+            funnelData = {
+              booking_step_1: parseInt(
+                platform === 'google' 
+                  ? (prevData as any).total_booking_step_1 || '0'
+                  : (prevData as any).booking_step_1 || '0'
+              ) || 0,
+              booking_step_2: parseInt(
+                platform === 'google' 
+                  ? (prevData as any).total_booking_step_2 || '0'
+                  : (prevData as any).booking_step_2 || '0'
+              ) || 0,
+              booking_step_3: parseInt(
+                platform === 'google' 
+                  ? (prevData as any).total_booking_step_3 || '0'
+                  : (prevData as any).booking_step_3 || '0'
+              ) || 0,
+              reservations: parseInt(
+                platform === 'google' 
+                  ? (prevData as any).total_reservations || '0'
+                  : (prevData as any).reservations || '0'
+              ) || 0
+            };
+            console.log(`📊 [${requestId}] Using direct columns for funnel metrics:`, funnelData);
+          }
       } else {
           // Fallback to direct columns (platform-specific)
           funnelData = {
@@ -292,15 +529,37 @@ export async function POST(request: NextRequest) {
                 : (prevData as any).reservations || '0'
             ) || 0
           };
-          console.log('📊 Using direct columns for funnel metrics:', funnelData);
+          console.log(`📊 [${requestId}] Using direct columns for funnel metrics:`, funnelData);
         }
 
+        // Check if funnel data appears to be placeholder/unreliable for weekly comparisons
+        const isWeeklyWithPoorFunnelData = isWeeklyComparison && (
+          funnelData.booking_step_1 <= 5 && 
+          funnelData.booking_step_2 <= 5 && 
+          funnelData.booking_step_3 <= 5 &&
+          parseFloat(prevData.total_spend || '0') > 1000 // High spend but low funnel = data quality issue
+        );
+        
+        if (isWeeklyWithPoorFunnelData) {
+          console.log(`⚠️ [${requestId}] Weekly funnel data appears unreliable, excluding from comparison`);
+          previousData = {
+            spend: parseFloat(prevData.total_spend || '0') || 0,
+            impressions: parseInt(prevData.total_impressions || '0') || 0,
+            clicks: parseInt(prevData.total_clicks || '0') || 0,
+            // Set funnel data to 0 to indicate unavailable/unreliable
+            booking_step_1: 0,
+            booking_step_2: 0,
+            booking_step_3: 0,
+            reservations: 0
+          };
+        } else {
         previousData = {
           spend: parseFloat(prevData.total_spend || '0') || 0,
           impressions: parseInt(prevData.total_impressions || '0') || 0,
           clicks: parseInt(prevData.total_clicks || '0') || 0,
           ...funnelData
         };
+        }
       }
       
       console.log('✅ Real previous year data:', previousData);
@@ -310,8 +569,15 @@ export async function POST(request: NextRequest) {
     }
     
     // Calculate changes
-    const calculateChange = (current: number, previous: number): number => {
-      if (previous === 0) return current > 0 ? 100 : 0;
+    const calculateChange = (current: number, previous: number, metricName?: string): number => {
+      if (previous === 0) {
+        // For funnel metrics, if historical data is 0, it's likely unreliable
+        if (metricName && ['booking_step_1', 'booking_step_2', 'booking_step_3', 'reservations'].includes(metricName)) {
+          // Return special value to indicate "no reliable historical data"
+          return -999; // Frontend will display this as "N/A" or "No historical data"
+        }
+        return current > 0 ? 100 : 0;
+      }
       return ((current - previous) / previous) * 100;
     };
     
@@ -322,13 +588,13 @@ export async function POST(request: NextRequest) {
       current,
       previous,
       changes: {
-        spend: Math.round(calculateChange(current.spend, previous.spend) * 10) / 10,
-        impressions: Math.round(calculateChange(current.impressions, previous.impressions) * 10) / 10,
-        clicks: Math.round(calculateChange(current.clicks, previous.clicks) * 10) / 10,
-        booking_step_1: Math.round(calculateChange(current.booking_step_1, previous.booking_step_1) * 10) / 10,
-        booking_step_2: Math.round(calculateChange(current.booking_step_2, previous.booking_step_2) * 10) / 10,
-        booking_step_3: Math.round(calculateChange(current.booking_step_3, previous.booking_step_3) * 10) / 10,
-        reservations: Math.round(calculateChange(current.reservations, previous.reservations) * 10) / 10
+        spend: Math.round(calculateChange(current.spend, previous.spend, 'spend') * 10) / 10,
+        impressions: Math.round(calculateChange(current.impressions, previous.impressions, 'impressions') * 10) / 10,
+        clicks: Math.round(calculateChange(current.clicks, previous.clicks, 'clicks') * 10) / 10,
+        booking_step_1: calculateChange(current.booking_step_1, previous.booking_step_1, 'booking_step_1') === -999 ? -999 : Math.round(calculateChange(current.booking_step_1, previous.booking_step_1, 'booking_step_1') * 10) / 10,
+        booking_step_2: calculateChange(current.booking_step_2, previous.booking_step_2, 'booking_step_2') === -999 ? -999 : Math.round(calculateChange(current.booking_step_2, previous.booking_step_2, 'booking_step_2') * 10) / 10,
+        booking_step_3: calculateChange(current.booking_step_3, previous.booking_step_3, 'booking_step_3') === -999 ? -999 : Math.round(calculateChange(current.booking_step_3, previous.booking_step_3, 'booking_step_3') * 10) / 10,
+        reservations: calculateChange(current.reservations, previous.reservations, 'reservations') === -999 ? -999 : Math.round(calculateChange(current.reservations, previous.reservations, 'reservations') * 10) / 10
       }
     };
     

@@ -348,21 +348,66 @@ export class BackgroundDataCollector {
   private async collectWeeklySummaryForClient(client: Client): Promise<void> {
     logger.info(`📊 Collecting weekly summary for ${client.name}...`);
 
-    // Get the last 52 weeks using standardized utilities
+    // 🔧 FIX: Only collect COMPLETED weeks, not current partial week
     const currentDate = new Date();
     const weeksToCollect = [];
 
+    // Start from last completed week (not current week)
+    const lastCompletedWeekEnd = new Date(currentDate);
+    const dayOfWeek = lastCompletedWeekEnd.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // Go back to last Sunday (end of last completed week)
+    const daysToLastSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
+    lastCompletedWeekEnd.setDate(lastCompletedWeekEnd.getDate() - daysToLastSunday);
+    lastCompletedWeekEnd.setHours(23, 59, 59, 999);
+
+    logger.info(`🔧 Starting from last completed week ending: ${lastCompletedWeekEnd.toISOString().split('T')[0]}`);
+
     for (let i = 0; i < 52; i++) {
-      const weekEndDate = new Date(currentDate.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+      const weekEndDate = new Date(lastCompletedWeekEnd.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
       const weekStartDate = new Date(weekEndDate.getTime() - (6 * 24 * 60 * 60 * 1000)); // 7 days before
       const weekRange = getWeekBoundaries(weekStartDate);
       
-      weeksToCollect.push({
-        startDate: weekRange.start,
-        endDate: weekRange.end,
-        weekNumber: Math.ceil((weekEndDate.getTime() - new Date(weekEndDate.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      });
+      // Only collect weeks that are completely in the past
+      const isCompleteWeek = weekEndDate < currentDate;
+      
+      if (isCompleteWeek) {
+        weeksToCollect.push({
+          startDate: weekRange.start,
+          endDate: weekRange.end,
+          weekNumber: Math.ceil((weekEndDate.getTime() - new Date(weekEndDate.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
+          isComplete: true
+        });
+      } else {
+        logger.info(`⏭️ Skipping incomplete week: ${weekRange.start} to ${weekRange.end}`);
+      }
     }
+
+    logger.info(`📅 Will collect ${weeksToCollect.length} completed weeks (skipping current partial week)`);
+    
+    // 🔧 FIX: Also collect current week if it has significant data (for real-time updates)
+    const currentWeekStart = new Date(currentDate);
+    const currentDayOfWeek = currentWeekStart.getDay();
+    const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
+    currentWeekStart.setDate(currentWeekStart.getDate() - daysToMonday);
+    currentWeekStart.setHours(0, 0, 0, 0);
+    
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+    currentWeekEnd.setHours(23, 59, 59, 999);
+    
+    const currentWeekRange = getWeekBoundaries(currentWeekStart);
+    
+    // Add current week for real-time updates (will be updated multiple times)
+    weeksToCollect.unshift({
+      startDate: currentWeekRange.start,
+      endDate: currentWeekRange.end,
+      weekNumber: Math.ceil((currentWeekEnd.getTime() - new Date(currentWeekEnd.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
+      isComplete: false,
+      isCurrent: true
+    });
+
+    logger.info(`📅 Added current week for real-time updates: ${currentWeekRange.start} to ${currentWeekRange.end}`);
 
     // Initialize Meta API service
     if (!client.meta_access_token || !client.ad_account_id) {
@@ -389,7 +434,8 @@ export class BackgroundDataCollector {
 
     for (const weekData of weeksToCollect) {
       try {
-        logger.info(`📅 Collecting week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
+        const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
+        logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
 
         // Fetch COMPLETE weekly campaign insights using improved method with pagination
         const campaignInsights = await metaService.getCompleteCampaignInsights(
@@ -400,29 +446,52 @@ export class BackgroundDataCollector {
 
         logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
 
+        // 🔧 FIX: For current week, log the actual funnel data being collected
+        if (weekData.isCurrent) {
+          const sampleCampaigns = campaignInsights.slice(0, 3);
+          logger.info(`🔍 Sample current week funnel data:`);
+          sampleCampaigns.forEach((campaign, index) => {
+            logger.info(`   Campaign ${index + 1}: ${campaign.campaign_name || 'Unknown'}`);
+            logger.info(`     Funnel: ${campaign.booking_step_1 || 0}→${campaign.booking_step_2 || 0}→${campaign.booking_step_3 || 0}→${campaign.reservations || 0}`);
+          });
+          
+          const aggregatedFunnel = campaignInsights.reduce((sum, c) => ({
+            step1: sum.step1 + (c.booking_step_1 || 0),
+            step2: sum.step2 + (c.booking_step_2 || 0),
+            step3: sum.step3 + (c.booking_step_3 || 0),
+            res: sum.res + (c.reservations || 0)
+          }), { step1: 0, step2: 0, step3: 0, res: 0 });
+          
+          logger.info(`🔍 Total current week funnel from campaigns: ${aggregatedFunnel.step1}→${aggregatedFunnel.step2}→${aggregatedFunnel.step3}→${aggregatedFunnel.res}`);
+        }
+
         // Calculate totals from complete campaign data
         const totals = this.calculateTotals(campaignInsights);
 
         // Count active campaigns (all returned campaigns are considered active)
         const activeCampaignCount = campaignInsights.length;
 
-        // Fetch meta tables
+        // Fetch meta tables (skip for current week to reduce API calls)
         let metaTables = null;
-        try {
-          // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-          const placementData = await metaService.getPlacementPerformance(processedAdAccountId, weekData.startDate, weekData.endDate);
-          // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-          const demographicData = await metaService.getDemographicPerformance(processedAdAccountId, weekData.startDate, weekData.endDate);
-          // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-          const adRelevanceData = await metaService.getAdRelevanceResults(processedAdAccountId, weekData.startDate, weekData.endDate);
-          
-          metaTables = {
-            placementPerformance: placementData,
-            demographicPerformance: demographicData,
-            adRelevanceResults: adRelevanceData
-          };
-        } catch (error) {
-          logger.warn(`⚠️ Failed to fetch meta tables for ${client.name} week ${weekData.weekNumber}:`, error);
+        if (!weekData.isCurrent) {
+          try {
+            // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
+            const placementData = await metaService.getPlacementPerformance(processedAdAccountId, weekData.startDate, weekData.endDate);
+            // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
+            const demographicData = await metaService.getDemographicPerformance(processedAdAccountId, weekData.startDate, weekData.endDate);
+            // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
+            const adRelevanceData = await metaService.getAdRelevanceResults(processedAdAccountId, weekData.startDate, weekData.endDate);
+            
+            metaTables = {
+              placementPerformance: placementData,
+              demographicPerformance: demographicData,
+              adRelevanceResults: adRelevanceData
+            };
+          } catch (error) {
+            logger.warn(`⚠️ Failed to fetch meta tables for ${client.name} week ${weekData.weekNumber}:`, error);
+          }
+        } else {
+          logger.info(`⏭️ Skipping meta tables for current week to reduce API calls`);
         }
 
         // Store the summary
@@ -431,13 +500,14 @@ export class BackgroundDataCollector {
           campaigns: campaignInsights,
           totals,
           metaTables,
-          activeCampaignCount
+          activeCampaignCount,
+          isCurrentWeek: weekData.isCurrent
         });
 
-        logger.info(`✅ Stored weekly summary for ${client.name} week ${weekData.weekNumber}`);
+        logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
 
-        // Add delay between weeks to avoid rate limiting
-        await this.delay(1000);
+        // Add delay between weeks to avoid rate limiting (shorter for current week)
+        await this.delay(weekData.isCurrent ? 500 : 1000);
 
       } catch (error) {
         logger.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
@@ -750,7 +820,8 @@ export class BackgroundDataCollector {
       enhancedConversionMetrics,
       roas,
       cost_per_reservation,
-      source: enhancedConversionMetrics.reservations > 0 ? 'daily_kpi_data_fallback' : 'meta_api'
+      source: enhancedConversionMetrics.reservations > 0 ? 'daily_kpi_data_fallback' : 'meta_api',
+      isCurrentWeek: data.isCurrentWeek || false
     });
 
     const summary = {
@@ -785,14 +856,15 @@ export class BackgroundDataCollector {
     const { error } = await supabase
       .from('campaign_summaries')
       .upsert(summary, {
-        onConflict: 'client_id,summary_type,summary_date'
+        onConflict: 'client_id,summary_type,summary_date,platform'
       });
 
     if (error) {
       throw new Error(`Failed to store weekly summary: ${error.message}`);
     }
 
-    logger.info(`💾 Stored weekly summary with enhanced conversion metrics: ${enhancedConversionMetrics.reservations} reservations, ${enhancedConversionMetrics.reservation_value} value`);
+    const weekType = data.isCurrentWeek ? 'CURRENT WEEK' : 'COMPLETED WEEK';
+    logger.info(`💾 Stored ${weekType} summary with enhanced conversion metrics: ${enhancedConversionMetrics.reservations} reservations, ${enhancedConversionMetrics.reservation_value} value`);
   }
 
   /**
