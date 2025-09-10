@@ -310,8 +310,8 @@ export async function fetchFreshCurrentMonthData(client: any) {
         ad_type: 'MIXED',
         objective: 'CONVERSIONS',
         status: 'ACTIVE',
-        date_start: currentMonth.startDate,
-        date_stop: currentMonth.endDate
+        date_start: currentMonth.startDate!,
+        date_stop: currentMonth.endDate!
       }];
       
       logger.info('✅ Created synthetic campaign with aggregated data');
@@ -386,8 +386,8 @@ export async function fetchFreshCurrentMonthData(client: any) {
         ad_type: 'UNKNOWN',
         objective: 'UNKNOWN',
         status: 'PAUSED',
-        date_start: currentMonth.startDate,
-        date_stop: currentMonth.endDate
+        date_start: currentMonth.startDate!,
+        date_stop: currentMonth.endDate!
       }],
       stats: {
         totalSpend: 0,
@@ -837,8 +837,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         ad_type: 'MIXED',
         objective: 'CONVERSIONS',
         status: 'ACTIVE',
-        date_start: currentWeek.startDate,
-        date_stop: currentWeek.endDate
+        date_start: currentWeek.startDate!,
+        date_stop: currentWeek.endDate!
       }];
       
       logger.info('✅ Created synthetic weekly campaign with aggregated data');
