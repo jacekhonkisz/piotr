@@ -67,6 +67,32 @@ export class StandardizedDataFetcher {
     sessionToken?: string;
   }): Promise<StandardizedDataResult> {
     
+    // 🔧 FIX: Only run on server-side to avoid Google Ads API browser issues
+    if (typeof window !== 'undefined') {
+      console.log('⚠️ StandardizedDataFetcher called on client-side, redirecting to API...');
+      
+      // Make API call to server-side endpoint
+      const response = await fetch('/api/fetch-live-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          clientId: params.clientId,
+          dateRange: params.dateRange,
+          platform: params.platform || 'meta',
+          reason: params.reason || 'standardized-fetch'
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      return result;
+    }
+    
     const { clientId, dateRange, platform = 'meta', reason = 'standardized-fetch', sessionToken } = params;
     const startTime = Date.now();
     
@@ -91,9 +117,13 @@ export class StandardizedDataFetcher {
     const isCurrentMonth = startYear === currentYear && startMonth === currentMonth;
     const includesCurrentDay = dateRange.end >= today;
     
-    // Check if this is current week (7 days or less, includes current day)
+    // Check if this is current week (exactly 7 days, starts on Monday, includes current day)
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const isCurrentWeek = daysDiff <= 8 && includesCurrentDay;
+    const isCurrentWeek = daysDiff === 7 && includesCurrentDay && startDate.getDay() === 1; // Monday start
+    
+    // 🔧 CRITICAL FIX: Ensure current month and current week don't overlap
+    // If it's a current week, it should NOT be classified as current month
+    const isCurrentMonthOnly = isCurrentMonth && !isCurrentWeek;
     
     const isCurrentPeriod = isCurrentMonth || isCurrentWeek;
     
@@ -108,25 +138,41 @@ export class StandardizedDataFetcher {
       requestMonth: startMonth,
       isCurrentMonth,
       isCurrentWeek,
+      isCurrentMonthOnly,
       isCurrentPeriod,
       includesCurrentDay,
       daysDiff,
       needsSmartCache,
       today,
       dateRangeEnd: dateRange.end,
-      strategy: needsSmartCache ? 'SMART_CACHE (3-hour refresh)' : 'DATABASE_FIRST (historical data)'
+      strategy: needsSmartCache ? 'SMART_CACHE (3-hour refresh)' : 'DATABASE_FIRST (historical data)',
+      note: isCurrentWeek ? 'CURRENT WEEK - using weekly cache' : isCurrentMonthOnly ? 'CURRENT MONTH - using monthly cache' : 'HISTORICAL - using database'
     });
     
-    // 🔧 CRITICAL FIX: For current periods, use smart cache endpoint directly
+    // 🔧 CRITICAL FIX: For current periods, use appropriate smart cache endpoint
     if (needsSmartCache) {
       console.log('🎯 USING SMART CACHE ENDPOINT for current period...');
-      console.log('🎯 Smart cache parameters:', { clientId, dateRange, platform });
-      const smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+      console.log('🎯 Smart cache parameters:', { clientId, dateRange, platform, isCurrentWeek, isCurrentMonthOnly });
+      
+      let smartCacheResult;
+      
+      if (isCurrentWeek) {
+        // Use weekly smart cache for current week
+        console.log('📅 Using WEEKLY smart cache for current week...');
+        smartCacheResult = await this.fetchFromWeeklySmartCache(clientId, dateRange, platform);
+      } else {
+        // Use monthly smart cache for current month
+        console.log('📅 Using MONTHLY smart cache for current month...');
+        smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+      }
+      
       console.log('🎯 Smart cache result:', { 
         success: smartCacheResult.success, 
         source: smartCacheResult.debug?.source,
-        campaignsCount: smartCacheResult.data?.campaigns?.length || 0
+        campaignsCount: smartCacheResult.data?.campaigns?.length || 0,
+        cacheType: isCurrentWeek ? 'weekly' : 'monthly'
       });
+      
       if (smartCacheResult.success) {
         return smartCacheResult as StandardizedDataResult;
       }
@@ -212,8 +258,39 @@ export class StandardizedDataFetcher {
         };
       }
       
-      // 🚫 REMOVED: daily_kpi_data fallback - use only smart cache and database
-      console.log(`3️⃣ SKIPPED: daily_kpi_data fallback removed - using only smart cache and database`);
+      // 🎯 PRIORITY 3: daily_kpi_data (most accurate for all periods)
+      console.log(`3️⃣ DAILY KPI DATA: Trying daily_kpi_data for ${platform}...`);
+      dataSources.push('daily_kpi_data');
+      
+      const dailyResult = await this.fetchFromDailyKpiData(clientId, dateRange, platform);
+      if (dailyResult.success) {
+        const responseTime = Date.now() - startTime;
+        
+        console.log(`✅ SUCCESS: daily_kpi_data returned data in ${responseTime}ms`);
+        console.log('🔍 DAILY KPI DATA DEBUG:', {
+          totalSpend: dailyResult.data?.stats?.totalSpend,
+          totalReservations: dailyResult.data?.conversionMetrics?.reservations,
+          totalReservationValue: dailyResult.data?.conversionMetrics?.reservation_value
+        });
+        
+        return {
+          success: true,
+          data: dailyResult.data!,
+          debug: {
+            source: 'daily-kpi-data',
+            cachePolicy: isCurrentPeriod ? 'database-first-current' : 'database-first-historical',
+            responseTime,
+            reason,
+            dataSourcePriority: dataSources,
+            periodType: isCurrentPeriod ? 'current' : 'historical'
+          },
+          validation: {
+            actualSource: 'daily_kpi_data',
+            expectedSource: 'daily_kpi_data',
+            isConsistent: true
+          }
+        };
+      }
       
       // 🎯 PRIORITY 4: Live API fallback (last resort with smart cache storage)
       console.log('4️⃣ No database data, trying live API fallback with smart cache storage...');
@@ -504,6 +581,81 @@ export class StandardizedDataFetcher {
     }
   }
   
+  /**
+   * NEW: Fetch from Weekly Smart Cache
+   */
+  private static async fetchFromWeeklySmartCache(
+    clientId: string,
+    dateRange: { start: string; end: string },
+    platform: string
+  ): Promise<Partial<StandardizedDataResult>> {
+    
+    console.log(`📅 WEEKLY SMART CACHE for ${platform}...`);
+    
+    try {
+      if (platform === 'google') {
+        // Use Google Ads weekly smart cache (server-side only)
+        if (typeof window === 'undefined') {
+          const { getGoogleAdsSmartWeekCacheData } = await import('./google-ads-smart-cache-helper');
+          const result = await getGoogleAdsSmartWeekCacheData(clientId, false);
+        
+          if (result.success && result.data) {
+            return {
+              success: true,
+              data: result.data,
+              debug: {
+                source: 'google-ads-weekly-cache',
+                cachePolicy: 'smart-cache-3hour',
+                responseTime: 0,
+                reason: 'weekly-smart-cache',
+                dataSourcePriority: ['weekly-smart-cache'],
+                periodType: 'current-week'
+              },
+              validation: {
+                actualSource: 'google_ads_weekly_cache',
+                expectedSource: 'google_ads_weekly_cache',
+                isConsistent: true
+              }
+            };
+          }
+        } else {
+          // Client-side: return error for Google Ads
+          console.log('⚠️ Google Ads weekly cache not available on client-side');
+          return { success: false };
+        }
+      } else {
+        // Use Meta weekly smart cache
+        const { getSmartWeekCacheData } = await import('./smart-cache-helper');
+        const result = await getSmartWeekCacheData(clientId, false);
+        
+        if (result.success && result.data) {
+          return {
+            success: true,
+            data: result.data,
+            debug: {
+              source: 'meta-weekly-cache',
+              cachePolicy: 'smart-cache-3hour',
+              responseTime: 0,
+              reason: 'weekly-smart-cache',
+              dataSourcePriority: ['weekly-smart-cache'],
+              periodType: 'current-week'
+            },
+            validation: {
+              actualSource: 'meta_weekly_cache',
+              expectedSource: 'meta_weekly_cache',
+              isConsistent: true
+            }
+          };
+        }
+      }
+      
+      return { success: false };
+    } catch (error) {
+      console.error(`❌ Weekly smart cache error for ${platform}:`, error);
+      return { success: false };
+    }
+  }
+
   /**
    * NEW: Fetch from Live API with Smart Cache Storage
    */

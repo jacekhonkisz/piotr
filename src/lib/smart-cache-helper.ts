@@ -51,19 +51,21 @@ export function isCacheFresh(lastUpdated: string): boolean {
   return age < CACHE_DURATION_MS;
 }
 
-// Helper function to get current month info
+// Helper function to get current month info (using standardized date-range-utils)
 export function getCurrentMonthInfo() {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+  
+  // Use standardized month boundaries calculation
+  const { getMonthBoundaries } = require('./date-range-utils');
+  const monthBoundaries = getMonthBoundaries(year, month);
   
   return {
     year,
     month,
-    startDate,
-    endDate,
+    startDate: monthBoundaries.start,
+    endDate: monthBoundaries.end,
     periodId: `${year}-${String(month).padStart(2, '0')}`
   };
 }
@@ -465,8 +467,13 @@ async function refreshCacheInBackground(clientId: string, periodId: string, plat
     // Fetch fresh data in background (force refresh to bypass cache)
     let freshData;
     if (platform === 'google') {
-      const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
-      freshData = await fetchFreshGoogleAdsCurrentMonthData(clientData);
+      // Import Google Ads function dynamically (server-side only)
+      if (typeof window === 'undefined') {
+        const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
+        freshData = await fetchFreshGoogleAdsCurrentMonthData(clientData);
+      } else {
+        throw new Error('Google Ads not available on client-side');
+      }
     } else {
       freshData = await fetchFreshCurrentMonthData(clientData);
     }
@@ -643,10 +650,14 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
   
   if (platform === 'google') {
     console.log('🔍 SMART CACHE DEBUG: Fetching Google Ads data...');
-    // Import Google Ads function dynamically to avoid circular dependencies
-    const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
-    freshData = await fetchFreshGoogleAdsCurrentMonthData(clientData);
-    cacheTable = 'google_ads_current_month_cache';
+    // Import Google Ads function dynamically to avoid circular dependencies (server-side only)
+    if (typeof window === 'undefined') {
+      const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
+      freshData = await fetchFreshGoogleAdsCurrentMonthData(clientData);
+      cacheTable = 'google_ads_current_month_cache';
+    } else {
+      throw new Error('Google Ads not available on client-side');
+    }
   } else {
     console.log('🔍 SMART CACHE DEBUG: Fetching Meta data...');
     freshData = await fetchFreshCurrentMonthData(clientData);

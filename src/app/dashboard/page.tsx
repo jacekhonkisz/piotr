@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { 
   BarChart3, 
   Download,
@@ -27,7 +28,11 @@ import { StandardizedDataFetcher } from '../../lib/standardized-data-fetcher';
 
 import AnimatedMetricsCharts from '../../components/AnimatedMetricsCharts';
 import MetaPerformanceLive from '../../components/MetaPerformanceLive';
-import GoogleAdsPerformanceLive from '../../components/GoogleAdsPerformanceLive';
+// GoogleAdsPerformanceLive imported dynamically to avoid Google Ads API browser issues
+const GoogleAdsPerformanceLive = dynamic(() => import('../../components/GoogleAdsPerformanceLive'), {
+  ssr: false,
+  loading: () => <div className="animate-pulse bg-gray-200 h-32 rounded-lg"></div>
+}) as React.ComponentType<any>;
 
 
 import ClientSelector from '../../components/ClientSelector';
@@ -767,13 +772,36 @@ export default function DashboardPage() {
         if (effectiveProvider === 'google') {
           // Use separate Google Ads system
           console.log('🎯 Using GoogleAdsStandardizedDataFetcher for dashboard...');
-          const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
           
-          result = await GoogleAdsStandardizedDataFetcher.fetchData({
-            clientId: currentClient.id,
-            dateRange,
-            reason: 'google-ads-dashboard-standardized-load'
-          });
+          // Use Google Ads fetcher only on server-side
+          if (typeof window === 'undefined') {
+            const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+            
+            result = await GoogleAdsStandardizedDataFetcher.fetchData({
+              clientId: currentClient.id,
+              dateRange,
+              reason: 'google-ads-dashboard-standardized-load'
+            });
+          } else {
+            // Client-side: redirect to API endpoint
+            const response = await fetch('/api/fetch-google-ads-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                clientId: currentClient.id,
+                dateRange,
+                reason: 'google-ads-dashboard-standardized-load'
+              })
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Google Ads API call failed: ${response.status}`);
+            }
+            
+            result = await response.json();
+          }
         } else {
           // Use Meta system
           console.log('🎯 Using StandardizedDataFetcher for Meta dashboard...');

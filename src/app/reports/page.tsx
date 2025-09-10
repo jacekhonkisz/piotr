@@ -185,16 +185,39 @@ const fetchReportDataUnified = async (params: {
     let result;
     
     if (platform === 'google') {
-      // Use separate Google Ads system
+      // Use separate Google Ads system (server-side only)
       console.log('🎯 Using GoogleAdsStandardizedDataFetcher for Google Ads reports...');
-      const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
       
-      result = await GoogleAdsStandardizedDataFetcher.fetchData({
-        clientId,
-        dateRange,
-        reason: reason || 'google-ads-reports-standardized',
-        sessionToken: session?.access_token
-      });
+      if (typeof window === 'undefined') {
+        // Server-side: use Google Ads fetcher directly
+        const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+        
+        result = await GoogleAdsStandardizedDataFetcher.fetchData({
+          clientId,
+          dateRange,
+          reason: reason || 'google-ads-reports-standardized',
+          sessionToken: session?.access_token
+        });
+      } else {
+        // Client-side: redirect to API endpoint
+        const response = await fetch('/api/fetch-google-ads-live-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange,
+            reason: reason || 'google-ads-reports-standardized'
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Google Ads API call failed: ${response.status}`);
+        }
+        
+        result = await response.json();
+      }
     } else {
       // Use Meta system
       console.log('🎯 Using StandardizedDataFetcher for Meta reports...');
@@ -1418,82 +1441,42 @@ function ReportsPageContent() {
         const currentDate = new Date();
         const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
         
-        if (isCurrentMonth) {
-          // 🔧 FIX: For current month, cap end date to today to avoid future date API errors
-          const monthBoundaries = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
-          const todayISO = new Date().toISOString().split('T')[0];
-          const today: string = todayISO || new Date().toISOString().substring(0, 10); // Ensure string type
-          
-          dateRange = {
-            start: monthBoundaries.start,
-            end: today // Cap to today to avoid "future date" API errors (e.g., Sept 1-8 if today is Sept 8)
-          };
-          
-          console.log(`📅 Current month date parsing (FIXED):`, {
-            periodId,
-            year,
-            month,
-            startDate: dateRange.start,
-            endDate: dateRange.end,
-            isCurrentMonth: true,
-            note: 'Capped end date to today to avoid future date API errors'
-          });
-        } else {
-          // For past months: use the full month boundaries
-          dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
-          
-          console.log(`📅 Past month date parsing:`, {
-            periodId,
-            year,
-            month,
-            startDate: dateRange.start,
-            endDate: dateRange.end,
-            isCurrentMonth: false,
-            note: 'Using full month boundaries for past months'
-          });
-        }
+        // 🔧 FIX: Always use full month boundaries for consistency
+        // The API will handle date validation and capping internally
+        dateRange = getMonthBoundaries(year || new Date().getFullYear(), month || 1);
+        
+        console.log(`📅 Month date parsing (STANDARDIZED):`, {
+          periodId,
+          year,
+          month,
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+          isCurrentMonth: isCurrentMonth,
+          note: 'Using full month boundaries - API handles date validation'
+        });
       } else {
-        // Parse week ID to get start and end dates using proper ISO week calculation
+        // Parse week ID to get start and end dates using standardized week calculation
         const [year, weekStr] = periodId.split('-W');
         const week = parseInt(weekStr || '1');
-        
-        // CORRECTED ISO week calculation - find the start date of the given ISO week
         const yearNum = parseInt(year || new Date().getFullYear().toString());
         
-        // Use UTC to avoid timezone issues
-        const jan4 = new Date(Date.UTC(yearNum, 0, 4));
-        const jan4Day = jan4.getUTCDay();
+        // 🔧 FIX: Use standardized week calculation from week-utils
+        const { parseWeekPeriodId } = await import('../../lib/week-utils');
+        const weekInfo = parseWeekPeriodId(periodId);
         
-        // Find the Monday of week 1 (ISO week starts on Monday)
-        const daysFromMonday = jan4Day === 0 ? 6 : jan4Day - 1; // Sunday = 6, Monday = 0
-        const startOfWeek1 = new Date(jan4);
-        startOfWeek1.setUTCDate(jan4.getUTCDate() - daysFromMonday);
+        dateRange = {
+          start: weekInfo.startDate,
+          end: weekInfo.endDate
+        };
         
-        // Calculate the start date of the target week
-        const weekStartDate = new Date(startOfWeek1);
-        weekStartDate.setUTCDate(startOfWeek1.getUTCDate() + (week - 1) * 7);
-        
-        dateRange = getWeekBoundaries(weekStartDate);
-        
-        console.log(`📅 ISO Week parsing for ${periodId}:`, {
+        console.log(`📅 Standardized Week parsing for ${periodId}:`, {
           periodId,
           year: yearNum,
           week,
-          jan4: jan4.toISOString().split('T')[0],
-          startOfWeek1: startOfWeek1.toISOString().split('T')[0],
-          weekStartDate: weekStartDate.toISOString().split('T')[0],
           dateRange,
           calculatedStart: dateRange.start,
-          calculatedEnd: dateRange.end
-        });
-        
-        // 🚨 CRITICAL DEBUG: Log the exact dates being used
-        console.log(`🚨 CRITICAL: Week ${week} of ${yearNum} calculated as:`, {
-          actualStart: dateRange.start,
-          actualEnd: dateRange.end,
-          calculationMethod: 'CORRECTED UTC ISO week algorithm',
-          weekNumber: week,
-          year: yearNum
+          calculatedEnd: dateRange.end,
+          calculationMethod: 'STANDARDIZED week-utils'
         });
       }
       

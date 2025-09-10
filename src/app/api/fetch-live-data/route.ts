@@ -100,34 +100,32 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
     requestEndDate: endDate
   });
   
-  // 🔧 FIX: More flexible current week detection
-  // Check if the request is for the current week period, even if end dates don't match exactly
-  // This handles cases where frontend sends full week range but API caps to today
-  
+  // 🔧 FIX: Strict current week detection - must match exactly
+  // Check if the request is for the current week period with exact date match
   const requestStart = new Date(startDate);
   const requestEnd = new Date(endDate);
   const currentWeekStart = new Date(currentWeekInfo.startDate);
+  const currentWeekEnd = new Date(currentWeekInfo.endDate);
   
-  // Check if request start matches current week start
+  // Check if request dates match current week dates exactly
   const startMatches = startDate === currentWeekInfo.startDate;
+  const endMatches = endDate === currentWeekInfo.endDate;
   
-  // Check if today falls within the requested range
-  const todayStr = now.toISOString().split('T')[0] || '';
-  const todayInRange = startDate <= todayStr && todayStr <= endDate;
+  // Check if this is exactly a 7-day period starting on Monday
+  const daysDiff = Math.ceil((requestEnd.getTime() - requestStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const isMondayStart = requestStart.getDay() === 1;
+  const isExactWeek = daysDiff === 7 && isMondayStart;
   
-  // Check if this is the same ISO week period
-  const requestWeekStart = new Date(startDate);
-  const sameWeek = Math.abs(requestWeekStart.getTime() - currentWeekStart.getTime()) < 7 * 24 * 60 * 60 * 1000;
+  const result = startMatches && endMatches && isExactWeek;
   
-  const result = startMatches && (todayInRange || sameWeek);
-  
-  logger.debug('🔍 Enhanced week comparison result:', {
+  logger.debug('🔍 Strict week comparison result:', {
     startDateMatches: startMatches,
-    todayInRange: todayInRange,
-    sameWeek: sameWeek,
-    todayStr: todayStr,
+    endDateMatches: endMatches,
+    isExactWeek: isExactWeek,
+    daysDiff: daysDiff,
+    isMondayStart: isMondayStart,
     result: result,
-    reasoning: result ? 'Current week detected' : 'Not current week'
+    reasoning: result ? 'Exact current week match' : 'Not current week'
   });
   
   return result;

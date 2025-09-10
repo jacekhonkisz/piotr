@@ -18,21 +18,9 @@ export function getCurrentMonthInfo() {
 }
 
 export function getCurrentWeekInfo() {
-  const now = new Date();
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay());
-  startOfWeek.setHours(0, 0, 0, 0);
-  
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
-  endOfWeek.setHours(23, 59, 59, 999);
-  
-  return {
-    startDate: startOfWeek.toISOString().split('T')[0],
-    endDate: endOfWeek.toISOString().split('T')[0],
-    year: startOfWeek.getFullYear(),
-    week: getWeekNumber(startOfWeek)
-  };
+  // Import and use the standardized week calculation from week-utils
+  const { getCurrentWeekInfo: getStandardizedWeekInfo } = require('./week-utils');
+  return getStandardizedWeekInfo();
 }
 
 function getWeekNumber(date: Date): number {

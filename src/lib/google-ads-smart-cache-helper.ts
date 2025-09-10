@@ -10,52 +10,30 @@ const supabase = createClient(
 // Cache duration: 3 hours (same as Meta)
 const CACHE_DURATION_HOURS = 3;
 
-// Helper function to get current month info (matching Meta implementation)
+// Helper function to get current month info (using standardized date-range-utils)
 export function getCurrentMonthInfo() {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+  // Use standardized month boundaries calculation
+  const { getMonthBoundaries } = require('./date-range-utils');
+  const monthBoundaries = getMonthBoundaries(year, month);
   
   return {
     year,
     month,
-    startDate,
-    endDate,
+    startDate: monthBoundaries.start,
+    endDate: monthBoundaries.end,
     periodId: `${year}-${String(month).padStart(2, '0')}`
   };
 }
 
-// Helper function to get current week info (matching Meta implementation)
+// Helper function to get current week info (using standardized week-utils implementation)
 export function getCurrentWeekInfo() {
-  const now = new Date();
-  const year = now.getFullYear();
-  
-  // Get ISO week number (Monday = start of week)
-  const date = new Date(now.getTime());
-  date.setHours(0, 0, 0, 0);
-  // Thursday in current week decides the year
-  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-  // January 4 is always in week 1
-  const week1 = new Date(date.getFullYear(), 0, 4);
-  // Adjust to Thursday in week 1 and count weeks from there
-  const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-  
-  // Calculate week start and end dates
-  const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - (now.getDay() + 6) % 7);
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
-  
-  return {
-    year,
-    week: weekNumber,
-    startDate: startOfWeek.toISOString().split('T')[0],
-    endDate: endOfWeek.toISOString().split('T')[0],
-    periodId: `${year}-W${String(weekNumber).padStart(2, '0')}`
-  };
+  // Import and use the standardized week calculation from week-utils
+  const { getCurrentWeekInfo: getStandardizedWeekInfo } = require('./week-utils');
+  return getStandardizedWeekInfo();
 }
 
 // Check if cache is fresh (same logic as Meta)
