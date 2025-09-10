@@ -137,7 +137,11 @@ export async function POST() {
             if (monthlyAge >= 2.5) {
               console.log(`🔄 Refreshing monthly cache for ${client.name} (${monthlyAge.toFixed(1)}h old)`);
               
-              const monthlyResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')}/api/smart-cache`, {
+              const baseUrl = process.env.NODE_ENV === 'production' 
+                ? process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')
+                : 'http://localhost:3000';
+              
+              const monthlyResponse = await fetch(`${baseUrl}/api/smart-cache`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -158,7 +162,11 @@ export async function POST() {
             if (weeklyAge >= 2.5) {
               console.log(`🔄 Refreshing weekly cache for ${client.name} (${weeklyAge.toFixed(1)}h old)`);
               
-              const weeklyResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')}/api/smart-weekly-cache`, {
+              const baseUrl = process.env.NODE_ENV === 'production' 
+                ? process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')
+                : 'http://localhost:3000';
+              
+              const weeklyResponse = await fetch(`${baseUrl}/api/smart-weekly-cache`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

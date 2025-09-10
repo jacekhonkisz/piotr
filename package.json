@@ -57,6 +57,7 @@
     "lodash": "^4.17.21",
     "lucide-react": "^0.303.0",
     "next": "^14.2.15",
+    "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "node-mocks-http": "^1.17.2",
     "puppeteer": "^24.17.1",

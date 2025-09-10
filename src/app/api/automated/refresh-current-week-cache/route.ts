@@ -98,7 +98,11 @@ export async function POST() {
             }
             
             // Call smart weekly cache API to refresh
-            const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')}/api/smart-weekly-cache`, {
+            const baseUrl = process.env.NODE_ENV === 'production' 
+              ? process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')
+              : 'http://localhost:3000';
+            
+            const response = await fetch(`${baseUrl}/api/smart-weekly-cache`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
