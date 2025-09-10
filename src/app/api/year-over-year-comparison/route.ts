@@ -50,13 +50,27 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const requestId = Math.random().toString(36).substring(2, 8);
-  console.log(`🔄 REAL DATA COMPARISON API [${requestId}]`);
+  console.log(`🔄 REAL DATA COMPARISON API [${requestId}] - START`);
   
   try {
     const body = await request.json();
+    console.log(`🔄 [${requestId}] Request body:`, {
+      hasClientId: !!body.clientId,
+      clientIdLength: body.clientId?.length || 0,
+      hasDateRange: !!body.dateRange,
+      dateRange: body.dateRange,
+      platform: body.platform
+    });
+    
     const { clientId, dateRange, platform = 'meta' } = body;
 
     if (!clientId || !dateRange?.start || !dateRange?.end) {
+      console.error(`❌ [${requestId}] Missing parameters:`, {
+        hasClientId: !!clientId,
+        hasDateRange: !!dateRange,
+        dateRangeStart: dateRange?.start,
+        dateRangeEnd: dateRange?.end
+      });
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
     
@@ -87,8 +101,11 @@ export async function POST(request: NextRequest) {
     let currentData = null;
     let previousData = null;
     
+    console.log(`🔄 [${requestId}] Starting data fetching process...`);
+    
     try {
       if (platform === 'google') {
+        console.log(`🔄 [${requestId}] Platform: Google Ads`);
         console.log('🔄 Fetching REAL Google Ads data...');
         const { GoogleAdsStandardizedDataFetcher } = await import('../../../lib/google-ads-standardized-data-fetcher');
         
@@ -119,9 +136,11 @@ export async function POST(request: NextRequest) {
         console.log('✅ Real Google current data:', currentData);
         
       } else {
+        console.log(`🔄 [${requestId}] Platform: Meta`);
         console.log('🔄 Fetching REAL Meta data...');
-      const { StandardizedDataFetcher } = await import('../../../lib/standardized-data-fetcher');
-      
+        const { StandardizedDataFetcher } = await import('../../../lib/standardized-data-fetcher');
+        
+        console.log(`🔄 [${requestId}] Calling StandardizedDataFetcher for current data...`);
         // Get current period data
         const currentResult = await StandardizedDataFetcher.fetchData({
         clientId,
@@ -129,6 +148,14 @@ export async function POST(request: NextRequest) {
         platform: 'meta',
           reason: 'comparison-current-meta',
           sessionToken: undefined
+        });
+        
+        console.log(`🔄 [${requestId}] StandardizedDataFetcher result:`, {
+          success: currentResult?.success,
+          hasData: !!currentResult?.data,
+          hasStats: !!currentResult?.data?.stats,
+          hasCampaigns: !!currentResult?.data?.campaigns,
+          campaignsLength: currentResult?.data?.campaigns?.length || 0
         });
         
         if (currentResult?.success && currentResult.data?.stats) {
@@ -150,7 +177,13 @@ export async function POST(request: NextRequest) {
         console.log('✅ Real Meta current data:', currentData);
       }
     } catch (error) {
-      console.error('❌ Error fetching current data:', error);
+      console.error(`❌ [${requestId}] Error fetching current data:`, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        platform,
+        clientId: clientId?.substring(0,8),
+        dateRange
+      });
     }
     
     // Fetch previous year data from database (historical data)
@@ -604,6 +637,16 @@ export async function POST(request: NextRequest) {
       previousSpend: previous.spend,
       hasHistoricalData: previous.spend > 0,
       clientId: clientId.substring(0,8)
+    });
+    
+    console.log(`✅ [${requestId}] FINAL COMPARISON RESULT:`, {
+      platform,
+      currentSpend: current.spend,
+      previousSpend: previous.spend,
+      hasHistoricalData: previous.spend > 0,
+      clientId: clientId.substring(0,8),
+      resultKeys: Object.keys(result),
+      changesKeys: Object.keys(result.changes)
     });
     
     console.log('✅ REAL DATA RESULT:', result);

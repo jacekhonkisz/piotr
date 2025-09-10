@@ -62,11 +62,33 @@ export function useYearOverYearComparison({
       clientId: clientId?.substring(0,8),
       dateRange,
       platform,
-      hasRequiredData: !!(enabled && clientId && dateRange.start && dateRange.end)
+      hasRequiredData: !!(enabled && clientId && dateRange.start && dateRange.end),
+      clientIdLength: clientId?.length,
+      dateRangeStart: dateRange?.start,
+      dateRangeEnd: dateRange?.end
     });
     
-    if (!enabled || !clientId || !dateRange.start || !dateRange.end) {
-      console.log('🔍 Hook skipping fetch - missing required data');
+    if (!enabled) {
+      console.log('🔍 Hook skipping fetch - disabled');
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    
+    if (!clientId) {
+      console.log('🔍 Hook skipping fetch - missing clientId');
+      setData(null);
+      setError('Missing client ID');
+      setLoading(false);
+      return;
+    }
+    
+    if (!dateRange?.start || !dateRange?.end) {
+      console.log('🔍 Hook skipping fetch - missing date range:', { dateRange });
+      setData(null);
+      setError('Missing date range');
+      setLoading(false);
       return;
     }
 
@@ -76,6 +98,12 @@ export function useYearOverYearComparison({
 
       try {
         console.log(`🔄 Fetching production comparison data (NO TIMEOUT) for ${platform}...`);
+        console.log(`🔄 API Request details:`, {
+          clientId: clientId?.substring(0,8),
+          dateRange,
+          platform,
+          url: '/api/year-over-year-comparison'
+        });
         
         // Clear previous data immediately when platform changes
         setData(null);
@@ -85,6 +113,12 @@ export function useYearOverYearComparison({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clientId, dateRange, platform })
+        });
+        
+        console.log(`🔄 API Response received:`, {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok
         });
 
         if (!response.ok) {
@@ -99,12 +133,27 @@ export function useYearOverYearComparison({
         }
 
         const result = await response.json();
+        console.log(`🔄 API Response data:`, {
+          hasResult: !!result,
+          resultKeys: result ? Object.keys(result) : [],
+          hasCurrent: !!result?.current,
+          hasPrevious: !!result?.previous,
+          hasChanges: !!result?.changes
+        });
         
         // Handle timeout response
         if (result.timeout) {
           console.log('⏰ API returned timeout - skipping comparisons');
           setData(null);
           setError('Comparison API timed out - comparisons disabled');
+          return;
+        }
+        
+        // Handle API errors
+        if (result.error) {
+          console.error('❌ API returned error:', result.error);
+          setData(null);
+          setError(`API Error: ${result.error}`);
           return;
         }
         

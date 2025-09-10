@@ -198,6 +198,11 @@ export class StandardizedDataFetcher {
         const responseTime = Date.now() - startTime;
       
         console.log(`✅ SUCCESS: Live API fallback returned data in ${responseTime}ms`);
+        console.log('🔍 META LIVE API DEBUG:', {
+          totalSpend: liveResult.data?.stats?.totalSpend,
+          totalReservations: liveResult.data?.conversionMetrics?.reservations,
+          totalReservationValue: liveResult.data?.conversionMetrics?.reservation_value
+        });
         
         return {
           success: true,
@@ -269,6 +274,8 @@ export class StandardizedDataFetcher {
     }
     
     console.log(`✅ Found ${dailyRecords.length} daily records for ${platform}, aggregating...`);
+    console.log(`🔍 DEBUG: Data sources in records:`, dailyRecords.map(r => r.data_source));
+    console.log(`🔍 DEBUG: Sample reservation values:`, dailyRecords.slice(0, 3).map(r => ({ date: r.date, reservation_value: r.reservation_value, data_source: r.data_source })));
     
     // Aggregate daily records INCLUDING reach and booking_step_3
     const totals = dailyRecords.reduce((acc, record) => ({
@@ -425,7 +432,8 @@ export class StandardizedDataFetcher {
     
     try {
       // Make HTTP request to smart cache API
-      const response = await fetch('/api/smart-cache', {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const response = await fetch(`${baseUrl}/api/smart-cache`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

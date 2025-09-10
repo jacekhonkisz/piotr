@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
-    const { clientId, forceRefresh = false } = body;
+    const { clientId, platform = 'meta', forceRefresh = false } = body;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -20,12 +20,13 @@ export async function POST(request: NextRequest) {
     
     logger.info('Data processing', {
       clientId,
+      platform,
       forceRefresh,
       authenticatedUser: 'auth-disabled'
     });
     
-    // Use the shared smart cache helper
-    const result = await getSmartCacheData(clientId, forceRefresh);
+    // Use the shared smart cache helper with platform parameter
+    const result = await getSmartCacheData(clientId, forceRefresh, platform);
     
     const responseTime = Date.now() - startTime;
     

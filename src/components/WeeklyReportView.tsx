@@ -277,6 +277,14 @@ const MetricCard = ({
 
 
 export default function WeeklyReportView({ reports, viewType = 'weekly', clientData, platform = 'meta' }: WeeklyReportViewProps) {
+  console.log('🚨 YOY DEBUG - WeeklyReportView component rendered at:', new Date().toISOString());
+  console.log('🚨 YOY DEBUG - Component props:', { 
+    hasReports: !!reports, 
+    reportCount: Object.keys(reports || {}).length,
+    viewType, 
+    hasClientData: !!clientData,
+    platform 
+  });
   
   const [expandedCampaigns, setExpandedCampaigns] = useState<{ [key: string]: boolean }>({});
   const [socialInsights, setSocialInsights] = useState<{
@@ -440,13 +448,14 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   const getReasonableYoYDateRange = () => {
     // Use the first report's date range (the actual period being viewed)
     if (firstReport && firstReport.date_range_start && firstReport.date_range_end) {
-      console.log('🔍 Using actual report date range for YoY comparison:', {
-        start: firstReport.date_range_start,
-        end: firstReport.date_range_end,
-        reportId: firstReport.id,
-        viewType: viewType,
-        note: 'This will be compared with same period from previous year'
-      });
+  console.log('🔍 Using actual report date range for YoY comparison:', {
+    start: firstReport.date_range_start,
+    end: firstReport.date_range_end,
+    reportId: firstReport.id,
+    viewType: viewType,
+    note: 'This will be compared with same period from previous year'
+  });
+  console.log('🚨 YOY DEBUG - Date range function called at:', new Date().toISOString());
       
       return {
         start: firstReport.date_range_start,
@@ -501,11 +510,32 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   
   // Year-over-year comparison configuration
 
-  const { data: yoyData, loading: yoyLoading } = useYearOverYearComparison({
+  // Debug logging for YoY hook parameters
+  console.log('🔍 YoY Hook Debug - Parameters:', {
+    clientId: clientData?.id || 'MISSING',
+    clientIdLength: (clientData?.id || '').length,
+    dateRange: yoyDateRange,
+    enabled: true,
+    platform: platform,
+    hasClientData: !!clientData,
+    clientDataKeys: clientData ? Object.keys(clientData) : []
+  });
+
+  const { data: yoyData, loading: yoyLoading, error: yoyError } = useYearOverYearComparison({
     clientId: clientData?.id || '',
     dateRange: yoyDateRange,
     enabled: true, // ✅ RE-ENABLED: Let's make this work properly
     platform: platform, // ✅ Pass platform information
+  });
+  
+  // Debug logging for YoY hook results
+  console.log('🔍 YoY Hook Debug - Results:', {
+    hasData: !!yoyData,
+    loading: yoyLoading,
+    error: yoyError,
+    dataKeys: yoyData ? Object.keys(yoyData) : [],
+    currentSpend: yoyData?.current?.spend || 0,
+    previousSpend: yoyData?.previous?.spend || 0
   });
   
   if (reportIds.length === 0) {

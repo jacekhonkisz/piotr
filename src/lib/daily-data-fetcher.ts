@@ -219,6 +219,7 @@ export class DailyDataFetcher {
             cost_per_reservation: cost_per_reservation,
             campaigns_count: dayData.campaigns_count,
             data_source: 'meta-api-daily', // REAL Meta API daily data
+            platform: 'meta', // Add platform field
             last_updated: new Date().toISOString()
           });
 

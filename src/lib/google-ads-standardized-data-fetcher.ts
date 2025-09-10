@@ -116,6 +116,11 @@ export class GoogleAdsStandardizedDataFetcher {
         const responseTime = Date.now() - startTime;
         
         console.log(`✅ SUCCESS: daily_kpi_data returned Google Ads data in ${responseTime}ms`);
+        console.log('🔍 GOOGLE DAILY DATA DEBUG:', {
+          totalSpend: dailyResult.data?.stats?.totalSpend,
+          totalReservations: dailyResult.data?.conversionMetrics?.reservations,
+          totalReservationValue: dailyResult.data?.conversionMetrics?.reservation_value
+        });
         
         return {
           success: true,
@@ -275,6 +280,8 @@ export class GoogleAdsStandardizedDataFetcher {
     }
     
     console.log(`✅ Found ${dailyRecords.length} Google Ads daily records, aggregating...`);
+    console.log(`🔍 DEBUG: Data sources in Google records:`, dailyRecords.map(r => r.data_source));
+    console.log(`🔍 DEBUG: Sample Google reservation values:`, dailyRecords.slice(0, 3).map(r => ({ date: r.date, reservation_value: r.reservation_value, data_source: r.data_source })));
     
     // Aggregate daily records
     const aggregated = dailyRecords.reduce((acc, record) => {

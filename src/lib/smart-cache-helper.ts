@@ -378,7 +378,7 @@ const lastRefreshTime = new Map<string, number>();
 const REFRESH_COOLDOWN = 5 * 60 * 1000; // 5 minutes cooldown
 
 // Background refresh function (non-blocking)
-async function refreshCacheInBackground(clientId: string, periodId: string) {
+async function refreshCacheInBackground(clientId: string, periodId: string, platform: string = 'meta') {
   const key = `${clientId}_${periodId}`;
   const now = Date.now();
   const lastRefresh = lastRefreshTime.get(key) || 0;
@@ -405,8 +405,10 @@ async function refreshCacheInBackground(clientId: string, periodId: string) {
     }
 
     // CRITICAL FIX: Only refresh if cache is actually stale to prevent unnecessary API calls
+    const cacheTable = platform === 'google' ? 'google_ads_current_month_cache' : 'current_month_cache';
+    
     const { data: currentCache } = await supabase
-      .from('current_month_cache')
+      .from(cacheTable)
       .select('last_updated')
       .eq('client_id', clientId)
       .eq('period_id', periodId)
@@ -418,7 +420,13 @@ async function refreshCacheInBackground(clientId: string, periodId: string) {
     }
 
     // Fetch fresh data in background (force refresh to bypass cache)
-    const freshData = await fetchFreshCurrentMonthData(clientData);
+    let freshData;
+    if (platform === 'google') {
+      const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
+      freshData = await fetchFreshGoogleAdsCurrentMonthData(clientData);
+    } else {
+      freshData = await fetchFreshCurrentMonthData(clientData);
+    }
     
     logger.info('✅ Background cache refresh completed for:', { clientId, periodId });
     
@@ -434,15 +442,18 @@ async function refreshCacheInBackground(clientId: string, periodId: string) {
 const globalRequestCache = new Map<string, Promise<any>>();
 
 // Main smart cache function
-export async function getSmartCacheData(clientId: string, forceRefresh: boolean = false) {
+export async function getSmartCacheData(clientId: string, forceRefresh: boolean = false, platform: string = 'meta') {
   const currentMonth = getCurrentMonthInfo();
-  const cacheKey = `${clientId}_${currentMonth.periodId}`;
+  const cacheKey = `${clientId}_${currentMonth.periodId}_${platform}`;
   
   logger.info('📅 Smart cache request for current month:', {
     clientId,
+    platform,
     periodId: currentMonth.periodId,
     forceRefresh
   });
+  
+  console.log('🔍 SMART CACHE DEBUG: Platform received:', platform, 'Type:', typeof platform);
   
   // If same request is already in progress, return that promise (unless force refresh)
   if (!forceRefresh && globalRequestCache.has(cacheKey)) {
@@ -451,7 +462,7 @@ export async function getSmartCacheData(clientId: string, forceRefresh: boolean 
   }
 
   // Create and cache the request promise
-  const requestPromise = executeSmartCacheRequest(clientId, currentMonth, forceRefresh);
+  const requestPromise = executeSmartCacheRequest(clientId, currentMonth, forceRefresh, platform);
   globalRequestCache.set(cacheKey, requestPromise);
   
   try {
@@ -464,7 +475,7 @@ export async function getSmartCacheData(clientId: string, forceRefresh: boolean 
 }
 
 // Extracted smart cache logic
-async function executeSmartCacheRequest(clientId: string, currentMonth: any, forceRefresh: boolean) {
+async function executeSmartCacheRequest(clientId: string, currentMonth: any, forceRefresh: boolean, platform: string = 'meta') {
   // 🔧 TEMPORARY: Force refresh to see live booking steps data
   const FORCE_LIVE_DATA_FOR_BOOKING_STEPS = false; // ✅ FIXED: Allow smart caching
   
@@ -476,8 +487,12 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
   // Check if we have fresh cached data (unless force refresh)
   if (!forceRefresh) {
     try {
+      // Use different cache tables based on platform
+      const cacheTable = platform === 'google' ? 'google_ads_current_month_cache' : 'current_month_cache';
+      console.log('🔍 SMART CACHE DEBUG: Using cache table:', cacheTable, 'for platform:', platform);
+      
       const { data: cachedData, error: cacheError } = await supabase
-        .from('current_month_cache')
+        .from(cacheTable)
         .select('*')
         .eq('client_id', clientId)
         .eq('period_id', currentMonth.periodId)
@@ -504,7 +519,7 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
             logger.info('⚠️ Cache is stale, returning stale data instantly + refreshing in background');
             
             // Refresh in background (non-blocking)
-            refreshCacheInBackground(clientId, currentMonth.periodId).catch((err: any) => 
+            refreshCacheInBackground(clientId, currentMonth.periodId, platform).catch((err: any) => 
               logger.info('⚠️ Background refresh failed:', err)
             );
           } else {
@@ -548,20 +563,33 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
     throw new Error('Client not found');
   }
 
-  // Fetch fresh data and store in cache
-  const freshData = await fetchFreshCurrentMonthData(clientData);
+  // Fetch fresh data and store in cache based on platform
+  let freshData;
+  let cacheTable;
+  
+  if (platform === 'google') {
+    console.log('🔍 SMART CACHE DEBUG: Fetching Google Ads data...');
+    // Import Google Ads function dynamically to avoid circular dependencies
+    const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
+    freshData = await fetchFreshGoogleAdsCurrentMonthData(clientData);
+    cacheTable = 'google_ads_current_month_cache';
+  } else {
+    console.log('🔍 SMART CACHE DEBUG: Fetching Meta data...');
+    freshData = await fetchFreshCurrentMonthData(clientData);
+    cacheTable = 'current_month_cache';
+  }
   
   // Store fresh data in cache
   try {
     await supabase
-      .from('current_month_cache')
+      .from(cacheTable)
       .upsert({
         client_id: clientId,
         cache_data: freshData,
         last_updated: new Date().toISOString(),
         period_id: currentMonth.periodId
       });
-    logger.info('✅ Fresh data cached successfully');
+    logger.info(`✅ Fresh ${platform} data cached successfully`);
   } catch (cacheError) {
     logger.info('⚠️ Failed to cache fresh data:', cacheError);
   }

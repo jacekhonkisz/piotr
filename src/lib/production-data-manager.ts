@@ -82,6 +82,7 @@ export class ProductionDataManager {
         client_id: clientId,
         date,
         data_source: platform === 'meta' ? 'meta_api' : 'google_ads_api',
+        platform: platform, // Add platform field
         
         // Core metrics
         total_spend: metrics.totalSpend,

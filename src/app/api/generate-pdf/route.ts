@@ -230,6 +230,8 @@ const generateYoYSection = (reportData: ReportData) => {
     return '';
   }
   
+  
+  
   logger.info('🔍 COMPARISON SECTION: Generating content with production data', {
     hasMetaData,
     hasGoogleData,
@@ -258,7 +260,7 @@ const generateYoYSection = (reportData: ReportData) => {
             <tr>
               <td class="metric-name">Wydatki</td>
               <td class="current-value">${formatCurrency(meta.current.spend)}</td>
-              <td class="previous-value">${meta.previous.spend > 0 ? formatCurrency(meta.previous.spend) : '<span class="no-data">No data found</span>'}</td>
+              <td class="previous-value">${meta.previous.spend > 0 ? formatCurrency(meta.previous.spend) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
                 ${meta.previous.spend > 0 ? `
                   <span class="change-indicator ${meta.changes.spend >= 0 ? 'positive' : 'negative'}">
@@ -270,7 +272,7 @@ const generateYoYSection = (reportData: ReportData) => {
             <tr>
               <td class="metric-name">Wartość rezerwacji</td>
               <td class="current-value">${formatCurrency(meta.current.reservationValue)}</td>
-              <td class="previous-value">${meta.previous.reservationValue > 0 ? formatCurrency(meta.previous.reservationValue) : '<span class="no-data">No data found</span>'}</td>
+              <td class="previous-value">${meta.previous.reservationValue > 0 ? formatCurrency(meta.previous.reservationValue) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
                 ${meta.previous.reservationValue > 0 ? `
                   <span class="change-indicator ${meta.changes.reservationValue >= 0 ? 'positive' : 'negative'}">
@@ -285,7 +287,7 @@ const generateYoYSection = (reportData: ReportData) => {
             <tr>
               <td class="metric-name">Wydatki</td>
               <td class="current-value">${google.current.spend > 0 ? formatCurrency(google.current.spend) : '—'}</td>
-              <td class="previous-value">${google.previous.spend > 0 ? formatCurrency(google.previous.spend) : '<span class="no-data">No data found</span>'}</td>
+              <td class="previous-value">${google.previous.spend > 0 ? formatCurrency(google.previous.spend) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
                 ${google.current.spend > 0 || google.previous.spend > 0 ? `
                   <span class="change-indicator ${google.changes.spend >= 0 ? 'positive' : 'negative'}">
@@ -297,7 +299,7 @@ const generateYoYSection = (reportData: ReportData) => {
             <tr>
               <td class="metric-name">Wartość rezerwacji</td>
               <td class="current-value">${google.current.reservationValue > 0 ? formatCurrency(google.current.reservationValue) : '—'}</td>
-              <td class="previous-value">${google.previous.reservationValue > 0 ? formatCurrency(google.previous.reservationValue) : '<span class="no-data">No data found</span>'}</td>
+              <td class="previous-value">${google.previous.reservationValue > 0 ? formatCurrency(google.previous.reservationValue) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
                 ${google.current.reservationValue > 0 || google.previous.reservationValue > 0 ? `
                   <span class="change-indicator ${google.changes.reservationValue >= 0 ? 'positive' : 'negative'}">
@@ -353,15 +355,92 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
   ].filter(metric => hasData(metric.value));
   
-  // Generate table rows for each section
-  const generateTableRows = (metrics: any[]) => {
-    return metrics.map(metric => `
-      <tr>
-        <td class="metric-name">${metric.label}</td>
-        <td class="metric-value">${metric.formatter(metric.value)}</td>
-      </tr>
-    `).join('');
+  // Generate table rows for each section with YoY comparison
+  const generateTableRows = (metrics: any[], yoyData?: any) => {
+    return metrics.map(metric => {
+      
+      // Get YoY comparison for this metric - dynamic mapping
+      let yoyIndicator = '';
+      if (yoyData && yoyData.changes) {
+        let change = 0;
+        
+        // Map metric keys to YoY data fields
+        switch (metric.key) {
+          case 'totalSpend':
+            change = yoyData.changes?.spend || 0;
+            break;
+          case 'totalImpressions':
+            change = yoyData.changes?.impressions || 0;
+            break;
+          case 'totalClicks':
+            change = yoyData.changes?.clicks || 0;
+            break;
+          case 'totalConversions':
+            change = yoyData.changes?.reservations || 0;
+            break;
+          case 'totalReservationValue':
+            change = yoyData.changes?.reservation_value || 0;
+            break;
+          case 'totalReservations':
+            change = yoyData.changes?.reservations || 0;
+            break;
+          case 'bookingStep1':
+            change = yoyData.changes?.booking_step_1 || 0;
+            break;
+          case 'bookingStep2':
+            change = yoyData.changes?.booking_step_2 || 0;
+            break;
+          case 'bookingStep3':
+            change = yoyData.changes?.booking_step_3 || 0;
+            break;
+          case 'averageCtr':
+            // Calculate CTR change from impressions and clicks
+            if (yoyData.current && yoyData.previous) {
+              const currentCtr = yoyData.current.impressions > 0 ? (yoyData.current.clicks / yoyData.current.impressions) * 100 : 0;
+              const previousCtr = yoyData.previous.impressions > 0 ? (yoyData.previous.clicks / yoyData.previous.impressions) * 100 : 0;
+              if (previousCtr > 0) {
+                change = ((currentCtr - previousCtr) / previousCtr) * 100;
+              }
+            }
+            break;
+          case 'averageCpc':
+            // Calculate CPC change from spend and clicks
+            if (yoyData.current && yoyData.previous) {
+              const currentCpc = yoyData.current.clicks > 0 ? yoyData.current.spend / yoyData.current.clicks : 0;
+              const previousCpc = yoyData.previous.clicks > 0 ? yoyData.previous.spend / yoyData.previous.clicks : 0;
+              if (previousCpc > 0) {
+                change = ((currentCpc - previousCpc) / previousCpc) * 100;
+              }
+            }
+            break;
+          default:
+            change = 0;
+        }
+        
+        
+        // Only show indicator if we have meaningful change
+        if (change !== 0 && Math.abs(change) >= 0.01) {
+          const isPositive = change >= 0;
+          yoyIndicator = `
+            <span class="change-indicator ${isPositive ? 'positive' : 'negative'}">
+              ${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1).replace('.', ',')}%
+            </span>
+          `;
+        }
+      }
+      
+      return `
+        <tr>
+          <td class="metric-name">${metric.label}</td>
+          <td class="metric-value">${metric.formatter(metric.value)}</td>
+          <td class="change-cell">${yoyIndicator || '—'}</td>
+        </tr>
+      `;
+    }).join('');
   };
+  
+  // Get YoY data for Meta
+  const metaYoYData = reportData.yoyComparison?.meta;
   
   let sectionsHTML = '';
   
@@ -374,10 +453,11 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
             <tr>
               <th>Metryka</th>
               <th>Wartość</th>
+              <th>vs rok do roku</th>
             </tr>
           </thead>
           <tbody>
-          ${generateTableRows(coreMetrics)}
+          ${generateTableRows(coreMetrics, metaYoYData)}
         </tbody>
       </table>
     `;
@@ -392,10 +472,11 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
           <tr>
             <th>Metryka</th>
             <th>Wartość</th>
+            <th>vs rok do roku</th>
             </tr>
         </thead>
         <tbody>
-          ${generateTableRows(metaSpecificMetrics)}
+          ${generateTableRows(metaSpecificMetrics, metaYoYData)}
         </tbody>
       </table>
     `;
@@ -410,10 +491,11 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
           <tr>
             <th>Metryka</th>
             <th>Wartość</th>
+            <th>vs rok do roku</th>
             </tr>
         </thead>
         <tbody>
-          ${generateTableRows(contactMetrics)}
+          ${generateTableRows(contactMetrics, metaYoYData)}
           </tbody>
         </table>
     `;
@@ -627,15 +709,90 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
   ].filter(metric => hasData(metric.value));
   
-  // Generate table rows for each section
-  const generateTableRows = (metrics: any[]) => {
-    return metrics.map(metric => `
-      <tr>
-        <td class="metric-name">${metric.label}</td>
-        <td class="metric-value">${metric.formatter(metric.value)}</td>
-      </tr>
-    `).join('');
+  // Generate table rows for each section with YoY comparison
+  const generateTableRows = (metrics: any[], yoyData?: any) => {
+    return metrics.map(metric => {
+      // Get YoY comparison for this metric - dynamic mapping
+      let yoyIndicator = '';
+      if (yoyData && yoyData.changes) {
+        let change = 0;
+        
+        // Map metric keys to YoY data fields
+        switch (metric.key) {
+          case 'totalSpend':
+            change = yoyData.changes?.spend || 0;
+            break;
+          case 'totalImpressions':
+            change = yoyData.changes?.impressions || 0;
+            break;
+          case 'totalClicks':
+            change = yoyData.changes?.clicks || 0;
+            break;
+          case 'totalConversions':
+            change = yoyData.changes?.reservations || 0;
+            break;
+          case 'totalReservationValue':
+            change = yoyData.changes?.reservation_value || 0;
+            break;
+          case 'totalReservations':
+            change = yoyData.changes?.reservations || 0;
+            break;
+          case 'bookingStep1':
+            change = yoyData.changes?.booking_step_1 || 0;
+            break;
+          case 'bookingStep2':
+            change = yoyData.changes?.booking_step_2 || 0;
+            break;
+          case 'bookingStep3':
+            change = yoyData.changes?.booking_step_3 || 0;
+            break;
+          case 'averageCtr':
+            // Calculate CTR change from impressions and clicks
+            if (yoyData.current && yoyData.previous) {
+              const currentCtr = yoyData.current.impressions > 0 ? (yoyData.current.clicks / yoyData.current.impressions) * 100 : 0;
+              const previousCtr = yoyData.previous.impressions > 0 ? (yoyData.previous.clicks / yoyData.previous.impressions) * 100 : 0;
+              if (previousCtr > 0) {
+                change = ((currentCtr - previousCtr) / previousCtr) * 100;
+              }
+            }
+            break;
+          case 'averageCpc':
+            // Calculate CPC change from spend and clicks
+            if (yoyData.current && yoyData.previous) {
+              const currentCpc = yoyData.current.clicks > 0 ? yoyData.current.spend / yoyData.current.clicks : 0;
+              const previousCpc = yoyData.previous.clicks > 0 ? yoyData.previous.spend / yoyData.previous.clicks : 0;
+              if (previousCpc > 0) {
+                change = ((currentCpc - previousCpc) / previousCpc) * 100;
+              }
+            }
+            break;
+          default:
+            change = 0;
+        }
+        
+        // Only show indicator if we have meaningful change
+        if (change !== 0 && Math.abs(change) >= 0.01) {
+          const isPositive = change >= 0;
+          yoyIndicator = `
+            <span class="change-indicator ${isPositive ? 'positive' : 'negative'}">
+              ${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1).replace('.', ',')}%
+            </span>
+          `;
+        }
+      }
+      
+      return `
+        <tr>
+          <td class="metric-name">${metric.label}</td>
+          <td class="metric-value">${metric.formatter(metric.value)}</td>
+          <td class="change-cell">${yoyIndicator || '—'}</td>
+        </tr>
+      `;
+    }).join('');
   };
+  
+  // Get YoY data for Google Ads
+  const googleYoYData = reportData.yoyComparison?.google;
   
   let sectionsHTML = '';
   
@@ -648,10 +805,11 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
             <tr>
               <th>Metryka</th>
               <th>Wartość</th>
+              <th>vs rok do roku</th>
             </tr>
           </thead>
           <tbody>
-          ${generateTableRows(coreMetrics)}
+          ${generateTableRows(coreMetrics, googleYoYData)}
         </tbody>
       </table>
     `;
@@ -666,10 +824,11 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
           <tr>
             <th>Metryka</th>
             <th>Wartość</th>
+            <th>vs rok do roku</th>
             </tr>
         </thead>
         <tbody>
-          ${generateTableRows(googleSpecificMetrics)}
+          ${generateTableRows(googleSpecificMetrics, googleYoYData)}
         </tbody>
       </table>
     `;
@@ -684,10 +843,11 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
           <tr>
             <th>Metryka</th>
             <th>Wartość</th>
+            <th>vs rok do roku</th>
             </tr>
         </thead>
         <tbody>
-          ${generateTableRows(contactMetrics)}
+          ${generateTableRows(contactMetrics, googleYoYData)}
           </tbody>
         </table>
     `;
@@ -1796,6 +1956,12 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       if (metaResult.success) {
         metaData = metaResult.data;
         logger.info('✅ Meta data fetched successfully via StandardizedDataFetcher');
+        console.log('🔍 META DATA DEBUG:', {
+          totalSpend: metaData?.stats?.totalSpend,
+          totalReservations: metaData?.conversionMetrics?.reservations,
+          totalReservationValue: metaData?.conversionMetrics?.reservation_value,
+          source: metaResult.debug?.source
+        });
       } else {
         metaError = 'StandardizedDataFetcher failed for Meta';
       }
@@ -1823,6 +1989,12 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       if (googleResult.success) {
         googleData = googleResult.data;
         logger.info('✅ Google Ads data fetched successfully via GoogleAdsStandardizedDataFetcher');
+        console.log('🔍 GOOGLE DATA DEBUG:', {
+          totalSpend: googleData?.stats?.totalSpend,
+          totalReservations: googleData?.conversionMetrics?.reservations,
+          totalReservationValue: googleData?.conversionMetrics?.reservation_value,
+          source: googleResult.debug?.source
+        });
       } else {
         googleError = 'GoogleAdsStandardizedDataFetcher failed';
       }
@@ -1832,79 +2004,224 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     }
   }
 
-  // Fetch Year-over-Year comparison using same API as reports page (no auth)
+  // Fetch Year-over-Year comparison using SAME API as reports page
   try {
-    logger.info('📊 Fetching Year-over-Year comparison (no auth, same as reports)...');
+    logger.info('📊 Fetching Year-over-Year comparison using YoY API (same as reports page)...');
     
-    const yoyResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/year-over-year-comparison`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-        // No Authorization header (same as reports page)
+    // Use the same YoY API endpoint that works for the reports page
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    
+    // Fetch Meta YoY data
+    let metaYoYData = null;
+    if (clientData.meta_access_token && clientData.ad_account_id) {
+      try {
+        logger.info('📊 Fetching Meta YoY data from API...');
+        
+        const metaYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            clientId, 
+            dateRange, 
+            platform: 'meta' 
+          })
+        });
+        
+        if (metaYoYResponse.ok) {
+          metaYoYData = await metaYoYResponse.json();
+          logger.info('✅ Meta YoY data fetched successfully:', {
+            hasData: !!metaYoYData,
+            currentSpend: metaYoYData?.current?.spend || 0,
+            previousSpend: metaYoYData?.previous?.spend || 0,
+            changesSpend: metaYoYData?.changes?.spend || 0
+          });
+        } else {
+          logger.warn('⚠️ Meta YoY API failed:', metaYoYResponse.status);
+        }
+      } catch (error) {
+        logger.warn('⚠️ Meta YoY API error:', error);
+      }
+    }
+    
+    // Fetch Google Ads YoY data
+    let googleYoYData = null;
+    if (clientData.google_ads_enabled && clientData.google_ads_customer_id) {
+      try {
+        logger.info('📊 Fetching Google Ads YoY data from API...');
+        
+        const googleYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            clientId, 
+            dateRange, 
+            platform: 'google' 
+          })
+        });
+        
+        if (googleYoYResponse.ok) {
+          googleYoYData = await googleYoYResponse.json();
+          logger.info('✅ Google Ads YoY data fetched successfully:', {
+            hasData: !!googleYoYData,
+            currentSpend: googleYoYData?.current?.spend || 0,
+            previousSpend: googleYoYData?.previous?.spend || 0,
+            changesSpend: googleYoYData?.changes?.spend || 0
+          });
+        } else {
+          logger.warn('⚠️ Google Ads YoY API failed:', googleYoYResponse.status);
+        }
+      } catch (error) {
+        logger.warn('⚠️ Google Ads YoY API error:', error);
+      }
+    }
+    
+    // Calculate YoY changes using same logic as reports page
+    const calculateChange = (current: number, previous: number): number => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return ((current - previous) / previous) * 100;
+    };
+    
+    // Process Meta YoY data from API - include ALL metrics
+    const metaCurrent = {
+      spend: metaYoYData?.current?.spend || 0,
+      impressions: metaYoYData?.current?.impressions || 0,
+      clicks: metaYoYData?.current?.clicks || 0,
+      reservations: metaYoYData?.current?.reservations || 0,
+      reservationValue: metaYoYData?.current?.reservation_value || 0,
+      booking_step_1: metaYoYData?.current?.booking_step_1 || 0,
+      booking_step_2: metaYoYData?.current?.booking_step_2 || 0,
+      booking_step_3: metaYoYData?.current?.booking_step_3 || 0
+    };
+    
+    const metaPrevious = {
+      spend: metaYoYData?.previous?.spend || 0,
+      impressions: metaYoYData?.previous?.impressions || 0,
+      clicks: metaYoYData?.previous?.clicks || 0,
+      reservations: metaYoYData?.previous?.reservations || 0,
+      reservationValue: metaYoYData?.previous?.reservation_value || 0,
+      booking_step_1: metaYoYData?.previous?.booking_step_1 || 0,
+      booking_step_2: metaYoYData?.previous?.booking_step_2 || 0,
+      booking_step_3: metaYoYData?.previous?.booking_step_3 || 0
+    };
+    
+    const metaChanges = {
+      spend: metaYoYData?.changes?.spend || 0,
+      impressions: metaYoYData?.changes?.impressions || 0,
+      clicks: metaYoYData?.changes?.clicks || 0,
+      reservations: metaYoYData?.changes?.reservations || 0,
+      reservationValue: metaYoYData?.changes?.reservation_value || 0,
+      booking_step_1: metaYoYData?.changes?.booking_step_1 || 0,
+      booking_step_2: metaYoYData?.changes?.booking_step_2 || 0,
+      booking_step_3: metaYoYData?.changes?.booking_step_3 || 0
+    };
+    
+    // Process Google Ads YoY data from API - include ALL metrics
+    const googleCurrent = {
+      spend: googleYoYData?.current?.spend || 0,
+      impressions: googleYoYData?.current?.impressions || 0,
+      clicks: googleYoYData?.current?.clicks || 0,
+      reservations: googleYoYData?.current?.reservations || 0,
+      reservationValue: googleYoYData?.current?.reservation_value || 0,
+      booking_step_1: googleYoYData?.current?.booking_step_1 || 0,
+      booking_step_2: googleYoYData?.current?.booking_step_2 || 0,
+      booking_step_3: googleYoYData?.current?.booking_step_3 || 0
+    };
+    
+    const googlePrevious = {
+      spend: googleYoYData?.previous?.spend || 0,
+      impressions: googleYoYData?.previous?.impressions || 0,
+      clicks: googleYoYData?.previous?.clicks || 0,
+      reservations: googleYoYData?.previous?.reservations || 0,
+      reservationValue: googleYoYData?.previous?.reservation_value || 0,
+      booking_step_1: googleYoYData?.previous?.booking_step_1 || 0,
+      booking_step_2: googleYoYData?.previous?.booking_step_2 || 0,
+      booking_step_3: googleYoYData?.previous?.booking_step_3 || 0
+    };
+    
+    const googleChanges = {
+      spend: googleYoYData?.changes?.spend || 0,
+      impressions: googleYoYData?.changes?.impressions || 0,
+      clicks: googleYoYData?.changes?.clicks || 0,
+      reservations: googleYoYData?.changes?.reservations || 0,
+      reservationValue: googleYoYData?.changes?.reservation_value || 0,
+      booking_step_1: googleYoYData?.changes?.booking_step_1 || 0,
+      booking_step_2: googleYoYData?.changes?.booking_step_2 || 0,
+      booking_step_3: googleYoYData?.changes?.booking_step_3 || 0
+    };
+    
+    // 🔍 DEBUG: Log the actual data being used for comparison
+    logger.info('🔍 YoY Data Debug - Meta (from API):', {
+      current: { 
+        spend: metaCurrent.spend,
+        reservationValue: metaCurrent.reservationValue,
+        source: 'metaYoYData.current'
       },
-      body: JSON.stringify({
-        clientId,
-        dateRange
-      })
+      previous: { 
+        spend: metaPrevious.spend,
+        reservationValue: metaPrevious.reservationValue,
+        source: 'metaYoYData.previous'
+      },
+      changes: metaChanges,
+      hasApiData: !!metaYoYData
     });
     
-    if (yoyResponse.ok) {
-      const yoyData = await yoyResponse.json();
-      
-      // 🔍 DEBUG: Log the exact YoY API response
-      logger.info('🔍 YoY API Response Structure:', {
-        hasYoyData: !!yoyData,
-        yoyDataKeys: yoyData ? Object.keys(yoyData) : [],
-        currentData: yoyData?.current,
-        previousData: yoyData?.previous,
-        changesData: yoyData?.changes,
-        fullResponse: JSON.stringify(yoyData, null, 2)
+    logger.info('🔍 YoY Data Debug - Google (from API):', {
+      current: { 
+        spend: googleCurrent.spend,
+        reservationValue: googleCurrent.reservationValue,
+        source: 'googleYoYData.current'
+      },
+      previous: { 
+        spend: googlePrevious.spend,
+        reservationValue: googlePrevious.reservationValue,
+        source: 'googleYoYData.previous'
+      },
+      changes: googleChanges,
+      hasApiData: !!googleYoYData
+    });
+    
+    // 🔍 DEBUG: Check if reservation values are identical (potential bug)
+    if (metaCurrent.reservationValue === googleCurrent.reservationValue && metaCurrent.reservationValue > 0) {
+      logger.warn('⚠️ IDENTICAL RESERVATION VALUES DETECTED:', {
+        metaValue: metaCurrent.reservationValue,
+        googleValue: googleCurrent.reservationValue,
+        message: 'This might indicate a data sharing issue between platforms'
       });
-      
-      // Use same YoY data structure as reports page
-      reportData.yoyComparison = {
-        meta: {
-          current: { 
-            spend: yoyData.current?.spend || 0, 
-            reservationValue: yoyData.current?.reservation_value || 0 
-          },
-          previous: { 
-            spend: yoyData.previous?.spend || 0, 
-            reservationValue: yoyData.previous?.reservation_value || 0 
-          },
-          changes: { 
-            spend: yoyData.changes?.spend || 0, 
-            reservationValue: yoyData.changes?.reservation_value || 0 
-          }
-        },
-        google: {
-          current: { 
-            spend: yoyData.current?.google_spend || 0, 
-            reservationValue: yoyData.current?.google_reservation_value || 0 
-          },
-          previous: { 
-            spend: yoyData.previous?.google_spend || 0, 
-            reservationValue: yoyData.previous?.google_reservation_value || 0 
-          },
-          changes: { 
-            spend: yoyData.changes?.google_spend || 0, 
-            reservationValue: yoyData.changes?.google_reservation_value || 0 
-          }
-        }
-      };
-      
-      // 🔍 DEBUG: Log the processed YoY data
-      logger.info('🔍 Processed YoY Data for PDF:', {
-        metaCurrent: reportData.yoyComparison.meta.current,
-        metaPrevious: reportData.yoyComparison.meta.previous,
-        googleCurrent: reportData.yoyComparison.google.current,
-        googlePrevious: reportData.yoyComparison.google.previous
-      });
-      
-      logger.info('✅ Year-over-year data fetched successfully');
-    } else {
-      logger.warn('⚠️ YoY API returned error:', yoyResponse.status);
     }
+    
+    // Create YoY comparison data structure (same as reports page)
+    reportData.yoyComparison = {
+      meta: {
+        current: metaCurrent,
+        previous: metaPrevious,
+        changes: metaChanges
+      },
+      google: {
+        current: googleCurrent,
+        previous: googlePrevious,
+        changes: googleChanges
+      }
+    };
+    
+    
+    logger.info('✅ YoY comparison data created for PDF:', {
+      metaCurrent: metaCurrent,
+      metaPrevious: metaPrevious,
+      metaChanges: metaChanges,
+      googleCurrent: googleCurrent,
+      googlePrevious: googlePrevious,
+      googleChanges: googleChanges
+    });
+    
+    logger.info('✅ Year-over-year data calculated successfully:', {
+      metaCurrent: metaCurrent,
+      metaPrevious: metaPrevious,
+      metaChanges: metaChanges,
+      googleCurrent: googleCurrent,
+      googlePrevious: googlePrevious,
+      googleChanges: googleChanges
+    });
+    
   } catch (error) {
     logger.warn('⚠️ Year-over-year comparison failed:', error);
   }
@@ -2118,8 +2435,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.warn('⚠️ Google Ads data not available:', googleError);
   }
   
-  // Fetch AI Summary (AFTER all data is collected) - no auth required (same as reports page)
-  logger.info('🔍 Generating AI summary (no auth, same as reports page)...');
+  // Generate AI Summary using SAME DATA FETCHING SYSTEM as reports page
+  logger.info('🔍 Generating AI summary using same data as reports page...');
   logger.info('🔍 Data availability for AI summary:', {
     hasMetaData: !!reportData.metaData,
     hasGoogleData: !!reportData.googleData,
@@ -2127,53 +2444,46 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   });
   
   try {
-    logger.info('🤖 Generating AI summary...');
+    logger.info('🤖 Generating AI summary using same data structure as reports...');
     
-    const summaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-executive-summary`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-        // No Authorization header (same as reports page)
-      },
-      body: JSON.stringify({
-        clientId,
-        dateRange,
-        reportData: {
-          metaData: reportData.metaData,
-          googleData: reportData.googleData,
-          yoyComparison: reportData.yoyComparison
-        }
-      })
-    });
+    // Use the same AI summary generation logic as reports page
+    const { generateAISummary } = await import('../../../lib/ai-summary-generator');
     
-    logger.info('🤖 AI Summary response status:', summaryResponse.status);
+    // Prepare data in the same format as reports page
+    const summaryData = {
+      totalSpend: (reportData.metaData?.metrics?.totalSpend || 0) + (reportData.googleData?.metrics?.totalSpend || 0),
+      totalImpressions: (reportData.metaData?.metrics?.totalImpressions || 0) + (reportData.googleData?.metrics?.totalImpressions || 0),
+      totalClicks: (reportData.metaData?.metrics?.totalClicks || 0) + (reportData.googleData?.metrics?.totalClicks || 0),
+      totalConversions: (reportData.metaData?.metrics?.totalConversions || 0) + (reportData.googleData?.metrics?.totalConversions || 0),
+      averageCtr: reportData.metaData?.metrics?.averageCtr || 0,
+      averageCpc: reportData.metaData?.metrics?.averageCpc || 0,
+      averageCpa: reportData.metaData?.metrics?.averageCpa || 0,
+      currency: 'PLN',
+      dateRange: dateRange,
+      clientName: clientData.name,
+      reservations: (reportData.metaData?.metrics?.totalReservations || 0) + (reportData.googleData?.metrics?.totalReservations || 0),
+      reservationValue: (reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0),
+      roas: reportData.metaData?.metrics?.roas || 0,
+      microConversions: (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
+      costPerReservation: reportData.metaData?.metrics?.averageCpa || 0,
+      platformAttribution: 'kampanie reklamowe',
+      platformSources: [],
+      platformBreakdown: null
+    };
     
-    if (summaryResponse.ok) {
-      const summaryData = await summaryResponse.json();
-      logger.info('🔍 AI Summary Response Data Structure:', {
-        responseKeys: Object.keys(summaryData),
-        hasSuccess: !!summaryData.success,
-        hasSummary: !!summaryData.summary,
-        summaryType: typeof summaryData.summary,
-        summaryValue: summaryData.summary
-      });
-      
-      reportData.aiSummary = summaryData.summary;
-      
-      logger.info('✅ AI summary assigned to reportData:', {
-        summaryLength: summaryData.summary?.length || 0,
-        summaryPreview: summaryData.summary?.substring(0, 100) || 'No summary',
-        reportDataHasAiSummary: !!reportData.aiSummary,
-        reportDataAiSummaryLength: reportData.aiSummary?.length || 0
+    // Generate AI summary using the same function as reports page
+    const aiSummary = await generateAISummary(summaryData);
+    
+    if (aiSummary) {
+      reportData.aiSummary = aiSummary;
+      logger.info('✅ AI summary generated successfully:', {
+        summaryLength: aiSummary.length,
+        summaryPreview: aiSummary.substring(0, 100)
       });
     } else {
-      const errorText = await summaryResponse.text();
-      logger.warn('⚠️ AI summary response not OK:', {
-        status: summaryResponse.status,
-        statusText: summaryResponse.statusText,
-        error: errorText
-      });
+      logger.warn('⚠️ AI summary generation returned null');
     }
+    
   } catch (error) {
     logger.error('❌ AI SUMMARY GENERATION EXCEPTION:', {
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
@@ -2241,6 +2551,18 @@ export async function POST(request: NextRequest) {
     logger.info('📊 Generating PDF HTML content with new 8-section structure...');
     
     // COMPREHENSIVE AUDIT: Check reportData before HTML generation
+    logger.info('🔍 PDF YoY Data Check:', {
+      hasYoyComparison: !!reportData.yoyComparison,
+      metaCurrentSpend: reportData.yoyComparison?.meta?.current?.spend || 0,
+      metaPreviousSpend: reportData.yoyComparison?.meta?.previous?.spend || 0,
+      metaChangesSpend: reportData.yoyComparison?.meta?.changes?.spend || 0,
+      googleCurrentSpend: reportData.yoyComparison?.google?.current?.spend || 0,
+      googlePreviousSpend: reportData.yoyComparison?.google?.previous?.spend || 0,
+      googleChangesSpend: reportData.yoyComparison?.google?.changes?.spend || 0
+    });
+    
+    
+    
     logger.info('🔍 FINAL REPORT DATA AUDIT (before HTML generation):', {
       hasAiSummary: !!reportData.aiSummary,
       aiSummaryLength: reportData.aiSummary?.length || 0,
