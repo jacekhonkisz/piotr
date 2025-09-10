@@ -108,6 +108,12 @@ export class StandardizedDataFetcher {
       strategy: needsSmartCache ? 'SMART_CACHE (3-hour refresh)' : 'DATABASE_FIRST (historical data)'
     });
     
+    // 🔧 CRITICAL FIX: For current periods, use smart cache endpoint directly
+    if (needsSmartCache) {
+      console.log('🎯 USING SMART CACHE ENDPOINT for current period...');
+      return await this.fetchFromSmartCache(clientId, dateRange, platform);
+    }
+    
     console.log('🔍 DEBUG: Date comparison details:', {
       startDate: dateRange.start,
       endDate: dateRange.end,
