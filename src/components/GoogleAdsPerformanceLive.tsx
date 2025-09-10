@@ -436,10 +436,12 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           
-          {/* Last Updated */}
-          <div className="text-xs text-muted">
-            {lastUpdated ? `Ostatnia aktualizacja: ${lastUpdated}` : 'Ładowanie...'}
-          </div>
+          {/* Last Updated - Only visible in development mode */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="text-xs text-muted">
+              {lastUpdated ? `Ostatnia aktualizacja: ${lastUpdated}` : 'Ładowanie...'}
+            </div>
+          )}
         </div>
       </div>
 

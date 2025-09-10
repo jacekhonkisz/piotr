@@ -208,44 +208,46 @@ const generateTitleSection = (reportData: ReportData) => {
 };
 
 
-// Generate Section 2: Year-to-Year Comparison
+// Generate Section 2: Production Comparison (Month-over-Month or Year-over-Year)
 const generateYoYSection = (reportData: ReportData) => {
-  logger.info('🔍 YOY SECTION: Starting generation', {
+  logger.info('🔍 COMPARISON SECTION: Starting generation', {
     hasYoyComparison: !!reportData.yoyComparison
   });
   
   if (!reportData.yoyComparison) {
-    logger.info('🔍 YOY SECTION: No yoyComparison data, returning empty');
+    logger.info('🔍 COMPARISON SECTION: No comparison data available - this is expected for periods without historical data');
     return '';
   }
   
   const { meta, google } = reportData.yoyComparison;
   
-  // 🔧 ALWAYS SHOW YOY SECTION: If we have the data structure, show it regardless of values
-  logger.info('🔍 YOY SECTION: Data structure available', {
-    metaCurrent: meta.current,
-    metaPrevious: meta.previous,
-    googleCurrent: google.current,
-    googlePrevious: google.previous,
-    willShowSection: true
+  // ✅ PRODUCTION-READY: Only show if we have meaningful comparison data
+  const hasMetaData = meta.current.spend > 0 || meta.previous.spend > 0;
+  const hasGoogleData = google.current.spend > 0 || google.previous.spend > 0;
+  
+  if (!hasMetaData && !hasGoogleData) {
+    logger.info('🔍 COMPARISON SECTION: No meaningful data to compare');
+    return '';
+  }
+  
+  logger.info('🔍 COMPARISON SECTION: Generating content with production data', {
+    hasMetaData,
+    hasGoogleData,
+    metaCurrentSpend: meta.current.spend,
+    metaPreviousSpend: meta.previous.spend
   });
-  
-  // Always show section if we have YoY comparison data structure
-  // This helps debug what data we're actually getting
-  
-  logger.info('🔍 YOY SECTION: Generating content with data');
   
   return `
     <div class="section-container">
       <div class="page-content">
-        <h2 class="section-title">Porównanie Rok do Roku</h2>
+        <h2 class="section-title">Porównanie Okresów</h2>
         
         <table class="comparison-table">
           <thead>
             <tr>
               <th>Metryka</th>
-              <th>Bieżący Rok</th>
-              <th>Poprzedni Rok</th>
+              <th>Bieżący Okres</th>
+              <th>Poprzedni Okres</th>
               <th>Zmiana</th>
             </tr>
           </thead>

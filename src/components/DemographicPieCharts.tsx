@@ -49,7 +49,9 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
   console.log('🔍 DemographicPieCharts render:', {
     dataLength: data?.length || 0,
     metric,
-    sampleData: data?.slice(0, 2)
+    sampleData: data?.slice(0, 2),
+    uniqueGenders: [...new Set(data?.map(d => d.gender) || [])],
+    uniqueAges: [...new Set(data?.map(d => d.age) || [])]
   });
 
   // Process data for gender distribution
@@ -106,9 +108,11 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     switch (label.toLowerCase()) {
       case 'male': return 'Mężczyźni';
       case 'female': return 'Kobiety';
+      case 'mężczyźni': return 'Mężczyźni'; // Already translated
+      case 'kobiety': return 'Kobiety'; // Already translated
       case 'nieznane': return 'Nieznane';
       case 'unknown': return 'Nieznane';
-      default: return 'Nieznane';
+      default: return label; // Return as-is if already in Polish
     }
   };
 

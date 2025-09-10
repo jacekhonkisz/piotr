@@ -70,6 +70,7 @@ interface WeeklyReportViewProps {
     name: string;
     email: string;
   };
+  platform?: 'meta' | 'google';
 }
 
 const formatCurrency = (amount: number) => {
@@ -275,7 +276,7 @@ const MetricCard = ({
 
 
 
-export default function WeeklyReportView({ reports, viewType = 'weekly', clientData }: WeeklyReportViewProps) {
+export default function WeeklyReportView({ reports, viewType = 'weekly', clientData, platform = 'meta' }: WeeklyReportViewProps) {
   
   const [expandedCampaigns, setExpandedCampaigns] = useState<{ [key: string]: boolean }>({});
   const [socialInsights, setSocialInsights] = useState<{
@@ -435,26 +436,85 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   // Year-over-year comparison hook - DISABLED for weekly reports to prevent misleading +100% comparisons
   const firstReport = reportIds.length > 0 ? reports[reportIds[0]!] : null;
   
-  // Create a reasonable date range for YoY comparison (current month)
+  // Create date range for YoY comparison based on the actual report being viewed
   const getReasonableYoYDateRange = () => {
+    // Use the first report's date range (the actual period being viewed)
+    if (firstReport && firstReport.date_range_start && firstReport.date_range_end) {
+      console.log('🔍 Using actual report date range for YoY comparison:', {
+        start: firstReport.date_range_start,
+        end: firstReport.date_range_end,
+        reportId: firstReport.id,
+        viewType: viewType,
+        note: 'This will be compared with same period from previous year'
+      });
+      
+      return {
+        start: firstReport.date_range_start,
+        end: firstReport.date_range_end
+      };
+    }
+    
+    // Fallback based on view type
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
     
-    // Use current month for YoY comparison
-    const monthStart = new Date(currentYear, currentMonth, 1);
-    const monthEnd = new Date(currentYear, currentMonth + 1, 0);
-    
-    return {
-      start: monthStart.toISOString().split('T')[0] || '',
-      end: monthEnd.toISOString().split('T')[0] || ''
-    };
+    if (viewType === 'weekly') {
+      // For weekly view, use current week
+      const startOfWeek = new Date(now);
+      const dayOfWeek = startOfWeek.getDay();
+      const diff = startOfWeek.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Monday
+      startOfWeek.setDate(diff);
+      
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6); // Sunday
+      
+      console.log('🔍 Fallback to current week for YoY comparison:', {
+        start: startOfWeek.toISOString().split('T')[0],
+        end: endOfWeek.toISOString().split('T')[0],
+        viewType: 'weekly'
+      });
+      
+      return {
+        start: startOfWeek.toISOString().split('T')[0] || '',
+        end: endOfWeek.toISOString().split('T')[0] || ''
+      };
+    } else {
+      // For monthly view, use current month
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      const monthStart = new Date(currentYear, currentMonth, 1);
+      const monthEnd = new Date(currentYear, currentMonth + 1, 0);
+      
+      console.log('🔍 Fallback to current month for YoY comparison:', {
+        start: monthStart.toISOString().split('T')[0],
+        end: monthEnd.toISOString().split('T')[0],
+        viewType: 'monthly'
+      });
+      
+      return {
+        start: monthStart.toISOString().split('T')[0] || '',
+        end: monthEnd.toISOString().split('T')[0] || ''
+      };
+    }
   };
   
+  const yoyDateRange = getReasonableYoYDateRange();
+  
+  console.log('🔍 WeeklyReportView YoY Debug:', {
+    firstReport: firstReport ? {
+      id: firstReport.id,
+      date_range_start: firstReport.date_range_start,
+      date_range_end: firstReport.date_range_end
+    } : null,
+    yoyDateRange,
+    clientId: clientData?.id,
+    viewType
+  });
+
   const { data: yoyData, loading: yoyLoading } = useYearOverYearComparison({
     clientId: clientData?.id || '',
-    dateRange: getReasonableYoYDateRange(),
-    enabled: true, // ✅ ENABLED: Now showing year-over-year comparisons for funnel
+    dateRange: yoyDateRange,
+    enabled: true, // ✅ RE-ENABLED: Let's make this work properly
+    platform: platform, // ✅ Pass platform information
   });
   
   if (reportIds.length === 0) {
@@ -480,24 +540,35 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         const campaigns = report.campaigns || [];
         
         // DEBUG: Log YoY data
-        console.log('WeeklyReportView - YoY Debug:', {
+        console.log('WeeklyReportView - Year-over-Year Debug:', {
           yoyData,
           yoyLoading,
-          blocked: (yoyData as any)?.blocked,
-          dateRange: {
+          viewType,
+          currentPeriod: {
             start: firstReport?.date_range_start,
-            end: firstReport?.date_range_end
-          }
+            end: firstReport?.date_range_end,
+            reportId: firstReport?.id
+          },
+          yoyDateRange: getReasonableYoYDateRange(),
+          clientId: clientData?.id,
+          hasYoyData: !!yoyData,
+          spendChange: yoyData?.changes?.spend,
+          impressionsChange: yoyData?.changes?.impressions,
+          note: 'Comparing current period with same period from previous year'
         });
 
-        // Helper function to format year-over-year change for MetricCard
-        const formatYoyChange = (changePercent: number) => {
-          // Don't show year-over-year for weekly reports (blocked or disabled)
-          if (!yoyData || yoyLoading || (yoyData as any).blocked) return undefined;
+        // Helper function to format comparison change for MetricCard
+        const formatComparisonChange = (changePercent: number) => {
+          // ✅ PRODUCTION SYSTEM: Only show if we have real comparison data
+          // Don't check for changePercent === 0 because real changes can be significant
+          if (!yoyData || yoyLoading) return undefined;
+          
+          // Only show if we have meaningful change (not exactly 0)
+          if (Math.abs(changePercent) < 0.01) return undefined;
           
           return {
             value: Math.abs(changePercent),
-            period: 'rok do roku',
+            period: 'rok do roku', // Year-over-year comparison
             type: changePercent >= 0 ? 'increase' as const : 'decrease' as const,
           };
         };
@@ -641,10 +712,13 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         <span>{formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}</span>
                       )}
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Clock className="w-4 h-4" />
-                      <span>Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
-                    </div>
+                    {/* Last Updated - Only visible in development mode */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="flex items-center space-x-2">
+                        <Clock className="w-4 h-4" />
+                        <span>Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">
@@ -680,7 +754,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     subtitle="Suma wydatków na reklamy"
                     tooltip="Łączna kwota wydana na reklamy"
                     icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
-                    change={formatYoyChange(yoyData?.changes.spend || 0)}
+                    change={formatComparisonChange(yoyData?.changes.spend || 0)}
                   />
                   
                   <MetricCard
@@ -689,7 +763,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     subtitle="Liczba wyświetleń reklam"
                     tooltip="Całkowita liczba wyświetleń reklam"
                     icon={<Eye className="w-5 h-5 text-slate-600" />}
-                    change={formatYoyChange(yoyData?.changes.impressions || 0)}
+                    change={formatComparisonChange(yoyData?.changes.impressions || 0)}
                   />
                   
                   <MetricCard
@@ -698,7 +772,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     subtitle="Liczba kliknięć w reklamy"
                     tooltip="Całkowita liczba kliknięć w reklamy"
                     icon={<MousePointer className="w-5 h-5 text-slate-600" />}
-                    change={formatYoyChange(yoyData?.changes.clicks || 0)}
+                    change={formatComparisonChange(yoyData?.changes.clicks || 0)}
                   />
                   
                   <MetricCard
@@ -840,7 +914,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Kontakt przez e-mail"
                   tooltip="Liczba kliknięć w adres e-mail"
                   icon={<Mail className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy for contact metrics
+                  change={formatComparisonChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy for contact metrics
                 />
                 
                 <MetricCard
@@ -849,7 +923,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Kontakt przez telefon"
                   tooltip="Liczba kliknięć w numer telefonu"
                   icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy for contact metrics
+                  change={formatComparisonChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy for contact metrics
                 />
               </div>
 
@@ -866,7 +940,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="20% z łącznej liczby e-mail i telefonów"
                   tooltip="Szacowana liczba rezerwacji offline na podstawie kontaktów"
                   icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy
+                  change={formatComparisonChange(yoyData?.changes.clicks || 0)} // Using clicks as proxy
                 />
                 
                 <MetricCard
@@ -903,7 +977,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="(wydana kwota / łączna wartość potencjalnych rezerwacji) × 100"
                   tooltip="Procentowy koszt pozyskania rezerwacji w stosunku do ich wartości"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.spend || 0)}
+                  change={formatComparisonChange(yoyData?.changes.spend || 0)}
                 />
               </div>
               
@@ -915,7 +989,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Unikalni użytkownicy"
                   tooltip="Liczba unikalnych użytkowników, którzy zobaczyli reklamy"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.impressions || 0)} // Using impressions as proxy for reach
+                  change={formatComparisonChange(yoyData?.changes.impressions || 0)} // Using impressions as proxy for reach
                 />
                 
                 <MetricCard
@@ -924,7 +998,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Click-through rate"
                   tooltip="Procent kliknięć w stosunku do wyświetleń"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.clicks || 0)} // CTR is related to clicks
+                  change={formatComparisonChange(yoyData?.changes.clicks || 0)} // CTR is related to clicks
                 />
                 
                 <MetricCard
@@ -933,7 +1007,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Cost per click"
                   tooltip="Średni koszt za kliknięcie"
                   icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatYoyChange(yoyData?.changes.spend || 0)} // CPC is related to spend efficiency
+                  change={formatComparisonChange(yoyData?.changes.spend || 0)} // CPC is related to spend efficiency
                 />
                 
 

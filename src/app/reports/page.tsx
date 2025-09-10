@@ -3805,8 +3805,8 @@ function ReportsPageContent() {
           </div>
           </div>
 
-        {/* Live Data Status Strip - Outside toolbar to maintain center */}
-            {(() => {
+        {/* Live Data Status Strip - Only visible in development mode */}
+        {process.env.NODE_ENV === 'development' && (() => {
           if (viewType === 'monthly' && selectedPeriod) {
                 const [year, month] = selectedPeriod.split('-').map(Number);
                 const currentDate = new Date();
@@ -3979,6 +3979,7 @@ function ReportsPageContent() {
                     name: selectedClient.name,
                     email: selectedClient.email
                   } : undefined}
+                  platform={activeAdsProvider}
                 />
               );
             })()}

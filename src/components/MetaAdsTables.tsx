@@ -83,6 +83,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     switch (label.toLowerCase()) {
       case 'male': return 'Mężczyźni';
       case 'female': return 'Kobiety';
+      case 'mężczyźni': return 'Mężczyźni'; // Already translated
+      case 'kobiety': return 'Kobiety'; // Already translated
       case 'nieznane': return 'Nieznane';
       case 'unknown': return 'Nieznane';
       default: return 'Nieznane';
@@ -159,7 +161,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         // Clean up demographic data to ensure Polish labels
         const demographicArray = rawDemographicArray.map((item: any) => ({
           ...item,
-          gender: translateGenderLabel(item.gender || 'Nieznane'),
+          // Gender is already translated in meta-api.ts, so just use it directly
+          gender: item.gender || 'Nieznane',
           age: translateAgeLabel(item.age || 'Nieznane')
         }));
         
@@ -170,6 +173,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           placementSample: placementArray.slice(0, 2),
           demographicSample: demographicArray.slice(0, 2),
           adRelevanceSample: adRelevanceArray.slice(0, 2)
+        });
+
+        // Debug gender data specifically
+        console.log('🔍 MetaAdsTables GENDER DEBUG:', {
+          rawGenders: rawDemographicArray.map((d: any) => d.gender).slice(0, 10),
+          processedGenders: demographicArray.map((d: DemographicPerformance) => d.gender).slice(0, 10),
+          uniqueGenders: [...new Set(demographicArray.map((d: DemographicPerformance) => d.gender))]
         });
         
         setPlacementData(placementArray);
