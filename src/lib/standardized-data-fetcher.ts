@@ -88,8 +88,14 @@ export class StandardizedDataFetcher {
     const startYear = startDate.getFullYear();
     const startMonth = startDate.getMonth() + 1;
     
-    const isCurrentPeriod = startYear === currentYear && startMonth === currentMonth;
+    const isCurrentMonth = startYear === currentYear && startMonth === currentMonth;
     const includesCurrentDay = dateRange.end >= today;
+    
+    // Check if this is current week (7 days or less, includes current day)
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const isCurrentWeek = daysDiff <= 8 && includesCurrentDay;
+    
+    const isCurrentPeriod = isCurrentMonth || isCurrentWeek;
     
     // 🎯 SMART CACHE INTEGRATION: Use smart cache for current periods, database for historical
     const needsSmartCache = isCurrentPeriod;
@@ -100,8 +106,11 @@ export class StandardizedDataFetcher {
       currentMonth,
       requestYear: startYear,
       requestMonth: startMonth,
+      isCurrentMonth,
+      isCurrentWeek,
       isCurrentPeriod,
       includesCurrentDay,
+      daysDiff,
       needsSmartCache,
       today,
       dateRangeEnd: dateRange.end,
@@ -111,10 +120,17 @@ export class StandardizedDataFetcher {
     // 🔧 CRITICAL FIX: For current periods, use smart cache endpoint directly
     if (needsSmartCache) {
       console.log('🎯 USING SMART CACHE ENDPOINT for current period...');
+      console.log('🎯 Smart cache parameters:', { clientId, dateRange, platform });
       const smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+      console.log('🎯 Smart cache result:', { 
+        success: smartCacheResult.success, 
+        source: smartCacheResult.debug?.source,
+        campaignsCount: smartCacheResult.data?.campaigns?.length || 0
+      });
       if (smartCacheResult.success) {
         return smartCacheResult as StandardizedDataResult;
       }
+      console.log('⚠️ Smart cache failed, falling back to database/live API logic');
       // If smart cache fails, fall through to database/live API logic
     }
     
