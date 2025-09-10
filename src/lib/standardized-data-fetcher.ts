@@ -111,7 +111,11 @@ export class StandardizedDataFetcher {
     // 🔧 CRITICAL FIX: For current periods, use smart cache endpoint directly
     if (needsSmartCache) {
       console.log('🎯 USING SMART CACHE ENDPOINT for current period...');
-      return await this.fetchFromSmartCache(clientId, dateRange, platform);
+      const smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+      if (smartCacheResult.success) {
+        return smartCacheResult as StandardizedDataResult;
+      }
+      // If smart cache fails, fall through to database/live API logic
     }
     
     console.log('🔍 DEBUG: Date comparison details:', {
