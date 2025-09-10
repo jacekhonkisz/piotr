@@ -838,13 +838,37 @@ export async function POST(request: NextRequest) {
 
     const conversionMetrics = realConversionMetrics;
 
-    // Fetch Google Ads tables data (optional feature)
+    // Fetch Google Ads tables data from smart cache (performance optimization)
     console.log('📊 FETCHING GOOGLE ADS TABLES DATA...');
     let googleAdsTables = null;
+    
     try {
-      googleAdsTables = await googleAdsService.getGoogleAdsTables(startDate, endDate);
-      console.log('✅ GOOGLE ADS TABLES DATA FETCHED SUCCESSFULLY');
-      logger.info('✅ Fetched Google Ads tables data');
+      // Try to get tables data from smart cache first (much faster)
+      const { getGoogleAdsSmartCacheData } = await import('@/lib/google-ads-smart-cache-helper');
+      const smartCacheResult = await getGoogleAdsSmartCacheData(client.id, false);
+      
+      if (smartCacheResult.success && smartCacheResult.data?.googleAdsTables) {
+        console.log('✅ GOOGLE ADS TABLES DATA FROM SMART CACHE');
+        console.log('📊 Cache tables structure:', {
+          hasNetwork: !!smartCacheResult.data.googleAdsTables.networkPerformance,
+          hasQuality: !!smartCacheResult.data.googleAdsTables.qualityMetrics,
+          hasDevice: !!smartCacheResult.data.googleAdsTables.devicePerformance,
+          hasKeyword: !!smartCacheResult.data.googleAdsTables.keywordPerformance
+        });
+        googleAdsTables = smartCacheResult.data.googleAdsTables;
+        logger.info('✅ Fetched Google Ads tables data from smart cache');
+      } else {
+        // Fallback to live API if cache doesn't have tables data
+        console.log('⚠️ No cached tables data, fetching from live API...');
+        console.log('📊 Cache result:', {
+          success: smartCacheResult.success,
+          hasData: !!smartCacheResult.data,
+          hasTables: !!smartCacheResult.data?.googleAdsTables
+        });
+        googleAdsTables = await googleAdsService.getGoogleAdsTables(startDate, endDate);
+        console.log('✅ GOOGLE ADS TABLES DATA FROM LIVE API');
+        logger.info('✅ Fetched Google Ads tables data from live API');
+      }
     } catch (error: any) {
       console.log('⚠️ GOOGLE ADS TABLES DATA FETCH FAILED (OPTIONAL FEATURE):', error?.message || error);
       logger.warn('⚠️ Failed to fetch Google Ads tables:', error);

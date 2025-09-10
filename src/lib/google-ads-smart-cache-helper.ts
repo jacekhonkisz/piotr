@@ -188,7 +188,7 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       
       googleAdsTables = {
         networkPerformance: networkData,
-        qualityScoreMetrics: qualityData,
+        qualityMetrics: qualityData, // Fixed: use qualityMetrics instead of qualityScoreMetrics
         devicePerformance: deviceData,
         keywordPerformance: keywordData
       };

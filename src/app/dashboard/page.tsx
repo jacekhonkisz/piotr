@@ -31,6 +31,7 @@ import GoogleAdsPerformanceLive from '../../components/GoogleAdsPerformanceLive'
 
 
 import ClientSelector from '../../components/ClientSelector';
+import WelcomeSection from '../../components/WelcomeSection';
 
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -1020,6 +1021,14 @@ export default function DashboardPage() {
     return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {/* Welcome Section */}
+        <WelcomeSection
+          user={user}
+          profile={profile}
+          client={clientData?.client || selectedClient}
+          isLoading={loading}
+        />
+
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 space-y-4 sm:space-y-0">
           <div className="flex-1">
