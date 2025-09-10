@@ -33,7 +33,9 @@ const getDisplayName = (profile: Profile | null, user: { email: string } | null)
   }
   if (user?.email) {
     const emailName = user.email.split('@')[0];
-    return capitalizeWords(emailName.replace(/[._-]/g, ' '));
+    if (emailName) {
+      return capitalizeWords(emailName.replace(/[._-]/g, ' '));
+    }
   }
   return 'Użytkownik';
 };

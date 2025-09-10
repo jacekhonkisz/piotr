@@ -356,8 +356,8 @@ export class GoogleAdsStandardizedDataFetcher {
     try {
       console.log('🚀 Using Google Ads smart cache API (3-hour refresh)...');
       
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const fullUrl = `${baseUrl}/api/google-ads-smart-cache`;
+      // Use relative URL for same-origin requests
+      const fullUrl = '/api/google-ads-smart-cache';
       
       const requestBody = {
         clientId,
@@ -512,8 +512,8 @@ export class GoogleAdsStandardizedDataFetcher {
     try {
       console.log('🚀 Using live Google Ads API as fallback...');
       
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const fullUrl = `${baseUrl}/api/fetch-google-ads-live-data`;
+      // Use relative URL for same-origin requests
+      const fullUrl = '/api/fetch-google-ads-live-data';
       
       const requestBody = {
         dateRange,

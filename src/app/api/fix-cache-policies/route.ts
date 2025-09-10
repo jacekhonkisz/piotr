@@ -4,42 +4,44 @@ import logger from '../../../lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔧 Fixing cache RLS policies...');
+    console.log('🔧 Testing cache access...');
     
-    // Execute the RLS policy fix directly
-    const { data, error } = await supabase.rpc('exec_sql', {
-      sql: `
-        -- Add service role policy for current_month_cache
-        CREATE POLICY IF NOT EXISTS "Service role can access all current month cache" ON current_month_cache
-        FOR ALL USING (auth.role() = 'service_role');
-
-        -- Add service role policy for current_week_cache  
-        CREATE POLICY IF NOT EXISTS "Service role can access all current week cache" ON current_week_cache
-        FOR ALL USING (auth.role() = 'service_role');
-
-        -- Grant explicit permissions to service role
-        GRANT ALL ON current_month_cache TO service_role;
-        GRANT ALL ON current_week_cache TO service_role;
-      `
-    });
+    // Test if we can access the cache tables
+    const { data: monthData, error: monthError } = await supabase
+      .from('current_month_cache')
+      .select('*')
+      .limit(1);
     
-    if (error) {
-      console.error('❌ Error fixing RLS policies:', error);
+    const { data: weekData, error: weekError } = await supabase
+      .from('current_week_cache')
+      .select('*')
+      .limit(1);
+    
+    if (monthError || weekError) {
+      console.error('❌ Cache access issues:', { monthError, weekError });
       return NextResponse.json({
         success: false,
-        error: error.message
+        error: 'Cache access issues detected',
+        details: {
+          monthError: monthError?.message,
+          weekError: weekError?.message
+        }
       }, { status: 500 });
     }
     
-    console.log('✅ RLS policies fixed successfully');
+    console.log('✅ Cache access working correctly');
     
     return NextResponse.json({
       success: true,
-      message: 'RLS policies fixed successfully'
+      message: 'Cache access is working correctly',
+      results: {
+        monthCacheAccessible: !monthError,
+        weekCacheAccessible: !weekError
+      }
     });
     
   } catch (error) {
-    console.error('❌ Error fixing RLS policies:', error);
+    console.error('❌ Error testing cache access:', error);
     
     return NextResponse.json({
       success: false,

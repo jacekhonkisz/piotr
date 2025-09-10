@@ -24,7 +24,7 @@ const nextConfig = {
   async headers() {
     const isDev = process.env.NODE_ENV !== 'production';
     const devCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline' blob: data:; img-src 'self' data: blob: https:; font-src 'self' data: blob:; connect-src 'self' ws: wss: https://*.supabase.co https://graph.facebook.com; frame-src 'self' blob:";
-    const prodCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://graph.facebook.com; frame-src 'self' blob:";
+    const prodCsp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://graph.facebook.com https://*.vercel.app; frame-src 'self' blob:";
 
     return [
       {

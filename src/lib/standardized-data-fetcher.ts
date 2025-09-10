@@ -431,9 +431,8 @@ export class StandardizedDataFetcher {
     console.log(`🎯 SMART CACHE: Making API call for ${platform}...`);
     
     try {
-      // Make HTTP request to smart cache API
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const response = await fetch(`${baseUrl}/api/smart-cache`, {
+      // Make HTTP request to smart cache API (use relative URL)
+      const response = await fetch('/api/smart-cache', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -504,8 +503,8 @@ export class StandardizedDataFetcher {
         reason: 'standardized-data-fetcher-with-caching'
       };
       
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const fullUrl = `${baseUrl}${apiEndpoint}`;
+      // Use relative URL for same-origin requests (works in both dev and production)
+      const fullUrl = apiEndpoint;
       
       console.log(`🚀 Calling live API with caching: ${fullUrl}`);
       

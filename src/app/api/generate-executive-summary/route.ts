@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
       
       try {
         // Fetch Meta data
-        const metaResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-live-data`, {
+        const metaResponse = await fetch('/api/fetch-live-data', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Fetch Google Ads data
-        const googleResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3002'}/api/fetch-google-ads-live-data`, {
+        const googleResponse = await fetch('/api/fetch-google-ads-live-data', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

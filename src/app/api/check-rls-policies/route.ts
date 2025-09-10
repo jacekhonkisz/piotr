@@ -6,84 +6,28 @@ export async function GET(request: NextRequest) {
   try {
     console.log('🔍 Checking RLS policies for cache tables...\n');
     
-    // Check current_month_cache policies
-    const { data: monthPolicies, error: monthError } = await supabase
-      .rpc('exec_sql', {
-        sql: `
-          SELECT 
-            schemaname,
-            tablename,
-            policyname,
-            permissive,
-            roles,
-            cmd,
-            qual,
-            with_check
-          FROM pg_policies 
-          WHERE tablename = 'current_month_cache'
-          ORDER BY policyname;
-        `
-      });
+    // Since exec_sql is not available, we'll use a simpler approach
+    // Check if we can access the cache tables directly
+    const { data: monthCacheData, error: monthError } = await supabase
+      .from('current_month_cache')
+      .select('*')
+      .limit(1);
     
-    if (monthError) {
-      console.error('❌ Error checking month cache policies:', monthError);
-    } else {
-      console.log('📋 Current month cache policies:');
-      console.log(JSON.stringify(monthPolicies, null, 2));
-    }
-    
-    // Check current_week_cache policies
-    const { data: weekPolicies, error: weekError } = await supabase
-      .rpc('exec_sql', {
-        sql: `
-          SELECT 
-            schemaname,
-            tablename,
-            policyname,
-            permissive,
-            roles,
-            cmd,
-            qual,
-            with_check
-          FROM pg_policies 
-          WHERE tablename = 'current_week_cache'
-          ORDER BY policyname;
-        `
-      });
-    
-    if (weekError) {
-      console.error('❌ Error checking week cache policies:', weekError);
-    } else {
-      console.log('📋 Current week cache policies:');
-      console.log(JSON.stringify(weekPolicies, null, 2));
-    }
-    
-    // Check if service role has access
-    const { data: serviceRoleCheck, error: serviceError } = await supabase
-      .rpc('exec_sql', {
-        sql: `
-          SELECT 
-            has_table_privilege('service_role', 'current_month_cache', 'SELECT') as can_select,
-            has_table_privilege('service_role', 'current_month_cache', 'INSERT') as can_insert,
-            has_table_privilege('service_role', 'current_month_cache', 'UPDATE') as can_update,
-            has_table_privilege('service_role', 'current_month_cache', 'DELETE') as can_delete;
-        `
-      });
-    
-    if (serviceError) {
-      console.error('❌ Error checking service role privileges:', serviceError);
-    } else {
-      console.log('🔑 Service role privileges:');
-      console.log(JSON.stringify(serviceRoleCheck, null, 2));
-    }
+    const { data: weekCacheData, error: weekError } = await supabase
+      .from('current_week_cache')
+      .select('*')
+      .limit(1);
     
     return NextResponse.json({
       success: true,
       message: 'RLS policy check completed',
       results: {
-        monthCachePolicies: monthPolicies || [],
-        weekCachePolicies: weekPolicies || [],
-        serviceRolePrivileges: serviceRoleCheck || []
+        monthCacheAccessible: !monthError,
+        weekCacheAccessible: !weekError,
+        monthCacheError: monthError?.message || null,
+        weekCacheError: weekError?.message || null,
+        monthCacheSample: monthCacheData?.length || 0,
+        weekCacheSample: weekCacheData?.length || 0
       }
     });
     

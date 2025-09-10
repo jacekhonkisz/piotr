@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       console.log('📊 Current cache:');
       console.log(`  Last Updated: ${currentCache.last_updated}`);
       console.log(`  Cache Age: ${Math.round(cacheAge / 1000 / 60)} minutes`);
-      console.log(`  Total Spend: ${currentCache.cache_data?.stats?.totalSpend || 'N/A'}`);
+      console.log(`  Total Spend: ${(currentCache.cache_data as any)?.stats?.totalSpend || 'N/A'}`);
     } else {
       console.log('⚠️ No cache found for current period');
     }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     console.log('📊 Refresh result:');
     console.log(`  Success: ${refreshResult.success}`);
     console.log(`  Source: ${refreshResult.source}`);
-    console.log(`  Total Spend: ${refreshResult.data?.stats?.totalSpend || 'N/A'}`);
+    console.log(`  Total Spend: ${(refreshResult.data as any)?.stats?.totalSpend || 'N/A'}`);
     
     // 3. Check cache state after refresh
     console.log('\n3️⃣ Checking cache state after refresh...');
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
       console.log('📊 Updated cache:');
       console.log(`  Last Updated: ${updatedCache.last_updated}`);
       console.log(`  Cache Age: ${Math.round(updatedCacheAge / 1000 / 60)} minutes`);
-      console.log(`  Total Spend: ${updatedCache.cache_data?.stats?.totalSpend || 'N/A'}`);
+      console.log(`  Total Spend: ${(updatedCache.cache_data as any)?.stats?.totalSpend || 'N/A'}`);
     } else {
       console.log('⚠️ No cache found after refresh');
     }
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     console.log(`  Success: ${normalResult.success}`);
     console.log(`  Source: ${normalResult.source}`);
     console.log(`  Cache Age: ${normalResult.data?.cacheAge || 'N/A'}ms`);
-    console.log(`  Total Spend: ${normalResult.data?.stats?.totalSpend || 'N/A'}`);
+    console.log(`  Total Spend: ${(normalResult.data as any)?.stats?.totalSpend || 'N/A'}`);
     
     const responseTime = Date.now() - startTime;
     
@@ -78,23 +78,23 @@ export async function GET(request: NextRequest) {
         beforeRefresh: currentCache ? {
           lastUpdated: currentCache.last_updated,
           cacheAge: Date.now() - new Date(currentCache.last_updated).getTime(),
-          totalSpend: currentCache.cache_data?.stats?.totalSpend || 0
+          totalSpend: (currentCache.cache_data as any)?.stats?.totalSpend || 0
         } : null,
         refreshResult: {
           success: refreshResult.success,
           source: refreshResult.source,
-          totalSpend: refreshResult.data?.stats?.totalSpend || 0
+          totalSpend: (refreshResult.data as any)?.stats?.totalSpend || 0
         },
         afterRefresh: updatedCache ? {
           lastUpdated: updatedCache.last_updated,
           cacheAge: Date.now() - new Date(updatedCache.last_updated).getTime(),
-          totalSpend: updatedCache.cache_data?.stats?.totalSpend || 0
+          totalSpend: (updatedCache.cache_data as any)?.stats?.totalSpend || 0
         } : null,
         normalResult: {
           success: normalResult.success,
           source: normalResult.source,
           cacheAge: normalResult.data?.cacheAge || 0,
-          totalSpend: normalResult.data?.stats?.totalSpend || 0
+          totalSpend: (normalResult.data as any)?.stats?.totalSpend || 0
         }
       },
       totalResponseTime: responseTime

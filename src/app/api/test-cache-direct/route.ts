@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Cache verification successful:', {
       lastUpdated: verifyResult.last_updated,
-      totalSpend: verifyResult.cache_data?.stats?.totalSpend
+      totalSpend: (verifyResult.cache_data as any)?.stats?.totalSpend
     });
     
     return NextResponse.json({
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       message: 'Direct cache update successful',
       cacheData: {
         lastUpdated: verifyResult.last_updated,
-        totalSpend: verifyResult.cache_data?.stats?.totalSpend,
+        totalSpend: (verifyResult.cache_data as any)?.stats?.totalSpend,
         periodId: verifyResult.period_id
       }
     });

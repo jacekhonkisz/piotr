@@ -166,7 +166,7 @@ async function generateReportPDF(
   logger.info('📄 Generating PDF report...');
 
   // Call the existing PDF generation API
-  const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-pdf`, {
+  const response = await fetch('/api/generate-pdf', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

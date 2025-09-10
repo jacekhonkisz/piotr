@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
           metaTables: directMetaTables
         };
 
-        const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-pdf`, {
+        const pdfResponse = await fetch('/api/generate-pdf', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

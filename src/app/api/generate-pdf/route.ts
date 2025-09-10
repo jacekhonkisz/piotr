@@ -2009,7 +2009,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.info('📊 Fetching Year-over-Year comparison using YoY API (same as reports page)...');
     
     // Use the same YoY API endpoint that works for the reports page
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Use relative URL for same-origin requests
     
     // Fetch Meta YoY data
     let metaYoYData = null;
@@ -2017,7 +2017,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       try {
         logger.info('📊 Fetching Meta YoY data from API...');
         
-        const metaYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
+        const metaYoYResponse = await fetch('/api/year-over-year-comparison', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -2049,7 +2049,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       try {
         logger.info('📊 Fetching Google Ads YoY data from API...');
         
-        const googleYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
+        const googleYoYResponse = await fetch('/api/year-over-year-comparison', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -2297,7 +2297,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           
           // Fetch Meta tables data (no auth, same as reports page)
           try {
-            const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-meta-tables`, {
+            const metaTablesResponse = await fetch('/api/fetch-meta-tables', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'

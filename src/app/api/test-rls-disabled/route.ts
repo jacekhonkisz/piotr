@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
     
-    console.log(`✅ Read successful: ${readResult.cache_data?.stats?.totalSpend || 'N/A'}`);
+    console.log(`✅ Read successful: ${(readResult.cache_data as any)?.stats?.totalSpend || 'N/A'}`);
     
     // Test 3: Clean up test record
     console.log('\n3️⃣ Cleaning up test record...');

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (readResult) {
       const cacheAge = Date.now() - new Date(readResult.last_updated).getTime();
       console.log(`  Cache age: ${Math.round(cacheAge / 1000 / 60)} minutes`);
-      console.log(`  Total spend: ${readResult.cache_data?.stats?.totalSpend || 'N/A'}`);
+      console.log(`  Total spend: ${(readResult.cache_data as any)?.stats?.totalSpend || 'N/A'}`);
     }
     
     // 2. Test if we can write to cache table
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
     
     console.log('✅ Write verification successful');
-    console.log(`  Total spend: ${verifyResult.cache_data?.stats?.totalSpend || 'N/A'}`);
+    console.log(`  Total spend: ${(verifyResult.cache_data as any)?.stats?.totalSpend || 'N/A'}`);
     
     // 4. Test smart cache system
     console.log('\n4️⃣ Testing smart cache system...');
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
           totalSpend: smartCacheResult.data?.stats?.totalSpend || 0
         },
         cacheData: {
-          totalSpend: verifyResult.cache_data?.stats?.totalSpend || 0,
+          totalSpend: (verifyResult.cache_data as any)?.stats?.totalSpend || 0,
           lastUpdated: verifyResult.last_updated
         }
       }
