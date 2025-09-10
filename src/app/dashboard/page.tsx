@@ -710,31 +710,8 @@ export default function DashboardPage() {
         month: currentMonthInfo.month
       });
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        return {
-          campaigns: [],
-          stats: {
-            totalSpend: 0,
-            totalImpressions: 0,
-            totalClicks: 0,
-            totalConversions: 0,
-            averageCtr: 0,
-            averageCpc: 0
-          },
-          conversionMetrics: {
-            click_to_call: 0,
-            email_contacts: 0,
-            booking_step_1: 0,
-            reservations: 0,
-            reservation_value: 0,
-            roas: 0,
-            cost_per_reservation: 0,
-            booking_step_2: 0,
-            booking_step_3: 0
-          }
-        };
-      }
+      // 🔧 REMOVED: Authentication check - not required for this project
+      // Dashboard will use StandardizedDataFetcher without authentication
 
       // 🔧 UNIFIED APPROACH: Use same logic as reports page
       const hasMetaAds = currentClient.meta_access_token && currentClient.ad_account_id;
@@ -776,8 +753,7 @@ export default function DashboardPage() {
           result = await GoogleAdsStandardizedDataFetcher.fetchData({
             clientId: currentClient.id,
             dateRange,
-            reason: 'google-ads-dashboard-standardized-load',
-            sessionToken: session?.access_token
+            reason: 'google-ads-dashboard-standardized-load'
           });
         } else {
           // Use Meta system
@@ -787,8 +763,7 @@ export default function DashboardPage() {
             clientId: currentClient.id,
             dateRange,
             platform: 'meta',
-            reason: 'meta-dashboard-standardized-load',
-            sessionToken: session?.access_token
+            reason: 'meta-dashboard-standardized-load'
           });
         }
 

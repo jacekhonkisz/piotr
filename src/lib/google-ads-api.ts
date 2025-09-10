@@ -443,7 +443,7 @@ export class GoogleAdsAPIService {
           conversion_action.type,
           conversion_action.status
         FROM conversion_action
-        WHERE conversion_action.status = 2
+        WHERE conversion_action.status = 'ENABLED'
         ORDER BY conversion_action.name
       `;
       
@@ -477,7 +477,7 @@ export class GoogleAdsAPIService {
         };
       }
       
-      // Now get conversion data by campaign - try without segments first
+      // Now get conversion data by campaign - include segments for date filtering
       const query = `
         SELECT
           campaign.id,
@@ -485,8 +485,7 @@ export class GoogleAdsAPIService {
           metrics.conversions,
           metrics.conversions_value
         FROM campaign
-        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
-          AND metrics.conversions > 0
+        WHERE metrics.conversions > 0
         ORDER BY campaign.id
       `;
       

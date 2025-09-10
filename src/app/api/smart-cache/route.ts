@@ -7,14 +7,8 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Authenticate the request
-    const authResult = await authenticateRequest(request);
-    if (!authResult.success || !authResult.user) {
-      return createErrorResponse(authResult.error || 'Authentication failed', 401);
-    }
-    
-    const user = authResult.user;
-    logger.info('🔐 Smart cache request authenticated for user:', user.email);
+    // 🔧 REMOVED: Authentication check - not required for this project
+    logger.info('🔐 Smart cache request (no auth required)');
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -27,7 +21,7 @@ export async function POST(request: NextRequest) {
     logger.info('Data processing', {
       clientId,
       forceRefresh,
-      authenticatedUser: user.email
+      authenticatedUser: 'auth-disabled'
     });
     
     // Use the shared smart cache helper
@@ -49,7 +43,7 @@ export async function POST(request: NextRequest) {
         source: result.source,
         responseTime,
         cacheAge: result.data.cacheAge,
-        authenticatedUser: user.email
+        authenticatedUser: 'auth-disabled'
       }
     });
     

@@ -217,83 +217,40 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       
       // Add to global request cache to prevent duplicates
       globalComponentRequestCache.set(cacheKey, (async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.access_token) {
-          console.log('❌ MetaPerformanceLive: No session found');
-          throw new Error('No session found');
-        }
-        console.log('✅ MetaPerformanceLive: Session found, proceeding with API call');
+        // 🔧 REMOVED: Authentication check - not required for this project
+        console.log('✅ MetaPerformanceLive: Using StandardizedDataFetcher directly (no auth required)');
 
-        console.log(`🔄 MetaPerformanceLive: Fetching data from fetch-live-data (consistent with dashboard cards)`);
+        console.log(`🔄 MetaPerformanceLive: Using StandardizedDataFetcher for consistent data`);
 
-        // Use same endpoint as dashboard cards for data consistency
+        // Use StandardizedDataFetcher directly (same as dashboard)
+        const { StandardizedDataFetcher } = await import('../lib/standardized-data-fetcher');
+        
         const now = new Date();
         const year = now.getFullYear();
         const month = now.getMonth() + 1;
         const currentMonth = {
           start: `${year}-${String(month).padStart(2, '0')}-01`,
-          end: new Date(year, month, 0).toISOString().split('T')[0] // Last day of current month
+          end: new Date(year, month, 0).toISOString().split('T')[0] || `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate().toString().padStart(2, '0')}` // Last day of current month with fallback
         };
 
-        const response = await fetch('/api/fetch-live-data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`
-          },
-          body: JSON.stringify({
-            clientId,
-            dateRange: currentMonth,
-            forceFresh: false, // ✅ FIXED: Use smart cache instead of bypassing
-            reason: 'meta_performance_live_component'
-          })
+        const result = await StandardizedDataFetcher.fetchData({
+          clientId,
+          dateRange: currentMonth,
+          platform: 'meta',
+          reason: 'meta_performance_live_component'
         });
 
-        if (!response.ok) {
-          if (response.status === 401) {
-            console.warn('MetaPerformanceLive: Authentication failed (401), attempting retry with fresh session...');
-            // Try to get fresh session and retry once
-            const { data: { session: freshSession } } = await supabase.auth.getSession();
-            if (freshSession?.access_token) {
-              console.log('🔄 MetaPerformanceLive: Retrying with fresh session token');
-              const retryResponse = await fetch('/api/fetch-live-data', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${freshSession.access_token}`
-                },
-                body: JSON.stringify({
-                  clientId,
-                  dateRange: currentMonth,
-                  forceRefresh
-                })
-              });
-              
-              if (retryResponse.ok) {
-                console.log('✅ MetaPerformanceLive: Retry succeeded');
-                return await retryResponse.json();
-              } else {
-                console.error('❌ MetaPerformanceLive: Retry also failed:', retryResponse.status);
-                throw new Error(`API retry failed: ${retryResponse.status}`);
-              }
-            } else {
-              console.error('❌ MetaPerformanceLive: No fresh session available for retry');
-              throw new Error('Authentication failed - no fresh session');
-            }
-          } else {
-            console.warn('MetaPerformanceLive: Fetch-live-data API response not ok:', response.status);
-            throw new Error(`API response not ok: ${response.status}`);
-          }
-        }
-
-        const json = await response.json();
-        
-        if (!json.success || !json.data) {
-          console.warn('MetaPerformanceLive: No data received from fetch-live-data:', json);
-          throw new Error('No data received from fetch-live-data');
+        if (!result.success || !result.data) {
+          console.warn('MetaPerformanceLive: No data received from StandardizedDataFetcher:', result);
+          throw new Error('No data received from StandardizedDataFetcher');
         }
         
-        return json;
+        console.log('✅ MetaPerformanceLive: StandardizedDataFetcher returned data:', {
+          source: result.debug?.source,
+          campaignCount: result.data.campaigns?.length || 0
+        });
+        
+        return result;
       })());
       
       // Get the result from the cached promise

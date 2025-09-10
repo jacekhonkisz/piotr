@@ -275,8 +275,6 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
           period_id: currentMonth.periodId,
           cache_data: cacheData,
           last_updated: new Date().toISOString()
-        }, {
-          onConflict: 'client_id,period_id'
         });
 
       if (cacheError) {
@@ -476,8 +474,6 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
           period_id: currentWeek.periodId,
           cache_data: cacheData,
           last_updated: new Date().toISOString()
-        }, {
-          onConflict: 'client_id,period_id'
         });
 
       if (cacheError) {

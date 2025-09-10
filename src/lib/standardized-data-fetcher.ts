@@ -108,6 +108,17 @@ export class StandardizedDataFetcher {
       strategy: needsSmartCache ? 'SMART_CACHE (3-hour refresh)' : 'DATABASE_FIRST (historical data)'
     });
     
+    console.log('🔍 DEBUG: Date comparison details:', {
+      startDate: dateRange.start,
+      endDate: dateRange.end,
+      startYear,
+      startMonth,
+      currentYear,
+      currentMonth,
+      isCurrentPeriod,
+      needsSmartCache
+    });
+    
     const dataSources: string[] = [];
     
     try {
@@ -117,6 +128,8 @@ export class StandardizedDataFetcher {
         dataSources.push('smart_cache_system');
         
         const smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+        console.log(`🔍 Smart cache result:`, { success: smartCacheResult.success, hasData: !!smartCacheResult.data });
+        
         if (smartCacheResult.success) {
           const responseTime = Date.now() - startTime;
           
@@ -173,34 +186,8 @@ export class StandardizedDataFetcher {
         };
       }
       
-      // Priority 3: Try daily_kpi_data (fallback if campaign_summaries fails)
-      console.log(`3️⃣ STANDARDIZED: Trying daily_kpi_data fallback for ${platform}...`);
-      dataSources.push('daily_kpi_data_fallback');
-      
-      const dailyResult = await this.fetchFromDailyKpiData(clientId, dateRange, platform);
-      if (dailyResult.success) {
-        const responseTime = Date.now() - startTime;
-        
-        console.log(`✅ SUCCESS: daily_kpi_data fallback returned data in ${responseTime}ms`);
-        
-        return {
-          success: true,
-          data: dailyResult.data!,
-          debug: {
-            source: 'daily-kpi-data-fallback',
-            cachePolicy: needsLiveData ? 'database-fallback-current' : 'database-first-historical',
-            responseTime,
-            reason,
-            dataSourcePriority: dataSources,
-            periodType: isCurrentPeriod ? 'current' : 'historical'
-          },
-          validation: {
-            actualSource: 'daily_kpi_data',
-            expectedSource: 'campaign_summaries',
-            isConsistent: false
-          }
-        };
-      }
+      // 🚫 REMOVED: daily_kpi_data fallback - use only smart cache and database
+      console.log(`3️⃣ SKIPPED: daily_kpi_data fallback removed - using only smart cache and database`);
       
       // 🎯 PRIORITY 4: Live API fallback (last resort with smart cache storage)
       console.log('4️⃣ No database data, trying live API fallback with smart cache storage...');
@@ -333,7 +320,8 @@ export class StandardizedDataFetcher {
     };
     
     // Try to get more accurate conversion data from campaign_summaries
-    const { data: campaignSummary } = await supabase
+    // @ts-ignore - Supabase type issue
+    const campaignSummaryResult = await supabase
       .from('campaign_summaries')
       .select('*')
       .eq('client_id', clientId)
@@ -341,10 +329,12 @@ export class StandardizedDataFetcher {
       .gte('summary_date', dateRange.start)
       .lte('summary_date', dateRange.end)
       .order('created_at', { ascending: false })
-      .limit(1) as { data: any[] | null; error: any };
+      .limit(1);
+      
+    const campaignSummary = campaignSummaryResult.data;
       
     if (campaignSummary && campaignSummary.length > 0) {
-      const summary = campaignSummary[0];
+      const summary = campaignSummary[0] as any; // Type assertion for conversion data
       console.log(`✅ Found campaign summary with conversion data: ${summary?.reservations || 0} reservations, ${summary?.reservation_value || 0} PLN`);
       
       conversionMetrics = {
@@ -431,59 +421,51 @@ export class StandardizedDataFetcher {
     platform: string
   ): Promise<Partial<StandardizedDataResult>> {
     
-    console.log(`🎯 SMART CACHE: Direct integration for ${platform}...`);
+    console.log(`🎯 SMART CACHE: Making API call for ${platform}...`);
     
     try {
-      // Import smart cache helpers dynamically
-      const { getSmartCacheData } = await import('./smart-cache-helper');
-      const { getSmartWeekCacheData } = await import('./smart-cache-helper');
+      // Make HTTP request to smart cache API
+      const response = await fetch('/api/smart-cache', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          clientId,
+          platform,
+          forceRefresh: false
+        })
+      });
       
-      // Determine if this is weekly or monthly request
-      const start = new Date(dateRange.start);
-      const end = new Date(dateRange.end);
-      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      const isWeekly = daysDiff <= 7;
-      
-      console.log(`📅 Detected ${isWeekly ? 'weekly' : 'monthly'} request (${daysDiff} days)`);
-      
-      let cacheResult;
-      if (isWeekly) {
-        // Generate period ID for weekly requests
-        const year = start.getFullYear();
-        const jan4 = new Date(year, 0, 4);
-        const startOfYear = new Date(jan4);
-        startOfYear.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-        const weeksDiff = Math.floor((start.getTime() - startOfYear.getTime()) / (7 * 24 * 60 * 60 * 1000));
-        const weekNumber = weeksDiff + 1;
-        const periodId = `${year}-W${String(weekNumber).padStart(2, '0')}`;
-        
-        cacheResult = await getSmartWeekCacheData(clientId, false, periodId);
-      } else {
-        cacheResult = await getSmartCacheData(clientId, false);
+      if (!response.ok) {
+        console.log(`⚠️ Smart cache API failed with status ${response.status}`);
+        return { success: false };
       }
       
-      if (cacheResult.success && cacheResult.data) {
-        console.log(`✅ Smart cache hit for ${platform}:`, {
-          source: cacheResult.source,
-          campaignsCount: cacheResult.data.campaigns?.length || 0,
-          totalSpend: cacheResult.data.stats?.totalSpend || 0
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        console.log(`✅ Smart cache API returned data for ${platform}:`, {
+          source: result.debug?.source,
+          campaignsCount: result.data.campaigns?.length || 0,
+          totalSpend: result.data.stats?.totalSpend || 0
         });
         
         return {
           success: true,
           data: {
-            stats: cacheResult.data.stats || this.getZeroData().stats,
-            conversionMetrics: cacheResult.data.conversionMetrics || this.getZeroData().conversionMetrics,
-            campaigns: cacheResult.data.campaigns || []
+            stats: result.data.stats || this.getZeroData().stats,
+            conversionMetrics: result.data.conversionMetrics || this.getZeroData().conversionMetrics,
+            campaigns: result.data.campaigns || []
           }
         };
       } else {
-        console.log(`⚠️ Smart cache miss for ${platform}`);
+        console.log(`⚠️ Smart cache API returned no data for ${platform}`);
         return { success: false };
       }
       
     } catch (error) {
-      console.log(`⚠️ Smart cache error: ${error}`);
+      console.error(`❌ Smart cache API error for ${platform}:`, error);
       return { success: false };
     }
   }
