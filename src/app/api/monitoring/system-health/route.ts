@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateRequest, createErrorResponse } from '../../../../lib/auth-middleware';
 import logger from '../../../../lib/logger';
 
 const supabase = createClient(
@@ -47,16 +46,7 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Authenticate the request
-    const authResult = await authenticateRequest(request);
-    if (!authResult.success || !authResult.user) {
-      return createErrorResponse(authResult.error || 'Authentication failed', 401);
-    }
-    
-    logger.info('🏥 System health check requested', { 
-      userId: authResult.user.id,
-      userEmail: authResult.user.email 
-    });
+    logger.info('🏥 System health check requested');
     
     const healthMetrics: SystemHealthMetrics = await collectSystemHealthMetrics();
     
@@ -73,8 +63,7 @@ export async function GET(request: NextRequest) {
       data: healthMetrics,
       meta: {
         responseTime,
-        timestamp: new Date().toISOString(),
-        requestedBy: authResult.user.email
+        timestamp: new Date().toISOString()
       }
     });
     
