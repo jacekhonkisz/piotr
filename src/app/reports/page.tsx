@@ -462,30 +462,42 @@ function ReportsPageContent() {
     if (selectedPeriod && selectedClient) {
       console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing data for period: ${selectedPeriod}`);
       
-      // 🔧 FIX: Clear any existing loading state first
-      setLoadingPeriod(null);
-      setApiCallInProgress(false);
-      loadingRef.current = false;
+      // 🔧 CRITICAL FIX: Use setTimeout to ensure state updates are processed
+      const switchProvider = async () => {
+        // Clear any existing loading state first
+        setLoadingPeriod(null);
+        setApiCallInProgress(false);
+        loadingRef.current = false;
+        
+        // Clear current report to force refresh
+        setReports(prev => {
+          const newReports = { ...prev };
+          delete newReports[selectedPeriod];
+          return newReports;
+        });
+        
+        // Clear ALL API call trackers for this client to allow fresh calls
+        if ((window as any).apiCallTracker) {
+          Object.keys((window as any).apiCallTracker).forEach(key => {
+            if (key.includes(selectedClient.id)) {
+              delete (window as any).apiCallTracker[key];
+            }
+          });
+          console.log('🧹 Cleared ALL API call trackers for client:', selectedClient.id);
+        }
+        
+        // Wait for state updates to complete
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Set loading state after clearing
+        setLoadingPeriod(selectedPeriod);
+        
+        // Force fresh data load with new provider
+        console.log(`🔄 FORCING FRESH DATA LOAD for ${activeAdsProvider} provider`);
+        await loadPeriodDataWithClient(selectedPeriod, selectedClient, true); // Force clear cache
+      };
       
-      // Set loading state immediately to prevent "Brak danych" flash
-      setLoadingPeriod(selectedPeriod);
-      
-      // Clear current report to force refresh
-      setReports(prev => {
-        const newReports = { ...prev };
-        delete newReports[selectedPeriod];
-        return newReports;
-      });
-      
-      // Clear API call tracker for this period to allow fresh calls
-      if ((window as any).apiCallTracker) {
-        const callKey = `${selectedPeriod}-${activeAdsProvider}-${selectedClient.id}`;
-        delete (window as any).apiCallTracker[callKey];
-        console.log('🧹 Cleared API call tracker for provider switch:', callKey);
-      }
-      
-      // Reload data with new provider (let system decide database vs live API)
-      loadPeriodDataWithClient(selectedPeriod, selectedClient, false);
+      switchProvider();
     }
   }, [activeAdsProvider]);
 
@@ -1258,26 +1270,28 @@ function ReportsPageContent() {
     // CRITICAL: Prevent ALL duplicate calls with multiple layers of protection
     const callKey = `${periodId}-${activeAdsProvider}-${clientData.id}`;
     
-    // Layer 1: Check loading refs
-    if (loadingRef.current || apiCallInProgress) {
+    // Layer 1: Check loading refs (but allow if forcing clear cache)
+    if (!forceClearCache && (loadingRef.current || apiCallInProgress)) {
       console.log('🚫 BLOCKED: Already loading data (Layer 1)', {
         loadingRef: loadingRef.current,
         apiCallInProgress,
         periodId,
-        activeAdsProvider
+        activeAdsProvider,
+        forceClearCache
       });
       return;
     }
     
-    // Layer 2: Check recent calls (prevent calls within 2 seconds)
+    // Layer 2: Check recent calls (prevent calls within 2 seconds, but allow if forcing clear cache)
     const now = Date.now();
     if (!(window as any).apiCallTracker) (window as any).apiCallTracker = {};
     
-    if ((window as any).apiCallTracker[callKey] && (now - (window as any).apiCallTracker[callKey]) < 2000) {
+    if (!forceClearCache && (window as any).apiCallTracker[callKey] && (now - (window as any).apiCallTracker[callKey]) < 2000) {
       console.log('🚫 BLOCKED: Recent call detected (Layer 2)', { 
         periodId, 
         activeAdsProvider,
-        timeSinceLastCall: now - (window as any).apiCallTracker[callKey]
+        timeSinceLastCall: now - (window as any).apiCallTracker[callKey],
+        forceClearCache
       });
       return;
     }

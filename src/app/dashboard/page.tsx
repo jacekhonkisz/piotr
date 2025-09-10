@@ -133,6 +133,16 @@ export default function DashboardPage() {
     // 🔧 CRITICAL FIX: Set refreshing state BEFORE switching provider
     setRefreshingData(true);
     
+    // Clear any existing API call trackers to prevent blocking
+    if ((window as any).apiCallTracker) {
+      Object.keys((window as any).apiCallTracker).forEach(key => {
+        if (key.includes(currentClient.id)) {
+          delete (window as any).apiCallTracker[key];
+        }
+      });
+      console.log('🧹 Cleared API call trackers for dashboard switch');
+    }
+    
     // Switch provider first
     setActiveAdsProvider(provider);
     
