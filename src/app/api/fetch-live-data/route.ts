@@ -754,13 +754,42 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           console.error('⚠️ Weekly smart cache failed, falling back to live fetch:', cacheError);
         }
       } else if (isCurrentMonthRequest && !forceFresh) {
-        // Current month: SIMPLE DATABASE-FIRST APPROACH
-        logger.info('📊 🔴 CURRENT MONTH DETECTED - CHECKING DATABASE CACHE...');
+        // Current month: USE SMART CACHE SYSTEM
+        logger.info('📊 🔴 CURRENT MONTH DETECTED - USING SMART CACHE SYSTEM...');
         logger.debug('Debug info', {
           clientId,
           currentTime: new Date().toISOString()
         });
         
+        try {
+          // Use the smart cache system for current month
+          const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
+          const smartCacheResult = await getSmartCacheData(clientId, false, platform);
+          
+          if (smartCacheResult.success && smartCacheResult.data) {
+            const responseTime = Date.now() - startTime;
+            console.log(`🚀 ✅ SMART CACHE SUCCESS: Current month data loaded in ${responseTime}ms`);
+            
+            return NextResponse.json({
+              success: true,
+              data: smartCacheResult.data,
+              debug: {
+                source: smartCacheResult.source || 'smart-cache',
+                responseTime,
+                cacheAge: smartCacheResult.data.cacheAge || 0,
+                authenticatedUser: 'auth-disabled',
+                currency: 'PLN',
+                cacheInfo: 'Smart cache (current month)'
+              }
+            });
+          } else {
+            console.log('⚠️ Smart cache failed, falling back to live API...');
+          }
+        } catch (smartCacheError) {
+          console.error('⚠️ Smart cache failed, falling back to live API:', smartCacheError);
+        }
+        
+        // Fallback to database cache if smart cache fails
         try {
           // Check database cache directly (no complex smart cache logic)
           const now = new Date();
