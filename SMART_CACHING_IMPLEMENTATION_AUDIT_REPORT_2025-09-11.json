@@ -1,0 +1,225 @@
+{
+  "summary": {
+    "totalComponents": 3,
+    "implementedComponents": 0,
+    "missingComponents": 3,
+    "startTime": "2025-09-11T08:37:06.038Z",
+    "endTime": "2025-09-11T08:37:07.446Z",
+    "duration": 1408
+  },
+  "components": [
+    {
+      "system": "Meta Smart Caching",
+      "components": [
+        {
+          "name": "Meta Smart Cache Helper",
+          "path": "src/lib/smart-cache-helper.ts",
+          "exists": true,
+          "size": 44278,
+          "hasRequiredFunctions": true,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": []
+        },
+        {
+          "name": "Meta Smart Cache API",
+          "path": "src/app/api/smart-cache/route.ts",
+          "exists": true,
+          "size": 2326,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, isCacheFresh, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        },
+        {
+          "name": "Meta Integration",
+          "path": "src/app/api/fetch-live-data/route.ts",
+          "exists": true,
+          "size": 64896,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, isCacheFresh, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        }
+      ],
+      "databaseTable": {
+        "exists": true,
+        "recordCount": 1
+      },
+      "issues": [],
+      "status": "not_implemented"
+    },
+    {
+      "system": "Google Ads Smart Caching",
+      "components": [
+        {
+          "name": "Google Ads Smart Cache Helper",
+          "path": "src/lib/google-ads-smart-cache-helper.ts",
+          "exists": true,
+          "size": 24915,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        },
+        {
+          "name": "Google Ads Monthly Cache API",
+          "path": "src/app/api/google-ads-smart-cache/route.ts",
+          "exists": true,
+          "size": 2063,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, isCacheFresh, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        },
+        {
+          "name": "Google Ads Weekly Cache API",
+          "path": "src/app/api/google-ads-smart-weekly-cache/route.ts",
+          "exists": true,
+          "size": 2257,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, isCacheFresh, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        },
+        {
+          "name": "Google Ads Integration",
+          "path": "src/lib/google-ads-standardized-data-fetcher.ts",
+          "exists": true,
+          "size": 20492,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, isCacheFresh, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        }
+      ],
+      "databaseTables": [
+        {
+          "name": "google_ads_current_month_cache",
+          "exists": true,
+          "recordCount": 1
+        },
+        {
+          "name": "google_ads_current_week_cache",
+          "exists": true,
+          "recordCount": 1
+        }
+      ],
+      "issues": [],
+      "status": "not_implemented"
+    },
+    {
+      "system": "Unified Caching",
+      "components": [
+        {
+          "name": "Unified Smart Cache Helper",
+          "path": "src/lib/unified-smart-cache-helper.ts",
+          "exists": false,
+          "size": 0,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": false,
+          "hasErrorHandling": false,
+          "issues": [
+            "File does not exist"
+          ]
+        },
+        {
+          "name": "Unified Smart Cache API",
+          "path": "src/app/api/unified-smart-cache/route.ts",
+          "exists": false,
+          "size": 0,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": false,
+          "hasErrorHandling": false,
+          "issues": [
+            "File does not exist"
+          ]
+        },
+        {
+          "name": "Unified Integration",
+          "path": "src/lib/standardized-data-fetcher.ts",
+          "exists": true,
+          "size": 32237,
+          "hasRequiredFunctions": false,
+          "hasCacheLogic": true,
+          "hasErrorHandling": true,
+          "issues": [
+            "Missing required functions: getSmartCacheData, isCacheFresh, fetchFreshCurrentMonthData, storeCacheData"
+          ]
+        }
+      ],
+      "issues": [],
+      "status": "not_implemented"
+    }
+  ],
+  "databaseTables": [],
+  "apiEndpoints": [],
+  "helperFunctions": [],
+  "issues": [],
+  "recommendations": [],
+  "performance": {
+    "cacheHitRates": {
+      "current_month_cache": {
+        "recordCount": 13,
+        "status": "accessible"
+      },
+      "google_ads_current_month_cache": {
+        "recordCount": 14,
+        "status": "accessible"
+      },
+      "google_ads_current_week_cache": {
+        "recordCount": 28,
+        "status": "accessible"
+      },
+      "executive_summaries": {
+        "recordCount": 7,
+        "status": "accessible"
+      }
+    },
+    "responseTimes": {},
+    "memoryUsage": {},
+    "optimization": {
+      "src/lib/smart-cache-helper.ts": {
+        "hasTTL": true,
+        "hasCleanup": false,
+        "hasBackgroundRefresh": true,
+        "optimizationScore": 2
+      },
+      "src/lib/google-ads-smart-cache-helper.ts": {
+        "hasTTL": true,
+        "hasCleanup": false,
+        "hasBackgroundRefresh": false,
+        "optimizationScore": 1
+      }
+    }
+  },
+  "analysis": {
+    "implementationStatus": {
+      "fullyImplemented": 0,
+      "partiallyImplemented": 0,
+      "notImplemented": 3,
+      "total": 3
+    },
+    "performance": {},
+    "recommendations": [
+      {
+        "priority": "high",
+        "category": "implementation",
+        "issue": "3 caching systems are not implemented",
+        "action": "Implement missing caching systems"
+      }
+    ]
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "summary": {
+    "totalCacheSystems": 3,
+    "workingSystems": 0,
+    "brokenSystems": 3,
+    "startTime": "2025-09-11T08:35:58.076Z",
+    "endTime": "2025-09-11T08:35:59.408Z",
+    "duration": 1332
+  },
+  "cacheSystems": [
+    {
+      "system": "Meta Smart Caching",
+      "status": "broken",
+      "components": {
+        "databaseTable": true,
+        "apiEndpoint": false,
+        "helperFunction": true,
+        "cronJobs": false
+      },
+      "issues": [
+        "API endpoint error: fetch failed",
+        "Cron jobs not configured",
+        "Performance test error: fetch failed"
+      ],
+      "performance": {
+        "status": "error"
+      }
+    },
+    {
+      "system": "Google Ads Smart Caching",
+      "status": "broken",
+      "components": {
+        "databaseTable": true,
+        "apiEndpoint": false,
+        "helperFunction": true,
+        "cronJobs": false
+      },
+      "issues": [
+        "API endpoint error: fetch failed",
+        "Google Ads cron jobs not configured",
+        "Performance test error: fetch failed"
+      ],
+      "performance": {
+        "status": "error"
+      }
+    },
+    {
+      "system": "Unified Caching",
+      "status": "broken",
+      "components": {
+        "apiEndpoint": false,
+        "helperFunction": false,
+        "parallelFetching": false
+      },
+      "issues": [
+        "Unified API endpoint error: fetch failed",
+        "unified-smart-cache-helper.ts not found",
+        "Performance test error: fetch failed"
+      ],
+      "performance": {
+        "status": "error"
+      }
+    }
+  ],
+  "databaseTables": [
+    {
+      "name": "current_month_cache",
+      "status": "working",
+      "recordCount": 1
+    },
+    {
+      "name": "google_ads_current_month_cache",
+      "status": "working",
+      "recordCount": 1
+    },
+    {
+      "name": "google_ads_current_week_cache",
+      "status": "working",
+      "recordCount": 1
+    },
+    {
+      "name": "executive_summaries",
+      "status": "working",
+      "recordCount": 1
+    }
+  ],
+  "apiEndpoints": [],
+  "performance": {},
+  "recommendations": [],
+  "analysis": {
+    "systemHealth": {
+      "working": 0,
+      "partiallyWorking": 0,
+      "broken": 3,
+      "total": 3
+    },
+    "performance": {
+      "averageResponseTime": 0,
+      "fastestResponse": 0,
+      "slowestResponse": 0,
+      "totalTests": 0
+    },
+    "recommendations": [
+      {
+        "priority": "high",
+        "category": "system_health",
+        "issue": "3 caching systems are broken",
+        "action": "Fix broken caching systems immediately"
+      }
+    ]
+  }
+}

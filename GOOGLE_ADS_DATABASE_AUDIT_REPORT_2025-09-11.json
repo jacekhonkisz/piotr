@@ -1,0 +1,575 @@
+{
+  "summary": {
+    "totalClients": 14,
+    "validClients": 14,
+    "invalidClients": 0,
+    "errorClients": 0,
+    "startTime": "2025-09-11T08:26:38.353Z",
+    "endTime": "2025-09-11T08:26:42.689Z",
+    "duration": 4337
+  },
+  "clients": [
+    {
+      "clientId": "8657100a-6e87-422c-97f4-b733754a9ff8",
+      "clientName": "Hotel Lambert Ustronie Morskie",
+      "customerId": "894-139-3916",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "6997607e-dd1f-49bc-87c0-c7a8a296dd94",
+      "clientName": "Sandra SPA Karpacz",
+      "customerId": "859-901-9750",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "ab0b4c7e-2bf0-46bc-b455-b18ef6942baa",
+      "clientName": "Belmonte Hotel",
+      "customerId": "789-260-9395",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "0f0dc09c-fd95-4d72-8d09-50a6136485c1",
+      "clientName": "Blue & Green Mazury",
+      "customerId": "870-316-8117",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "22c6e356-1308-4391-855d-5c2a57f55b69",
+      "clientName": "Cesarskie Ogrody",
+      "customerId": "788-509-8406",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "93d46876-addc-4b99-b1e1-437428dd54f1",
+      "clientName": "Havet",
+      "customerId": "733-667-6488",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "905636af-6ea3-4d3a-9743-4120b9d4547d",
+      "clientName": "Hotel Diva SPA Kołobrzeg",
+      "customerId": "424-085-9248",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "2f5d42e1-b7e5-4a85-ade0-56fe4f7ffe67",
+      "clientName": "Hotel Artis Loft",
+      "customerId": "175-337-8268",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "df96c536-8020-432b-88b8-209d3a830857",
+      "clientName": "Nickel Resort Grzybowo",
+      "customerId": "116-432-1699",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "221dff08-b389-4ee4-a67b-334d25c93d2f",
+      "clientName": "Arche Dwór Uphagena Gdańsk",
+      "customerId": "555-410-8762",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "59402b01-eb58-46e2-b23c-5b1db0522df1",
+      "clientName": "Blue & Green Baltic Kołobrzeg",
+      "customerId": "683-748-3921",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "1cd8689f-437f-40f6-8060-148a00b095e4",
+      "clientName": "Hotel Zalewski Mrzeżyno",
+      "customerId": "721-984-0096",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "df958c17-a745-4587-9fe2-738e1005d8d4",
+      "clientName": "Hotel Tobaco Łódź",
+      "customerId": "197-883-5824",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    },
+    {
+      "clientId": "3c6d5ab3-2628-42fe-add8-44ce50c7b892",
+      "clientName": "Młyn Klekotki",
+      "customerId": "375-477-3598",
+      "configurationStatus": "valid",
+      "dataStatus": "available",
+      "errors": [],
+      "warnings": [],
+      "analysis": {
+        "credentials": {
+          "hasCustomerId": true,
+          "hasRefreshToken": false,
+          "hasAccessToken": false,
+          "hasTokenExpiry": false,
+          "tokenExpired": null,
+          "refreshTokenSource": "manager"
+        },
+        "data": {
+          "hasData": true,
+          "campaignCount": 10,
+          "summaryCount": 0,
+          "dailyDataCount": 0,
+          "errors": [
+            "Summaries query failed: column google_ads_campaign_summaries.campaign_id does not exist",
+            "Daily data query failed: column daily_kpi_data.spend does not exist"
+          ],
+          "dataSources": [
+            "campaigns"
+          ]
+        },
+        "settings": {
+          "hasClientId": true,
+          "hasClientSecret": true,
+          "hasDeveloperToken": true,
+          "hasManagerRefreshToken": true,
+          "hasManagerCustomerId": true
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "recommendations": [],
+  "analysis": {
+    "configuration": {
+      "valid": 14,
+      "invalid": 0,
+      "disabled": 0,
+      "unknown": 0
+    },
+    "dataAvailability": {
+      "available": 14,
+      "empty": 0,
+      "unknown": 0
+    },
+    "recommendations": []
+  }
+}

@@ -46,6 +46,7 @@ interface UseYearOverYearComparisonProps {
   platform?: 'meta' | 'google';
 }
 
+// CACHE BUST: 2025-01-11 v2 - Force browser refresh - API FIXED
 export function useYearOverYearComparison({
   clientId,
   dateRange,
@@ -109,7 +110,9 @@ export function useYearOverYearComparison({
         setData(null);
         
         // No timeout - let real data fetching take as long as needed
-        const response = await fetch('/api/year-over-year-comparison', {
+        const apiUrl = '/api/year-over-year-comparison';
+        console.log(`🔄 Making API call to: ${apiUrl}`);
+        const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clientId, dateRange, platform })
@@ -138,8 +141,16 @@ export function useYearOverYearComparison({
           resultKeys: result ? Object.keys(result) : [],
           hasCurrent: !!result?.current,
           hasPrevious: !!result?.previous,
-          hasChanges: !!result?.changes
+          hasChanges: !!result?.changes,
+          currentSpend: result?.current?.spend,
+          previousSpend: result?.previous?.spend,
+          fullResult: result
         });
+        
+        // 🔍 DETAILED DEBUG: Check the actual data structure
+        console.log('🔍 DETAILED DEBUG - Current data:', result?.current);
+        console.log('🔍 DETAILED DEBUG - Previous data:', result?.previous);
+        console.log('🔍 DETAILED DEBUG - Changes data:', result?.changes);
         
         // Handle timeout response
         if (result.timeout) {
@@ -168,6 +179,13 @@ export function useYearOverYearComparison({
           clientId,
           dateRange,
           fullResult: result
+        });
+        
+        // 🔍 DEBUG: Check if the data is being set correctly
+        console.log('🔍 DEBUG - About to set data:', {
+          hasComparison,
+          willSetData: hasComparison,
+          dataToSet: result
         });
         
         if (hasComparison) {

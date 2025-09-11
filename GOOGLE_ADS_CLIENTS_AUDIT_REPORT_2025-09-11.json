@@ -1,0 +1,317 @@
+{
+  "summary": {
+    "totalClients": 14,
+    "validClients": 0,
+    "invalidClients": 14,
+    "errorClients": 0,
+    "startTime": "2025-09-11T08:25:51.833Z",
+    "endTime": "2025-09-11T08:25:53.244Z",
+    "duration": 1411
+  },
+  "clients": [
+    {
+      "clientId": "8657100a-6e87-422c-97f4-b733754a9ff8",
+      "clientName": "Hotel Lambert Ustronie Morskie",
+      "customerId": "894-139-3916",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "6997607e-dd1f-49bc-87c0-c7a8a296dd94",
+      "clientName": "Sandra SPA Karpacz",
+      "customerId": "859-901-9750",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "ab0b4c7e-2bf0-46bc-b455-b18ef6942baa",
+      "clientName": "Belmonte Hotel",
+      "customerId": "789-260-9395",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "0f0dc09c-fd95-4d72-8d09-50a6136485c1",
+      "clientName": "Blue & Green Mazury",
+      "customerId": "870-316-8117",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "22c6e356-1308-4391-855d-5c2a57f55b69",
+      "clientName": "Cesarskie Ogrody",
+      "customerId": "788-509-8406",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "93d46876-addc-4b99-b1e1-437428dd54f1",
+      "clientName": "Havet",
+      "customerId": "733-667-6488",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "905636af-6ea3-4d3a-9743-4120b9d4547d",
+      "clientName": "Hotel Diva SPA Kołobrzeg",
+      "customerId": "424-085-9248",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "2f5d42e1-b7e5-4a85-ade0-56fe4f7ffe67",
+      "clientName": "Hotel Artis Loft",
+      "customerId": "175-337-8268",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "df96c536-8020-432b-88b8-209d3a830857",
+      "clientName": "Nickel Resort Grzybowo",
+      "customerId": "116-432-1699",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "221dff08-b389-4ee4-a67b-334d25c93d2f",
+      "clientName": "Arche Dwór Uphagena Gdańsk",
+      "customerId": "555-410-8762",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "59402b01-eb58-46e2-b23c-5b1db0522df1",
+      "clientName": "Blue & Green Baltic Kołobrzeg",
+      "customerId": "683-748-3921",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "1cd8689f-437f-40f6-8060-148a00b095e4",
+      "clientName": "Hotel Zalewski Mrzeżyno",
+      "customerId": "721-984-0096",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "df958c17-a745-4587-9fe2-738e1005d8d4",
+      "clientName": "Hotel Tobaco Łódź",
+      "customerId": "197-883-5824",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    },
+    {
+      "clientId": "3c6d5ab3-2628-42fe-add8-44ce50c7b892",
+      "clientName": "Młyn Klekotki",
+      "customerId": "375-477-3598",
+      "tokenStatus": "invalid",
+      "accountData": null,
+      "campaigns": [],
+      "errors": [
+        "API test failed: fetch failed"
+      ],
+      "warnings": [],
+      "apiCalls": {
+        "tokenValidation": null,
+        "accountInfo": {
+          "error": "fetch failed"
+        },
+        "campaigns": null,
+        "insights": null
+      }
+    }
+  ],
+  "errors": [],
+  "recommendations": [],
+  "analysis": {
+    "tokenHealth": {
+      "valid": 0,
+      "invalid": 14,
+      "disabled": 0,
+      "unknown": 0
+    },
+    "dataConsistency": {
+      "clientsWithDiscrepancies": 0,
+      "totalDiscrepancies": 0,
+      "averageDiscrepancy": 0
+    },
+    "performance": {},
+    "recommendations": [
+      {
+        "priority": "high",
+        "category": "token_health",
+        "issue": "14 clients have invalid Google Ads tokens",
+        "action": "Refresh or regenerate invalid tokens"
+      }
+    ]
+  }
+}

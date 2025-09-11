@@ -46,7 +46,6 @@ interface ReportData {
       averageCpa: number;
       averageCpm: number;
       reach: number;
-      frequency: number;
       relevanceScore: number;
       landingPageViews: number;
       totalReservations: number;
@@ -54,10 +53,6 @@ interface ReportData {
       roas: number;
       emailContacts: number;
       phoneContacts: number;
-      potentialOfflineReservations: number;
-      potentialOfflineValue: number;
-      totalPotentialValue: number;
-      costPercentage: number;
     };
     campaigns: any[];
     funnel: {
@@ -95,10 +90,6 @@ interface ReportData {
       roas: number;
       emailContacts: number;
       phoneContacts: number;
-      potentialOfflineReservations: number;
-      potentialOfflineValue: number;
-      totalPotentialValue: number;
-      costPercentage: number;
     };
     campaigns: any[];
     funnel: {
@@ -262,7 +253,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <td class="current-value">${formatCurrency(meta.current.spend)}</td>
               <td class="previous-value">${meta.previous.spend > 0 ? formatCurrency(meta.previous.spend) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
-                ${meta.previous.spend > 0 ? `
+                ${meta.previous.spend > 0 && meta.changes.spend !== -999 ? `
                   <span class="change-indicator ${meta.changes.spend >= 0 ? 'positive' : 'negative'}">
                     ${meta.changes.spend >= 0 ? '↗' : '↘'} ${Math.abs(meta.changes.spend).toFixed(1).replace('.', ',')}%
                   </span>
@@ -274,7 +265,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <td class="current-value">${formatCurrency(meta.current.reservationValue)}</td>
               <td class="previous-value">${meta.previous.reservationValue > 0 ? formatCurrency(meta.previous.reservationValue) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
-                ${meta.previous.reservationValue > 0 ? `
+                ${meta.previous.reservationValue > 0 && meta.changes.reservationValue !== -999 ? `
                   <span class="change-indicator ${meta.changes.reservationValue >= 0 ? 'positive' : 'negative'}">
                     ${meta.changes.reservationValue >= 0 ? '↗' : '↘'} ${Math.abs(meta.changes.reservationValue).toFixed(1).replace('.', ',')}%
                   </span>
@@ -289,7 +280,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <td class="current-value">${google.current.spend > 0 ? formatCurrency(google.current.spend) : '—'}</td>
               <td class="previous-value">${google.previous.spend > 0 ? formatCurrency(google.previous.spend) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
-                ${google.current.spend > 0 || google.previous.spend > 0 ? `
+                ${google.previous.spend > 0 && google.changes.spend !== -999 ? `
                   <span class="change-indicator ${google.changes.spend >= 0 ? 'positive' : 'negative'}">
                     ${google.changes.spend >= 0 ? '↗' : '↘'} ${Math.abs(google.changes.spend).toFixed(1).replace('.', ',')}%
                   </span>
@@ -301,7 +292,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <td class="current-value">${google.current.reservationValue > 0 ? formatCurrency(google.current.reservationValue) : '—'}</td>
               <td class="previous-value">${google.previous.reservationValue > 0 ? formatCurrency(google.previous.reservationValue) : '<span class="no-data">Brak danych</span>'}</td>
               <td class="change-cell">
-                ${google.current.reservationValue > 0 || google.previous.reservationValue > 0 ? `
+                ${google.previous.reservationValue > 0 && google.changes.reservationValue !== -999 ? `
                   <span class="change-indicator ${google.changes.reservationValue >= 0 ? 'positive' : 'negative'}">
                     ${google.changes.reservationValue >= 0 ? '↗' : '↘'} ${Math.abs(google.changes.reservationValue).toFixed(1).replace('.', ',')}%
                   </span>
@@ -334,10 +325,9 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     { key: 'averageCpc', label: 'CPC (zł)', value: metrics.averageCpc, formatter: formatCurrency },
   ].filter(metric => hasData(metric.value));
   
-  // Meta-specific metrics
+  // Meta-specific metrics (legacy metrics removed)
   const metaSpecificMetrics = [
     { key: 'reach', label: 'Zasięg', value: metrics.reach, formatter: formatNumber },
-    { key: 'frequency', label: 'Częstotliwość', value: metrics.frequency, formatter: (val: number) => `${val.toFixed(2)}x` },
     { key: 'relevanceScore', label: 'Ocena trafności', value: metrics.relevanceScore, formatter: (val: number) => `${val.toFixed(1)}/10` },
     { key: 'landingPageViews', label: 'Wyświetlenia strony docelowej', value: metrics.landingPageViews, formatter: formatNumber }
   ].filter(metric => hasData(metric.value));
@@ -348,10 +338,6 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     { key: 'phoneContacts', label: 'Kliknięcia w numer telefonu', value: metrics.phoneContacts, formatter: formatNumber },
     { key: 'totalReservations', label: 'Rezerwacje', value: metrics.totalReservations, formatter: formatNumber },
     { key: 'totalReservationValue', label: 'Wartość rezerwacji (zł)', value: metrics.totalReservationValue, formatter: formatCurrency },
-    { key: 'potentialOfflineReservations', label: 'Potencjalne rezerwacje offline', value: metrics.potentialOfflineReservations, formatter: formatNumber },
-    { key: 'potentialOfflineValue', label: 'Potencjalna wartość offline (zł)', value: metrics.potentialOfflineValue, formatter: formatCurrency },
-    { key: 'totalPotentialValue', label: 'Łączna potencjalna wartość (zł)', value: metrics.totalPotentialValue, formatter: formatCurrency },
-    { key: 'costPercentage', label: 'Koszt pozyskania rezerwacji (%)', value: metrics.costPercentage, formatter: (val: number) => `${val.toFixed(2)}%` },
     { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
   ].filter(metric => hasData(metric.value));
   
@@ -379,7 +365,18 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
             change = yoyData.changes?.reservations || 0;
             break;
           case 'totalReservationValue':
-            change = yoyData.changes?.reservation_value || 0;
+            // YoY API doesn't include reservation_value, so we'll calculate it manually
+            if (yoyData.current && yoyData.previous) {
+              const currentValue = yoyData.current.reservations || 0;
+              const previousValue = yoyData.previous.reservations || 0;
+              if (previousValue > 0) {
+                change = ((currentValue - previousValue) / previousValue) * 100;
+              } else {
+                change = -999; // No previous data
+              }
+            } else {
+              change = -999;
+            }
             break;
           case 'totalReservations':
             change = yoyData.changes?.reservations || 0;
@@ -418,12 +415,19 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         }
         
         
-        // Only show indicator if we have meaningful change
-        if (change !== 0 && Math.abs(change) >= 0.01) {
+        // Only show indicator if we have meaningful change and valid historical data
+        if (change !== -999 && change !== 0 && Math.abs(change) >= 0.01) {
           const isPositive = change >= 0;
           yoyIndicator = `
             <span class="change-indicator ${isPositive ? 'positive' : 'negative'}">
               ${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1).replace('.', ',')}%
+            </span>
+          `;
+        } else if (change === -999) {
+          // Show "N/A" for no historical data
+          yoyIndicator = `
+            <span class="change-indicator no-data">
+              N/A
             </span>
           `;
         }
@@ -441,6 +445,14 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
   
   // Get YoY data for Meta
   const metaYoYData = reportData.yoyComparison?.meta;
+  
+  // Debug YoY data
+  logger.info('🔍 META YOY DATA DEBUG:', {
+    hasYoYData: !!metaYoYData,
+    changes: metaYoYData?.changes,
+    current: metaYoYData?.current,
+    previous: metaYoYData?.previous
+  });
   
   let sectionsHTML = '';
   
@@ -671,12 +683,32 @@ const generateMetaFunnelSection = (reportData: ReportData) => {
 
 // Generate Section 5: Google Ads Comprehensive Metrics
 const generateGoogleMetricsSection = (reportData: ReportData) => {
-  if (!reportData.googleData) return '';
+  logger.info('🔍 GENERATE GOOGLE METRICS SECTION CALLED:', {
+    hasGoogleData: !!reportData.googleData,
+    googleDataKeys: reportData.googleData ? Object.keys(reportData.googleData) : [],
+    reportDataKeys: Object.keys(reportData)
+  });
+  
+  if (!reportData.googleData) {
+    logger.warn('⚠️ No Google Ads data available for metrics section');
+    return '';
+  }
   
   const { metrics } = reportData.googleData;
 
   // Helper function to check if a metric has meaningful data
   const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
+  
+  // Debug Google Ads metrics
+  logger.info('🔍 GOOGLE ADS METRICS DEBUG:', {
+    totalSpend: metrics.totalSpend,
+    totalImpressions: metrics.totalImpressions,
+    totalClicks: metrics.totalClicks,
+    totalConversions: metrics.totalConversions,
+    averageCtr: metrics.averageCtr,
+    averageCpc: metrics.averageCpc,
+    metricsKeys: Object.keys(metrics)
+  });
   
   // Core metrics that should always be shown if they have data
   const coreMetrics = [
@@ -686,7 +718,15 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
     { key: 'averageCtr', label: 'CTR (%)', value: metrics.averageCtr, formatter: formatPercentage },
     { key: 'averageCpc', label: 'CPC (zł)', value: metrics.averageCpc, formatter: formatCurrency },
-  ].filter(metric => hasData(metric.value));
+  ];
+  
+  // Debug filtered metrics
+  const filteredCoreMetrics = coreMetrics.filter(metric => hasData(metric.value));
+  logger.info('🔍 GOOGLE ADS FILTERED CORE METRICS:', {
+    originalCount: coreMetrics.length,
+    filteredCount: filteredCoreMetrics.length,
+    filteredMetrics: filteredCoreMetrics.map(m => ({ key: m.key, value: m.value }))
+  });
   
   // Google-specific metrics
   const googleSpecificMetrics = [
@@ -702,10 +742,6 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     { key: 'phoneContacts', label: 'Kliknięcia w numer telefonu', value: metrics.phoneContacts, formatter: formatNumber },
     { key: 'totalReservations', label: 'Rezerwacje', value: metrics.totalReservations, formatter: formatNumber },
     { key: 'totalReservationValue', label: 'Wartość rezerwacji (zł)', value: metrics.totalReservationValue, formatter: formatCurrency },
-    { key: 'potentialOfflineReservations', label: 'Potencjalne rezerwacje offline', value: metrics.potentialOfflineReservations, formatter: formatNumber },
-    { key: 'potentialOfflineValue', label: 'Potencjalna wartość offline (zł)', value: metrics.potentialOfflineValue, formatter: formatCurrency },
-    { key: 'totalPotentialValue', label: 'Łączna potencjalna wartość (zł)', value: metrics.totalPotentialValue, formatter: formatCurrency },
-    { key: 'costPercentage', label: 'Koszt pozyskania rezerwacji (%)', value: metrics.costPercentage, formatter: (val: number) => `${val.toFixed(2)}%` },
     { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
   ].filter(metric => hasData(metric.value));
   
@@ -732,7 +768,18 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
             change = yoyData.changes?.reservations || 0;
             break;
           case 'totalReservationValue':
-            change = yoyData.changes?.reservation_value || 0;
+            // YoY API doesn't include reservation_value, so we'll calculate it manually
+            if (yoyData.current && yoyData.previous) {
+              const currentValue = yoyData.current.reservations || 0;
+              const previousValue = yoyData.previous.reservations || 0;
+              if (previousValue > 0) {
+                change = ((currentValue - previousValue) / previousValue) * 100;
+              } else {
+                change = -999; // No previous data
+              }
+            } else {
+              change = -999;
+            }
             break;
           case 'totalReservations':
             change = yoyData.changes?.reservations || 0;
@@ -770,12 +817,27 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
             change = 0;
         }
         
-        // Only show indicator if we have meaningful change
-        if (change !== 0 && Math.abs(change) >= 0.01) {
+        // Only show indicator if we have meaningful change and valid historical data
+        if (change === -999) {
+          // Show "Brak danych" for no historical data (same as reports page)
+          yoyIndicator = `
+            <span class="change-indicator no-data">
+              Brak danych
+            </span>
+          `;
+        } else if (change !== 0 && Math.abs(change) >= 0.01 && Math.abs(change) < 999) {
+          // Only show percentage if it's a reasonable value (not 999% which indicates calculation error)
           const isPositive = change >= 0;
           yoyIndicator = `
             <span class="change-indicator ${isPositive ? 'positive' : 'negative'}">
               ${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1).replace('.', ',')}%
+            </span>
+          `;
+        } else if (Math.abs(change) >= 999) {
+          // Show "Brak danych" for unreasonable percentages (likely calculation errors)
+          yoyIndicator = `
+            <span class="change-indicator no-data">
+              Brak danych
             </span>
           `;
         }
@@ -794,10 +856,18 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
   // Get YoY data for Google Ads
   const googleYoYData = reportData.yoyComparison?.google;
   
+  // Debug YoY data
+  logger.info('🔍 GOOGLE YOY DATA DEBUG:', {
+    hasYoYData: !!googleYoYData,
+    changes: googleYoYData?.changes,
+    current: googleYoYData?.current,
+    previous: googleYoYData?.previous
+  });
+  
   let sectionsHTML = '';
   
   // Core Metrics Section
-  if (coreMetrics.length > 0) {
+  if (filteredCoreMetrics.length > 0) {
     sectionsHTML += `
       <h3 class="table-title">Podstawowe Metryki</h3>
         <table class="metrics-table">
@@ -809,10 +879,12 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
             </tr>
           </thead>
           <tbody>
-          ${generateTableRows(coreMetrics, googleYoYData)}
+          ${generateTableRows(filteredCoreMetrics, googleYoYData)}
         </tbody>
       </table>
     `;
+  } else {
+    logger.warn('⚠️ No Google Ads core metrics to display');
   }
   
   // Google-Specific Metrics Section
@@ -900,7 +972,19 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     return `
       <div class="demographics-section">
         <h4 class="demographics-title">Analiza Demograficzna</h4>
-        <div class="no-data">Brak danych demograficznych - sprawdź czy kampanie mają dane demograficzne w wybranym okresie</div>
+        <div class="no-data">
+          <div class="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+            <div class="text-center">
+              <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                </svg>
+              </div>
+              <p class="text-sm font-medium text-gray-900 mb-1">Brak danych demograficznych</p>
+              <p class="text-xs text-gray-500">Meta API nie zwróciło danych o demografii</p>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -925,7 +1009,19 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     return `
       <div class="demographics-section">
         <h4 class="demographics-title">Analiza Demograficzna</h4>
-        <div class="no-data">Brak prawidłowych danych demograficznych - dane nie zawierają informacji o wieku/płci lub wydatkach</div>
+        <div class="no-data">
+          <div class="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+            <div class="text-center">
+              <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                </svg>
+              </div>
+              <p class="text-sm font-medium text-gray-900 mb-1">Brak danych demograficznych</p>
+              <p class="text-xs text-gray-500">Meta API nie zwróciło danych o demografii</p>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1917,7 +2013,15 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     throw new Error('Client not found');
   }
   
-  logger.info('✅ Client data loaded:', { id: clientData.id, name: clientData.name });
+  logger.info('✅ Client data loaded:', { 
+    id: clientData.id, 
+    name: clientData.name,
+    google_ads_enabled: clientData.google_ads_enabled,
+    google_ads_customer_id: clientData.google_ads_customer_id,
+    hasGoogleAdsRefreshToken: !!clientData.google_ads_refresh_token,
+    meta_access_token: !!clientData.meta_access_token,
+    ad_account_id: clientData.ad_account_id
+  });
   
   const reportData: ReportData = {
     clientId,
@@ -1950,7 +2054,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         dateRange,
         platform: 'meta',
         reason: 'pdf-generation-meta',
-        sessionToken: undefined // No session token needed (auth disabled)
+        sessionToken: clientData.meta_access_token // Use client's access token
       });
       
       if (metaResult.success) {
@@ -1960,10 +2064,16 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           totalSpend: metaData?.stats?.totalSpend,
           totalReservations: metaData?.conversionMetrics?.reservations,
           totalReservationValue: metaData?.conversionMetrics?.reservation_value,
-          source: metaResult.debug?.source
+          source: metaResult.debug?.source,
+          hasStats: !!metaData?.stats,
+          hasConversionMetrics: !!metaData?.conversionMetrics
         });
       } else {
-        metaError = 'StandardizedDataFetcher failed for Meta';
+        metaError = `StandardizedDataFetcher failed for Meta: Unknown error`;
+        logger.error('❌ Meta data fetching failed:', {
+          debug: metaResult.debug,
+          validation: metaResult.validation
+        });
       }
     } catch (error) {
       logger.error('❌ Error fetching Meta data via StandardizedDataFetcher:', error);
@@ -1975,33 +2085,78 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   let googleData = null;
   let googleError = null;
   
-  if (clientData.google_ads_enabled && clientData.google_ads_customer_id) {
+  // Debug Google Ads client data
+  logger.info('🔍 GOOGLE ADS CLIENT DATA DEBUG:', {
+    google_ads_enabled: clientData.google_ads_enabled,
+    google_ads_customer_id: clientData.google_ads_customer_id,
+    hasGoogleAdsRefreshToken: !!clientData.google_ads_refresh_token,
+    clientId: clientData.id
+  });
+  
+  // Debug why Google Ads condition might not be met
+  const googleAdsConditionMet = clientData.google_ads_enabled && clientData.google_ads_customer_id;
+  logger.info('🔍 GOOGLE ADS CONDITION CHECK:', {
+    google_ads_enabled: clientData.google_ads_enabled,
+    google_ads_customer_id: clientData.google_ads_customer_id,
+    conditionMet: googleAdsConditionMet,
+    reason: !googleAdsConditionMet ? 
+      (!clientData.google_ads_enabled ? 'google_ads_enabled is false' : 'google_ads_customer_id is missing') : 
+      'condition met'
+  });
+  
+  if (googleAdsConditionMet) {
     try {
-      logger.info('📊 Fetching Google Ads data using GoogleAdsStandardizedDataFetcher (same as reports)...');
+      logger.info('📊 Fetching Google Ads data using /api/fetch-google-ads-live-data (same as reports with fallback)...');
       
-      const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
-        clientId,
-        dateRange,
-        reason: 'pdf-generation-google',
-        sessionToken: undefined // No session token needed (auth disabled)
+      // Use the same API endpoint as reports page - this has fallback logic for expired tokens
+      const googleResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-google-ads-live-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId,
+          dateRange: { start: dateRange.start, end: dateRange.end },
+          includeTableData: true
+        })
       });
       
-      if (googleResult.success) {
-        googleData = googleResult.data;
-        logger.info('✅ Google Ads data fetched successfully via GoogleAdsStandardizedDataFetcher');
-        console.log('🔍 GOOGLE DATA DEBUG:', {
-          totalSpend: googleData?.stats?.totalSpend,
-          totalReservations: googleData?.conversionMetrics?.reservations,
-          totalReservationValue: googleData?.conversionMetrics?.reservation_value,
-          source: googleResult.debug?.source
-        });
+      if (googleResponse.ok) {
+        const googleResult = await googleResponse.json();
+        if (googleResult.success && googleResult.data) {
+          googleData = googleResult.data;
+          logger.info('✅ Google Ads data fetched successfully via API endpoint:', {
+            totalSpend: googleData.stats?.totalSpend || 0,
+            totalReservations: googleData.stats?.totalConversions || 0,
+            totalReservationValue: googleData.conversionMetrics?.reservation_value || 0,
+            source: googleData.fromDatabase ? 'database' : 'live_api',
+            hasStats: !!googleData.stats,
+            hasConversionMetrics: !!googleData.conversionMetrics,
+            campaignCount: googleData.campaigns?.length || 0
+          });
+        } else {
+          logger.error('❌ Google Ads API returned unsuccessful response:', googleResult);
+          googleError = googleResult.error || 'Unknown Google Ads API error';
+        }
       } else {
-        googleError = 'GoogleAdsStandardizedDataFetcher failed';
+        const errorText = await googleResponse.text();
+        logger.error('❌ Google Ads API request failed:', {
+          status: googleResponse.status,
+          statusText: googleResponse.statusText,
+          errorText
+        });
+        googleError = `Google Ads API failed: ${googleResponse.status} ${googleResponse.statusText}`;
       }
     } catch (error) {
-      logger.error('❌ Error fetching Google Ads data via GoogleAdsStandardizedDataFetcher:', error);
+      logger.error('❌ Error fetching Google Ads data via API endpoint:', error);
       googleError = error instanceof Error ? error.message : 'Unknown Google Ads error';
     }
+  } else {
+    logger.warn('⚠️ Google Ads condition not met - skipping Google Ads data fetch:', {
+      google_ads_enabled: clientData.google_ads_enabled,
+      google_ads_customer_id: clientData.google_ads_customer_id,
+      reason: !clientData.google_ads_enabled ? 'google_ads_enabled is false' : 'google_ads_customer_id is missing'
+    });
   }
 
   // Fetch Year-over-Year comparison using SAME API as reports page
@@ -2017,7 +2172,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       try {
         logger.info('📊 Fetching Meta YoY data from API...');
         
-        const metaYoYResponse = await fetch('/api/year-over-year-comparison', {
+        const metaYoYResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/year-over-year-comparison`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -2033,10 +2188,16 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
             hasData: !!metaYoYData,
             currentSpend: metaYoYData?.current?.spend || 0,
             previousSpend: metaYoYData?.previous?.spend || 0,
-            changesSpend: metaYoYData?.changes?.spend || 0
+            changesSpend: metaYoYData?.changes?.spend || 0,
+            fullResponse: metaYoYData
           });
         } else {
-          logger.warn('⚠️ Meta YoY API failed:', metaYoYResponse.status);
+          const errorText = await metaYoYResponse.text();
+          logger.warn('⚠️ Meta YoY API failed:', {
+            status: metaYoYResponse.status,
+            statusText: metaYoYResponse.statusText,
+            error: errorText
+          });
         }
       } catch (error) {
         logger.warn('⚠️ Meta YoY API error:', error);
@@ -2049,13 +2210,13 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       try {
         logger.info('📊 Fetching Google Ads YoY data from API...');
         
-        const googleYoYResponse = await fetch('/api/year-over-year-comparison', {
+        const googleYoYResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/year-over-year-comparison`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             clientId, 
             dateRange, 
-            platform: 'google' 
+            platform: 'google_ads' 
           })
         });
         
@@ -2065,10 +2226,16 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
             hasData: !!googleYoYData,
             currentSpend: googleYoYData?.current?.spend || 0,
             previousSpend: googleYoYData?.previous?.spend || 0,
-            changesSpend: googleYoYData?.changes?.spend || 0
+            changesSpend: googleYoYData?.changes?.spend || 0,
+            fullResponse: googleYoYData
           });
         } else {
-          logger.warn('⚠️ Google Ads YoY API failed:', googleYoYResponse.status);
+          const errorText = await googleYoYResponse.text();
+          logger.warn('⚠️ Google Ads YoY API failed:', {
+            status: googleYoYResponse.status,
+            statusText: googleYoYResponse.statusText,
+            error: errorText
+          });
         }
       } catch (error) {
         logger.warn('⚠️ Google Ads YoY API error:', error);
@@ -2226,6 +2393,50 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.warn('⚠️ Year-over-year comparison failed:', error);
   }
   
+  // 🔍 DEBUG: Check if we have any data at all
+  logger.info('🔍 DATA AVAILABILITY CHECK:', {
+    hasMetaData: !!metaData,
+    hasGoogleData: !!googleData,
+    metaError: metaError,
+    googleError: googleError,
+    metaSpend: metaData?.stats?.totalSpend || 0,
+    googleSpend: googleData?.stats?.totalSpend || 0
+  });
+
+  // 🔧 FALLBACK: If direct fetchers failed, try using the same API endpoint as reports page
+  if (!metaData && clientData.meta_access_token && clientData.ad_account_id) {
+    try {
+      logger.info('🔄 FALLBACK: Trying Meta data via API endpoint (same as reports page)...');
+      
+      const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-live-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          dateRange,
+          platform: 'meta',
+          reason: 'pdf-generation-fallback'
+        })
+      });
+
+      if (fallbackResponse.ok) {
+        const fallbackData = await fallbackResponse.json();
+        if (fallbackData.success && fallbackData.data) {
+          metaData = fallbackData.data;
+          logger.info('✅ Meta data fetched successfully via fallback API');
+          console.log('🔍 FALLBACK META DATA DEBUG:', {
+            totalSpend: metaData?.stats?.totalSpend,
+            totalReservations: metaData?.conversionMetrics?.reservations,
+            totalReservationValue: metaData?.conversionMetrics?.reservation_value,
+            source: 'fallback-api'
+          });
+        }
+      }
+    } catch (fallbackError) {
+      logger.error('❌ Fallback Meta data fetching failed:', fallbackError);
+    }
+  }
+
   // Transform Meta data using EXACT same format as reports page (StandardizedDataFetcher format)
   if (metaData) {
     try {
@@ -2240,17 +2451,11 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       const totalConversions = stats.totalConversions || 0;
       const emailContacts = conversionMetrics.email_contacts || 0;
       const phoneContacts = conversionMetrics.click_to_call || 0;
-      const potentialOfflineReservations = Math.round((emailContacts + phoneContacts) * 0.2);
       const totalReservationValue = conversionMetrics.reservation_value || 0;
       const totalReservations = conversionMetrics.reservations || 0;
-      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-      const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
-      const totalPotentialValue = potentialOfflineValue + totalReservationValue;
       const totalSpend = stats.totalSpend || 0;
-      const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
       
-      // Calculate campaign averages (same as reports page)
-      const avgFrequency = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.frequency || 0), 0) / campaigns.length : 0;
+      // Calculate campaign averages (same as reports page) - legacy metrics removed
       const avgRelevanceScore = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.relevance_score || 0), 0) / campaigns.length : 0;
       const totalLandingPageViews = campaigns.reduce((sum: number, c: any) => sum + (c.landing_page_view || 0), 0);
       const totalReach = conversionMetrics.reach || 0;
@@ -2266,18 +2471,13 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           averageCpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
           averageCpm: (stats.totalImpressions || 0) > 0 ? (totalSpend / (stats.totalImpressions || 0)) * 1000 : 0,
           reach: totalReach,
-          frequency: avgFrequency,
           relevanceScore: avgRelevanceScore,
           landingPageViews: totalLandingPageViews,
           totalReservations: totalReservations,
           totalReservationValue: totalReservationValue,
           roas: conversionMetrics.roas || 0,
           emailContacts: emailContacts,
-          phoneContacts: phoneContacts,
-          potentialOfflineReservations: potentialOfflineReservations,
-          potentialOfflineValue: potentialOfflineValue,
-          totalPotentialValue: totalPotentialValue,
-          costPercentage: costPercentage
+          phoneContacts: phoneContacts
         },
         campaigns: campaigns,
         funnel: {
@@ -2294,91 +2494,120 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           adRelevanceResults: []
         }
       };
-          
-          // Fetch Meta tables data (no auth, same as reports page)
-          try {
-            const metaTablesResponse = await fetch('/api/fetch-meta-tables', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-                // No Authorization header (same as reports page)
+    } catch (error) {
+      logger.error('❌ Error processing Meta data:', error);
+    }
+  }
+
+  // 🔧 FETCH META TABLES DATA: Always fetch demographic data if client has Meta credentials
+  if (clientData.meta_access_token && clientData.ad_account_id) {
+    try {
+      logger.info('📊 Fetching Meta tables data (demographics, placement, ad relevance)...');
+      
+      const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-meta-tables`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+          // No Authorization header (same as reports page)
+        },
+        body: JSON.stringify({
+          clientId,
+          dateRange: {
+            start: dateRange.start,
+            end: dateRange.end
+          }
+        })
+      });
+      
+      if (metaTablesResponse.ok) {
+        const tablesData = await metaTablesResponse.json();
+        logger.info('🔍 PDF META TABLES RESPONSE:', {
+          success: tablesData.success,
+          hasData: !!tablesData.data,
+          dataKeys: Object.keys(tablesData.data || {}),
+          hasMetaTables: !!tablesData.data?.metaTables,
+          metaTablesKeys: Object.keys(tablesData.data?.metaTables || {}),
+          demographicLength: tablesData.data?.metaTables?.demographicPerformance?.length || 0,
+          demographicSample: tablesData.data?.metaTables?.demographicPerformance?.slice(0, 2) || []
+        });
+        
+        if (tablesData.success) {
+          // Initialize metaData if it doesn't exist
+          if (!reportData.metaData) {
+            reportData.metaData = {
+              metrics: {
+                totalSpend: 0,
+                totalImpressions: 0,
+                totalClicks: 0,
+                totalConversions: 0,
+                averageCtr: 0,
+                averageCpc: 0,
+                averageCpa: 0,
+                averageCpm: 0,
+                reach: 0,
+                relevanceScore: 0,
+                landingPageViews: 0,
+                totalReservations: 0,
+                totalReservationValue: 0,
+                roas: 0,
+                emailContacts: 0,
+                phoneContacts: 0
               },
-              body: JSON.stringify({
-                clientId,
-                dateRange: {
-                  start: dateRange.start,
-                  end: dateRange.end
-                }
-              })
-            });
-            
-            if (metaTablesResponse.ok) {
-              const tablesData = await metaTablesResponse.json();
-              logger.info('🔍 PDF META TABLES RESPONSE:', {
-                success: tablesData.success,
-                hasData: !!tablesData.data,
-                dataKeys: Object.keys(tablesData.data || {}),
-                hasMetaTables: !!tablesData.data?.metaTables,
-                metaTablesKeys: Object.keys(tablesData.data?.metaTables || {}),
-                demographicLength: tablesData.data?.metaTables?.demographicPerformance?.length || 0,
-                demographicSample: tablesData.data?.metaTables?.demographicPerformance?.slice(0, 2) || []
-              });
-              
-              if (tablesData.success) {
-                // Fix: Use the correct data structure matching MetaAdsTables.tsx
-                reportData.metaData.tables = {
-                  placementPerformance: tablesData.data.metaTables?.placementPerformance || [],
-                  demographicPerformance: tablesData.data.metaTables?.demographicPerformance || [],
-                  adRelevanceResults: tablesData.data.metaTables?.adRelevanceResults || []
-                };
-                
-                logger.info('🔍 PDF DEMOGRAPHIC DATA ASSIGNED:', {
-                  demographicLength: reportData.metaData.tables.demographicPerformance.length,
-                  demographicSample: reportData.metaData.tables.demographicPerformance.slice(0, 2)
-                });
+              campaigns: [],
+              funnel: {
+                booking_step_1: 0,
+                booking_step_2: 0,
+                booking_step_3: 0,
+                reservations: 0,
+                reservation_value: 0,
+                roas: 0
+              },
+              tables: {
+                placementPerformance: [],
+                demographicPerformance: [],
+                adRelevanceResults: []
               }
-            }
-          } catch (error) {
-            logger.warn('⚠️ Meta tables data fetch failed:', error);
+            };
           }
           
-          logger.info('✅ Meta Ads data transformed successfully:', {
-            totalSpend: reportData.metaData.metrics.totalSpend,
-            totalImpressions: reportData.metaData.metrics.totalImpressions,
-            totalClicks: reportData.metaData.metrics.totalClicks,
-            totalReservations: reportData.metaData.metrics.totalReservations,
-            campaignCount: reportData.metaData.campaigns.length,
-            bookingStep1: reportData.metaData.funnel.booking_step_1
+          // Assign tables data
+          reportData.metaData.tables = {
+            placementPerformance: tablesData.data.metaTables?.placementPerformance || [],
+            demographicPerformance: tablesData.data.metaTables?.demographicPerformance || [],
+            adRelevanceResults: tablesData.data.metaTables?.adRelevanceResults || []
+          };
+          
+          logger.info('🔍 PDF DEMOGRAPHIC DATA ASSIGNED:', {
+            demographicLength: reportData.metaData.tables.demographicPerformance.length,
+            demographicSample: reportData.metaData.tables.demographicPerformance.slice(0, 2)
           });
+        }
+      } else {
+        logger.warn('⚠️ Meta tables API failed:', metaTablesResponse.status, metaTablesResponse.statusText);
+      }
     } catch (error) {
-      logger.warn('⚠️ Meta Ads data transformation failed:', error);
+      logger.warn('⚠️ Meta tables data fetch failed:', error);
     }
-  } else if (metaError) {
-    logger.warn('⚠️ Meta Ads data not available:', metaError);
   }
   
   // Transform Google Ads data using EXACT same format as reports page (GoogleAdsStandardizedDataFetcher format)
   if (googleData) {
     try {
-      logger.info('🔍 Using Google Ads data from GoogleAdsStandardizedDataFetcher (same as reports page)...');
+      logger.info('🔍 Using Google Ads data from /api/fetch-google-ads-live-data (same as reports page)...');
       
-      // Use standardized data format directly (no transformation needed)
+      // Use API response format directly (same as reports page)
       const stats = googleData.stats || {};
       const conversionMetrics = googleData.conversionMetrics || {};
       const campaigns = googleData.campaigns || [];
+      const googleAdsTables = googleData.googleAdsTables || {};
       
       // Calculate additional Google metrics using same logic as reports page
       const googleTotalConversions = stats.totalConversions || 0;
       const googleEmailContacts = conversionMetrics.email_contacts || 0;
       const googlePhoneContacts = conversionMetrics.click_to_call || 0;
-      const googlePotentialOfflineReservations = Math.round((googleEmailContacts + googlePhoneContacts) * 0.2);
       const googleTotalReservationValue = conversionMetrics.reservation_value || 0;
       const googleTotalReservations = conversionMetrics.reservations || 0;
-      const googleAverageReservationValue = googleTotalReservations > 0 ? googleTotalReservationValue / googleTotalReservations : 0;
-      const googlePotentialOfflineValue = googlePotentialOfflineReservations * googleAverageReservationValue;
-      const googleTotalPotentialValue = googlePotentialOfflineValue + googleTotalReservationValue;
       const googleTotalSpend = stats.totalSpend || 0;
-      const googleCostPercentage = googleTotalPotentialValue > 0 ? (googleTotalSpend / googleTotalPotentialValue) * 100 : 0;
       
       reportData.googleData = {
         metrics: {
@@ -2398,11 +2627,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           totalReservationValue: googleTotalReservationValue,
           roas: conversionMetrics.roas || 0,
           emailContacts: googleEmailContacts,
-          phoneContacts: googlePhoneContacts,
-          potentialOfflineReservations: googlePotentialOfflineReservations,
-          potentialOfflineValue: googlePotentialOfflineValue,
-          totalPotentialValue: googleTotalPotentialValue,
-          costPercentage: googleCostPercentage
+          phoneContacts: googlePhoneContacts
         },
         campaigns: campaigns,
         funnel: {
@@ -2414,11 +2639,20 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           roas: conversionMetrics.roas || 0
         },
         tables: {
-          networkPerformance: (googleData as any).googleAdsTables?.networkPerformance || [],
-          devicePerformance: (googleData as any).googleAdsTables?.devicePerformance || [],
-          keywordPerformance: (googleData as any).googleAdsTables?.keywordPerformance || []
+          networkPerformance: googleAdsTables.networkPerformance || [],
+          devicePerformance: googleAdsTables.devicePerformance || [],
+          keywordPerformance: googleAdsTables.keywordPerformance || []
         }
       };
+      
+      // Debug Google Ads data assignment
+      logger.info('🔍 GOOGLE ADS DATA ASSIGNED TO REPORTDATA:', {
+        hasGoogleData: !!reportData.googleData,
+        totalSpend: reportData.googleData.metrics.totalSpend,
+        totalImpressions: reportData.googleData.metrics.totalImpressions,
+        totalClicks: reportData.googleData.metrics.totalClicks,
+        campaignCount: reportData.googleData.campaigns.length
+      });
       
       logger.info('✅ Google Ads data transformed successfully:', {
         totalSpend: reportData.googleData.metrics.totalSpend,
