@@ -1,147 +1,196 @@
-import rateLimit from 'express-rate-limit'
-import logger from './logger'
-
-export const createRateLimiter = (options: {
-  windowMs?: number
-  max?: number
-  message?: string
-  keyGenerator?: (req: any) => string
-}) => {
-  return rateLimit({
-    windowMs: options.windowMs || 15 * 60 * 1000, // 15 minutes
-    max: options.max || 100, // limit each IP to 100 requests per windowMs
-    message: options.message || 'Too many requests from this IP',
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: options.keyGenerator || ((req) => {
-      // Handle IPv6 addresses properly
-      const forwarded = req.headers['x-forwarded-for'];
-      if (forwarded) {
-        return Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
-      }
-      return req.ip || req.connection?.remoteAddress || 'unknown';
-    }),
-    handler: (req, res) => {
-      logger.warn('Rate limit exceeded', {
-        ip: req.ip,
-        endpoint: req.path,
-        userAgent: req.get('User-Agent')
-      })
-      res.status(429).json({
-        error: options.message || 'Too many requests from this IP, please try again later.'
-      })
-    }
-  })
-}
-
-export const apiLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many API requests from this IP, please try again later.'
-})
-
-export const authLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
-  message: 'Too many authentication attempts, please try again later.'
-})
-
-export const reportGenerationLimiter = createRateLimiter({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // limit each IP to 10 report generations per hour
-  message: 'Too many report generation requests, please try again later.'
-}) 
-
-interface RateLimitConfig {
-  maxRequests: number;
-  windowMs: number;
-  retryAfterMs: number;
-}
-
-interface RateLimitState {
-  requests: number[];
-  lastReset: number;
-}
+/**
+ * RATE LIMITER FOR GOOGLE ADS API
+ * 
+ * Implements rate limiting to prevent excessive API calls
+ * and avoid token expiration issues
+ */
 
 export class RateLimiter {
-  private static instances = new Map<string, RateLimiter>();
-  private state: RateLimitState;
-  private config: RateLimitConfig;
+  private lastCallTime: number = 0;
+  private callCount: number = 0;
+  private readonly minDelay: number;
+  private readonly maxCallsPerMinute: number;
+  private readonly backoffMultiplier: number;
+  private readonly maxBackoffDelay: number;
 
-  constructor(name: string, config: RateLimitConfig) {
-    this.config = config;
-    this.state = {
-      requests: [],
-      lastReset: Date.now()
+  constructor(options: {
+    minDelay?: number; // Minimum delay between calls (ms)
+    maxCallsPerMinute?: number; // Maximum calls per minute
+    backoffMultiplier?: number; // Exponential backoff multiplier
+    maxBackoffDelay?: number; // Maximum backoff delay (ms)
+  } = {}) {
+    this.minDelay = options.minDelay || 1000; // 1 second default
+    this.maxCallsPerMinute = options.maxCallsPerMinute || 30; // 30 calls per minute
+    this.backoffMultiplier = options.backoffMultiplier || 2;
+    this.maxBackoffDelay = options.maxBackoffDelay || 30000; // 30 seconds max
+  }
+
+  /**
+   * Wait for the appropriate delay before making an API call
+   */
+  async waitForNextCall(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastCall = now - this.lastCallTime;
+    
+    // Reset call count every minute
+    if (timeSinceLastCall > 60000) {
+      this.callCount = 0;
+    }
+    
+    // Check if we've exceeded the rate limit
+    if (this.callCount >= this.maxCallsPerMinute) {
+      const waitTime = 60000 - timeSinceLastCall;
+      if (waitTime > 0) {
+        console.log(`⏳ Rate limit reached, waiting ${waitTime}ms...`);
+        await this.delay(waitTime);
+        this.callCount = 0;
+      }
+    }
+    
+    // Ensure minimum delay between calls
+    if (timeSinceLastCall < this.minDelay) {
+      const waitTime = this.minDelay - timeSinceLastCall;
+      console.log(`⏳ Minimum delay not met, waiting ${waitTime}ms...`);
+      await this.delay(waitTime);
+    }
+    
+    this.lastCallTime = Date.now();
+    this.callCount++;
+  }
+
+  /**
+   * Handle exponential backoff for failed requests
+   */
+  async handleBackoff(attempt: number): Promise<void> {
+    if (attempt <= 1) return;
+    
+    const backoffDelay = Math.min(
+      this.minDelay * Math.pow(this.backoffMultiplier, attempt - 1),
+      this.maxBackoffDelay
+    );
+    
+    console.log(`⏳ Exponential backoff: waiting ${backoffDelay}ms (attempt ${attempt})`);
+    await this.delay(backoffDelay);
+  }
+
+  /**
+   * Get current rate limit status
+   */
+  getStatus(): {
+    callsInLastMinute: number;
+    maxCallsPerMinute: number;
+    timeSinceLastCall: number;
+    canMakeCall: boolean;
+  } {
+    const now = Date.now();
+    const timeSinceLastCall = now - this.lastCallTime;
+    
+    return {
+      callsInLastMinute: this.callCount,
+      maxCallsPerMinute: this.maxCallsPerMinute,
+      timeSinceLastCall,
+      canMakeCall: this.callCount < this.maxCallsPerMinute
     };
   }
 
-  static getInstance(name: string, config: RateLimitConfig): RateLimiter {
-    if (!RateLimiter.instances.has(name)) {
-      RateLimiter.instances.set(name, new RateLimiter(name, config));
-    }
-    return RateLimiter.instances.get(name)!;
+  /**
+   * Reset the rate limiter
+   */
+  reset(): void {
+    this.lastCallTime = 0;
+    this.callCount = 0;
   }
 
-  async checkLimit(): Promise<{ allowed: boolean; waitMs: number }> {
-    const now = Date.now();
-    
-    // Clean up old requests outside the window
-    this.state.requests = this.state.requests.filter(
-      timestamp => now - timestamp < this.config.windowMs
-    );
+  /**
+   * Delay utility function
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
 
-    // Check if we're within limits
-    if (this.state.requests.length < this.config.maxRequests) {
-      this.state.requests.push(now);
-      return { allowed: true, waitMs: 0 };
-    }
+/**
+ * Request Queue for managing API calls
+ */
+export class RequestQueue {
+  private queue: Array<() => Promise<any>> = [];
+  private processing: boolean = false;
+  private rateLimiter: RateLimiter;
 
-    // Calculate wait time
-    const oldestRequest = Math.min(...this.state.requests);
-    const waitMs = this.config.windowMs - (now - oldestRequest);
-
-    return { allowed: false, waitMs: Math.max(waitMs, this.config.retryAfterMs) };
+  constructor(rateLimiter: RateLimiter) {
+    this.rateLimiter = rateLimiter;
   }
 
-  async waitForSlot(): Promise<void> {
-    while (true) {
-      const { allowed, waitMs } = await this.checkLimit();
-      if (allowed) break;
+  /**
+   * Add a request to the queue
+   */
+  async add<T>(request: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.queue.push(async () => {
+        try {
+          await this.rateLimiter.waitForNextCall();
+          const result = await request();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      });
       
-      console.log(`⏳ Rate limit reached, waiting ${waitMs}ms...`);
-      await new Promise(resolve => setTimeout(resolve, waitMs));
-    }
+      this.processQueue();
+    });
   }
 
-  getStatus(): { current: number; limit: number; resetInMs: number } {
-    const now = Date.now();
-    const oldestRequest = this.state.requests.length > 0 ? Math.min(...this.state.requests) : now;
-    const resetInMs = this.config.windowMs - (now - oldestRequest);
+  /**
+   * Process the queue sequentially
+   */
+  private async processQueue(): Promise<void> {
+    if (this.processing || this.queue.length === 0) {
+      return;
+    }
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const request = this.queue.shift();
+      if (request) {
+        try {
+          await request();
+        } catch (error) {
+          console.error('❌ Request failed:', error);
+        }
+      }
+    }
+    
+    this.processing = false;
+  }
 
+  /**
+   * Get queue status
+   */
+  getStatus(): {
+    queueLength: number;
+    processing: boolean;
+    rateLimitStatus: any;
+  } {
     return {
-      current: this.state.requests.length,
-      limit: this.config.maxRequests,
-      resetInMs: Math.max(0, resetInMs)
+      queueLength: this.queue.length,
+      processing: this.processing,
+      rateLimitStatus: this.rateLimiter.getStatus()
     };
   }
 }
 
-// Pre-configured rate limiters for different services
-export const metaAPIRateLimiter = RateLimiter.getInstance('meta_api', {
-  maxRequests: 200,      // 200 requests per hour (Meta's limit is ~200/hour)
-  windowMs: 60 * 60 * 1000, // 1 hour
-  retryAfterMs: 5000     // Wait 5 seconds between retries
+/**
+ * Global rate limiter instance
+ */
+export const globalRateLimiter = new RateLimiter({
+  minDelay: 1000, // 1 second between calls
+  maxCallsPerMinute: 30, // 30 calls per minute
+  backoffMultiplier: 2, // Exponential backoff
+  maxBackoffDelay: 30000 // 30 seconds max backoff
 });
 
-export const databaseRateLimiter = RateLimiter.getInstance('database', {
-  maxRequests: 1000,     // 1000 requests per minute
-  windowMs: 60 * 1000,   // 1 minute
-  retryAfterMs: 1000     // Wait 1 second between retries
-});
-
-export const cacheRefreshRateLimiter = RateLimiter.getInstance('cache_refresh', {
-  maxRequests: 10,       // 10 cache refreshes per minute
-  windowMs: 60 * 1000,   // 1 minute
-  retryAfterMs: 2000     // Wait 2 seconds between retries
-}); 
+/**
+ * Global request queue instance
+ */
+export const globalRequestQueue = new RequestQueue(globalRateLimiter);
