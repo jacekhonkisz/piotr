@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import EmailService from '../../../../lib/email';
+import FlexibleEmailService from '../../../../lib/flexible-email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Send a real test email using the existing EmailService
-    const emailService = EmailService.getInstance();
+    // Send a real test email using the FlexibleEmailService
+    const emailService = FlexibleEmailService.getInstance();
     
     const testEmailData = {
       to: emailConfig.email_from_address, // Send to self for testing

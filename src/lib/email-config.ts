@@ -12,12 +12,12 @@ export const EMAIL_CONFIG = {
   // Monitoring email addresses (only used when MONITORING_MODE is true)
   // Updated to use verified Resend email address
   MONITORING_EMAILS: [
-    // 'pbajerlein@gmail.com'  // Disabled for production
+    'pbajerlein@gmail.com'  // Resend verified address - forward to jac.honkisz@gmail.com
   ],
   
   // Email settings
   RATE_LIMIT: {
-    MAX_REQUESTS: 10,     // Resend allows 10 requests per second
+    MAX_REQUESTS: 2,      // Resend allows 2 requests per second
     WINDOW_MS: 1000,      // 1 second window
     RETRY_AFTER_MS: 1000  // Wait 1 second before retry
   },

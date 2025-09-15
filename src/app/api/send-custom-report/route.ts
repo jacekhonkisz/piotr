@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import EmailService from '../../../lib/email';
+import FlexibleEmailService from '../../../lib/flexible-email';
 import logger from '../../../lib/logger';
 
 const supabase = createClient(
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Send email to all contact emails
-    const emailService = EmailService.getInstance();
+    const emailService = FlexibleEmailService.getInstance();
     const contactEmails = client.contact_emails || [client.email];
     
     let emailResults = [];

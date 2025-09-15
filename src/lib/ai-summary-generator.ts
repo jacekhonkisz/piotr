@@ -328,13 +328,13 @@ function generateFallbackSummary(data: ExecutiveSummaryData): string {
     
     // Meta Ads results
     summary += ` o budżecie ${formatCurrency(metaData.spend || 0)} w Meta Ads i ${formatCurrency(googleData.spend || 0)} w Google Ads. `;
-    summary += `Kampanie Meta Ads wygenerowały ${formatNumber(metaData.impressions || 0)} wyświetleń i ${formatNumber(metaData.clicks || 0)} kliknięć, osiągając CTR na poziomie ${((metaData.clicks || 0) / (metaData.impressions || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(metaData.conversions || 0)} rezerwacji. `;
+    summary += `Kampanie Meta Ads wygenerowały ${formatNumber(metaData.impressions || 0)} wyświetleń i ${formatNumber(metaData.clicks || 0)} kliknięć, osiągając CTR na poziomie ${((metaData.clicks || 0) / (metaData.impressions || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(metaData.reservations || 0)} rezerwacji. `;
     
     // Google Ads results
-    summary += `Kampanie Google Ads wygenerowały ${formatNumber(googleData.impressions || 0)} wyświetlenia i ${formatNumber(googleData.clicks || 0)} kliknięć, osiągając CTR na poziomie ${((googleData.clicks || 0) / (googleData.impressions || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(googleData.conversions || 0)} rezerwacji. `;
+    summary += `Kampanie Google Ads wygenerowały ${formatNumber(googleData.impressions || 0)} wyświetlenia i ${formatNumber(googleData.clicks || 0)} kliknięć, osiągając CTR na poziomie ${((googleData.clicks || 0) / (googleData.impressions || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(googleData.reservations || 0)} rezerwacji. `;
     
     // Combined results
-    summary += `Łącznie działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.costPerReservation || 0)}.`;
+    summary += `Łącznie działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.averageCpa || 0)}.`;
   } else {
     // Fallback to combined format if only one platform
     summary += ` o łącznym budżecie ${formatCurrency(data.totalSpend)}. Kampanie wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, osiągając CTR na poziomie ${data.averageCtr.toFixed(2)}%. Działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.costPerReservation || 0)}.`;
