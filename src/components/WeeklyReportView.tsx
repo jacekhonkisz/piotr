@@ -837,19 +837,15 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
 
 
-            {/* Comprehensive Metrics Section */}
+            {/* Main Metrics Section */}
             <section className="mb-12">
               <div className="mb-8">
-                <h2 className="text-2xl font-semibold text-slate-900 mb-3 tracking-tight">Kompletne Metryki</h2>
-                <p className="text-base text-slate-600">Wszystkie metryki reklamowe i konwersji</p>
+                <h2 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">Podstawowe metryki</h2>
+                <p className="text-lg text-slate-600">Wydatki i podstawowe wskaźniki wydajności</p>
               </div>
               
-              {/* Main Metrics - First Section */}
+              {/* Main Metrics Cards */}
               <div className="mb-8">
-                <div className="mb-6">
-                  <h3 className="text-2xl font-bold text-slate-900 mb-2">Podstawowe metryki</h3>
-                  <p className="text-slate-600">Wydatki i podstawowe wskaźniki wydajności</p>
-                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                   <MetricCard
                     title="Wydana kwota"
@@ -1005,8 +1001,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
             {/* Campaign Performance Section - Consolidated */}
             <section>
               <div className="mb-8">
-                <h2 className="text-2xl font-semibold text-slate-900 mb-3 tracking-tight">Wydajność kampanii</h2>
-                <p className="text-base text-slate-600">Wszystkie dodatkowe metryki reklamowe i konwersji</p>
+                <h2 className="text-2xl font-semibold text-slate-700 mb-3 tracking-tight">Wydajność kampanii</h2>
+                <p className="text-base text-slate-500">Dodatkowe metryki reklamowe i konwersji</p>
               </div>
               
               {/* Contact Metrics - Moved to top */}

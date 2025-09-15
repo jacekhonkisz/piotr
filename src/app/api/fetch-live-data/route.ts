@@ -391,7 +391,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     
     // Parse request body
     const requestBody = await request.json();
-    const { dateRange, clientId, clearCache, forceFresh, platform = 'meta' } = requestBody;
+    const { dateRange, clientId, clearCache, forceFresh, platform = 'meta', reason } = requestBody;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -443,16 +443,31 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const isAllTimeRequest = startDateObj.getFullYear() <= 2010;
       const isWithinAPILimits = startDateObj >= maxPastDate;
       
+      // Additional check: if the date range is very large (more than 2 years), treat as all-time request
+      const endDateObj = new Date(endDate);
+      const daysDiff = Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const isLargeRangeRequest = daysDiff > 730; // More than 2 years
+      
+      // Check if this is an all-time request by looking at the reason parameter
+      const isAllTimeByReason = reason?.includes('all-time') || reason?.includes('standardized-live');
+      
+      const isAllTimeOrLargeRange = isAllTimeRequest || isLargeRangeRequest || isAllTimeByReason;
+      
       logger.info('📅 Request type:', { 
         isAllTimeRequest, 
+        isLargeRangeRequest,
+        isAllTimeByReason,
+        isAllTimeOrLargeRange,
         startYear: startDateObj.getFullYear(),
+        daysDiff,
         isWithinAPILimits,
         maxPastDate: maxPastDate.toISOString().split('T')[0],
-        requestedStartDate: startDate
+        requestedStartDate: startDate,
+        reason
       });
       
-      // Only validate date range for requests within API limits
-      if (isWithinAPILimits) {
+      // Only validate date range for requests within API limits AND not all-time/large range requests
+      if (isWithinAPILimits && !isAllTimeOrLargeRange) {
         const validation = validateDateRange(startDate, endDate);
         logger.info('📅 Date range validation result:', validation);
         
@@ -463,8 +478,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             details: validation.error
           }, { status: 400 });
         }
-      } else if (isAllTimeRequest) {
-        logger.info('📅 All-time request detected, skipping date range validation');
+      } else if (isAllTimeOrLargeRange) {
+        logger.info('📅 All-time or large range request detected, skipping date range validation');
       } else {
         logger.info('⚠️ Date range exceeds Meta API limits (37 months), but proceeding anyway');
       }

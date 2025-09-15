@@ -656,9 +656,9 @@ const generateFooter = (reportData: ReportData) => {
       <div class="footer-content">
         <div class="client-name-footer">${reportData.clientName}</div>
         <div class="footer-date">${formatDate(new Date().toISOString())}</div>
-              </div>
-            </div>
-          `;
+      </div>
+    </div>
+  `;
 };
 
 // Generate remaining sections...
@@ -1159,9 +1159,8 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
   if (campaignsWithSpend.length === 0) return '';
   
   return `
-    <div class="page-break-before">
-      <div class="campaign-details-section" style="padding: 0 2mm;">
-        <h2 class="section-title">Meta Ads - Szczegóły Kampanii</h2>
+    <div class="campaign-details-section" style="padding: 0 2mm;">
+      <h2 class="section-title">Meta Ads - Szczegóły Kampanii</h2>
         
         <!-- All Campaigns Table - Matching /reports page exactly -->
         <div class="campaigns-table">
@@ -1260,9 +1259,8 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
   if (campaignsWithSpend.length === 0) return '';
   
   return `
-    <div class="page-break-before">
-      <div class="campaign-details-section" style="padding: 0 2mm;">
-        <h2 class="section-title">Google Ads - Szczegóły Kampanii</h2>
+    <div class="campaign-details-section" style="padding: 0 2mm;">
+      <h2 class="section-title">Google Ads - Szczegóły Kampanii</h2>
         
         <!-- All Campaigns Table - Matching /reports page exactly -->
         <div class="campaigns-table">
@@ -1731,6 +1729,8 @@ function generatePDFHTML(reportData: ReportData): string {
             .campaign-details-section {
                 padding: 0;
                 margin: 0;
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
             
             .campaigns-table {
@@ -1948,8 +1948,11 @@ function generatePDFHTML(reportData: ReportData): string {
             
             /* Premium Footer */
             .footer-section {
-                margin-top: 60px;
+                margin-top: 40px;
                 padding: 0;
+                position: relative;
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
             
             .footer-divider {
@@ -2683,30 +2686,95 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     // Use the same AI summary generation logic as reports page
     const { generateAISummary } = await import('../../../lib/ai-summary-generator');
     
-    // Prepare data in the same format as reports page
+    // Prepare data with platform separation and detailed funnel data
+    const hasMetaData = reportData.metaData && (reportData.metaData.metrics?.totalSpend || 0) > 0;
+    const hasGoogleData = reportData.googleData && (reportData.googleData.metrics?.totalSpend || 0) > 0;
+    
+    // Determine platform attribution
+    let platformAttribution = 'kampanie reklamowe';
+    let platformSources: string[] = [];
+    let platformBreakdown: any = null;
+    
+    if (hasMetaData && hasGoogleData) {
+      platformAttribution = 'kampanie Meta Ads i Google Ads';
+      platformSources = ['meta', 'google'];
+      platformBreakdown = {
+        meta: {
+          spend: reportData.metaData?.metrics?.totalSpend || 0,
+          impressions: reportData.metaData?.metrics?.totalImpressions || 0,
+          clicks: reportData.metaData?.metrics?.totalClicks || 0,
+          conversions: reportData.metaData?.metrics?.totalConversions || 0
+        },
+        google: {
+          spend: reportData.googleData?.metrics?.totalSpend || 0,
+          impressions: reportData.googleData?.metrics?.totalImpressions || 0,
+          clicks: reportData.googleData?.metrics?.totalClicks || 0,
+          conversions: reportData.googleData?.metrics?.totalConversions || 0
+        }
+      };
+    } else if (hasMetaData) {
+      platformAttribution = 'kampanie Meta Ads';
+      platformSources = ['meta'];
+    } else if (hasGoogleData) {
+      platformAttribution = 'kampanie Google Ads';
+      platformSources = ['google'];
+    }
+    
+    // Calculate combined metrics for overall summary
+    const totalSpend = (reportData.metaData?.metrics?.totalSpend || 0) + (reportData.googleData?.metrics?.totalSpend || 0);
+    const totalImpressions = (reportData.metaData?.metrics?.totalImpressions || 0) + (reportData.googleData?.metrics?.totalImpressions || 0);
+    const totalClicks = (reportData.metaData?.metrics?.totalClicks || 0) + (reportData.googleData?.metrics?.totalClicks || 0);
+    const totalConversions = (reportData.metaData?.metrics?.totalConversions || 0) + (reportData.googleData?.metrics?.totalConversions || 0);
+    const totalReservations = (reportData.metaData?.metrics?.totalReservations || 0) + (reportData.googleData?.metrics?.totalReservations || 0);
+    const totalReservationValue = (reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0);
+    
+    // Calculate weighted averages
+    const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    const averageCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
+    const roas = totalSpend > 0 ? totalReservationValue / totalSpend : 0;
+    const costPerReservation = totalReservations > 0 ? totalSpend / totalReservations : 0;
+    
+    // Get funnel data (prioritize Meta data if available, fallback to Google)
+    const funnelData = reportData.metaData?.funnel || reportData.googleData?.funnel || {
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0
+    };
+    
+    // Get contact data (prioritize Meta data if available, fallback to Google)
+    const emailContacts = reportData.metaData?.metrics?.emailContacts || reportData.googleData?.metrics?.emailContacts || 0;
+    const phoneContacts = reportData.metaData?.metrics?.phoneContacts || reportData.googleData?.metrics?.phoneContacts || 0;
+    
     const summaryData = {
-      totalSpend: (reportData.metaData?.metrics?.totalSpend || 0) + (reportData.googleData?.metrics?.totalSpend || 0),
-      totalImpressions: (reportData.metaData?.metrics?.totalImpressions || 0) + (reportData.googleData?.metrics?.totalImpressions || 0),
-      totalClicks: (reportData.metaData?.metrics?.totalClicks || 0) + (reportData.googleData?.metrics?.totalClicks || 0),
-      totalConversions: (reportData.metaData?.metrics?.totalConversions || 0) + (reportData.googleData?.metrics?.totalConversions || 0),
-      averageCtr: reportData.metaData?.metrics?.averageCtr || 0,
-      averageCpc: reportData.metaData?.metrics?.averageCpc || 0,
-      averageCpa: reportData.metaData?.metrics?.averageCpa || 0,
+      totalSpend,
+      totalImpressions,
+      totalClicks,
+      totalConversions,
+      averageCtr,
+      averageCpc,
+      averageCpa,
       currency: 'PLN',
       dateRange: dateRange,
       clientName: clientData.name,
-      reservations: (reportData.metaData?.metrics?.totalReservations || 0) + (reportData.googleData?.metrics?.totalReservations || 0),
-      reservationValue: (reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0),
-      roas: reportData.metaData?.metrics?.roas || 0,
-      microConversions: (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
-      costPerReservation: reportData.metaData?.metrics?.averageCpa || 0,
-      platformAttribution: 'kampanie reklamowe',
-      platformSources: [],
-      platformBreakdown: null
+      reservations: totalReservations,
+      reservationValue: totalReservationValue,
+      roas,
+      microConversions: funnelData.booking_step_1,
+      costPerReservation,
+      platformAttribution,
+      platformSources,
+      platformBreakdown,
+      // Add detailed funnel data
+      bookingStep1: funnelData.booking_step_1,
+      bookingStep2: funnelData.booking_step_2,
+      bookingStep3: funnelData.booking_step_3,
+      emailContacts,
+      clickToCall: phoneContacts
     };
     
     // Generate AI summary using the same function as reports page
-    const aiSummary = await generateAISummary(summaryData);
+    const aiSummary = await generateAISummary(summaryData, clientId);
     
     if (aiSummary) {
       reportData.aiSummary = aiSummary;

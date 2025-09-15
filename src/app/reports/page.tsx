@@ -425,6 +425,7 @@ function ReportsPageContent() {
   });
   const [isGeneratingCustomReport, setIsGeneratingCustomReport] = useState(false);
   const [isGeneratingDevReport, setIsGeneratingDevReport] = useState(false);
+  const [isGeneratingAllTimeReport, setIsGeneratingAllTimeReport] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [metaTablesData, setMetaTablesData] = useState<{
     placementPerformance: any[];
@@ -707,6 +708,7 @@ function ReportsPageContent() {
       loadingRef.current = true;
       setApiCallInProgress(true);
       setLoadingPeriod('all-time');
+      setIsGeneratingAllTimeReport(true);
       setError(null); // Clear any previous errors
       
       // Get session for API calls
@@ -784,6 +786,22 @@ function ReportsPageContent() {
         console.log(`📅 Using client-based start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
       }
       
+      // Use the 37-month Meta API limit as the effective start date for all-time requests
+      // This ensures we get the maximum available data without hitting API limits
+      const metaApiLimitDate = new Date();
+      metaApiLimitDate.setMonth(metaApiLimitDate.getMonth() - 37);
+      
+      // For all-time requests, ALWAYS use the 37-month limit to avoid API errors
+      // This is the maximum historical data available from Meta API
+      effectiveStartDate = metaApiLimitDate;
+      
+      console.log(`📅 All-time date calculation (37-month limit enforced):`, {
+        originalEffectiveStart: effectiveStartDate.toISOString().split('T')[0],
+        metaApiLimit: metaApiLimitDate.toISOString().split('T')[0],
+        finalStart: effectiveStartDate.toISOString().split('T')[0],
+        reason: 'Using 37-month Meta API limit for all-time requests'
+      });
+      
       console.log(`📅 Effective start date: ${effectiveStartDate.toISOString().split('T')[0]}`);
       
       // Format dates properly for API
@@ -798,8 +816,27 @@ function ReportsPageContent() {
       const endDate = formatDateForAPI(currentDate);
       
       console.log(`📅 OPTIMIZED: Fetching all-time data in single API call from ${startDate} to ${endDate}`);
-      console.log(`📅 Business perspective: Fetching from earliest campaign creation date`);
-      console.log(`📅 API limitation: Meta API only allows data from last 37 months`);
+      console.log(`📅 Business perspective: Fetching from earliest available date (37-month Meta API limit)`);
+      console.log(`📅 API limitation: Meta API only allows data from last 37 months - cannot go further back`);
+      
+      // Additional validation to ensure we're within API limits
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      const currentDateObj = new Date();
+      const validationMaxPastDate = new Date();
+      validationMaxPastDate.setMonth(validationMaxPastDate.getMonth() - 37);
+      
+      console.log(`📅 Date validation:`, {
+        startDate,
+        endDate,
+        startDateObj: startDateObj.toISOString(),
+        endDateObj: endDateObj.toISOString(),
+        currentDateObj: currentDateObj.toISOString(),
+        validationMaxPastDate: validationMaxPastDate.toISOString(),
+        isStartWithinLimit: startDateObj >= validationMaxPastDate,
+        isEndNotFuture: endDateObj <= currentDateObj,
+        daysDiff: Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      });
       
       // OPTIMIZATION: Single API call instead of month-by-month
       const requestBody = {
@@ -824,8 +861,8 @@ function ReportsPageContent() {
         },
         clientId: selectedClient.id,
         platform: activeAdsProvider,
-        forceFresh: false,
-        reason: 'all-time-standardized',
+        forceFresh: false, // Use cached data for all-time reports (was causing rate limits)
+        reason: 'all-time-standardized-cached',
         session
       });
 
@@ -1041,6 +1078,7 @@ function ReportsPageContent() {
       loadingRef.current = false;
       setApiCallInProgress(false);
       setLoadingPeriod(null);
+      setIsGeneratingAllTimeReport(false);
     }
   };
 
@@ -3007,6 +3045,41 @@ function ReportsPageContent() {
         </div>
       )}
 
+      {/* All-Time Data Loading Modal */}
+      {isGeneratingAllTimeReport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-lg mx-4 shadow-xl">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Ładowanie danych z cache</h3>
+              <div className="text-sm text-gray-600 text-center space-y-2">
+                <p>
+                  Ładujemy dane z ostatnich 37 miesięcy z cache systemu.
+                </p>
+                <p className="text-xs text-gray-500">
+                  <strong>Uwaga:</strong> Meta API ogranicza dostęp do danych do ostatnich 37 miesięcy. 
+                  Nie można pobrać starszych danych z powrotu.
+                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>Zakres danych:</strong> {(() => {
+                      const currentDate = new Date();
+                      const startDate = new Date();
+                      startDate.setMonth(startDate.getMonth() - 37);
+                      return `${startDate.toLocaleDateString('pl-PL')} - ${currentDate.toLocaleDateString('pl-PL')}`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 text-xs text-gray-500">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span>Łączenie z API...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-[1400px] mx-auto px-6 py-8">
                 {/* Header */}
         <div className="border-b border-gray-200 pb-6 mb-8">
@@ -3109,11 +3182,16 @@ function ReportsPageContent() {
                 viewType === 'all-time'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-              title="Pokaż dane z całego dostępnego okresu (od 2010 do dziś)"
+              } ${isGeneratingAllTimeReport ? 'opacity-75 cursor-not-allowed' : ''}`}
+              title="Pokaż dane z ostatnich 37 miesięcy (ograniczenie Meta API)"
+              disabled={isGeneratingAllTimeReport}
             >
-              <BarChart3 className="w-4 h-4" />
-              <span>Cały Okres</span>
+              {isGeneratingAllTimeReport ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <BarChart3 className="w-4 h-4" />
+              )}
+              <span>{isGeneratingAllTimeReport ? 'Pobieranie...' : 'Cały Okres'}</span>
             </button>
 
             <button
@@ -3387,10 +3465,15 @@ function ReportsPageContent() {
                     viewType === 'all-time'
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
+                  } ${isGeneratingAllTimeReport ? 'opacity-75 cursor-not-allowed' : ''}`}
+                  disabled={isGeneratingAllTimeReport}
                 >
-                  <BarChart3 className="w-4 h-4" />
-                  <span>Cały Okres</span>
+                  {isGeneratingAllTimeReport ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <BarChart3 className="w-4 h-4" />
+                  )}
+                  <span>{isGeneratingAllTimeReport ? 'Pobieranie...' : 'Cały Okres'}</span>
               </button>
               
                 <button
@@ -3739,10 +3822,15 @@ function ReportsPageContent() {
                   viewType === 'all-time'
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+                } ${isGeneratingAllTimeReport ? 'opacity-75 cursor-not-allowed' : ''}`}
+                disabled={isGeneratingAllTimeReport}
               >
-                <BarChart3 className="w-4 h-4" />
-                <span>Cały Okres</span>
+                {isGeneratingAllTimeReport ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <BarChart3 className="w-4 h-4" />
+                )}
+                <span>{isGeneratingAllTimeReport ? 'Pobieranie...' : 'Cały Okres'}</span>
               </button>
 
               <button
@@ -3847,11 +3935,20 @@ function ReportsPageContent() {
               </div>
               <div className="ml-3">
                 <p className="text-sm text-yellow-700">
-                  <strong>Uwaga:</strong> Widok &quot;Cały Okres&quot; pobiera dane od momentu uruchomienia biznesu klienta lub z ostatnich 37 miesięcy (ograniczenie Meta API) - w zależności od tego, która data jest późniejsza.
+                  <strong>Uwaga:</strong> Widok &quot;Cały Okres&quot; pobiera dane z ostatnich 37 miesięcy (ograniczenie Meta API). 
+                  Starsze dane nie są dostępne z powrotu z powodu ograniczeń API.
+                </p>
+                <p className="text-xs text-yellow-600 mt-1">
+                  Zakres: {(() => {
+                    const currentDate = new Date();
+                    const startDate = new Date();
+                    startDate.setMonth(startDate.getMonth() - 37);
+                    return `${startDate.toLocaleDateString('pl-PL')} - ${currentDate.toLocaleDateString('pl-PL')}`;
+                  })()}
                 </p>
               </div>
+            </div>
           </div>
-        </div>
         )}
 
         {/* Custom Date Range Selector */}

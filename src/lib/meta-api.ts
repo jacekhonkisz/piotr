@@ -400,7 +400,13 @@ export class MetaAPIService {
       });
       
       const response = await Promise.race([
-        fetch(`${this.baseUrl}/me?access_token=${this.accessToken}`),
+        fetch(`${this.baseUrl}/me`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }),
         timeoutPromise
       ]) as Response;
       
@@ -418,7 +424,14 @@ export class MetaAPIService {
         
         const adAccountsResponse = await Promise.race([
           fetch(
-            `${this.baseUrl}/me/adaccounts?fields=id,name,account_id&access_token=${this.accessToken}`
+            `${this.baseUrl}/me/adaccounts?fields=id,name,account_id`,
+            {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
           ),
           timeoutPromise
         ]) as Response;
@@ -470,7 +483,14 @@ export class MetaAPIService {
       
       const response = await Promise.race([
         fetch(
-          `${this.baseUrl}/act_${cleanAccountId}?fields=id,name,account_id,account_status,currency,timezone_name&access_token=${this.accessToken}`
+          `${this.baseUrl}/act_${cleanAccountId}?fields=id,name,account_id,account_status,currency,timezone_name`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${this.accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
         ),
         timeoutPromise
       ]) as Response;
@@ -532,7 +552,14 @@ export class MetaAPIService {
 
     try {
       const response = await fetch(
-        `${this.baseUrl}/me/adaccounts?fields=id,name,account_id,currency,timezone_name&access_token=${this.accessToken}`
+        `${this.baseUrl}/me/adaccounts?fields=id,name,account_id,currency,timezone_name`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
       );
       const data: MetaAPIResponse = await response.json();
 
@@ -592,7 +619,6 @@ export class MetaAPIService {
       ].join(',');
 
       const params = new URLSearchParams({
-        access_token: this.accessToken,
         fields: fields,
         time_range: JSON.stringify({
           since: dateStart,
@@ -610,7 +636,7 @@ export class MetaAPIService {
       // Ensure we have the act_ prefix for the API call
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
-      logger.info('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API URL:', url);
       logger.info('📅 Date Range for API call:', { dateStart, dateEnd, timeIncrement });
 
       logger.info('⏱️ Starting Meta API fetch with timeout...');
@@ -620,9 +646,15 @@ export class MetaAPIService {
         setTimeout(() => reject(new Error('Meta API call timeout after 25 seconds')), 25000);
       });
       
-      // Race between the fetch and timeout
+      // Race between the fetch and timeout with Authorization header
       const response = await Promise.race([
-        fetch(url),
+        fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }),
         timeoutPromise
       ]) as Response;
       
@@ -1155,7 +1187,6 @@ export class MetaAPIService {
   async getCampaigns(adAccountId: string): Promise<any[]> {
     const endpoint = `act_${adAccountId}/campaigns`;
     const params = new URLSearchParams({
-      access_token: this.accessToken,
       fields: 'id,name,status,objective,created_time,updated_time,start_time,stop_time',
       limit: '100'
     });
@@ -1168,7 +1199,7 @@ export class MetaAPIService {
 
     try {
       const url = `${this.baseUrl}/${endpoint}?${params}`;
-      logger.info('🔗 Meta API URL:', url.replace(this.accessToken, 'HIDDEN_TOKEN'));
+      logger.info('🔗 Meta API URL:', url);
       
       logger.info('⏱️ Starting Meta API fetch with timeout...');
       
@@ -1179,7 +1210,13 @@ export class MetaAPIService {
       
       // Race between the fetch and timeout
       const response = await Promise.race([
-        fetch(url),
+        fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }),
         timeoutPromise
       ]) as Response;
       
@@ -1228,7 +1265,6 @@ export class MetaAPIService {
   async getAccountInfo(adAccountId: string): Promise<any> {
     const endpoint = `act_${adAccountId}`;
     const params = new URLSearchParams({
-      access_token: this.accessToken,
       fields: 'id,name,account_id,currency,timezone_name,account_status,disable_reason'
     });
 
@@ -1249,7 +1285,13 @@ export class MetaAPIService {
       });
       
       const response = await Promise.race([
-        fetch(url),
+        fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }),
         timeoutPromise
       ]) as Response;
       
