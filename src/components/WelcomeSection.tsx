@@ -80,7 +80,17 @@ export default function WelcomeSection({ user, profile, client, isLoading = fals
   const companyName = client?.company ? capitalizeWords(client.company) : null;
 
   return (
-    <div className="text-center mb-8">
+    <div className="relative text-center mb-8">
+      {/* Logout Button - Top Right */}
+      <button
+        onClick={handleLogout}
+        className="absolute top-0 right-0 flex items-center space-x-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-slate-200 hover:border-red-200 z-10"
+        title="Wyloguj się"
+      >
+        <LogOut className="w-4 h-4" />
+        <span>Wyloguj</span>
+      </button>
+
       <div className="flex flex-col items-center space-y-4">
         {/* Logo/Avatar Section */}
         <div className="flex-shrink-0">
@@ -132,34 +142,22 @@ export default function WelcomeSection({ user, profile, client, isLoading = fals
         </div>
 
         {/* Status and Info Row */}
-        <div className="flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0">
-          <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-6">
-            <div className="flex items-center space-x-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-full px-4 py-2 border border-green-200">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs font-semibold text-green-700">
-                {profile.role === 'admin' ? 'Administrator' : 'Klient'}
-              </span>
-            </div>
-            
-            <div className="flex items-center space-x-2 text-sm text-slate-600">
-              <User className="w-4 h-4 text-slate-400" />
-              <span className="font-medium">{user.email}</span>
-            </div>
-            
-            <div className="text-xs text-slate-500 font-medium">
-              Ostatnie logowanie: {new Date().toLocaleDateString('pl-PL')}
-            </div>
+        <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-6">
+          <div className="flex items-center space-x-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-full px-4 py-2 border border-green-200">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-xs font-semibold text-green-700">
+              {profile.role === 'admin' ? 'Administrator' : 'Klient'}
+            </span>
           </div>
-
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-slate-200 hover:border-red-200"
-            title="Wyloguj się"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Wyloguj</span>
-          </button>
+          
+          <div className="flex items-center space-x-2 text-sm text-slate-600">
+            <User className="w-4 h-4 text-slate-400" />
+            <span className="font-medium">{user.email}</span>
+          </div>
+          
+          <div className="text-xs text-slate-500 font-medium">
+            Ostatnie logowanie: {new Date().toLocaleDateString('pl-PL')}
+          </div>
         </div>
 
         {/* Development-only Cache Status */}
