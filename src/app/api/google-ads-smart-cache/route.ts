@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       clientId,
       responseTime,
       source: result.source,
-      fromCache: result.data.fromCache
+      fromCache: result.data?.fromCache
     });
     
     return NextResponse.json({
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       debug: {
         source: result.source,
         responseTime,
-        cacheAge: result.data.cacheAge,
+        cacheAge: result.data?.cacheAge,
         authenticatedUser: 'auth-disabled',
         platform: 'google-ads'
       }

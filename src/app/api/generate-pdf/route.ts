@@ -2681,109 +2681,37 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   });
   
   try {
-    logger.info('🤖 Generating AI summary using same data structure as reports...');
+    logger.info('🤖 Generating AI summary using main API...');
     
-    // Use the same AI summary generation logic as reports page
-    const { generateAISummary } = await import('../../../lib/ai-summary-generator');
-    
-    // Prepare data with platform separation and detailed funnel data
-    const hasMetaData = reportData.metaData && (reportData.metaData.metrics?.totalSpend || 0) > 0;
-    const hasGoogleData = reportData.googleData && (reportData.googleData.metrics?.totalSpend || 0) > 0;
-    
-    // Determine platform attribution
-    let platformAttribution = 'kampanie reklamowe';
-    let platformSources: string[] = [];
-    let platformBreakdown: any = null;
-    
-    if (hasMetaData && hasGoogleData) {
-      platformAttribution = 'kampanie Meta Ads i Google Ads';
-      platformSources = ['meta', 'google'];
-      platformBreakdown = {
-        meta: {
-          spend: reportData.metaData?.metrics?.totalSpend || 0,
-          impressions: reportData.metaData?.metrics?.totalImpressions || 0,
-          clicks: reportData.metaData?.metrics?.totalClicks || 0,
-          conversions: reportData.metaData?.metrics?.totalConversions || 0
-        },
-        google: {
-          spend: reportData.googleData?.metrics?.totalSpend || 0,
-          impressions: reportData.googleData?.metrics?.totalImpressions || 0,
-          clicks: reportData.googleData?.metrics?.totalClicks || 0,
-          conversions: reportData.googleData?.metrics?.totalConversions || 0
+    // Call the main AI summary API instead of duplicating logic
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-executive-summary`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        clientId,
+        dateRange,
+        reportData: {
+          metaData: reportData.metaData,
+          googleData: reportData.googleData
         }
-      };
-    } else if (hasMetaData) {
-      platformAttribution = 'kampanie Meta Ads';
-      platformSources = ['meta'];
-    } else if (hasGoogleData) {
-      platformAttribution = 'kampanie Google Ads';
-      platformSources = ['google'];
-    }
+      })
+    });
     
-    // Calculate combined metrics for overall summary
-    const totalSpend = (reportData.metaData?.metrics?.totalSpend || 0) + (reportData.googleData?.metrics?.totalSpend || 0);
-    const totalImpressions = (reportData.metaData?.metrics?.totalImpressions || 0) + (reportData.googleData?.metrics?.totalImpressions || 0);
-    const totalClicks = (reportData.metaData?.metrics?.totalClicks || 0) + (reportData.googleData?.metrics?.totalClicks || 0);
-    const totalConversions = (reportData.metaData?.metrics?.totalConversions || 0) + (reportData.googleData?.metrics?.totalConversions || 0);
-    const totalReservations = (reportData.metaData?.metrics?.totalReservations || 0) + (reportData.googleData?.metrics?.totalReservations || 0);
-    const totalReservationValue = (reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0);
-    
-    // Calculate weighted averages
-    const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-    const averageCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
-    const roas = totalSpend > 0 ? totalReservationValue / totalSpend : 0;
-    const costPerReservation = totalReservations > 0 ? totalSpend / totalReservations : 0;
-    
-    // Get funnel data (prioritize Meta data if available, fallback to Google)
-    const funnelData = reportData.metaData?.funnel || reportData.googleData?.funnel || {
-      booking_step_1: 0,
-      booking_step_2: 0,
-      booking_step_3: 0
-    };
-    
-    // Get contact data (prioritize Meta data if available, fallback to Google)
-    const emailContacts = reportData.metaData?.metrics?.emailContacts || reportData.googleData?.metrics?.emailContacts || 0;
-    const phoneContacts = reportData.metaData?.metrics?.phoneContacts || reportData.googleData?.metrics?.phoneContacts || 0;
-    
-    const summaryData = {
-      totalSpend,
-      totalImpressions,
-      totalClicks,
-      totalConversions,
-      averageCtr,
-      averageCpc,
-      averageCpa,
-      currency: 'PLN',
-      dateRange: dateRange,
-      clientName: clientData.name,
-      reservations: totalReservations,
-      reservationValue: totalReservationValue,
-      roas,
-      microConversions: funnelData.booking_step_1,
-      costPerReservation,
-      platformAttribution,
-      platformSources,
-      platformBreakdown,
-      // Add detailed funnel data
-      bookingStep1: funnelData.booking_step_1,
-      bookingStep2: funnelData.booking_step_2,
-      bookingStep3: funnelData.booking_step_3,
-      emailContacts,
-      clickToCall: phoneContacts
-    };
-    
-    // Generate AI summary using the same function as reports page
-    const aiSummary = await generateAISummary(summaryData, clientId);
-    
-    if (aiSummary) {
-      reportData.aiSummary = aiSummary;
-      logger.info('✅ AI summary generated successfully:', {
-        summaryLength: aiSummary.length,
-        summaryPreview: aiSummary.substring(0, 100)
-      });
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.summary) {
+        reportData.aiSummary = result.summary;
+        logger.info('✅ AI summary generated using main API:', {
+          summaryLength: result.summary.length,
+          summaryPreview: result.summary.substring(0, 100)
+        });
+      } else {
+        logger.warn('⚠️ AI summary API returned no summary');
+      }
     } else {
-      logger.warn('⚠️ AI summary generation returned null');
+      logger.warn('⚠️ AI summary API call failed:', response.status);
     }
     
   } catch (error) {
@@ -2984,14 +2912,38 @@ export async function POST(request: NextRequest) {
     const filename = `raport_kampanii_${sanitizedClientName}_${new Date().toISOString().split('T')[0]}.pdf`;
     const encodedFilename = encodeURIComponent(filename);
     
-    return new NextResponse(pdfBuffer as BodyInit, {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
-        'Content-Length': pdfBuffer.length.toString(),
-      },
-    });
+    // Check if request wants JSON response with AI summary
+    const acceptHeader = request.headers.get('accept');
+    const wantsJson = acceptHeader?.includes('application/json');
+    
+    if (wantsJson) {
+      // Return JSON with both PDF and AI summary for email integration
+      logger.info('📧 Returning JSON response with PDF and AI summary for email integration');
+      return NextResponse.json({
+        success: true,
+        pdf: pdfBuffer.toString('base64'),
+        aiSummary: reportData.aiSummary,
+        clientName: reportData.clientName,
+        dateRange: reportData.dateRange,
+        size: pdfBuffer.length,
+        hasAiSummary: !!reportData.aiSummary,
+        aiSummaryLength: reportData.aiSummary?.length || 0,
+        aiSummaryPreview: reportData.aiSummary?.substring(0, 100) || 'No AI summary'
+      });
+    } else {
+      // Return the PDF as a response (default behavior)
+      return new NextResponse(pdfBuffer as BodyInit, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
+          'Content-Length': pdfBuffer.length.toString(),
+          // Include AI summary info in headers for debugging
+          'X-AI-Summary-Length': (reportData.aiSummary?.length || 0).toString(),
+          'X-Has-AI-Summary': (!!reportData.aiSummary).toString(),
+        },
+      });
+    }
 
     } catch (puppeteerError) {
       logger.error('❌ Puppeteer error:', puppeteerError);

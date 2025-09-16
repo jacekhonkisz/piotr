@@ -115,7 +115,7 @@ export async function POST() {
 
       if (settings && settings.length > 0) {
         const refreshToken = settings.find(s => s.key === 'google_ads_manager_refresh_token')?.value;
-        if (refreshToken && refreshToken.length > 10) {
+        if (refreshToken && typeof refreshToken === 'string' && refreshToken.length > 10) {
           console.log('✅ Google Ads refresh token appears valid');
           healthStatus.apiCalls = 1; // Count this as 1 API call
         } else {

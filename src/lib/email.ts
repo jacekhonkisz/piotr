@@ -31,10 +31,9 @@ export class EmailService {
     this.resend = new Resend(process.env.RESEND_API_KEY);
     
     // Initialize rate limiter for Resend API limits using configuration
-    this.rateLimiter = RateLimiter.getInstance('resend-email', {
-      maxRequests: EMAIL_CONFIG.RATE_LIMIT.MAX_REQUESTS,
-      windowMs: EMAIL_CONFIG.RATE_LIMIT.WINDOW_MS,
-      retryAfterMs: EMAIL_CONFIG.RATE_LIMIT.RETRY_AFTER_MS
+    this.rateLimiter = new RateLimiter({
+      minDelay: 100, // 100ms between emails
+      maxCallsPerMinute: 50 // Conservative limit for email sending
     });
   }
 
@@ -49,7 +48,7 @@ export class EmailService {
     try {
       // Wait for rate limit slot before sending
       logger.info('Checking rate limit before sending email...');
-      await this.rateLimiter.waitForSlot();
+      await this.rateLimiter.waitForNextCall();
       
       // Get appropriate recipients based on configuration
       const originalRecipient = emailData.to;

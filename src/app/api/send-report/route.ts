@@ -76,6 +76,11 @@ export async function POST(request: NextRequest) {
     // Generate real report data using same logic as reports
     let realReportData;
     
+    // Define date range for API calls
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - 30); // Last 30 days
+    
     if (reportData && reportData.report_data) {
       // Use stored report data if available
       const storedData = reportData.report_data;
@@ -114,10 +119,6 @@ export async function POST(request: NextRequest) {
       // Fallback: fetch fresh data using same system as reports
       try {
         const { StandardizedDataFetcher } = await import('../../../lib/standardized-data-fetcher');
-        
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(endDate.getDate() - 30); // Last 30 days
         
         const fetchResult = await StandardizedDataFetcher.fetchData({
           clientId: client.id,
@@ -185,12 +186,86 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate PDF if requested (placeholder for now)
+    // Generate PDF if requested and fetch AI summary
     let pdfBuffer: Buffer | undefined;
+    let aiSummary: string | undefined;
+    
     if (includePdf) {
-      // In a real implementation, you would generate a PDF here
-      // For now, we'll skip PDF generation
-      logger.info('PDF generation would happen here');
+      try {
+        logger.info('📄 Generating PDF with UNIFIED AI summary...');
+        
+        // UNIFIED APPROACH: Get both PDF and AI summary from single call
+        const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json' // Request JSON response with AI summary
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange: {
+              start: startDate.toISOString().split('T')[0],
+              end: endDate.toISOString().split('T')[0]
+            }
+          })
+        });
+
+        if (pdfResponse.ok) {
+          const pdfResult = await pdfResponse.json();
+          
+          if (pdfResult.success) {
+            // Extract PDF and AI summary from unified response
+            pdfBuffer = Buffer.from(pdfResult.pdf, 'base64');
+            aiSummary = pdfResult.aiSummary;
+            
+            logger.info('✅ UNIFIED PDF and AI summary generated:', {
+              pdfSize: pdfBuffer.byteLength,
+              hasAiSummary: !!aiSummary,
+              aiSummaryLength: aiSummary?.length || 0,
+              aiSummaryPreview: aiSummary?.substring(0, 50) || 'No AI summary'
+            });
+          } else {
+            logger.error('❌ PDF generation failed:', pdfResult);
+          }
+        } else {
+          logger.error('❌ PDF generation request failed:', pdfResponse.status);
+        }
+      } catch (error) {
+        logger.error('❌ Error generating unified PDF and AI summary:', error);
+      }
+    } else {
+      // If no PDF requested, still generate AI summary using PDF generation
+      try {
+        logger.info('🤖 Generating AI summary only (no PDF requested)...');
+        
+        const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json' // Request JSON response with AI summary
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange: {
+              start: startDate.toISOString().split('T')[0],
+              end: endDate.toISOString().split('T')[0]
+            }
+          })
+        });
+
+        if (pdfResponse.ok) {
+          const pdfResult = await pdfResponse.json();
+          if (pdfResult.success) {
+            aiSummary = pdfResult.aiSummary;
+            logger.info('✅ AI summary generated (no PDF):', {
+              hasAiSummary: !!aiSummary,
+              aiSummaryLength: aiSummary?.length || 0
+            });
+          }
+        }
+      } catch (error) {
+        logger.error('❌ Error generating AI summary:', error);
+      }
     }
 
     // Send email to all contact emails
@@ -204,7 +279,9 @@ export async function POST(request: NextRequest) {
           email,
           client.name,
           realReportData,
-          pdfBuffer
+          pdfBuffer,
+          undefined, // provider (auto-detect)
+          aiSummary
         );
         emailResults.push({ email, success: emailResult.success, error: emailResult.error });
       } catch (error) {

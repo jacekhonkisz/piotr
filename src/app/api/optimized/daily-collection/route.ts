@@ -109,7 +109,7 @@ export async function POST() {
             clientId: settings.google_ads_client_id,
             clientSecret: settings.google_ads_client_secret,
             developmentToken: settings.google_ads_developer_token,
-            customerId: client.google_ads_customer_id,
+            customerId: client.google_ads_customer_id || '',
             managerCustomerId: settings.google_ads_manager_customer_id,
           };
 
@@ -117,7 +117,7 @@ export async function POST() {
           const googleAdsAPI = new GoogleAdsAPIService(googleAdsCredentials);
 
           // Fetch campaigns data for the target date
-          const campaigns = await googleAdsAPI.getCampaignData(targetDate, targetDate);
+          const campaigns = await googleAdsAPI.getCampaignData(targetDate!, targetDate!);
           
           if (!campaigns || campaigns.length === 0) {
             console.warn(`⚠️ No Google Ads campaign data for ${client.name}`);
@@ -136,9 +136,9 @@ export async function POST() {
           // Store daily data (simplified for testing)
           const dailyData = {
             client_id: client.id,
-            date: targetDate,
+            date: targetDate!,
             campaigns_count: campaigns.length,
-            total_spend: campaigns.reduce((sum, c) => sum + (c.cost || 0), 0),
+            total_spend: campaigns.reduce((sum, c) => sum + (c.spend || 0), 0),
             total_clicks: campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0),
             total_impressions: campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0),
             created_at: new Date().toISOString()

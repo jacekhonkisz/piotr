@@ -510,7 +510,7 @@ async function executeGoogleAdsSmartCacheRequest(clientId: string, currentMonth:
         .eq('period_id', currentMonth.periodId)
         .single();
 
-      if (!cacheError && cachedData) {
+      if (!cacheError && cachedData && cachedData.cache_data) {
         if (isCacheFresh(cachedData.last_updated)) {
           logger.info('✅ Returning fresh Google Ads cached data');
           
@@ -527,11 +527,25 @@ async function executeGoogleAdsSmartCacheRequest(clientId: string, currentMonth:
             source: 'google-ads-cache'
           };
         } else {
-          logger.info('🔄 Google Ads cache expired, fetching fresh data');
+          logger.info('🔄 Google Ads cache expired, but returning stale data since no refresh token available');
+          
+          // Return stale data if no refresh token available
+          const cacheAge = Date.now() - new Date(cachedData.last_updated).getTime();
+          const responseData = {
+            ...cachedData.cache_data,
+            fromCache: true,
+            cacheAge
+          };
+          
+          return {
+            success: true,
+            data: responseData,
+            source: 'google-ads-cache-stale'
+          };
         }
       }
     } catch (cacheError) {
-      logger.warn('⚠️ Google Ads cache lookup failed, fetching fresh data:', cacheError);
+      logger.warn('⚠️ Google Ads cache lookup failed:', cacheError);
     }
   }
 
@@ -551,14 +565,32 @@ async function executeGoogleAdsSmartCacheRequest(clientId: string, currentMonth:
     throw new Error('Google Ads not enabled for this client');
   }
 
-  // Fetch fresh data
-  const freshData = await fetchFreshGoogleAdsCurrentMonthData(client);
-  
-  return {
-    success: true,
-    data: freshData,
-    source: 'google-ads-live-api'
-  };
+  // Only try to fetch fresh data if we have a refresh token
+  if (client.google_ads_refresh_token) {
+    try {
+      const freshData = await fetchFreshGoogleAdsCurrentMonthData(client);
+      
+      return {
+        success: true,
+        data: freshData,
+        source: 'google-ads-live-api'
+      };
+    } catch (error) {
+      logger.warn('⚠️ Failed to fetch fresh Google Ads data, returning null:', error);
+      return {
+        success: false,
+        data: null,
+        source: 'error'
+      };
+    }
+  } else {
+    logger.warn('⚠️ No Google Ads refresh token available, cannot fetch fresh data');
+    return {
+      success: false,
+      data: null,
+      source: 'error'
+    };
+  }
 }
 
 // Extracted Google Ads smart cache logic for weekly data

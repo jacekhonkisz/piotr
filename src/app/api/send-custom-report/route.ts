@@ -89,10 +89,12 @@ export async function POST(request: NextRequest) {
           metaTables: directMetaTables
         };
 
-        const pdfResponse = await fetch('/api/generate-pdf', {
+        // UNIFIED APPROACH: Get both PDF and AI summary from single call
+        const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json', // Request JSON response with AI summary
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(pdfRequestBody)
@@ -104,42 +106,143 @@ export async function POST(request: NextRequest) {
           throw new Error(errorData.error || 'Failed to generate PDF');
         }
 
-        const pdfArrayBuffer = await pdfResponse.arrayBuffer();
-        pdfBuffer = Buffer.from(pdfArrayBuffer);
-        logger.info('Success', pdfBuffer.byteLength, 'bytes');
+        const pdfResult = await pdfResponse.json();
+        
+        if (!pdfResult.success) {
+          throw new Error('PDF generation returned error');
+        }
 
-        // Generate report data from the same source used for PDF
-        const finalTotals = totals || {
-          spend: 0,
-          impressions: 0,
-          clicks: 0,
-          conversions: 0,
-          ctr: 0,
-          cpc: 0,
-          cpm: 0
-        };
+        // Extract both PDF and AI summary from unified response
+        pdfBuffer = Buffer.from(pdfResult.pdf, 'base64');
+        reportSummary = pdfResult.aiSummary || '';
+        
+        logger.info('✅ UNIFIED PDF and AI summary generated:', {
+          pdfSize: pdfBuffer.byteLength,
+          hasAiSummary: !!reportSummary,
+          aiSummaryLength: reportSummary.length,
+          aiSummaryPreview: reportSummary.substring(0, 50) || 'No AI summary'
+        });
 
-        const finalCampaigns = campaigns || [];
+        // AI summary already extracted from PDF generation above (reportSummary)
+        logger.info('✅ Using AI summary directly from PDF generation - no separate fetch needed');
+        
+        // Get report data for email metrics (without AI summary generation)
+        let pdfReportData = null;
+        try {
+          const dataResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/get-report-data-only`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange
+            })
+          });
 
-        // Calculate metrics exactly like the PDF does
-        const totalSpend = finalTotals.spend || 0;
-        const totalImpressions = finalTotals.impressions || 0;
-        const totalClicks = finalTotals.clicks || 0;
-        const totalConversions = finalTotals.conversions || 0;
+          if (dataResponse.ok) {
+            const dataResult = await dataResponse.json();
+            pdfReportData = dataResult.data;
+            logger.info('✅ Report data fetched for email metrics (AI summary from PDF)');
+          }
+        } catch (error) {
+          logger.warn('⚠️ Error fetching report data for email metrics:', error);
+        }
+        
+        // Use the data for email metrics
+        const metaData: any = pdfReportData?.metaData;
+        const googleData: any = pdfReportData?.googleData;
+        
+        // Calculate combined metrics using the same structure as PDF
+        const metaSpend = metaData?.metrics?.totalSpend || 0;
+        const googleSpend = googleData?.metrics?.totalSpend || 0;
+        const totalSpend = metaSpend + googleSpend;
+        
+        const metaImpressions = metaData?.metrics?.totalImpressions || 0;
+        const googleImpressions = googleData?.metrics?.totalImpressions || 0;
+        const totalImpressions = metaImpressions + googleImpressions;
+        
+        const metaClicks = metaData?.metrics?.totalClicks || 0;
+        const googleClicks = googleData?.metrics?.totalClicks || 0;
+        const totalClicks = metaClicks + googleClicks;
+        
+        const metaConversions = metaData?.metrics?.totalConversions || 0;
+        const googleConversions = googleData?.metrics?.totalConversions || 0;
+        const totalConversions = metaConversions + googleConversions;
+        
+        const metaReservations = metaData?.metrics?.totalReservations || 0;
+        const googleReservations = googleData?.metrics?.totalReservations || 0;
+        const totalReservations = metaReservations + googleReservations;
+        
+        const metaReservationValue = metaData?.metrics?.totalReservationValue || 0;
+        const googleReservationValue = googleData?.metrics?.totalReservationValue || 0;
+        const totalReservationValue = metaReservationValue + googleReservationValue;
+        
         const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
         const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
         const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
 
-        // Generate the same summary (podsumowanie) that appears in the PDF
-        reportSummary = generateReportSummary({
-          dateRange,
+        logger.info('✅ Combined data calculated:', {
           totalSpend,
           totalImpressions,
           totalClicks,
           totalConversions,
-          ctr,
-          cpc,
-          campaigns: finalCampaigns
+          totalReservations,
+          totalReservationValue,
+          hasMetaData: !!metaData,
+          hasGoogleData: !!googleData
+        });
+
+        // Generate AI summary with platform breakdown (same as PDF)
+        // Determine platform attribution and breakdown
+        const hasMetaData = metaData && (metaData.metrics?.totalSpend || 0) > 0;
+        const hasGoogleData = googleData && (googleData.metrics?.totalSpend || 0) > 0;
+        
+        let platformAttribution = 'kampanie reklamowe';
+        let platformSources: string[] = [];
+        let platformBreakdown: any = null;
+        
+        if (hasMetaData && hasGoogleData) {
+          platformAttribution = 'kampanie Meta Ads i Google Ads';
+          platformSources = ['meta', 'google'];
+          platformBreakdown = {
+            meta: {
+              spend: metaData?.metrics?.totalSpend || 0,
+              impressions: metaData?.metrics?.totalImpressions || 0,
+              clicks: metaData?.metrics?.totalClicks || 0,
+              conversions: metaData?.metrics?.totalConversions || 0,
+              reservations: metaData?.metrics?.totalReservations || 0,
+              reservationValue: metaData?.metrics?.totalReservationValue || 0
+            },
+            google: {
+              spend: googleData?.metrics?.totalSpend || 0,
+              impressions: googleData?.metrics?.totalImpressions || 0,
+              clicks: googleData?.metrics?.totalClicks || 0,
+              conversions: googleData?.metrics?.totalConversions || 0,
+              reservations: googleData?.metrics?.totalReservations || 0,
+              reservationValue: googleData?.metrics?.totalReservationValue || 0
+            }
+          };
+        } else if (hasMetaData) {
+          platformAttribution = 'kampanie Meta Ads';
+          platformSources = ['meta'];
+        } else if (hasGoogleData) {
+          platformAttribution = 'kampanie Google Ads';
+          platformSources = ['google'];
+        }
+        
+        // AI summary already extracted from PDF generation above (reportSummary)
+        // No need for additional AI generation - we have the EXACT same summary as PDF
+        if (!reportSummary) {
+          // Only use manual fallback if PDF generation didn't provide AI summary
+          reportSummary = `W okresie od ${dateRange.start} do ${dateRange.end} przeprowadziliśmy ${platformAttribution} o łącznym budżecie ${totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}. Kampanie wygenerowały ${totalImpressions.toLocaleString('pl-PL')} wyświetleń i ${totalClicks.toLocaleString('pl-PL')} kliknięć, osiągając CTR na poziomie ${ctr.toFixed(2)}%. Działania reklamowe przyniosły ${totalReservations} rezerwacji o łącznej wartości ${totalReservationValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}, co dało ROAS na poziomie ${totalSpend > 0 ? (totalReservationValue / totalSpend).toFixed(2) : 0}x.`;
+          logger.warn('⚠️ Using manual fallback summary - PDF generation did not provide AI summary');
+        }
+        
+        logger.info('✅ Using AI summary directly from PDF generation:', { 
+          length: reportSummary.length,
+          hasAiSummary: !!reportSummary,
+          summaryPreview: reportSummary.substring(0, 100)
         });
 
         reportData = {
@@ -148,9 +251,11 @@ export async function POST(request: NextRequest) {
           totalImpressions,
           totalClicks,
           totalConversions,
-          ctr: ctr / 100, // Convert to decimal for consistency
+          ctr: ctr, // Keep as percentage for display
           cpc,
-          cpm
+          cpm,
+          reservations: totalReservations,
+          reservationValue: totalReservationValue
         };
 
       } catch (error) {

@@ -80,11 +80,11 @@ export async function GET(request: NextRequest) {
       success: true,
       data: {
         rateLimitStatus: {
-          current: rateLimitStatus.current,
-          limit: rateLimitStatus.limit,
-          resetInMs: rateLimitStatus.resetInMs,
-          resetInSeconds: Math.ceil(rateLimitStatus.resetInMs / 1000),
-          utilizationPercent: Math.round((rateLimitStatus.current / rateLimitStatus.limit) * 100)
+          current: rateLimitStatus.callsInLastMinute,
+          limit: rateLimitStatus.maxCallsPerMinute,
+          resetInMs: rateLimitStatus.timeSinceLastCall,
+          resetInSeconds: Math.ceil(rateLimitStatus.timeSinceLastCall / 1000),
+          utilizationPercent: Math.round((rateLimitStatus.callsInLastMinute / rateLimitStatus.maxCallsPerMinute) * 100)
         },
         emailStats,
         bulkStats,
