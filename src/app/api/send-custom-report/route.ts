@@ -89,32 +89,43 @@ export async function POST(request: NextRequest) {
           metaTables: directMetaTables
         };
 
-        // UNIFIED APPROACH: Get both PDF and AI summary from single call
+        // FIXED APPROACH: Get PDF directly (smaller, reliable) and AI summary separately
         const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'application/json', // Request JSON response with AI summary
             'Authorization': `Bearer ${token}`
+            // NO Accept header - get direct PDF (1.8MB instead of 3.2MB)
           },
           body: JSON.stringify(pdfRequestBody)
         });
 
         if (!pdfResponse.ok) {
-          const errorData = await pdfResponse.json();
-          console.error('❌ Failed to generate PDF:', errorData);
-          throw new Error(errorData.error || 'Failed to generate PDF');
+          const errorText = await pdfResponse.text();
+          console.error('❌ Failed to generate PDF:', pdfResponse.status, errorText);
+          throw new Error(`Failed to generate PDF: ${pdfResponse.status}`);
         }
 
-        const pdfResult = await pdfResponse.json();
+        // Get PDF as direct buffer (reliable, smaller size)
+        const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+        pdfBuffer = Buffer.from(pdfArrayBuffer);
         
-        if (!pdfResult.success) {
-          throw new Error('PDF generation returned error');
-        }
+        // Get AI summary separately using JSON API
+        const aiSummaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json' // Request JSON for AI summary only
+          },
+          body: JSON.stringify(pdfRequestBody)
+        });
 
-        // Extract both PDF and AI summary from unified response
-        pdfBuffer = Buffer.from(pdfResult.pdf, 'base64');
-        reportSummary = pdfResult.aiSummary || '';
+        if (aiSummaryResponse.ok) {
+          const aiResult = await aiSummaryResponse.json();
+          if (aiResult.success && aiResult.aiSummary) {
+            reportSummary = aiResult.aiSummary;
+          }
+        }
         
         logger.info('✅ UNIFIED PDF and AI summary generated:', {
           pdfSize: pdfBuffer.byteLength,
@@ -255,7 +266,30 @@ export async function POST(request: NextRequest) {
           cpc,
           cpm,
           reservations: totalReservations,
-          reservationValue: totalReservationValue
+          reservationValue: totalReservationValue,
+          // Separate platform data for email templates
+          metaData: metaData ? {
+            spend: metaSpend,
+            impressions: metaImpressions,
+            clicks: metaClicks,
+            conversions: metaConversions,
+            ctr: metaImpressions > 0 ? (metaClicks / metaImpressions) : 0,
+            cpc: metaClicks > 0 ? (metaSpend / metaClicks) : 0,
+            cpm: metaImpressions > 0 ? (metaSpend / metaImpressions * 1000) : 0,
+            reservations: metaReservations,
+            reservationValue: metaReservationValue
+          } : undefined,
+          googleData: googleData ? {
+            spend: googleSpend,
+            impressions: googleImpressions,
+            clicks: googleClicks,
+            conversions: googleConversions,
+            ctr: googleImpressions > 0 ? (googleClicks / googleImpressions) : 0,
+            cpc: googleClicks > 0 ? (googleSpend / googleClicks) : 0,
+            cpm: googleImpressions > 0 ? (googleSpend / googleImpressions * 1000) : 0,
+            reservations: googleReservations,
+            reservationValue: googleReservationValue
+          } : undefined
         };
 
       } catch (error) {

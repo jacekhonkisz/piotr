@@ -129,17 +129,27 @@ export async function POST(request: NextRequest) {
       const metaSpend = reportData.metaData?.metrics?.totalSpend || 0;
       const metaImpressions = reportData.metaData?.metrics?.totalImpressions || 0;
       const metaClicks = reportData.metaData?.metrics?.totalClicks || 0;
-      const metaReservations = reportData.metaData?.metrics?.totalReservations || 0;
+      // ONLY CHANGE: Get reservations from conversionMetrics instead of metrics
+      const metaReservations = reportData.metaData?.conversionMetrics?.reservations || 
+                              reportData.metaData?.metrics?.totalReservations || 0;
+      const metaReservationValue = reportData.metaData?.conversionMetrics?.reservation_value || 
+                                  reportData.metaData?.metrics?.totalReservationValue || 0;
       
       const googleSpend = reportData.googleData?.metrics?.totalSpend || 0;
       const googleImpressions = reportData.googleData?.metrics?.totalImpressions || 0;
       const googleClicks = reportData.googleData?.metrics?.totalClicks || 0;
-      const googleReservations = reportData.googleData?.metrics?.totalReservations || 0;
+      // ONLY CHANGE: Get reservations from conversionMetrics instead of metrics
+      const googleReservations = reportData.googleData?.conversionMetrics?.reservations || 
+                                reportData.googleData?.metrics?.totalReservations || 0;
+      const googleReservationValue = reportData.googleData?.conversionMetrics?.reservation_value || 
+                                    reportData.googleData?.metrics?.totalReservationValue || 0;
       
       logger.info('🔍 [DEBUG] Extracted values:', {
-        metaSpend, metaImpressions, metaClicks, metaReservations,
-        googleSpend, googleImpressions, googleClicks, googleReservations,
-        totalSpend: metaSpend + googleSpend
+        metaSpend, metaImpressions, metaClicks, metaReservations, metaReservationValue,
+        googleSpend, googleImpressions, googleClicks, googleReservations, googleReservationValue,
+        totalSpend: metaSpend + googleSpend,
+        totalReservations: metaReservations + googleReservations,
+        totalReservationValue: metaReservationValue + googleReservationValue
       });
       
       actualReportData = {
@@ -151,9 +161,9 @@ export async function POST(request: NextRequest) {
           average_ctr: ((metaClicks + googleClicks) / (metaImpressions + googleImpressions)) * 100 || 0,
           average_cpc: (metaSpend + googleSpend) / (metaClicks + googleClicks) || 0,
           average_cpa: (metaSpend + googleSpend) / (metaReservations + googleReservations) || 0,
-          total_conversion_value: (reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0),
-          roas: ((reportData.metaData?.metrics?.totalReservationValue || 0) + (reportData.googleData?.metrics?.totalReservationValue || 0)) / (metaSpend + googleSpend) || 0,
-          micro_conversions: (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
+          total_conversion_value: metaReservationValue + googleReservationValue,
+          roas: (metaReservationValue + googleReservationValue) / (metaSpend + googleSpend) || 0,
+          micro_conversions: (reportData.metaData?.conversionMetrics?.booking_step_1 || 0) + (reportData.googleData?.conversionMetrics?.booking_step_1 || 0) + (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
           meta_spend: metaSpend,
           meta_impressions: metaImpressions,
           meta_clicks: metaClicks,
@@ -487,7 +497,7 @@ export async function POST(request: NextRequest) {
       currency: 'PLN', // Hardcoded to PLN for Polish market
       dateRange: dateRange,
       clientName: client.name,
-      // Extract conversion tracking data if available
+      // Extract conversion tracking data if available - FIXED to use actual reservations
       reservations: actualReportData.account_summary?.total_conversions || 0,
       reservationValue: actualReportData.account_summary?.total_conversion_value || 0,
       roas: actualReportData.account_summary?.roas || 0,

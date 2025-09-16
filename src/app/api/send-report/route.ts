@@ -194,12 +194,12 @@ export async function POST(request: NextRequest) {
       try {
         logger.info('📄 Generating PDF with UNIFIED AI summary...');
         
-        // UNIFIED APPROACH: Get both PDF and AI summary from single call
+        // FIXED APPROACH: Get PDF directly (smaller, reliable) and AI summary separately
         const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json' // Request JSON response with AI summary
+            'Content-Type': 'application/json'
+            // NO Accept header - get direct PDF (1.8MB instead of 3.2MB)
           },
           body: JSON.stringify({
             clientId,
@@ -211,22 +211,41 @@ export async function POST(request: NextRequest) {
         });
 
         if (pdfResponse.ok) {
-          const pdfResult = await pdfResponse.json();
+          // Get PDF as direct buffer (reliable, smaller size)
+          const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+          pdfBuffer = Buffer.from(pdfArrayBuffer);
           
-          if (pdfResult.success) {
-            // Extract PDF and AI summary from unified response
-            pdfBuffer = Buffer.from(pdfResult.pdf, 'base64');
-            aiSummary = pdfResult.aiSummary;
-            
-            logger.info('✅ UNIFIED PDF and AI summary generated:', {
-              pdfSize: pdfBuffer.byteLength,
-              hasAiSummary: !!aiSummary,
-              aiSummaryLength: aiSummary?.length || 0,
-              aiSummaryPreview: aiSummary?.substring(0, 50) || 'No AI summary'
-            });
-          } else {
-            logger.error('❌ PDF generation failed:', pdfResult);
+          // Get AI summary separately using JSON API
+          const aiSummaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json' // Request JSON for AI summary only
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange: {
+                start: startDate.toISOString().split('T')[0],
+                end: endDate.toISOString().split('T')[0]
+              }
+            })
+          });
+
+          if (aiSummaryResponse.ok) {
+            const aiResult = await aiSummaryResponse.json();
+            if (aiResult.success && aiResult.aiSummary) {
+              aiSummary = aiResult.aiSummary;
+            }
           }
+          
+          logger.info('✅ FIXED PDF and AI summary generated:', {
+            pdfSize: pdfBuffer.byteLength,
+            pdfSizeKB: `${(pdfBuffer.byteLength / 1024).toFixed(1)} KB`,
+            pdfSizeMB: `${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`,
+            hasAiSummary: !!aiSummary,
+            aiSummaryLength: aiSummary?.length || 0,
+            aiSummaryPreview: aiSummary?.substring(0, 50) || 'No AI summary'
+          });
         } else {
           logger.error('❌ PDF generation request failed:', pdfResponse.status);
         }
@@ -234,11 +253,11 @@ export async function POST(request: NextRequest) {
         logger.error('❌ Error generating unified PDF and AI summary:', error);
       }
     } else {
-      // If no PDF requested, still generate AI summary using PDF generation
+      // If no PDF requested, still generate AI summary using JSON API
       try {
         logger.info('🤖 Generating AI summary only (no PDF requested)...');
         
-        const pdfResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
+        const aiSummaryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-pdf`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -253,10 +272,10 @@ export async function POST(request: NextRequest) {
           })
         });
 
-        if (pdfResponse.ok) {
-          const pdfResult = await pdfResponse.json();
-          if (pdfResult.success) {
-            aiSummary = pdfResult.aiSummary;
+        if (aiSummaryResponse.ok) {
+          const aiResult = await aiSummaryResponse.json();
+          if (aiResult.success && aiResult.aiSummary) {
+            aiSummary = aiResult.aiSummary;
             logger.info('✅ AI summary generated (no PDF):', {
               hasAiSummary: !!aiSummary,
               aiSummaryLength: aiSummary?.length || 0

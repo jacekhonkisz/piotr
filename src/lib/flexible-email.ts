@@ -28,6 +28,29 @@ export interface ReportData {
   cpm: number;
   reservations?: number;
   reservationValue?: number;
+  // Separate platform data
+  metaData?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+    reservations?: number;
+    reservationValue?: number;
+  };
+  googleData?: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc: number;
+    cpm: number;
+    reservations?: number;
+    reservationValue?: number;
+  };
 }
 
 export type EmailProvider = 'resend' | 'gmail' | 'auto';
@@ -212,7 +235,7 @@ export class FlexibleEmailService {
     provider?: EmailProvider,
     aiSummary?: string
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
-    const subject = `Meta Ads Report - ${clientName} - ${reportData.dateRange}`;
+    const subject = `📊 Raport Kampanii Reklamowych - ${clientName} - ${reportData.dateRange}`;
     
     const html = this.generateReportHTML(clientName, reportData, aiSummary);
     const text = this.generateReportText(clientName, reportData, aiSummary);
@@ -227,7 +250,7 @@ export class FlexibleEmailService {
 
     if (pdfBuffer) {
       emailData.attachments = [{
-        filename: `report-${new Date().toISOString().split('T')[0]}.pdf`,
+        filename: `raport-kampanii-${new Date().toISOString().split('T')[0]}.pdf`,
         content: pdfBuffer,
         contentType: 'application/pdf'
       }];
@@ -246,7 +269,7 @@ export class FlexibleEmailService {
     pdfBuffer: Buffer,
     provider?: EmailProvider
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
-    const subject = `Your Interactive Meta Ads Report - ${reportData.dateRange}`;
+    const subject = `📊 Interaktywny Raport Kampanii Reklamowych - ${reportData.dateRange}`;
     
     const html = this.generateInteractiveReportHTML(clientName, reportData);
     const text = this.generateInteractiveReportText(clientName, reportData);
@@ -258,7 +281,7 @@ export class FlexibleEmailService {
       html,
       text,
       attachments: [{
-        filename: `interactive-meta-ads-report-${new Date().toISOString().split('T')[0]}.pdf`,
+        filename: `interaktywny-raport-kampanii-${new Date().toISOString().split('T')[0]}.pdf`,
         content: pdfBuffer,
         contentType: 'application/pdf'
       }]
@@ -281,7 +304,7 @@ export class FlexibleEmailService {
     pdfBuffer?: Buffer,
     provider?: EmailProvider
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
-    const subject = `📊 Meta Ads Performance Report - ${reportData.dateRange}`;
+    const subject = `📊 Raport Wydajności Kampanii Reklamowych - ${reportData.dateRange}`;
     
     const html = this.generateCustomReportHTML(clientName, reportData, content);
     const text = this.generateCustomReportText(clientName, reportData, content);
@@ -295,7 +318,7 @@ export class FlexibleEmailService {
     };
 
     if (pdfBuffer) {
-      const fileName = `Meta_Ads_Performance_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `Raport_Kampanii_Reklamowych_${new Date().toISOString().split('T')[0]}.pdf`;
       emailData.attachments = [{
         filename: fileName,
         content: pdfBuffer,
@@ -330,7 +353,7 @@ export class FlexibleEmailService {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Meta Ads Report - ${clientName}</title>
+        <title>Raport Kampanii Reklamowych - ${clientName}</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -345,13 +368,13 @@ export class FlexibleEmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>📊 Meta Ads Performance Report</h1>
+            <h1>📊 Raport Wydajności Kampanii Reklamowych</h1>
             <p>${clientName} - ${reportData.dateRange}</p>
           </div>
           
           <div class="content">
-            <p>Dear ${clientName},</p>
-            <p>Here's your Meta Ads performance report for the period ${reportData.dateRange}.</p>
+            <p>Szanowni Państwo,</p>
+            <p>W załączeniu przekazujemy raport wydajności kampanii reklamowych prowadzonych dla ${clientName} w okresie ${reportData.dateRange}.</p>
             
             ${aiSummary ? `
             <div style="background: #f8f9fa; border-radius: 12px; padding: 25px; margin: 25px 0; border: 1px solid #e9ecef;">
@@ -365,43 +388,97 @@ export class FlexibleEmailService {
             </div>
             ` : ''}
             
+            ${reportData.metaData ? `
+            <h2 style="color: #1877f2; margin: 30px 0 20px 0; padding-bottom: 10px; border-bottom: 2px solid #1877f2;">📘 META ADS</h2>
+            
             <div class="metric">
-              <h3>💰 Total Spend</h3>
-              <p>€${reportData.totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+              <h3>💰 Wydatki Meta Ads</h3>
+              <p>${reportData.metaData.spend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
             </div>
             
             <div class="metric">
-              <h3>👁️ Total Impressions</h3>
-              <p>${reportData.totalImpressions.toLocaleString()}</p>
+              <h3>👁️ Wyświetlenia Meta</h3>
+              <p>${reportData.metaData.impressions.toLocaleString('pl-PL')}</p>
             </div>
             
             <div class="metric">
-              <h3>🖱️ Total Clicks</h3>
-              <p>${reportData.totalClicks.toLocaleString()}</p>
+              <h3>🖱️ Kliknięcia Meta</h3>
+              <p>${reportData.metaData.clicks.toLocaleString('pl-PL')}</p>
             </div>
             
             <div class="metric">
-              <h3>📈 Click-Through Rate</h3>
-              <p>${(reportData.ctr * 100).toFixed(2)}%</p>
+              <h3>📈 CTR Meta</h3>
+              <p>${(reportData.metaData.ctr * 100).toFixed(2)}%</p>
             </div>
             
             <div class="metric">
-              <h3>💵 Cost Per Click</h3>
-              <p>€${reportData.cpc.toFixed(2)}</p>
+              <h3>💵 CPC Meta</h3>
+              <p>${reportData.metaData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
             </div>
             
             <div class="metric">
-              <h3>📊 Cost Per Mille</h3>
-              <p>€${reportData.cpm.toFixed(2)}</p>
+              <h3>📊 CPM Meta</h3>
+              <p>${reportData.metaData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
+            </div>
+            ` : ''}
+            
+            ${reportData.googleData ? `
+            <h2 style="color: #4285f4; margin: 30px 0 20px 0; padding-bottom: 10px; border-bottom: 2px solid #4285f4;">🔍 GOOGLE ADS</h2>
+            
+            <div class="metric">
+              <h3>💰 Wydatki Google Ads</h3>
+              <p>${reportData.googleData.spend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
             </div>
             
-            <p>Please find the detailed report attached to this email.</p>
-            <p>If you have any questions about this report, please don't hesitate to reach out.</p>
-            <p>Best regards,<br>Your Meta Ads Reporting Team</p>
-          </div>
-          
-          <div class="footer">
-            <p>This is an automated report. Please do not reply to this email.</p>
+            <div class="metric">
+              <h3>👁️ Wyświetlenia Google</h3>
+              <p>${reportData.googleData.impressions.toLocaleString('pl-PL')}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>🖱️ Kliknięcia Google</h3>
+              <p>${reportData.googleData.clicks.toLocaleString('pl-PL')}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>📈 CTR Google</h3>
+              <p>${(reportData.googleData.ctr * 100).toFixed(2)}%</p>
+            </div>
+            
+            <div class="metric">
+              <h3>💵 CPC Google</h3>
+              <p>${reportData.googleData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>📊 CPM Google</h3>
+              <p>${reportData.googleData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
+            </div>
+            ` : ''}
+            
+            ${reportData.metaData && reportData.googleData ? `
+            <h2 style="color: #28a745; margin: 30px 0 20px 0; padding-bottom: 10px; border-bottom: 2px solid #28a745;">📊 PODSUMOWANIE ŁĄCZNE</h2>
+            
+            <div class="metric">
+              <h3>💰 Łączne Wydatki</h3>
+              <p>${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>👁️ Łączne Wyświetlenia</h3>
+              <p>${reportData.totalImpressions.toLocaleString('pl-PL')}</p>
+            </div>
+            
+            <div class="metric">
+              <h3>🖱️ Łączne Kliknięcia</h3>
+              <p>${reportData.totalClicks.toLocaleString('pl-PL')}</p>
+            </div>
+            ` : ''}
+            
+            <p><strong>📎 ZAŁĄCZNIK:</strong><br>
+            Szczegółowy raport znajdą Państwo w załączeniu do tego e-maila.</p>
+            <p>W przypadku pytań dotyczących wyników, pozostaję do dyspozycji.</p>
+            <p>Z poważaniem,<br>Piotr Bajerlein</p>
           </div>
         </div>
       </body>
@@ -414,33 +491,50 @@ export class FlexibleEmailService {
    */
   private generateReportText(clientName: string, reportData: ReportData, aiSummary?: string): string {
     return `
-Meta Ads Performance Report - ${clientName}
+📊 RAPORT WYDAJNOŚCI KAMPANII REKLAMOWYCH - ${clientName}
 ${reportData.dateRange}
 
-Dear ${clientName},
+Szanowni Państwo,
 
-Here's your Meta Ads performance report for the period ${reportData.dateRange}:
+W załączeniu przekazujemy raport wydajności kampanii reklamowych prowadzonych dla ${clientName} w okresie ${reportData.dateRange}:
 
 ${aiSummary ? `
-PODSUMOWANIE WYKONAWCZE:
+📈 PODSUMOWANIE WYKONAWCZE:
 ${aiSummary}
 
-` : ''}💰 Total Spend: €${reportData.totalSpend.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-👁️ Total Impressions: ${reportData.totalImpressions.toLocaleString()}
-🖱️ Total Clicks: ${reportData.totalClicks.toLocaleString()}
-📈 Click-Through Rate: ${(reportData.ctr * 100).toFixed(2)}%
-💵 Cost Per Click: €${reportData.cpc.toFixed(2)}
-📊 Cost Per Mille: €${reportData.cpm.toFixed(2)}
+` : ''}${reportData.metaData ? `
+📘 META ADS:
+💰 Wydatki Meta Ads: ${reportData.metaData.spend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+👁️ Wyświetlenia Meta: ${reportData.metaData.impressions.toLocaleString('pl-PL')}
+🖱️ Kliknięcia Meta: ${reportData.metaData.clicks.toLocaleString('pl-PL')}
+📈 CTR Meta: ${(reportData.metaData.ctr * 100).toFixed(2)}%
+💵 CPC Meta: ${reportData.metaData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+📊 CPM Meta: ${reportData.metaData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 
-Please find the detailed report attached to this email.
+` : ''}${reportData.googleData ? `
+🔍 GOOGLE ADS:
+💰 Wydatki Google Ads: ${reportData.googleData.spend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+👁️ Wyświetlenia Google: ${reportData.googleData.impressions.toLocaleString('pl-PL')}
+🖱️ Kliknięcia Google: ${reportData.googleData.clicks.toLocaleString('pl-PL')}
+📈 CTR Google: ${(reportData.googleData.ctr * 100).toFixed(2)}%
+💵 CPC Google: ${reportData.googleData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+📊 CPM Google: ${reportData.googleData.cpm.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 
-If you have any questions about this report, please don't hesitate to reach out.
+` : ''}${reportData.metaData && reportData.googleData ? `
+📊 PODSUMOWANIE ŁĄCZNE:
+💰 Łączne Wydatki: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+👁️ Łączne Wyświetlenia: ${reportData.totalImpressions.toLocaleString('pl-PL')}
+🖱️ Łączne Kliknięcia: ${reportData.totalClicks.toLocaleString('pl-PL')}
 
-Best regards,
-Your Meta Ads Reporting Team
+` : ''}
 
----
-This is an automated report. Please do not reply to this email.
+📎 ZAŁĄCZNIK:
+Szczegółowy raport znajdą Państwo w załączeniu do tego e-maila.
+
+W przypadku pytań dotyczących wyników, pozostaję do dyspozycji.
+
+Z poważaniem,
+Piotr Bajerlein
     `;
   }
 
@@ -855,15 +949,12 @@ ${content.summary ? `PODSUMOWANIE WYKONAWCZE:\n${content.summary}\n\n` : ''}GŁ�
 📎 ZAŁĄCZNIK:
 Kompletny szczegółowy raport znajduje się w załączeniu PDF. Prosimy o otwarcie załącznika w celu zapoznania się z pełną analizą, wykresami i szczegółami kampanii.
 
-W razie pytań dotyczących raportu lub chęci omówienia strategii optymalizacji, prosimy o kontakt.
+W razie pytań dotyczących raportu lub chęci omówienia strategii optymalizacji, proszę o kontakt.
 
 Z poważaniem,
-Zespół Reklamowy
-
----
-Ten raport został wygenerowany automatycznie przez system zarządzania kampaniami reklamowymi.
-Wsparcie: support@example.com`;
+Piotr Bajerlein`;
   }
 }
 
 export default FlexibleEmailService;
+
