@@ -1,7 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Eye, FileText } from 'lucide-react';
+import { X, Eye, FileText, Save } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 interface EmailPreviewModalProps {
   isOpen: boolean;
@@ -56,12 +62,15 @@ export default function EmailPreviewModal({
   const [editableText, setEditableText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       // Force regeneration on every open to avoid caching issues
       setPreviewData(null);
       setEditableText('');
+      setDraftId(null);
+      loadDraft();
       generatePreview();
     }
   }, [isOpen, clientId, dateRange, customMessage]);
@@ -71,6 +80,82 @@ export default function EmailPreviewModal({
       setEditableText(previewData.text);
     }
   }, [previewData, isEditing]);
+
+  // Load existing draft for this client
+  const loadDraft = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: draft, error } = await supabase
+        .from('email_drafts')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('admin_id', user.id)
+        .eq('is_active', true)
+        .single();
+
+      if (draft && !error) {
+        setDraftId(draft.id);
+        if (draft.text_template) {
+          setEditableText(draft.text_template);
+        }
+      }
+    } catch (error) {
+      console.log('No existing draft found or error loading draft:', error);
+    }
+  };
+
+  // Save draft to database
+  const saveDraft = async () => {
+    if (!editableText.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const draftData = {
+        client_id: clientId,
+        admin_id: user.id,
+        template_type: 'standard',
+        custom_message: customMessage || null,
+        subject_template: previewData?.subject || null,
+        html_template: editableText.replace(/\n/g, '<br>'),
+        text_template: editableText,
+        is_active: true
+      };
+
+      let result;
+      if (draftId) {
+        // Update existing draft
+        result = await supabase
+          .from('email_drafts')
+          .update(draftData)
+          .eq('id', draftId)
+          .select()
+          .single();
+      } else {
+        // Create new draft
+        result = await supabase
+          .from('email_drafts')
+          .insert(draftData)
+          .select()
+          .single();
+      }
+
+      if (result.error) throw result.error;
+      
+      setDraftId(result.data.id);
+      console.log('✅ Draft saved successfully');
+      
+    } catch (error) {
+      console.error('❌ Error saving draft:', error);
+      setError('Failed to save draft');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const generatePreview = async () => {
     setLoading(true);
@@ -223,51 +308,38 @@ export default function EmailPreviewModal({
     }
   };
 
-  // Helper function to generate Polish email template
+  // Helper function to generate Polish email template - UPDATED TO MATCH STANDARDIZED TEMPLATE
   const generatePolishEmailTemplate = (clientName: string, reportData: any, content: { summary: string; customMessage: string }) => {
     const periodDisplay = reportData.dateRange.includes('to') 
       ? reportData.dateRange.replace(' to ', ' - ')
       : reportData.dateRange;
 
-    // Format Polish numbers and currency
-    const formatPolishCurrency = (amount: number) => {
-      return new Intl.NumberFormat('pl-PL', {
-        style: 'currency',
-        currency: 'PLN',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(amount);
-    };
-
-    const formatPolishNumber = (number: number) => {
-      return new Intl.NumberFormat('pl-PL').format(number);
-    };
-
-    const formatPolishPercentage = (percentage: number) => {
-      return new Intl.NumberFormat('pl-PL', {
-        style: 'percent',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(percentage);
-    };
-
     // Generate subject in Polish
-    const subject = `Raport Meta Ads - ${periodDisplay}`;
+    const subject = `Raport wydajności kampanii reklamowych - ${periodDisplay}`;
 
-    // Generate Polish email content - show only the podsumowanie
-    const textContent = `Szanowni Państwo ${clientName},
+    // Generate Polish email content using STANDARDIZED TEMPLATE
+    const textContent = `Szanowni Państwo,
 
-${content.customMessage ? content.customMessage + '\n\n' : ''}Przesyłamy raport wyników kampanii Meta Ads za okres ${periodDisplay}.
+${content.customMessage ? content.customMessage + '\n\n' : 'W załączeniu przekazujemy raport wydajności kampanii reklamowych prowadzonych dla ' + clientName + ' w okresie ' + periodDisplay + '.'}
 
-Podsumowanie:
-${content.summary}
+📈 PODSUMOWANIE WYKONAWCZE:
+${content.summary || '[Podsumowanie AI zostanie wygenerowane podczas wysyłania]'}
 
-Kompletny szczegółowy raport znajduje się w załączeniu PDF. Prosimy o otwarcie załącznika w celu zapoznania się z pełną analizą, wykresami i szczegółami kampanii.
+📊 GŁÓWNE WSKAŹNIKI:
+• Łączne Wydatki: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+• Wyświetlenia: ${reportData.totalImpressions.toLocaleString('pl-PL')}
+• Kliknięcia: ${reportData.totalClicks.toLocaleString('pl-PL')}
+• Współczynnik Klikalności (CTR): ${(reportData.ctr * 100).toFixed(2)}%
+• Koszt za Kliknięcie (CPC): ${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
+• Koszt za Tysiąc Wyświetleń (CPM): ${(reportData.cpm || 0).toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}${reportData.reservations ? '\n• Rezerwacje: ' + reportData.reservations.toLocaleString('pl-PL') : ''}${reportData.reservationValue ? '\n• Wartość rezerwacji: ' + reportData.reservationValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' }) : ''}
 
-W razie pytań dotyczących raportu lub chęci omówienia strategii optymalizacji, prosimy o kontakt.
+📎 ZAŁĄCZNIK:
+Szczegółowy raport znajdą Państwo w załączeniu do tego e-maila.
+
+W przypadku pytań dotyczących wyników, proszę o kontakt.
 
 Z poważaniem,
-Zespół Meta Ads`;
+Piotr Bajerlein`;
 
     return {
       subject,
@@ -750,19 +822,30 @@ For support, contact us at support@example.com
           )}
 
           {/* Action Buttons */}
-          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+          <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
             <button
-              onClick={resetToOriginal}
-              className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+              onClick={saveDraft}
+              disabled={isSaving || !editableText.trim()}
+              className="flex items-center px-4 py-2 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Przywróć oryginalną treść
+              <Save className="w-4 h-4 mr-2" />
+              {isSaving ? 'Zapisywanie...' : draftId ? 'Aktualizuj szkic' : 'Zapisz szkic'}
             </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-colors"
-            >
-              Close Preview
-            </button>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={resetToOriginal}
+                className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+              >
+                Przywróć oryginalną treść
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-colors"
+              >
+                Close Preview
+              </button>
+            </div>
           </div>
         </div>
       </div>
