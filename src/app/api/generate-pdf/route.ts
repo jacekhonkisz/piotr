@@ -2921,7 +2921,7 @@ export async function POST(request: NextRequest) {
       logger.info('📧 Returning JSON response with PDF and AI summary for email integration');
       return NextResponse.json({
         success: true,
-        pdf: pdfBuffer.toString('base64'),
+        pdf: Buffer.from(pdfBuffer).toString('base64'),
         aiSummary: reportData.aiSummary,
         clientName: reportData.clientName,
         dateRange: reportData.dateRange,

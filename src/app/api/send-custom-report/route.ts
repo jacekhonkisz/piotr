@@ -325,7 +325,10 @@ export async function POST(request: NextRequest) {
             summary: reportSummary,
             customMessage: customMessage || ''
           },
-          pdfBuffer
+          pdfBuffer,
+          undefined, // provider (auto-detect)
+          clientId, // clientId for draft loading
+          user.id // adminId for draft loading
         );
         emailResults.push({ email, success: emailResult.success, error: emailResult.error });
 

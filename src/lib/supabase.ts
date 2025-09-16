@@ -26,6 +26,11 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    // Reduce token refresh frequency in development to minimize auth events
+    ...(process.env.NODE_ENV === 'development' && {
+      // Increase refresh threshold to reduce frequency of token refreshes
+      refreshThreshold: 300, // 5 minutes instead of default 1 minute
+    }),
   },
 });
 

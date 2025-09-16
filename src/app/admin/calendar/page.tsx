@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Calendar,
@@ -91,66 +91,15 @@ export default function AdminCalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showCalendarEmailPreview, setShowCalendarEmailPreview] = useState(false);
 
-  // Auth check
-  useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        router.push('/auth/login');
-        return;
-      }
-      
-      if (profile?.role !== 'admin') {
-        router.push('/admin');
-        return;
-      }
-      
-      loadData();
-    }
-  }, [user, profile, authLoading, router]);
 
-  // Update calendar display when month changes (without reloading data)
-  useEffect(() => {
-    if (scheduledReports.length > 0) {
-      generateCalendarDays(scheduledReports);
-    }
-  }, [currentDate]);
-
-  // Auto-refresh disabled - data will only reload on manual refresh or initial load
-  // useEffect(() => {
-  //   if (user && profile?.role === 'admin') {
-  //     console.log('📅 Calendar month changed, reloading data for:', currentDate.toLocaleDateString());
-  //     loadScheduledReports(); // Only reload scheduled reports, not clients
-  //   }
-  // }, [currentDate, user, profile]);
-
-  const loadData = async () => {
+  // Define functions first to avoid circular dependencies
+  const loadScheduledReports = useCallback(async () => {
     try {
-      setLoading(true);
-      await Promise.all([
-        loadScheduledReports(),
-        loadClients()
-      ]);
-    } catch (error) {
-      console.error('Error loading calendar data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-
-  const loadScheduledReports = async () => {
-    try {
-      console.log('📅 Loading calendar data...');
       
       // Get start and end of current month view
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
       const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 2, 0);
 
-      console.log('📅 Date range:', {
-        startOfMonth: startOfMonth.toISOString().split('T')[0],
-        endOfMonth: endOfMonth.toISOString().split('T')[0]
-      });
 
       // First, get actual scheduled reports from email_scheduler_logs
       const { data: scheduledData, error: scheduledError } = await supabase
@@ -180,7 +129,6 @@ export default function AdminCalendarPage() {
         throw scheduledError;
       }
 
-      console.log('📊 Found scheduled reports:', scheduledData?.length || 0);
 
       // Get client configurations to generate potential future schedules
       const { data: clientsData, error: clientsError } = await supabase
@@ -195,12 +143,6 @@ export default function AdminCalendarPage() {
         throw clientsError;
       }
 
-      console.log('👥 Found active clients:', clientsData?.length || 0);
-      console.log('👥 Client configurations:', clientsData?.map(c => ({
-        name: c.name,
-        frequency: c.reporting_frequency,
-        sendDay: c.send_day
-      })));
 
       // Convert actual scheduled reports
       const actualReports: ScheduledReport[] = (scheduledData || []).map(item => ({
@@ -321,27 +263,15 @@ export default function AdminCalendarPage() {
       // Sort by scheduled date
       allReports.sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime());
 
-      console.log('📊 Report summary:', {
-        actualReports: actualReports.length,
-        potentialReports: potentialReports.length,
-        totalReports: allReports.length
-      });
-      
-      console.log('📅 Next few potential reports:', potentialReports.slice(0, 5).map(r => ({
-        client: r.client_name,
-        date: r.scheduled_date,
-        type: r.report_type,
-        period: `${r.reportPeriodStart} to ${r.reportPeriodEnd}`
-      })));
 
       setScheduledReports(allReports);
-      generateCalendarDays(allReports);
+      // DON'T call generateCalendarDays here - let useEffect handle it
     } catch (error) {
       console.error('Error loading scheduled reports:', error);
     }
-  };
+  }, [currentDate]); // Only depend on currentDate
 
-  const loadClients = async () => {
+  const loadClients = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('clients')
@@ -354,9 +284,40 @@ export default function AdminCalendarPage() {
     } catch (error) {
       console.error('Error loading clients:', error);
     }
-  };
+  }, []); // No dependencies - clients don't change based on date
 
-  const generateCalendarDays = (reports: ScheduledReport[]) => {
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        loadScheduledReports(),
+        loadClients()
+      ]);
+    } catch (error) {
+      console.error('Error loading calendar data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadScheduledReports, loadClients]); // Depend on the memoized functions
+
+  // Auth check
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        router.push('/auth/login');
+        return;
+      }
+      
+      if (profile?.role !== 'admin') {
+        router.push('/admin');
+        return;
+      }
+      
+      loadData();
+    }
+  }, [user, profile, authLoading, router, currentDate]); // Remove loadData dependency to prevent loops
+
+  const generateCalendarDays = useCallback((reports: ScheduledReport[]) => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
@@ -389,7 +350,18 @@ export default function AdminCalendarPage() {
     }
     
     setCalendarDays(days);
-  };
+  }, [currentDate]); // FIXED: Memoize with currentDate dependency
+
+  // REMOVED: Problematic memoization that was causing infinite loop
+
+  // Update calendar display when month changes (without reloading data)
+  useEffect(() => {
+    if (scheduledReports.length > 0) {
+      generateCalendarDays(scheduledReports);
+    }
+  }, [scheduledReports, currentDate]); // Remove generateCalendarDays dependency to prevent circular loops
+
+
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -988,6 +960,7 @@ export default function AdminCalendarPage() {
       {/* Calendar Email Preview Modal */}
       {showCalendarEmailPreview && selectedDate && (
         <CalendarEmailPreviewModal
+          key="stable-calendar-email-preview-modal"
           isOpen={showCalendarEmailPreview}
           onClose={() => setShowCalendarEmailPreview(false)}
           selectedDate={selectedDate}

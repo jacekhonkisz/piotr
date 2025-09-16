@@ -300,7 +300,9 @@ export async function POST(request: NextRequest) {
           realReportData,
           pdfBuffer,
           undefined, // provider (auto-detect)
-          aiSummary
+          aiSummary,
+          clientId, // clientId for draft loading
+          user.id // adminId for draft loading
         );
         emailResults.push({ email, success: emailResult.success, error: emailResult.error });
       } catch (error) {

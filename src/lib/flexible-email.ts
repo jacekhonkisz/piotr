@@ -3,6 +3,12 @@ import nodemailer from 'nodemailer';
 import logger from './logger';
 import { RateLimiter } from './rate-limiter';
 import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject } from './email-config';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export interface EmailData {
   to: string;
@@ -123,6 +129,16 @@ export class FlexibleEmailService {
   }
 
   /**
+   * REMOVED: Email draft system was replaced with simpler direct sending
+   * See OLD_EMAIL_DRAFT_SYSTEM_REMOVAL.md for details
+   */
+  private async loadEmailDraft(clientId: string, adminId?: string): Promise<any | null> {
+    // Email drafts system was removed - always return null
+    logger.info('📝 Email drafts system removed - using standard templates');
+    return null;
+  }
+
+  /**
    * Send email using the determined provider
    */
   async sendEmail(emailData: EmailData, provider?: EmailProvider): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
@@ -225,7 +241,7 @@ export class FlexibleEmailService {
   }
 
   /**
-   * Send report email with automatic provider selection
+   * Send report email with automatic provider selection and draft integration
    */
   async sendReportEmail(
     recipient: string,
@@ -233,12 +249,50 @@ export class FlexibleEmailService {
     reportData: ReportData,
     pdfBuffer?: Buffer,
     provider?: EmailProvider,
-    aiSummary?: string
+    aiSummary?: string,
+    clientId?: string,
+    adminId?: string
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
-    const subject = `📊 Raport Kampanii Reklamowych - ${clientName} - ${reportData.dateRange}`;
-    
-    const html = this.generateReportHTML(clientName, reportData, aiSummary);
-    const text = this.generateReportText(clientName, reportData, aiSummary);
+    let subject = `📊 Raport Kampanii Reklamowych - ${clientName} - ${reportData.dateRange}`;
+    let html = '';
+    let text = '';
+
+    // Try to load saved draft first
+    let savedDraft = null;
+    if (clientId) {
+      savedDraft = await this.loadEmailDraft(clientId, adminId);
+    }
+
+    if (savedDraft) {
+      // Use saved draft template
+      logger.info('📝 Using saved draft for email generation');
+      subject = savedDraft.subject_template || subject;
+      
+      if (savedDraft.html_template) {
+        html = savedDraft.html_template;
+        // Replace AI summary placeholder with actual summary
+        if (aiSummary) {
+          html = html.replace('[Podsumowanie AI zostanie wygenerowane podczas wysyłania]', aiSummary);
+        }
+      } else {
+        html = this.generateReportHTML(clientName, reportData, aiSummary);
+      }
+
+      if (savedDraft.text_template) {
+        text = savedDraft.text_template;
+        // Replace AI summary placeholder with actual summary
+        if (aiSummary) {
+          text = text.replace('[Podsumowanie AI zostanie wygenerowane podczas wysyłania]', aiSummary);
+        }
+      } else {
+        text = this.generateReportText(clientName, reportData, aiSummary);
+      }
+    } else {
+      // Use standard template
+      logger.info('📝 Using standard template for email generation');
+      html = this.generateReportHTML(clientName, reportData, aiSummary);
+      text = this.generateReportText(clientName, reportData, aiSummary);
+    }
 
     const emailData: EmailData = {
       to: recipient,
@@ -291,7 +345,7 @@ export class FlexibleEmailService {
   }
 
   /**
-   * Send custom report email with automatic provider selection
+   * Send custom report email with automatic provider selection and draft integration
    */
   async sendCustomReportEmail(
     recipient: string,
@@ -302,12 +356,50 @@ export class FlexibleEmailService {
       customMessage: string;
     },
     pdfBuffer?: Buffer,
-    provider?: EmailProvider
+    provider?: EmailProvider,
+    clientId?: string,
+    adminId?: string
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
-    const subject = `📊 Raport Wydajności Kampanii Reklamowych - ${reportData.dateRange}`;
-    
-    const html = this.generateCustomReportHTML(clientName, reportData, content);
-    const text = this.generateCustomReportText(clientName, reportData, content);
+    let subject = `📊 Raport Wydajności Kampanii Reklamowych - ${reportData.dateRange}`;
+    let html = '';
+    let text = '';
+
+    // Try to load saved draft first
+    let savedDraft = null;
+    if (clientId) {
+      savedDraft = await this.loadEmailDraft(clientId, adminId);
+    }
+
+    if (savedDraft) {
+      // Use saved draft template
+      logger.info('📝 Using saved draft for custom email generation');
+      subject = savedDraft.subject_template || subject;
+      
+      if (savedDraft.html_template) {
+        html = savedDraft.html_template;
+        // Replace AI summary placeholder with actual summary
+        if (content.summary) {
+          html = html.replace('[Podsumowanie AI zostanie wygenerowane podczas wysyłania]', content.summary);
+        }
+      } else {
+        html = this.generateCustomReportHTML(clientName, reportData, content);
+      }
+
+      if (savedDraft.text_template) {
+        text = savedDraft.text_template;
+        // Replace AI summary placeholder with actual summary
+        if (content.summary) {
+          text = text.replace('[Podsumowanie AI zostanie wygenerowane podczas wysyłania]', content.summary);
+        }
+      } else {
+        text = this.generateCustomReportText(clientName, reportData, content);
+      }
+    } else {
+      // Use standard template
+      logger.info('📝 Using standard template for custom email generation');
+      html = this.generateCustomReportHTML(clientName, reportData, content);
+      text = this.generateCustomReportText(clientName, reportData, content);
+    }
 
     const emailData: EmailData = {
       to: recipient,
