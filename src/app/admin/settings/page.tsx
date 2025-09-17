@@ -501,7 +501,7 @@ export default function AdminSettingsPage() {
       
       if (response.ok) {
         setEmailTestStatus('success');
-        setEmailTestMessage('Test email sent successfully!');
+        setEmailTestMessage('Email testowy wysłany pomyślnie!');
         
         // Update test status in database
         await supabase
@@ -515,14 +515,14 @@ export default function AdminSettingsPage() {
         await supabase
           .from('system_settings')
           .update({ 
-            value: 'Test email sent successfully!',
+            value: 'Email testowy wysłany pomyślnie!',
             updated_at: new Date().toISOString()
           })
           .eq('key', 'email_test_result');
           
       } else {
         setEmailTestStatus('error');
-        setEmailTestMessage(result.error || 'Failed to send test email');
+        setEmailTestMessage(result.error || 'Nie udało się wysłać emaila testowego');
         
         // Update test status in database
         await supabase
@@ -536,7 +536,7 @@ export default function AdminSettingsPage() {
         await supabase
           .from('system_settings')
           .update({ 
-            value: result.error || 'Failed to send test email',
+            value: result.error || 'Nie udało się wysłać emaila testowego',
             updated_at: new Date().toISOString()
           })
           .eq('key', 'email_test_result');
@@ -544,7 +544,7 @@ export default function AdminSettingsPage() {
       
     } catch (error) {
       setEmailTestStatus('error');
-      setEmailTestMessage('Network error occurred');
+      setEmailTestMessage('Wystąpił błąd sieci');
     } finally {
       setTestingEmail(false);
     }
@@ -593,11 +593,11 @@ export default function AdminSettingsPage() {
   const getEmailStatusText = () => {
     switch (emailTestStatus) {
       case 'success':
-        return 'Connected';
+        return 'Połączony';
       case 'error':
-        return 'Connection Failed';
+        return 'Błąd połączenia';
       case 'testing':
-        return 'Testing...';
+        return 'Testowanie...';
       default:
         return 'Not Configured';
     }
@@ -623,9 +623,9 @@ export default function AdminSettingsPage() {
               </div>
               <div className="ml-4">
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Admin Settings
+                  Ustawienia administratora
                 </h1>
-                <p className="text-sm text-gray-600">Manage system configuration, email settings, and reporting preferences</p>
+                <p className="text-sm text-gray-600">Zarządzaj konfiguracją systemu, ustawieniami email i preferencjami raportów</p>
               </div>
             </div>
             <button
@@ -651,8 +651,8 @@ export default function AdminSettingsPage() {
                   <Mail className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Email Configuration</h2>
-                  <p className="text-sm text-gray-600">Configure SMTP settings and email providers</p>
+                  <h2 className="text-xl font-bold text-gray-900">Konfiguracja Email</h2>
+                  <p className="text-sm text-gray-600">Skonfiguruj ustawienia SMTP i dostawców email</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -671,7 +671,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Server className="w-4 h-4 text-blue-500" />
-                  Email Provider
+                  Dostawca email
                 </label>
                 <select
                   value={emailConfig.email_provider}
@@ -690,7 +690,7 @@ export default function AdminSettingsPage() {
                     <div>
                       <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <Globe className="w-4 h-4 text-blue-500" />
-                        SMTP Host
+                        Host SMTP
                       </label>
                       <input
                         type="text"
@@ -703,7 +703,7 @@ export default function AdminSettingsPage() {
                     <div>
                       <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <Server className="w-4 h-4 text-blue-500" />
-                        SMTP Port
+                        Port SMTP
                       </label>
                       <input
                         type="number"
@@ -718,7 +718,7 @@ export default function AdminSettingsPage() {
                     <div>
                       <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <UserCheck className="w-4 h-4 text-blue-500" />
-                        Username
+                        Nazwa użytkownika
                       </label>
                       <input
                         type="text"
@@ -730,7 +730,7 @@ export default function AdminSettingsPage() {
                     <div>
                       <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                         <Lock className="w-4 h-4 text-blue-500" />
-                        Password
+                        Hasło
                       </label>
                       <div className="relative">
                         <input
@@ -760,7 +760,7 @@ export default function AdminSettingsPage() {
                     />
                     <label htmlFor="smtp_secure" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-blue-500" />
-                      Use SSL/TLS
+                      Użyj SSL/TLS
                     </label>
                   </div>
                 </>
@@ -802,27 +802,27 @@ export default function AdminSettingsPage() {
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <UserCheck className="w-4 h-4 text-blue-500" />
-                    From Name
+                    Nazwa nadawcy
                   </label>
                   <input
                     type="text"
                     value={emailConfig.email_from_name}
                     onChange={(e) => setEmailConfig(prev => ({ ...prev, email_from_name: e.target.value }))}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
-                    placeholder="Your Company"
+                    placeholder="Twoja firma"
                   />
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Mail className="w-4 h-4 text-blue-500" />
-                    From Email
+                    Email nadawcy
                   </label>
                   <input
                     type="email"
                     value={emailConfig.email_from_address}
                     onChange={(e) => setEmailConfig(prev => ({ ...prev, email_from_address: e.target.value }))}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
-                    placeholder="reports@yourcompany.com"
+                    placeholder="raporty@twojafirma.com"
                   />
                 </div>
               </div>
@@ -844,7 +844,7 @@ export default function AdminSettingsPage() {
                   className="btn-premium-success flex items-center gap-2 px-6 py-3"
                 >
                   <Save className="w-4 h-4" />
-                  {saving ? 'Saving...' : 'Save Email Settings'}
+                  {saving ? 'Zapisywanie...' : 'Zapisz ustawienia email'}
                 </button>
                 <button
                   onClick={testEmailConfiguration}
@@ -853,7 +853,7 @@ export default function AdminSettingsPage() {
                 >
                   <TestTube className="w-4 h-4 text-gray-600 group-hover:text-blue-600 transition-colors" />
                   <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">
-                    {testingEmail ? 'Testing...' : 'Test Email'}
+                    {testingEmail ? 'Testowanie...' : 'Testuj email'}
                   </span>
                 </button>
               </div>
@@ -867,8 +867,8 @@ export default function AdminSettingsPage() {
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Reporting Settings</h2>
-                <p className="text-sm text-gray-600">Configure report generation and delivery</p>
+                <h2 className="text-xl font-bold text-gray-900">Ustawienia raportów</h2>
+                <p className="text-sm text-gray-600">Skonfiguruj generowanie i dostarczanie raportów</p>
               </div>
             </div>
 
@@ -876,16 +876,16 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-green-500" />
-                  Default Reporting Frequency
+                  Domyślna częstotliwość raportów
                 </label>
                 <select
                   value={reportingConfig.default_reporting_frequency}
                   onChange={(e) => setReportingConfig(prev => ({ ...prev, default_reporting_frequency: e.target.value }))}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 transition-all duration-200"
                 >
-                  <option value="monthly">Monthly</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="on_demand">On Demand</option>
+                  <option value="monthly">Miesięczny</option>
+                  <option value="weekly">Tygodniowy</option>
+                  <option value="on_demand">Na żądanie</option>
                 </select>
               </div>
 
@@ -893,7 +893,7 @@ export default function AdminSettingsPage() {
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-green-500" />
-                    Day of Month
+                    Dzień miesiąca
                   </label>
                   <input
                     type="number"
@@ -917,13 +917,13 @@ export default function AdminSettingsPage() {
                     onChange={(e) => setReportingConfig(prev => ({ ...prev, default_reporting_weekday: parseInt(e.target.value) }))}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white text-gray-900 transition-all duration-200"
                   >
-                    <option value={1}>Monday</option>
-                    <option value={2}>Tuesday</option>
-                    <option value={3}>Wednesday</option>
-                    <option value={4}>Thursday</option>
-                    <option value={5}>Friday</option>
-                    <option value={6}>Saturday</option>
-                    <option value={7}>Sunday</option>
+                    <option value={1}>Poniedziałek</option>
+                    <option value={2}>Wtorek</option>
+                    <option value={3}>Środa</option>
+                    <option value={4}>Czwartek</option>
+                    <option value={5}>Piątek</option>
+                    <option value={6}>Sobota</option>
+                    <option value={7}>Niedziela</option>
                   </select>
                 </div>
               )}
@@ -961,7 +961,7 @@ export default function AdminSettingsPage() {
                 />
                 <label htmlFor="bulk_report_send_enabled" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <Send className="w-4 h-4 text-green-500" />
-                  Enable bulk report sending
+                  Włącz masowe wysyłanie raportów
                 </label>
               </div>
 
@@ -975,14 +975,14 @@ export default function AdminSettingsPage() {
                 />
                 <label htmlFor="auto_report_generation" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <Zap className="w-4 h-4 text-green-500" />
-                  Enable automatic report generation
+                  Włącz automatyczne generowanie raportów
                 </label>
               </div>
 
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Database className="w-4 h-4 text-green-500" />
-                  Report Retention (days)
+                  Przechowywanie raportów (dni)
                 </label>
                 <input
                   type="number"
@@ -999,28 +999,28 @@ export default function AdminSettingsPage() {
                 <div className="bg-green-50/50 p-6 rounded-xl border border-green-100">
                   <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <Clock className="w-4 h-4 text-green-500" />
-                    Last Bulk Send
+                    Ostatnie masowe wysłanie
                   </h4>
                   <div className="text-sm text-gray-600 space-y-2">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-green-400" />
-                      <span>Date: {new Date(lastBulkSend.started_at).toLocaleString()}</span>
+                      <span>Data: {new Date(lastBulkSend.started_at).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full ${
                         lastBulkSend.status === 'completed' ? 'bg-green-500' :
                         lastBulkSend.status === 'failed' ? 'bg-red-500' : 'bg-yellow-500'
                       }`}></div>
-                      <span>Status: {lastBulkSend.status}</span>
+                      <span>Status: {lastBulkSend.status === 'completed' ? 'Zakończone' : lastBulkSend.status === 'failed' ? 'Nieudane' : lastBulkSend.status === 'running' ? 'W trakcie' : lastBulkSend.status}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Send className="w-4 h-4 text-green-400" />
-                      <span>Sent: {lastBulkSend.successful_sends}/{lastBulkSend.total_recipients}</span>
+                      <span>Wysłane: {lastBulkSend.successful_sends}/{lastBulkSend.total_recipients}</span>
                     </div>
                     {lastBulkSend.failed_sends > 0 && (
                       <div className="flex items-center gap-2 text-red-600">
                         <AlertCircle className="w-4 h-4" />
-                        <span>Errors: {lastBulkSend.failed_sends}</span>
+                        <span>Błędy: {lastBulkSend.failed_sends}</span>
                       </div>
                     )}
                   </div>
@@ -1034,7 +1034,7 @@ export default function AdminSettingsPage() {
                   className="btn-premium-success flex items-center gap-2 px-6 py-3"
                 >
                   <Save className="w-4 h-4" />
-                  {saving ? 'Saving...' : 'Save Reporting Settings'}
+                  {saving ? 'Zapisywanie...' : 'Zapisz ustawienia raportów'}
                 </button>
                 <button
                   onClick={sendBulkReports}
@@ -1042,7 +1042,7 @@ export default function AdminSettingsPage() {
                   className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
                 >
                   <Send className="w-4 h-4" />
-                  {sendingBulkReports ? 'Sending...' : 'Send All Reports Now'}
+                  {sendingBulkReports ? 'Wysyłanie...' : 'Wyślij wszystkie raporty teraz'}
                 </button>
               </div>
             </div>
@@ -1055,8 +1055,8 @@ export default function AdminSettingsPage() {
                 <Users className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Client Management</h2>
-                <p className="text-sm text-gray-600">Configure client onboarding and permissions</p>
+                <h2 className="text-xl font-bold text-gray-900">Zarządzanie klientami</h2>
+                <p className="text-sm text-gray-600">Skonfiguruj wdrażanie klientów i uprawnienia</p>
               </div>
             </div>
 
@@ -1064,16 +1064,16 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-purple-500" />
-                  Default Client Status
+                  Domyślny status klienta
                 </label>
                 <select
                   value={clientConfig.default_client_status}
                   onChange={(e) => setClientConfig(prev => ({ ...prev, default_client_status: e.target.value }))}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white text-gray-900 transition-all duration-200"
                 >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="active">Aktywny</option>
+                  <option value="inactive">Nieaktywny</option>
+                  <option value="suspended">Zawieszony</option>
                 </select>
               </div>
 
@@ -1087,7 +1087,7 @@ export default function AdminSettingsPage() {
                 />
                 <label htmlFor="auto_assign_tokens" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <Key className="w-4 h-4 text-purple-500" />
-                  Automatically assign tokens to new clients
+                  Automatycznie przypisuj tokeny nowym klientom
                 </label>
               </div>
 
@@ -1101,14 +1101,14 @@ export default function AdminSettingsPage() {
                 />
                 <label htmlFor="client_approval_required" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-purple-500" />
-                  Require admin approval for new clients
+                  Wymagaj zatwierdzenia administratora dla nowych klientów
                 </label>
               </div>
 
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Users className="w-4 h-4 text-purple-500" />
-                  Max Clients per Admin
+                  Maksymalna liczba klientów na administratora
                 </label>
                 <input
                   type="number"
@@ -1126,7 +1126,7 @@ export default function AdminSettingsPage() {
                 className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
               >
                 <Save className="w-4 h-4" />
-                {saving ? 'Saving...' : 'Save Client Settings'}
+                {saving ? 'Zapisywanie...' : 'Zapisz ustawienia klientów'}
               </button>
             </div>
           </div>
@@ -1138,8 +1138,8 @@ export default function AdminSettingsPage() {
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Security Settings</h2>
-                <p className="text-sm text-gray-600">Manage authentication and access controls</p>
+                <h2 className="text-xl font-bold text-gray-900">Ustawienia bezpieczeństwa</h2>
+                <p className="text-sm text-gray-600">Zarządzaj uwierzytelnianiem i kontrolą dostępu</p>
               </div>
             </div>
 
@@ -1147,7 +1147,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-red-500" />
-                  Session Timeout (hours)
+                  Limit czasu sesji (godziny)
                 </label>
                 <input
                   type="number"
@@ -1162,7 +1162,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Lock className="w-4 h-4 text-red-500" />
-                  Require Password Change (days)
+                  Wymagaj zmiany hasła (dni)
                 </label>
                 <input
                   type="number"
@@ -1177,7 +1177,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-red-500" />
-                  Max Login Attempts
+                  Maksymalna liczba prób logowania
                 </label>
                 <input
                   type="number"
@@ -1192,7 +1192,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-red-500" />
-                  Lockout Duration (minutes)
+                  Czas blokady (minuty)
                 </label>
                 <input
                   type="number"
@@ -1210,7 +1210,7 @@ export default function AdminSettingsPage() {
                 className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600"
               >
                 <Save className="w-4 h-4" />
-                {saving ? 'Saving...' : 'Save Security Settings'}
+                {saving ? 'Zapisywanie...' : 'Zapisz ustawienia bezpieczeństwa'}
               </button>
             </div>
           </div>
@@ -1223,7 +1223,7 @@ export default function AdminSettingsPage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Google Ads API</h2>
-                <p className="text-sm text-gray-600">Configure Google Ads API credentials and settings</p>
+                <p className="text-sm text-gray-600">Skonfiguruj dane uwierzytelniające i ustawienia Google Ads API</p>
               </div>
             </div>
 
@@ -1238,21 +1238,21 @@ export default function AdminSettingsPage() {
                 />
                 <label htmlFor="google_ads_enabled" className="text-sm font-medium text-gray-700 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-blue-500" />
-                  Enable Google Ads integration
+                  Włącz integrację Google Ads
                 </label>
               </div>
 
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Key className="w-4 h-4 text-blue-500" />
-                  Developer Token
+                  Token dewelopera
                 </label>
                 <input
                   type="password"
                   value={googleAdsConfig.google_ads_developer_token}
                   onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_developer_token: e.target.value }))}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
-                  placeholder="Your Google Ads Developer Token"
+                  placeholder="Twój token dewelopera Google Ads"
                 />
                 <p className="text-xs text-gray-500 mt-1">Your Google Ads API developer token for API access</p>
               </div>
@@ -1260,7 +1260,7 @@ export default function AdminSettingsPage() {
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <Users className="w-4 h-4 text-blue-500" />
-                  Manager Customer ID
+                  ID klienta menedżera
                 </label>
                 <input
                   type="text"
@@ -1269,7 +1269,7 @@ export default function AdminSettingsPage() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
                   placeholder="XXX-XXX-XXXX"
                 />
-                <p className="text-xs text-gray-500 mt-1">Manager account Customer ID (format: XXX-XXX-XXXX)</p>
+                <p className="text-xs text-gray-500 mt-1">ID klienta konta menedżera (format: XXX-XXX-XXXX)</p>
               </div>
 
               <div className="grid grid-cols-2 gap-6">
@@ -1283,7 +1283,7 @@ export default function AdminSettingsPage() {
                     value={googleAdsConfig.google_ads_client_id}
                     onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_client_id: e.target.value }))}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
-                    placeholder="OAuth Client ID"
+                    placeholder="ID klienta OAuth"
                   />
                 </div>
                 <div>
@@ -1296,7 +1296,7 @@ export default function AdminSettingsPage() {
                     value={googleAdsConfig.google_ads_client_secret}
                     onChange={(e) => setGoogleAdsConfig(prev => ({ ...prev, google_ads_client_secret: e.target.value }))}
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 transition-all duration-200"
-                    placeholder="OAuth Client Secret"
+                    placeholder="Sekret klienta OAuth"
                   />
                 </div>
               </div>
@@ -1304,15 +1304,15 @@ export default function AdminSettingsPage() {
               <div className="bg-blue-50/50 rounded-xl p-4 border border-blue-100">
                 <h4 className="text-sm font-semibold text-blue-900 mb-2 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-blue-600" />
-                  Setup Instructions
+                  Instrukcje konfiguracji
                 </h4>
                 <div className="text-xs text-blue-700 space-y-1">
-                  <p>1. Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-800">Google Cloud Console</a></p>
-                  <p>2. Create or select a project</p>
-                  <p>3. Enable the Google Ads API</p>
-                  <p>4. Create OAuth 2.0 credentials</p>
-                  <p>5. Add your domain to authorized origins</p>
-                  <p>6. Copy Client ID and Client Secret here</p>
+                  <p>1. Przejdź do <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-800">Google Cloud Console</a></p>
+                  <p>2. Utwórz lub wybierz projekt</p>
+                  <p>3. Włącz Google Ads API</p>
+                  <p>4. Utwórz dane uwierzytelniające OAuth 2.0</p>
+                  <p>5. Dodaj swoją domenę do autoryzowanych źródeł</p>
+                  <p>6. Skopiuj ID klienta i sekret klienta tutaj</p>
                 </div>
               </div>
 
@@ -1322,7 +1322,7 @@ export default function AdminSettingsPage() {
                 className="btn-premium flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
               >
                                 <Save className="w-4 h-4" />
-                {saving ? 'Saving...' : 'Save Google Ads Settings'}
+                {saving ? 'Zapisywanie...' : 'Zapisz ustawienia Google Ads'}
               </button>
             </div>
           </div>
@@ -1336,8 +1336,8 @@ export default function AdminSettingsPage() {
                 <Clock className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Recent Bulk Email Logs</h2>
-                <p className="text-sm text-gray-600">Track email delivery performance</p>
+                <h2 className="text-xl font-bold text-gray-900">Ostatnie logi masowych emailów</h2>
+                <p className="text-sm text-gray-600">Śledź wydajność dostarczania emailów</p>
               </div>
             </div>
 
@@ -1346,19 +1346,19 @@ export default function AdminSettingsPage() {
                 <thead className="bg-gray-50/50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
+                      Data
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Operation
+                      Operacja
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Sent
+                      Wysłane
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Errors
+                      Błędy
                     </th>
                   </tr>
                 </thead>
@@ -1369,7 +1369,7 @@ export default function AdminSettingsPage() {
                         {new Date(log.started_at).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {log.operation_type.replace(/_/g, ' ')}
+                        {log.operation_type.replace(/_/g, ' ') === 'bulk report send' ? 'Masowe wysyłanie raportów' : log.operation_type.replace(/_/g, ' ')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -1377,7 +1377,7 @@ export default function AdminSettingsPage() {
                           log.status === 'failed' ? 'bg-red-100 text-red-800' :
                           'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {log.status}
+                          {log.status === 'completed' ? 'Zakończone' : log.status === 'failed' ? 'Nieudane' : log.status === 'running' ? 'W trakcie' : log.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -1403,7 +1403,7 @@ export default function AdminSettingsPage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Stan tokenów</h2>
-                <p className="text-sm text-gray-600">Monitor token health across all clients</p>
+                <p className="text-sm text-gray-600">Monitoruj stan tokenów wszystkich klientów</p>
               </div>
             </div>
             <button
@@ -1413,7 +1413,7 @@ export default function AdminSettingsPage() {
             >
               <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-blue-600 transition-colors ${loadingTokenHealth ? 'animate-spin' : ''}`} />
               <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">
-                {loadingTokenHealth ? 'Loading...' : 'Refresh'}
+                {loadingTokenHealth ? 'Ładowanie...' : 'Odśwież'}
               </span>
             </button>
           </div>
@@ -1437,9 +1437,9 @@ export default function AdminSettingsPage() {
                       client.token_health_status === 'expiring_soon' ? 'text-orange-600' :
                       'text-red-600'
                     }`}>
-                      {client.token_health_status === 'valid' ? 'Healthy' :
-                       client.token_health_status === 'expiring_soon' ? 'Expiring Soon' :
-                       client.token_health_status === 'expired' ? 'Expired' : 'Invalid'}
+                      {client.token_health_status === 'valid' ? 'Zdrowy' :
+                       client.token_health_status === 'expiring_soon' ? 'Wkrótce wygaśnie' :
+                       client.token_health_status === 'expired' ? 'Wygasł' : 'Nieprawidłowy'}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -1447,7 +1447,7 @@ export default function AdminSettingsPage() {
                     <span className={`font-medium ${
                       client.api_status === 'valid' ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {client.api_status === 'valid' ? 'Connected' : 'Disconnected'}
+                      {client.api_status === 'valid' ? 'Połączony' : 'Rozłączony'}
                     </span>
                   </div>
                 </div>
@@ -1471,8 +1471,8 @@ export default function AdminSettingsPage() {
                 <Database className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Cache Management</h2>
-                <p className="text-sm text-gray-600">Monitor and manage daily metrics cache performance</p>
+                <h2 className="text-xl font-bold text-gray-900">Zarządzanie cache</h2>
+                <p className="text-sm text-gray-600">Monitoruj i zarządzaj wydajnością cache dziennych metryk</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -1483,7 +1483,7 @@ export default function AdminSettingsPage() {
               >
                 <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-emerald-600 transition-colors ${loadingCacheStats ? 'animate-spin' : ''}`} />
                 <span className="text-sm font-medium text-gray-700 group-hover:text-emerald-700">
-                  {loadingCacheStats ? 'Loading...' : 'Refresh'}
+                  {loadingCacheStats ? 'Ładowanie...' : 'Odśwież'}
                 </span>
               </button>
             </div>
@@ -1500,8 +1500,8 @@ export default function AdminSettingsPage() {
                     </div>
                     <span className="text-2xl font-bold text-emerald-600">{cacheStats.size || 0}</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Cached Entries</h3>
-                  <p className="text-sm text-gray-600">Active cache entries</p>
+                  <h3 className="font-semibold text-gray-900 mb-1">Wpisy cache</h3>
+                  <p className="text-sm text-gray-600">Aktywne wpisy cache</p>
                 </div>
 
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100">
@@ -1511,8 +1511,8 @@ export default function AdminSettingsPage() {
                     </div>
                     <span className="text-2xl font-bold text-blue-600">3h</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Cache TTL</h3>
-                  <p className="text-sm text-gray-600">Time to live</p>
+                  <h3 className="font-semibold text-gray-900 mb-1">TTL cache</h3>
+                  <p className="text-sm text-gray-600">Czas życia</p>
                 </div>
 
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-2xl border border-purple-100">
@@ -1520,17 +1520,17 @@ export default function AdminSettingsPage() {
                     <div className="bg-purple-500 p-2 rounded-lg">
                       <Zap className="w-5 h-5 text-white" />
                     </div>
-                    <span className="text-2xl font-bold text-purple-600">Fast</span>
+                    <span className="text-2xl font-bold text-purple-600">Szybko</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Performance</h3>
-                  <p className="text-sm text-gray-600">Cache hit rate</p>
+                  <h3 className="font-semibold text-gray-900 mb-1">Wydajność</h3>
+                  <p className="text-sm text-gray-600">Współczynnik trafień cache</p>
                 </div>
               </div>
 
               {/* Cache Keys */}
               {cacheStats.keys && cacheStats.keys.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Active Cache Keys</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Aktywne klucze cache</h3>
                   <div className="bg-gray-50 rounded-xl p-4 max-h-64 overflow-y-auto">
                     <div className="space-y-2">
                       {cacheStats.keys.map((key: string, index: number) => (
@@ -1556,8 +1556,8 @@ export default function AdminSettingsPage() {
               {/* Cache Actions */}
               <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                 <div>
-                  <h3 className="font-semibold text-gray-900">Cache Actions</h3>
-                  <p className="text-sm text-gray-600">Manage cache data and performance</p>
+                  <h3 className="font-semibold text-gray-900">Akcje cache</h3>
+                  <p className="text-sm text-gray-600">Zarządzaj danymi cache i wydajnością</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button
@@ -1566,7 +1566,7 @@ export default function AdminSettingsPage() {
                     className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
                     <Database className="w-4 h-4" />
-                    {clearingCache ? 'Clearing...' : 'Clear All Cache'}
+                    {clearingCache ? 'Czyszczenie...' : 'Wyczyść cały cache'}
                   </button>
                 </div>
               </div>
@@ -1576,7 +1576,7 @@ export default function AdminSettingsPage() {
               {loadingCacheStats ? (
                 <div className="flex items-center justify-center">
                   <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
-                  <span className="ml-3 text-gray-600">Loading cache statistics...</span>
+                  <span className="ml-3 text-gray-600">Ładowanie statystyk cache...</span>
                 </div>
               ) : (
                 <>
@@ -1597,7 +1597,7 @@ export default function AdminSettingsPage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Logi e-mail</h2>
-                <p className="text-sm text-gray-600">Track email delivery and performance</p>
+                <p className="text-sm text-gray-600">Śledź dostarczanie emailów i wydajność</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -1605,7 +1605,7 @@ export default function AdminSettingsPage() {
                 <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search logs..."
+                  placeholder="Szukaj logów..."
                   value={emailLogSearch}
                   onChange={(e) => setEmailLogSearch(e.target.value)}
                   className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white/50"
@@ -1618,7 +1618,7 @@ export default function AdminSettingsPage() {
               >
                 <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-purple-600 transition-colors ${loadingEmailLogs ? 'animate-spin' : ''}`} />
                 <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">
-                  {loadingEmailLogs ? 'Loading...' : 'Refresh'}
+                  {loadingEmailLogs ? 'Ładowanie...' : 'Odśwież'}
                 </span>
               </button>
             </div>
@@ -1629,19 +1629,19 @@ export default function AdminSettingsPage() {
               <thead className="bg-gray-50/50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Timestamp
+                    Znacznik czasu
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Recipient
+                    Odbiorca
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Subject
+                    Temat
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
+                    Typ
                   </th>
                 </tr>
               </thead>
@@ -1670,7 +1670,7 @@ export default function AdminSettingsPage() {
                           log.status === 'failed' ? 'bg-red-100 text-red-800' :
                           'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {log.status}
+                          {log.status === 'completed' ? 'Zakończone' : log.status === 'failed' ? 'Nieudane' : log.status === 'running' ? 'W trakcie' : log.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1685,7 +1685,7 @@ export default function AdminSettingsPage() {
           {emailLogs.length === 0 && !loadingEmailLogs && (
             <div className="text-center py-12">
               <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No email logs found</p>
+              <p className="text-gray-500">Nie znaleziono logów email</p>
             </div>
           )}
         </div>
@@ -1699,7 +1699,7 @@ export default function AdminSettingsPage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Monitorowanie</h2>
-                <p className="text-sm text-gray-600">System health and performance metrics</p>
+                <p className="text-sm text-gray-600">Metryki zdrowia systemu i wydajności</p>
               </div>
             </div>
             <button
@@ -1709,7 +1709,7 @@ export default function AdminSettingsPage() {
             >
               <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-green-600 transition-colors ${loadingMetrics ? 'animate-spin' : ''}`} />
               <span className="text-sm font-medium text-gray-700 group-hover:text-green-700">
-                {loadingMetrics ? 'Loading...' : 'Refresh'}
+                {loadingMetrics ? 'Ładowanie...' : 'Odśwież'}
               </span>
             </button>
           </div>
@@ -1719,37 +1719,37 @@ export default function AdminSettingsPage() {
               <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
                 <div className="flex items-center gap-3 mb-2">
                   <Heart className="w-5 h-5 text-green-500" />
-                  <span className="text-sm font-medium text-gray-700">System Status</span>
+                  <span className="text-sm font-medium text-gray-700">Status systemu</span>
                 </div>
-                <div className="text-2xl font-bold text-green-600">Healthy</div>
-                <div className="text-xs text-gray-500">All systems operational</div>
+                <div className="text-2xl font-bold text-green-600">Zdrowy</div>
+                <div className="text-xs text-gray-500">Wszystkie systemy działają</div>
               </div>
 
               <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
                 <div className="flex items-center gap-3 mb-2">
                   <Users className="w-5 h-5 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700">Active Clients</span>
+                  <span className="text-sm font-medium text-gray-700">Aktywni klienci</span>
                 </div>
                 <div className="text-2xl font-bold text-blue-600">{systemMetrics.activeClients || '0'}</div>
-                <div className="text-xs text-gray-500">Currently connected</div>
+                <div className="text-xs text-gray-500">Aktualnie połączeni</div>
               </div>
 
               <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
                 <div className="flex items-center gap-3 mb-2">
                   <TrendingUp className="w-5 h-5 text-purple-500" />
-                  <span className="text-sm font-medium text-gray-700">Reports Today</span>
+                  <span className="text-sm font-medium text-gray-700">Raporty dzisiaj</span>
                 </div>
                 <div className="text-2xl font-bold text-purple-600">{systemMetrics.reportsToday || '0'}</div>
-                <div className="text-xs text-gray-500">Generated today</div>
+                <div className="text-xs text-gray-500">Wygenerowane dzisiaj</div>
               </div>
 
               <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
                 <div className="flex items-center gap-3 mb-2">
                   <AlertTriangle className="w-5 h-5 text-orange-500" />
-                  <span className="text-sm font-medium text-gray-700">API Errors</span>
+                  <span className="text-sm font-medium text-gray-700">Błędy API</span>
                 </div>
                 <div className="text-2xl font-bold text-orange-600">{systemMetrics.apiErrors || '0'}</div>
-                <div className="text-xs text-gray-500">Last 24 hours</div>
+                <div className="text-xs text-gray-500">Ostatnie 24 godziny</div>
               </div>
             </div>
           ) : (
