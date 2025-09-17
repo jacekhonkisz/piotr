@@ -88,7 +88,7 @@ export async function POST() {
           .maybeSingle();
         
         const { data: googleCache } = await supabaseAdmin!
-          .from('google_ads_current_month_cache')
+          .from('current_month_cache')
           .select('last_updated')
           .eq('client_id', client.id)
           .eq('period_id', currentMonth.periodId)
@@ -256,7 +256,7 @@ function getCurrentWeekInfo() {
   endOfWeek.setHours(23, 59, 59, 999);
   
   const year = startOfWeek.getFullYear();
-  const weekNumber = Math.ceil((startOfWeek - new Date(year, 0, 1)) / (7 * 24 * 60 * 60 * 1000));
+  const weekNumber = Math.ceil((startOfWeek.getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
   
   return {
     periodId: `${year}-W${weekNumber.toString().padStart(2, '0')}`,

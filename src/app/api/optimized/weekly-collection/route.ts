@@ -119,6 +119,10 @@ export async function POST() {
             throw new Error('No Google Ads refresh token available');
           }
 
+          if (!client.google_ads_customer_id) {
+            throw new Error('No Google Ads customer ID available');
+          }
+
           const googleAdsCredentials = {
             refreshToken,
             clientId: settings.google_ads_client_id,

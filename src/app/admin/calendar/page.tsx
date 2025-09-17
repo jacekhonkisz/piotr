@@ -173,7 +173,13 @@ export default function AdminCalendarPage() {
           
           if (client.reporting_frequency === 'monthly') {
             // Monthly reports - send on the specified day of month
-            const sendDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), client.send_day || 5);
+            const sendDay = client.send_day || 5;
+            const sendDate = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), sendDay);
+            
+            // Fix timezone issue: ensure we get the correct date string
+            const year = targetMonth.getFullYear();
+            const month = targetMonth.getMonth();
+            const sendDateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(sendDay).padStart(2, '0')}`;
             
             // Only include future dates
             if (sendDate > today) {
@@ -194,7 +200,7 @@ export default function AdminCalendarPage() {
                 client_id: client.id,
                 client_name: client.name,
                 client_email: client.email,
-                scheduled_date: sendDate.toISOString().split('T')[0]!,
+                scheduled_date: sendDateString,
                 report_type: 'monthly',
                 frequency: 'monthly',
                 status: 'pending',

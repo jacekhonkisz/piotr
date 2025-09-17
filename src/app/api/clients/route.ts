@@ -307,6 +307,24 @@ export async function POST(request: NextRequest) {
       logger.info('Profile updated successfully');
     }
 
+    // Get system default send_day from settings
+    const { data: sendDaySettings } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'default_reporting_day')
+      .single();
+    
+    const defaultSendDay = sendDaySettings?.value ? parseInt(sendDaySettings.value) : 5;
+    const reportingFreq = requestData.reporting_frequency || 'monthly';
+    
+    // Set appropriate send_day based on frequency
+    let sendDay = defaultSendDay;
+    if (requestData.send_day) {
+      sendDay = parseInt(requestData.send_day);
+    } else if (reportingFreq === 'weekly') {
+      sendDay = 1; // Default to Monday for weekly reports
+    }
+
     // Add client to clients table with the long-lived token and enhanced token info
     const clientInsertData: any = {
       name: requestData.name,
@@ -314,7 +332,8 @@ export async function POST(request: NextRequest) {
       admin_id: user.id,
       api_status: 'valid',
       company: requestData.company || null,
-      reporting_frequency: requestData.reporting_frequency || 'monthly',
+      reporting_frequency: reportingFreq,
+      send_day: reportingFreq === 'on_demand' ? null : sendDay,
       notes: requestData.notes || null,
       generated_password: generatedPassword,
       generated_username: generatedUsername,

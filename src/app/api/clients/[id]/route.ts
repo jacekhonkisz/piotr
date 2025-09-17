@@ -150,6 +150,42 @@ export async function PUT(
     if (requestData.notes !== undefined) updates.notes = requestData.notes;
     if (requestData.contact_emails !== undefined) updates.contact_emails = requestData.contact_emails;
 
+    // Handle send_day with proper validation
+    if (requestData.send_day !== undefined) {
+      const reportingFreq = requestData.reporting_frequency || existingClient.reporting_frequency;
+      
+      if (reportingFreq === 'on_demand') {
+        updates.send_day = null;
+      } else if (requestData.send_day === null || requestData.send_day === '') {
+        // Get system default if not provided
+        const { data: sendDaySettings } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'default_reporting_day')
+          .single();
+        
+        const defaultSendDay = sendDaySettings?.value ? parseInt(sendDaySettings.value) : 5;
+        updates.send_day = reportingFreq === 'weekly' ? 1 : defaultSendDay;
+      } else {
+        const sendDayValue = parseInt(requestData.send_day);
+        
+        // Validate send_day range
+        if (reportingFreq === 'monthly' && (sendDayValue < 1 || sendDayValue > 31)) {
+          return NextResponse.json({ 
+            error: 'Send day for monthly reports must be between 1 and 31' 
+          }, { status: 400 });
+        }
+        
+        if (reportingFreq === 'weekly' && (sendDayValue < 1 || sendDayValue > 7)) {
+          return NextResponse.json({ 
+            error: 'Send day for weekly reports must be between 1 (Monday) and 7 (Sunday)' 
+          }, { status: 400 });
+        }
+        
+        updates.send_day = sendDayValue;
+      }
+    }
+
     // Handle Google Ads fields if provided
     if (requestData.google_ads_customer_id !== undefined) updates.google_ads_customer_id = requestData.google_ads_customer_id;
     if (requestData.google_ads_refresh_token !== undefined) updates.google_ads_refresh_token = requestData.google_ads_refresh_token;
