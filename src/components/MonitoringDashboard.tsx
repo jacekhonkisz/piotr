@@ -94,7 +94,7 @@ export default function MonitoringDashboard() {
         throw new Error(result.error || 'Failed to fetch monitoring data');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Nieznany błąd');
       console.error('Monitoring data fetch error:', err);
     } finally {
       setLoading(false);
@@ -180,7 +180,7 @@ export default function MonitoringDashboard() {
               variant="outline"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              Spróbuj ponownie
             </Button>
           </CardContent>
         </Card>

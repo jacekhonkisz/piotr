@@ -70,6 +70,7 @@ export default function SearchFilters({
             placeholder="Szukaj klientów po nazwie, e-mailu lub firmie..."
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
+            autoComplete="off"
             className="w-full pl-14 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 shadow-sm hover:shadow-md transition-all duration-200 text-lg"
           />
         </div>

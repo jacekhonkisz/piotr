@@ -133,7 +133,7 @@ export class EmailService {
         };
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd';
       logger.error('Email service error:', { error: errorMessage, to: emailData.to });
       return { 
         success: false, 

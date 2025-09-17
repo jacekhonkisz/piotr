@@ -38,6 +38,36 @@ interface CalendarEmailPreviewModalProps {
   scheduledReports: ScheduledReport[];
 }
 
+// Helper function to get Polish labels for status
+const getStatusLabel = (status: string) => {
+  switch (status) {
+    case 'sent':
+      return 'wysłany';
+    case 'failed':
+      return 'błąd';
+    case 'pending':
+      return 'oczekujący';
+    case 'scheduled':
+      return 'zaplanowany';
+    default:
+      return status;
+  }
+};
+
+// Helper function to get Polish labels for report types
+const getReportTypeLabel = (reportType: string) => {
+  switch (reportType) {
+    case 'monthly':
+      return 'miesięczny';
+    case 'weekly':
+      return 'tygodniowy';
+    case 'custom':
+      return 'niestandardowy';
+    default:
+      return reportType;
+  }
+};
+
 const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal({
   isOpen,
   onClose,
@@ -288,7 +318,7 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
                     <label className="text-sm font-medium text-gray-600">Status</label>
                     <div className="mt-1">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(currentReport.status)}`}>
-                        {currentReport.status}
+                        {getStatusLabel(currentReport.status)}
                       </span>
                     </div>
                   </div>
@@ -306,7 +336,7 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
                   <div>
                     <label className="text-sm font-medium text-gray-600">Typ raportu</label>
                     <div className="mt-1">
-                      <span className="text-gray-900">{currentReport.report_type}</span>
+                      <span className="text-gray-900">{getReportTypeLabel(currentReport.report_type)}</span>
                     </div>
                   </div>
 

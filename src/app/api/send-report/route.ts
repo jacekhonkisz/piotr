@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
         emailResults.push({ 
           email, 
           success: false, 
-          error: error instanceof Error ? error.message : 'Unknown error' 
+          error: error instanceof Error ? error.message : 'Nieznany błąd' 
         });
       }
     }

@@ -76,6 +76,20 @@ const generatePeriodId = (date: Date, type: 'monthly' | 'weekly') => {
   }
 };
 
+// Helper function to get Polish labels for report types
+const getReportTypeLabel = (reportType: string) => {
+  switch (reportType) {
+    case 'monthly':
+      return 'miesięczny';
+    case 'weekly':
+      return 'tygodniowy';
+    case 'custom':
+      return 'niestandardowy';
+    default:
+      return reportType;
+  }
+};
+
 // Main Calendar Component
 export default function AdminCalendarPage() {
   const { user, profile, loading: authLoading } = useAuth();
@@ -92,9 +106,36 @@ export default function AdminCalendarPage() {
   const [showCalendarEmailPreview, setShowCalendarEmailPreview] = useState(false);
 
 
+  // Function to cleanup old errors (older than 3 days)
+  const cleanupOldErrors = useCallback(async () => {
+    try {
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+      const cutoffDate = threeDaysAgo.toISOString().split('T')[0];
+
+      console.log('🧹 Cleaning up errors older than:', cutoffDate);
+
+      const { data, error } = await supabase
+        .from('email_scheduler_logs')
+        .update({ error_message: null })
+        .not('error_message', 'is', null)
+        .lt('created_at', cutoffDate);
+
+      if (error) {
+        console.warn('⚠️ Error cleanup warning:', error);
+      } else {
+        console.log('✅ Cleaned up old error messages');
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to cleanup old errors:', error);
+    }
+  }, []);
+
   // Define functions first to avoid circular dependencies
   const loadScheduledReports = useCallback(async () => {
     try {
+      // Clean up old errors first
+      await cleanupOldErrors();
       
       // Get start and end of current month view
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
@@ -148,7 +189,7 @@ export default function AdminCalendarPage() {
       const actualReports: ScheduledReport[] = (scheduledData || []).map(item => ({
         id: item.id,
         client_id: item.client_id || '',
-        client_name: (item.clients as any)?.name || 'Unknown',
+        client_name: (item.clients as any)?.name || 'Nieznany klient',
         client_email: (item.clients as any)?.email || '',
         scheduled_date: item.report_period_start,
         report_type: item.frequency as any,
@@ -659,7 +700,7 @@ export default function AdminCalendarPage() {
               >
                 <div className="flex items-center justify-center">
                   <ChevronLeft className="h-4 w-4 mr-1 sm:mr-2 text-gray-600 group-hover:text-indigo-600 transition-colors" />
-                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-indigo-700">Dashboard</span>
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-indigo-700">Panel główny</span>
                 </div>
               </button>
               <button
@@ -822,7 +863,7 @@ export default function AdminCalendarPage() {
                         <p className="text-sm font-medium text-gray-900">
                           {new Date(report.scheduled_date).toLocaleDateString('pl-PL')}
                         </p>
-                        <p className="text-xs text-gray-500 capitalize">{report.report_type}</p>
+                        <p className="text-xs text-gray-500 capitalize">{getReportTypeLabel(report.report_type)}</p>
                       </div>
                       
                       <div className="flex items-center space-x-2">

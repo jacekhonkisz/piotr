@@ -437,7 +437,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       }
 
     } catch (error) {
-      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}` } }));
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: `Błąd walidacji: ${error instanceof Error ? error.message : 'Nieznany błąd'}` } }));
     } finally {
       setValidating(false);
     }
@@ -1303,8 +1303,8 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
               onChange={(e) => setFormData({...formData, reporting_frequency: e.target.value as any})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
+            <option value="monthly">Miesięczny</option>
+            <option value="weekly">Tygodniowy</option>
               <option value="on_demand">On Demand</option>
             </select>
           </div>

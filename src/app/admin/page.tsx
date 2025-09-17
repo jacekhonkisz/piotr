@@ -61,6 +61,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     // Google Ads fields
     google_ads_customer_id: '',
     google_ads_refresh_token: '',
+    google_ads_system_user_token: '',
     google_ads_enabled: false,
     reporting_frequency: 'monthly' as const,
     notes: ''
@@ -232,10 +233,10 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     }
 
     // Check if required fields are provided
-    if (!formData.google_ads_customer_id || !formData.google_ads_refresh_token) {
+    if (!formData.google_ads_customer_id || (!formData.google_ads_refresh_token && !formData.google_ads_system_user_token)) {
       setValidationStatus(prev => ({ 
         ...prev, 
-        google: { status: 'invalid', message: 'Google Ads Customer ID i Refresh Token są wymagane' }
+        google: { status: 'invalid', message: 'Google Ads Customer ID i token (Refresh lub System User) są wymagane' }
       }));
       return;
     }
@@ -247,9 +248,8 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     }));
 
     try {
-      // For now, just validate format
+      // Validate format
       const customerIdFormat = /^\d{3}-\d{3}-\d{4}$/.test(formData.google_ads_customer_id);
-      const refreshTokenFormat = formData.google_ads_refresh_token.startsWith('1//');
       
       if (!customerIdFormat) {
         setValidationStatus(prev => ({ 
@@ -262,15 +262,33 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         return;
       }
 
-      if (!refreshTokenFormat) {
-        setValidationStatus(prev => ({ 
-          ...prev, 
-          google: { 
-            status: 'invalid', 
-            message: 'Google Ads Refresh Token powinien zaczynać się od "1//"' 
-          }
-        }));
-        return;
+      // Validate token format based on type
+      if (formData.google_ads_system_user_token) {
+        // System user token validation
+        const systemTokenFormat = formData.google_ads_system_user_token.match(/^[A-Za-z0-9_-]{50,}$/);
+        if (!systemTokenFormat) {
+          setValidationStatus(prev => ({ 
+            ...prev, 
+            google: { 
+              status: 'invalid', 
+              message: 'System User Token powinien być długim ciągiem alfanumerycznym (50+ znaków)' 
+            }
+          }));
+          return;
+        }
+      } else if (formData.google_ads_refresh_token) {
+        // Refresh token validation
+        const refreshTokenFormat = formData.google_ads_refresh_token.startsWith('1//');
+        if (!refreshTokenFormat) {
+          setValidationStatus(prev => ({ 
+            ...prev, 
+            google: { 
+              status: 'invalid', 
+              message: 'Google Ads Refresh Token powinien zaczynać się od "1//"' 
+            }
+          }));
+          return;
+        }
       }
 
       setValidationStatus(prev => ({ 
@@ -292,6 +310,32 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     } finally {
       setValidating(false);
     }
+  };
+
+  const handleGoogleAdsTokenSuccess = (tokenData?: { type: 'refresh_token' | 'system_user'; token: string }) => {
+    if (tokenData) {
+      if (tokenData.type === 'system_user') {
+        setFormData(prev => ({
+          ...prev,
+          google_ads_system_user_token: tokenData.token
+        }));
+        setValidationStatus(prev => ({
+          ...prev,
+          google: { status: 'valid', message: '✅ System User Token został ustawiony' }
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          google_ads_refresh_token: tokenData.token
+        }));
+        setValidationStatus(prev => ({
+          ...prev,
+          google: { status: 'valid', message: '✅ Refresh Token został ustawiony' }
+        }));
+      }
+    }
+    // Refresh the page to show updated token status
+    window.location.reload();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -336,10 +380,12 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         ...(selectedPlatforms.includes('google') ? {
           google_ads_customer_id: formData.google_ads_customer_id,
           google_ads_refresh_token: formData.google_ads_refresh_token,
+          google_ads_system_user_token: formData.google_ads_system_user_token,
           google_ads_enabled: true,
         } : {
           google_ads_customer_id: '',
           google_ads_refresh_token: '',
+          google_ads_system_user_token: '',
           google_ads_enabled: false,
         })
       };
@@ -354,6 +400,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         system_user_token: '',
         google_ads_customer_id: '',
         google_ads_refresh_token: '',
+        google_ads_system_user_token: '',
         google_ads_enabled: false,
         reporting_frequency: 'monthly',
         notes: ''
@@ -636,21 +683,47 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
                 </label>
                 <input
                   type="password"
-                  required={selectedPlatforms.includes('google')}
+                  required={selectedPlatforms.includes('google') && !formData.google_ads_system_user_token}
                   value={formData.google_ads_refresh_token}
                   onChange={(e) => setFormData({...formData, google_ads_refresh_token: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="1//..."
+                  disabled={!!formData.google_ads_system_user_token}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Zaczyna się od &quot;1//&quot; | Uzyskaj z OAuth 2.0 flow dla Google Ads API
                 </p>
               </div>
 
+              {/* System User Token Alternative */}
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div className="mb-2">
+                  <h4 className="font-medium text-green-900 flex items-center">
+                    <Shield className="h-4 w-4 mr-2" />
+                    Alternatywa: System User Token
+                  </h4>
+                </div>
+                <p className="text-sm text-green-800">
+                  {formData.google_ads_system_user_token ? 
+                    '✅ System User Token został ustawiony (permanentny dostęp)' :
+                    'Użyj System User Token dla permanentnego dostępu bez konieczności odnawiania'
+                  }
+                </p>
+                {formData.google_ads_system_user_token && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, google_ads_system_user_token: ''})}
+                    className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+                  >
+                    Usuń System User Token
+                  </button>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={validateGoogleAdsCredentials}
-                disabled={validating || (!formData.google_ads_customer_id || !formData.google_ads_refresh_token)}
+                disabled={validating || (!formData.google_ads_customer_id || (!formData.google_ads_refresh_token && !formData.google_ads_system_user_token))}
                 className="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {validating ? (
@@ -745,6 +818,7 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
           </div>
         </form>
       </div>
+      
     </div>
   );
 }
@@ -1380,7 +1454,12 @@ export default function AdminPage() {
               </button>
 
               <button
-                onClick={() => setShowGoogleAdsTokenModal(true)}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowGoogleAdsTokenModal(true);
+                }}
                 className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#FF6B35] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(255,107,53,0.12)] focus:outline-none focus:ring-2 focus:ring-[#FFB89A] focus:ring-offset-2 flex items-center space-x-2"
               >
                 <Target className="h-5 w-5" />
@@ -1863,9 +1942,12 @@ export default function AdminPage() {
       <GoogleAdsTokenModal
         isOpen={showGoogleAdsTokenModal}
         onClose={() => setShowGoogleAdsTokenModal(false)}
-        onSuccess={() => {
+        onSuccess={(tokenData) => {
           setShowGoogleAdsTokenModal(false);
           // Optionally refresh client data or show success message
+          if (tokenData) {
+            console.log(`${tokenData.type} token saved successfully`);
+          }
         }}
       />
     </div>

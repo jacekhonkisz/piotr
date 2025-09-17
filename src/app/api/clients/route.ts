@@ -357,10 +357,19 @@ export async function POST(request: NextRequest) {
     // Add Google Ads fields if Google Ads is configured
     if (hasGoogleAdsData) {
       clientInsertData.google_ads_customer_id = requestData.google_ads_customer_id;
-      clientInsertData.google_ads_refresh_token = requestData.google_ads_refresh_token;
       clientInsertData.google_ads_enabled = true;
+      
+      // Handle different token types
+      if (requestData.google_ads_system_user_token) {
+        clientInsertData.google_ads_system_user_token = requestData.google_ads_system_user_token;
+        clientInsertData.google_ads_token_type = 'system_user';
+      } else if (requestData.google_ads_refresh_token) {
+        clientInsertData.google_ads_refresh_token = requestData.google_ads_refresh_token;
+        clientInsertData.google_ads_token_type = 'refresh_token';
+      }
     } else {
       clientInsertData.google_ads_enabled = false;
+      clientInsertData.google_ads_token_type = 'refresh_token';
     }
 
     const { data: newClient, error: clientError } = await supabase

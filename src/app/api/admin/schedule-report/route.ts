@@ -225,7 +225,7 @@ export async function GET(request: NextRequest) {
     const schedules = data?.map(item => ({
       id: item.id,
       client_id: item.client_id,
-      client_name: (item.clients as any)?.name || 'Unknown',
+      client_name: (item.clients as any)?.name || 'Nieznany klient',
       client_email: (item.clients as any)?.email || '',
       client_company: (item.clients as any)?.company || '',
       operation_type: item.operation_type,

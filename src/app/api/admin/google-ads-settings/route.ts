@@ -14,6 +14,7 @@ interface GoogleAdsSettings {
   google_ads_developer_token: string;
   google_ads_manager_refresh_token: string;
   google_ads_manager_customer_id: string;
+  google_ads_system_user_token?: string;
 }
 
 async function checkTokenHealth(settings: GoogleAdsSettings) {
@@ -154,7 +155,8 @@ export async function GET(request: NextRequest) {
         'google_ads_client_secret', 
         'google_ads_developer_token',
         'google_ads_manager_refresh_token',
-        'google_ads_manager_customer_id'
+        'google_ads_manager_customer_id',
+        'google_ads_system_user_token'
       ]);
 
     if (settingsError) {
@@ -168,12 +170,22 @@ export async function GET(request: NextRequest) {
       google_ads_client_secret: '',
       google_ads_developer_token: '',
       google_ads_manager_refresh_token: '',
-      google_ads_manager_customer_id: ''
+      google_ads_manager_customer_id: '',
+      google_ads_system_user_token: ''
     };
 
     settingsData?.forEach(setting => {
       if (setting.key in settings) {
-        (settings as any)[setting.key] = setting.value || '';
+        // Parse JSON values from system_settings
+        let value = setting.value || '';
+        if (typeof value === 'string' && value.startsWith('"') && value.endsWith('"')) {
+          try {
+            value = JSON.parse(value);
+          } catch {
+            // If parsing fails, use the original value
+          }
+        }
+        (settings as any)[setting.key] = value;
       }
     });
 
@@ -213,7 +225,57 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Check if this is a simple token update or full settings update
+    // Check if this is a system user token update
+    if (body.google_ads_system_user_token && body.token_type === 'system_user') {
+      const systemUserToken = body.google_ads_system_user_token;
+
+      // Validate system user token format (typically long alphanumeric strings with various characters)
+      if (systemUserToken.length < 20) {
+        return createErrorResponse('System User Token should be at least 20 characters long', 400);
+      }
+
+      // Update system user token (store as JSON string)
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'google_ads_system_user_token',
+          value: JSON.stringify(systemUserToken),
+          description: 'Google Ads System User Token',
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) {
+        logger.error('Error updating system user token:', error);
+        return createErrorResponse('Failed to update system user token', 500);
+      }
+
+      // Also update the token preference (store as JSON string)
+      await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'google_ads_token_preference',
+          value: JSON.stringify('system_user'),
+          description: 'Preferred Google Ads token type',
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      logger.info('Google Ads system user token updated successfully', {
+        user: authResult.user.email,
+        clientName: body.client_name
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'System user token updated successfully',
+        tokenType: 'system_user'
+      });
+    }
+
+    // Check if this is a simple refresh token update or full settings update
     if (body.google_ads_manager_refresh_token && Object.keys(body).length === 1) {
       // Simple token update
       const refreshToken = body.google_ads_manager_refresh_token;

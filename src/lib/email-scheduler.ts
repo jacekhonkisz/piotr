@@ -189,7 +189,7 @@ export class EmailScheduler {
       };
 
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const errorMsg = error instanceof Error ? error.message : 'Nieznany błąd';
       logger.error(`❌ Failed to send report to ${client.name}:`, errorMsg);
       
       // Log the error
