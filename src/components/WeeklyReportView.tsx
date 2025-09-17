@@ -650,7 +650,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-10">
+    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 space-y-6 sm:space-y-10">
       {reportIds.map((reportId) => {
         const report = reports[reportId];
         if (!report) return null;
@@ -846,7 +846,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               
               {/* Main Metrics Cards */}
               <div className="mb-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
                   <MetricCard
                     title="Wydana kwota"
                     value={formatCurrency(campaignTotals.spend)}
@@ -929,7 +929,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
               {/* Social Media Metrics - Temporarily Hidden */}
               {/* 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 <MetricCard
                   title="Nowi obserwujący na Facebooku"
                   value={(() => {
@@ -1006,7 +1006,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               </div>
               
               {/* Contact Metrics - Moved to top */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <MetricCard
                   title="Kliknięcia w adres e-mail"
                   value={(report.conversionMetrics?.email_contacts || campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0)).toString()}
@@ -1027,7 +1027,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               </div>
 
               {/* Calculated Offline Potential Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <MetricCard
                   title="Potencjalna ilość rezerwacji offline"
                   value={(() => {
@@ -1081,7 +1081,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               </div>
               
               {/* Main Campaign Metrics */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <MetricCard
                   title="Zasięg"
                   value={formatNumber(report.conversionMetrics?.reach || campaignTotals.reach)}

@@ -3080,38 +3080,41 @@ function ReportsPageContent() {
         </div>
       )}
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-8">
                 {/* Header */}
-        <div className="border-b border-gray-200 pb-6 mb-8">
-          <div className="flex flex-col lg:flex-row items-center justify-between space-y-4 lg:space-y-0">
-            <div className="flex items-center space-x-4">
+        <div className="border-b border-gray-200 pb-4 sm:pb-6 mb-6 sm:mb-8">
+          <div className="flex flex-col space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
               {/* Client Logo */}
               {selectedClient?.logo_url && (
                 <div className="flex-shrink-0">
                   <img 
                     src={selectedClient.logo_url} 
                     alt={`${selectedClient?.name} logo`}
-                    className="h-12 w-12 object-contain rounded-lg border border-gray-200 bg-white p-1"
+                    className="h-10 w-10 sm:h-12 sm:w-12 object-contain rounded-lg border border-gray-200 bg-white p-1"
                   />
                 </div>
               )}
-              <div>
-                <h1 className="text-2xl font-semibold text-gray-900 mb-1">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 mb-1 truncate">
                   Raporty {
                     viewType === 'monthly' ? 'Miesięczne' :
                     viewType === 'weekly' ? 'Tygodniowe' :
                     viewType === 'all-time' ? 'Całego Okresu' :
                     'Własnego Zakresu'
-                  } - {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+                  }
                 </h1>
-                  <div className="flex items-center space-x-4 text-sm text-gray-600">
-                    <span>{selectedClient?.name} - Premium Analytics Dashboard ({activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'})</span>
+                <div className="text-sm text-gray-600 truncate">
+                  {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+                </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-gray-600 mt-2">
+                    <span className="truncate">{selectedClient?.name}</span>
                     <div className="flex items-center space-x-1">
-                      <Clock className="w-3 h-3" />
-                      <span>Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
+                      <Clock className="w-3 h-3 flex-shrink-0" />
+                      <span className="text-xs">Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
                     </div>
                     {process.env.NODE_ENV === 'development' && (
-                      <div className="flex items-center space-x-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md border border-orange-200">
+                      <div className="flex items-center space-x-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md border border-orange-200 w-fit">
                         <Code className="w-3 h-3" />
                         <span className="text-xs font-medium">DEV MODE</span>
                       </div>
@@ -3134,9 +3137,10 @@ function ReportsPageContent() {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
-                className="text-sm px-4 py-2 rounded-lg transition-all duration-200 hover:shadow-sm bg-blue-800 hover:bg-blue-900 text-white"
+                className="text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2 rounded-lg transition-all duration-200 hover:shadow-sm bg-blue-800 hover:bg-blue-900 text-white min-h-[40px] sm:min-h-[44px]"
               >
-                {profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}
+                <span className="hidden sm:inline">{profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}</span>
+                <span className="sm:hidden">Powrót</span>
               </button>
             </div>
           </div>
@@ -3676,7 +3680,7 @@ function ReportsPageContent() {
                       }
                     }}
                     disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                    className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="w-12 h-12 sm:h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px]"
                   >
                     <ChevronLeft className="w-6 h-6 text-slate-700" />
                   </button>
@@ -3686,7 +3690,7 @@ function ReportsPageContent() {
                       value={selectedPeriod || ''}
                       onChange={handlePeriodChange}
                       disabled={loadingPeriod !== null}
-                      className="min-w-[240px] h-16 border-2 border-slate-200 rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
+                      className="min-w-[200px] sm:min-w-[240px] h-12 sm:h-16 border-2 border-slate-200 rounded-2xl px-4 sm:px-6 text-lg sm:text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm min-h-[44px]"
                     >
                       {availablePeriods.map((periodId) => {
               if (viewType === 'monthly') {
@@ -3733,7 +3737,7 @@ function ReportsPageContent() {
                       }
                     }}
                     disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                    className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="w-12 h-12 sm:h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px]"
                   >
                     <ChevronRight className="w-6 h-6 text-slate-700" />
                   </button>

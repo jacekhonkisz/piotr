@@ -376,9 +376,9 @@ export async function signIn(email: string, password: string) {
 
     logger.info('Sign in successful');
     return { data, error: null };
-  } catch (error) {
+  } catch (error: any) {
     logger.error('Error in signIn:', error);
-    return { data: null, error };
+    throw error; // Re-throw to let the calling component handle the error
   }
 }
 

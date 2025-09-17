@@ -1058,7 +1058,10 @@ export default function DashboardPage() {
 
     return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16 py-6 sm:py-8" role="main" aria-label="Dashboard główny">
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded-md z-50">
+          Przejdź do głównej treści
+        </a>
         {/* Welcome Section */}
         <WelcomeSection
           user={user}
@@ -1068,9 +1071,9 @@ export default function DashboardPage() {
         />
 
         {/* Header Section */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 space-y-4 sm:space-y-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 md:mb-8 space-y-4 sm:space-y-0" id="main-content">
           <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 mb-2">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-bold text-slate-900 mb-2" id="dashboard-title">
               Dashboard
             </h1>
             <p className="text-slate-600 text-sm sm:text-base">
@@ -1079,11 +1082,11 @@ export default function DashboardPage() {
           </div>
           
           {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-3">
+          <div className="flex flex-col sm:flex-row md:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 md:space-x-4">
             {/* View Detailed Reports Button */}
             <button
               onClick={() => router.push('/reports')}
-              className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-medium text-sm sm:text-base"
+              className="flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 sm:px-6 md:px-8 py-3 sm:py-3 md:py-4 min-h-[44px] rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 font-medium text-sm sm:text-base"
             >
               <BarChart3 className="h-4 w-4 sm:h-5 sm:w-5" />
               <span>Szczegółowe raporty</span>
@@ -1093,7 +1096,7 @@ export default function DashboardPage() {
             <button
               onClick={refreshLiveData}
               disabled={refreshingData}
-              className="flex items-center justify-center space-x-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 text-gray-700 disabled:text-gray-400 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 font-medium text-sm sm:text-base"
+              className="flex items-center justify-center space-x-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 text-gray-700 disabled:text-gray-400 px-4 sm:px-6 md:px-8 py-3 sm:py-3 md:py-4 min-h-[44px] rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 font-medium text-sm sm:text-base"
             >
               <RefreshCw className={`h-4 w-4 sm:h-5 sm:w-5 ${refreshingData ? 'animate-spin' : ''}`} />
               <span>{refreshingData ? 'Odświeżanie...' : 'Odśwież dane'}</span>
@@ -1131,10 +1134,11 @@ export default function DashboardPage() {
         {clientData && (
           <div className="space-y-8">
             {/* Key Metrics Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-6 gap-4 sm:gap-6 xl:gap-8" role="region" aria-labelledby="metrics-heading">
+              <h2 id="metrics-heading" className="sr-only">Kluczowe metryki kampanii</h2>
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="spend-metric">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide">
+                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="spend-metric">
                     Wydatki
                   </div>
                   <div className="p-2 bg-blue-100 rounded-lg">
@@ -1149,9 +1153,9 @@ export default function DashboardPage() {
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="impressions-metric">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide">
+                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="impressions-metric">
                     Wyświetlenia
                   </div>
                   <div className="p-2 bg-green-100 rounded-lg">
@@ -1166,9 +1170,9 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="clicks-metric">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide">
+                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="clicks-metric">
                     Kliknięcia
                   </div>
                   <div className="p-2 bg-purple-100 rounded-lg">
@@ -1183,9 +1187,9 @@ export default function DashboardPage() {
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="conversions-metric">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide">
+                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="conversions-metric">
                     Konwersje
                   </div>
                   <div className="p-2 bg-orange-100 rounded-lg">
@@ -1219,27 +1223,36 @@ export default function DashboardPage() {
             </div>
 
             {/* Platform Toggle */}
-            <div className="flex justify-center">
-              <div className="flex bg-gray-100/50 rounded-xl p-1">
+            <div className="flex justify-center" role="region" aria-labelledby="platform-toggle-heading">
+              <h3 id="platform-toggle-heading" className="sr-only">Wybór platformy reklamowej</h3>
+              <div className="flex bg-gray-100/50 rounded-xl p-1 w-full sm:w-auto max-w-md" role="tablist" aria-label="Wybór platformy reklamowej">
                 <button
                   onClick={() => handleTabSwitch('meta')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`flex-1 sm:flex-none px-6 md:px-8 py-3 min-h-[44px] rounded-lg text-sm md:text-base font-medium transition-all duration-200 ${
                     activeAdsProvider === 'meta'
                       ? 'bg-white text-gray-900 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                   disabled={!(clientData.client.meta_access_token && clientData.client.ad_account_id)}
+                  role="tab"
+                  aria-selected={activeAdsProvider === 'meta'}
+                  aria-controls="platform-content"
+                  aria-label="Przełącz na dane Meta Ads"
                 >
                   Meta Ads
                 </button>
                 <button
                   onClick={() => handleTabSwitch('google')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`flex-1 sm:flex-none px-6 md:px-8 py-3 min-h-[44px] rounded-lg text-sm md:text-base font-medium transition-all duration-200 ${
                     activeAdsProvider === 'google'
                       ? 'bg-white text-gray-900 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                   disabled={!(clientData.client.google_ads_enabled && clientData.client.google_ads_customer_id)}
+                  role="tab"
+                  aria-selected={activeAdsProvider === 'google'}
+                  aria-controls="platform-content"
+                  aria-label="Przełącz na dane Google Ads"
                 >
                   Google Ads
                 </button>
@@ -1247,6 +1260,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Performance Charts Section */}
+            <div id="platform-content" role="tabpanel" aria-labelledby={`${activeAdsProvider}-tab`}>
             {activeAdsProvider === 'meta' ? (
               <MetaPerformanceLive
                 clientId={clientData.client.id}
@@ -1276,6 +1290,7 @@ export default function DashboardPage() {
                 }}
               />
             )}
+            </div>
 
             {/* Conversion Metrics Section */}
             <AnimatedMetricsCharts

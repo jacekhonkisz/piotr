@@ -436,15 +436,15 @@ export default function GenerateReportModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
-      <div className={`bg-white rounded-xl shadow-xl ${showPreview ? 'max-w-7xl' : 'max-w-4xl'} w-full mx-4 max-h-[90vh] overflow-hidden`}>
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className={`bg-white rounded-xl shadow-xl ${showPreview ? 'max-w-xs sm:max-w-2xl md:max-w-4xl lg:max-w-7xl' : 'max-w-xs sm:max-w-lg md:max-w-2xl lg:max-w-4xl'} w-full mx-2 sm:mx-4 max-h-[95vh] sm:max-h-[90vh] overflow-hidden`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Generuj Raport</h2>
-            <p className="text-gray-600">Klient: {clientName}</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-6 border-b border-gray-200 space-y-2 sm:space-y-0">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-2xl font-bold text-gray-900">Generuj Raport</h2>
+            <p className="text-sm sm:text-base text-gray-600 truncate">Klient: {clientName}</p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 lg:space-x-3">
             <button
               onClick={() => {
                 // Regenerate month options
@@ -477,15 +477,15 @@ export default function GenerateReportModal({
                   setCurrentMonthIndex(0);
                 }
               }}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center space-x-2"
+              className="px-3 sm:px-4 py-3 sm:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center space-x-2 min-h-[44px] text-sm sm:text-base"
             >
               <FileText className="h-4 w-4" />
-              <span>Odśwież</span>
+              <span className="hidden sm:inline">Odśwież</span>
             </button>
             <button
               onClick={generateReport}
               disabled={generating || (selectedRange === 'monthly' && !selectedMonth) || (selectedRange === 'custom' && (!customDateRange.start || !customDateRange.end))}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+              className="px-3 sm:px-4 py-3 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 min-h-[44px] text-sm sm:text-base"
             >
               <FileText className="h-4 w-4" />
               <span>Generuj PDF</span>
@@ -493,16 +493,17 @@ export default function GenerateReportModal({
             <button
               onClick={sendReport}
               disabled={sending || emailSent || !reportGenerated}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+              className="px-3 sm:px-4 py-3 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 min-h-[44px] text-sm sm:text-base"
             >
               <Send className="h-4 w-4" />
-              <span>Wyślij Raport</span>
+              <span>Wyślij</span>
             </button>
             <button
               onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-gray-400 hover:text-gray-600 transition-colors p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 sm:ml-2"
+              aria-label="Zamknij modal"
             >
-              <X className="h-6 w-6" />
+              <X className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
           </div>
         </div>

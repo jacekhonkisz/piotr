@@ -113,11 +113,11 @@ export default function AnimatedMetricsCharts({
     
     return (
       <div className="relative">
-        <div className="flex space-x-0.5 h-5 mb-2">
+        <div className="flex space-x-0.5 h-4 sm:h-5 mb-2">
           {Array.from({ length: maxTicks }, (_, index) => (
             <div 
               key={index}
-              className={`w-1 rounded-sm transition-all duration-300 ease-out ${
+              className={`w-0.5 sm:w-1 rounded-sm transition-all duration-300 ease-out ${
                 index < filledTicks 
                   ? color
                   : 'bg-navy-30'
@@ -131,7 +131,7 @@ export default function AnimatedMetricsCharts({
             />
           ))}
         </div>
-        <div className="flex justify-between text-xs text-muted">
+        <div className="flex justify-between text-xs sm:text-sm text-muted">
           <span>0</span>
           <span>{formatNumber(previous)}</span>
         </div>
@@ -151,9 +151,9 @@ export default function AnimatedMetricsCharts({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
       {/* Pozyskane leady */}
-      <div className="bg-bg rounded-2xl p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default" style={{ width: '340px' }}>
+      <div className="bg-bg rounded-2xl p-4 sm:p-6 md:p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default w-full">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted">
             Pozyskane leady
@@ -170,10 +170,10 @@ export default function AnimatedMetricsCharts({
           }}
         />
 
-        <div className="mb-6">
-          <div className="text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
+        <div className="mb-4 sm:mb-6">
+          <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
             {isLoading ? (
-              <div className="h-16 bg-stroke rounded animate-pulse"></div>
+              <div className="h-12 sm:h-14 md:h-16 bg-stroke rounded animate-pulse"></div>
             ) : (
               formatNumber(animatedValues.leads)
             )}
@@ -189,7 +189,7 @@ export default function AnimatedMetricsCharts({
       </div>
 
       {/* Rezerwacje */}
-      <div className="bg-bg rounded-2xl p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default" style={{ width: '340px' }}>
+      <div className="bg-bg rounded-2xl p-4 sm:p-6 md:p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default w-full">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted">
             Rezerwacje
@@ -206,10 +206,10 @@ export default function AnimatedMetricsCharts({
           }}
         />
 
-        <div className="mb-6">
-          <div className="text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
+        <div className="mb-4 sm:mb-6">
+          <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
             {isLoading ? (
-              <div className="h-16 bg-stroke rounded animate-pulse"></div>
+              <div className="h-12 sm:h-14 md:h-16 bg-stroke rounded animate-pulse"></div>
             ) : (
               formatNumber(animatedValues.reservations)
             )}
@@ -225,7 +225,7 @@ export default function AnimatedMetricsCharts({
       </div>
 
       {/* Wartość rezerwacji */}
-      <div className="bg-bg rounded-2xl p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default" style={{ width: '340px' }}>
+      <div className="bg-bg rounded-2xl p-4 sm:p-6 md:p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default w-full">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted">
             Wartość rezerwacji
@@ -242,10 +242,10 @@ export default function AnimatedMetricsCharts({
           }}
         />
 
-        <div className="mb-6">
-          <div className="text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
+        <div className="mb-4 sm:mb-6">
+          <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-text tracking-tight mb-2 tabular-nums" style={{ letterSpacing: '-0.01em' }}>
             {isLoading ? (
-              <div className="h-16 bg-stroke rounded animate-pulse"></div>
+              <div className="h-12 sm:h-14 md:h-16 bg-stroke rounded animate-pulse"></div>
             ) : (
               formatCurrency(animatedValues.reservationValue)
             )}

@@ -635,53 +635,55 @@ export default function AdminCalendarPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-gray-200/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+        <div className="max-w-7xl xl:max-w-8xl 2xl:max-w-9xl mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 2xl:px-16">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 sm:py-6 space-y-4 sm:space-y-0">
             <div className="flex items-center">
-              <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-3 rounded-2xl shadow-lg">
-                <Calendar className="h-8 w-8 text-white" />
+              <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-2 sm:p-3 rounded-xl sm:rounded-2xl shadow-lg">
+                <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
               </div>
-              <div className="ml-4">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Kalendarz wysyłek</h1>
-                <p className="text-gray-600">Zarządzaj harmonogramem wysyłki raportów</p>
+              <div className="ml-3 sm:ml-4">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Kalendarz wysyłek</h1>
+                <p className="text-sm sm:text-base text-gray-600">Zarządzaj harmonogramem wysyłki raportów</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex flex-wrap items-center gap-2 sm:space-x-3 w-full sm:w-auto">
               <button
                 onClick={() => router.push('/admin')}
-                className="group nav-premium-button hover:border-indigo-300"
+                className="group nav-premium-button hover:border-indigo-300 min-h-[44px] flex-1 sm:flex-none"
               >
-                <div className="flex items-center">
-                  <ChevronLeft className="h-4 w-4 mr-2 text-gray-600 group-hover:text-indigo-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-700">Dashboard</span>
+                <div className="flex items-center justify-center">
+                  <ChevronLeft className="h-4 w-4 mr-1 sm:mr-2 text-gray-600 group-hover:text-indigo-600 transition-colors" />
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-indigo-700">Dashboard</span>
                 </div>
               </button>
               <button
                 onClick={() => loadData()}
                 disabled={loading}
-                className="group nav-premium-button hover:border-orange-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="group nav-premium-button hover:border-orange-300 disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex-1 sm:flex-none"
               >
-                <div className="flex items-center">
-                  <RefreshCw className={`h-4 w-4 mr-2 text-gray-600 group-hover:text-orange-600 transition-colors ${loading ? 'animate-spin' : ''}`} />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-orange-700">Odśwież</span>
+                <div className="flex items-center justify-center">
+                  <RefreshCw className={`h-4 w-4 mr-1 sm:mr-2 text-gray-600 group-hover:text-orange-600 transition-colors ${loading ? 'animate-spin' : ''}`} />
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-orange-700">Odśwież</span>
                 </div>
               </button>
               <button
                 onClick={() => router.push('/admin')}
-                className="group nav-premium-button hover:border-blue-300"
+                className="group nav-premium-button hover:border-blue-300 min-h-[44px] flex-1 sm:flex-none"
               >
-                <div className="flex items-center">
-                  <Users className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Klienci</span>
+                <div className="flex items-center justify-center">
+                  <Users className="h-4 w-4 mr-1 sm:mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-blue-700 hidden sm:inline">Klienci</span>
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-blue-700 sm:hidden">Kl.</span>
                 </div>
               </button>
               <button
                 onClick={() => router.push('/admin/email-schedule')}
-                className="group nav-premium-button hover:border-green-300"
+                className="group nav-premium-button hover:border-green-300 min-h-[44px] flex-1 sm:flex-none"
               >
-                <div className="flex items-center">
-                  <Mail className="h-4 w-4 mr-2 text-gray-600 group-hover:text-green-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-green-700">Harmonogram e-mail</span>
+                <div className="flex items-center justify-center">
+                  <Mail className="h-4 w-4 mr-1 sm:mr-2 text-gray-600 group-hover:text-green-600 transition-colors" />
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-green-700 hidden sm:inline">Harmonogram e-mail</span>
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-green-700 sm:hidden">Email</span>
                 </div>
               </button>
             </div>
@@ -689,7 +691,7 @@ export default function AdminCalendarPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
+      <main className="max-w-7xl xl:max-w-8xl 2xl:max-w-9xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
         {/* Calendar Controls */}
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -854,7 +856,7 @@ export default function AdminCalendarPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-6 mb-8">
           <div className="bg-white/80 backdrop-blur-lg rounded-xl shadow-lg ring-1 ring-black/5 p-6">
             <div className="flex items-center">
               <div className="bg-green-100 p-3 rounded-xl">

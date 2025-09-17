@@ -101,8 +101,10 @@ export default function KPICarousel({ items, variant = "light", autoMs = 8000 }:
             aria-selected={i === index}
             aria-label={`Przejdź do slajdu ${i + 1}`}
             onClick={() => setIndex(i)}
-            className={`h-1.5 w-6 rounded-full transition-colors ${i === index ? "bg-secondary-600" : "bg-slate-300"}`}
-          />
+            className={`p-2 min-h-[44px] min-w-[44px] rounded-full transition-colors flex items-center justify-center ${i === index ? "bg-secondary-100" : "bg-slate-100"}`}
+          >
+            <span className={`h-1.5 w-6 rounded-full transition-colors ${i === index ? "bg-secondary-600" : "bg-slate-300"}`} />
+          </button>
         ))}
       </div>
     </section>
@@ -149,16 +151,16 @@ function KpiSlide({ kpi, variant = "light" }: { kpi: KPI; variant?: "light" | "d
       aria-label={`${kpi.label}: ${String(kpi.value)}`}
     >
       {/* left navy panel */}
-      <div className="col-span-12 md:col-span-5 bg-navy text-white rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none flex items-center justify-center p-6 md:p-8">
+      <div className="col-span-12 md:col-span-5 bg-navy text-white rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none flex items-center justify-center p-4 sm:p-6 md:p-8">
         <div className="text-center md:text-left w-full">
           <div className="text-sm md:text-base opacity-90">{kpi.label}</div>
-          <div className="mt-2 text-5xl md:text-6xl font-semibold leading-none tabular-nums">{displayValue}</div>
-          {kpi.sublabel && <div className="mt-3 text-xs md:text-sm opacity-80">{kpi.sublabel}</div>}
+          <div className="mt-2 text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-semibold leading-none tabular-nums">{displayValue}</div>
+          {kpi.sublabel && <div className="mt-2 sm:mt-3 text-xs md:text-sm opacity-80">{kpi.sublabel}</div>}
         </div>
       </div>
 
       {/* right chart area */}
-      <div className="col-span-12 md:col-span-7 rounded-b-2xl md:rounded-r-2xl md:rounded-bl-none bg-page p-4 md:p-6 h-44 relative">
+      <div className="col-span-12 md:col-span-7 rounded-b-2xl md:rounded-r-2xl md:rounded-bl-none bg-page p-3 sm:p-4 md:p-6 h-36 sm:h-40 md:h-44 relative">
         <DailyBarCarousel data={kpi.bars} kpi={kpi} />
       </div>
     </div>

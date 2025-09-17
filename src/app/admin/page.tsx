@@ -1509,15 +1509,15 @@ export default function AdminPage() {
                   className="group bg-white rounded-[18px] shadow-[0_2px_10px_rgba(16,24,40,0.04)] hover:shadow-[0_6px_20px_rgba(16,24,40,0.06)] hover:translate-y-[-2px] transition-all duration-200 ease-out animate-fade-in min-h-[96px] sm:min-h-[120px] border border-[#E9EEF5] hover:border-[#E5EBF3] hover:bg-[#FAFBFF]"
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
-                  {/* Grid Layout: 12 columns with 16px gaps */}
-                  <div className="grid grid-cols-12 gap-4 p-5 items-center lg:grid-cols-12 md:grid-cols-6 sm:grid-cols-1">
+                  {/* Responsive Layout: Mobile-first approach */}
+                  <div className="flex flex-col sm:flex-row gap-4 p-4 sm:p-5 items-start sm:items-center">
                     
-                    {/* Tożsamość (Identity) - Columns 1-5 */}
-                    <div className="col-span-5 lg:col-span-5 md:col-span-3 sm:col-span-1 flex items-center space-x-4 md:space-x-3">
+                    {/* Client Identity Section */}
+                    <div className="flex items-center space-x-3 sm:space-x-4 flex-1 min-w-0">
                       {/* Avatar/Monogram */}
                       <div className="relative">
                         {client.logo_url ? (
-                          <div className="h-[52px] w-[52px] rounded-2xl shadow-lg overflow-hidden">
+                          <div className="h-[40px] w-[40px] sm:h-[52px] sm:w-[52px] rounded-xl sm:rounded-2xl shadow-lg overflow-hidden">
                             <img 
                               src={client.logo_url} 
                               alt={`${client.name} logo`}
@@ -1530,15 +1530,15 @@ export default function AdminPage() {
                               }}
                             />
                             {/* Fallback initials (hidden by default) */}
-                            <div className="h-[52px] w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl items-center justify-center shadow-lg -mt-[52px] hidden">
-                              <span className="text-xl font-bold text-white">
+                            <div className="h-[40px] w-[40px] sm:h-[52px] sm:w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-xl sm:rounded-2xl items-center justify-center shadow-lg -mt-[40px] sm:-mt-[52px] hidden">
+                              <span className="text-lg sm:text-xl font-bold text-white">
                                 {client.name?.charAt(0) || 'C'}
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <div className="h-[52px] w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg">
-                            <span className="text-xl font-bold text-white">
+                          <div className="h-[40px] w-[40px] sm:h-[52px] sm:w-[52px] bg-gradient-to-br from-indigo-400 via-purple-500 to-pink-500 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg">
+                            <span className="text-lg sm:text-xl font-bold text-white">
                               {client.name?.charAt(0) || 'C'}
                             </span>
                           </div>
@@ -1551,21 +1551,85 @@ export default function AdminPage() {
                       
                       {/* Client Name & Contact */}
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-[17px] font-semibold text-[#101828] hover:underline cursor-pointer transition-all duration-200 sm:text-base">
+                        <h3 className="text-base sm:text-[17px] font-semibold text-[#101828] hover:underline cursor-pointer transition-all duration-200 truncate" title={client.name}>
                           {client.name}
                         </h3>
-                        {/* Main email - always starts at column 6 */}
-                        <div className="flex items-center mt-1 sm:mt-2">
-                          <Mail className="h-4 w-4 mr-2 text-blue-600 flex-shrink-0" />
-                          <span className="text-sm text-[#475467] truncate max-w-[200px] sm:max-w-[150px]" title={client.email}>
+                        {/* Main email */}
+                        <div className="flex items-center mt-1">
+                          <Mail className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 text-blue-600 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm text-[#475467] truncate" title={client.email}>
                             {client.email}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Informacje & Statusy (Information & Statuses) - Columns 6-9 */}
-                    <div className="col-span-4 lg:col-span-4 md:col-span-3 sm:col-span-1 flex flex-col space-y-2">
+                    {/* Mobile Status Section - Only visible on mobile */}
+                    <div className="sm:hidden flex flex-col space-y-2 mt-2 w-full">
+                      {/* Row A: Contact/Identification */}
+                      <div className="flex items-center space-x-3 flex-wrap">
+                        {client.company && (
+                          <div className="flex items-center">
+                            <Building className="h-3 w-3 mr-1 text-[#667085]" />
+                            <span className="text-xs text-[#667085] truncate max-w-[120px]" title={client.company}>
+                              {client.company}
+                            </span>
+                          </div>
+                        )}
+                        {client.ad_account_id && (
+                          <div className="flex items-center">
+                            <svg className="h-3 w-3 mr-1 text-[#667085]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.900a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                            </svg>
+                            <span className="text-xs text-[#667085] truncate max-w-[100px]" title={client.ad_account_id}>
+                              {client.ad_account_id}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Row B: Statuses */}
+                      <div className="flex items-center space-x-2 flex-wrap gap-2">
+                        {/* API Status Badge */}
+                        <div 
+                          className={`inline-flex items-center px-2 py-1 rounded-[9999px] text-xs font-medium ${
+                            client.api_status === 'valid' 
+                              ? 'bg-[#E8F8EE] text-[#106B46]' 
+                              : client.api_status === 'pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-[#FFF1F0] text-red-800'
+                          }`}
+                          title={client.api_status === 'valid' ? 'Token ważny' : client.api_status === 'pending' ? 'Token w trakcie weryfikacji' : 'Token nieważny'}
+                        >
+                          {getStatusIcon(client.api_status || 'pending')}
+                          <span className="ml-1">
+                            {getStatusText(client.api_status || 'pending')}
+                          </span>
+                        </div>
+                        
+                        {/* Token Health Badge */}
+                        <div 
+                          className={`inline-flex items-center px-2 py-1 rounded-[9999px] text-xs font-medium ${
+                            client.token_health_status === 'valid' 
+                              ? 'bg-[#E8F5FF] text-[#1F3D8A]' 
+                              : client.token_health_status === 'expiring_soon'
+                              ? 'bg-orange-100 text-orange-800'
+                              : client.token_health_status === 'expired' || client.token_health_status === 'invalid'
+                              ? 'bg-[#FFF7E6] text-red-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                          title={client.token_health_status === 'valid' ? 'Integracje OK' : client.token_health_status === 'expiring_soon' ? 'Integracje wygasają wkrótce' : 'Problem z integracjami'}
+                        >
+                          {getTokenHealthIcon(client.token_health_status || 'unknown')}
+                          <span className="ml-1">
+                            {getTokenHealthText(client.token_health_status || 'unknown')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Information & Statuses Section */}
+                    <div className="hidden sm:flex flex-col space-y-2 min-w-0 flex-1">
                       {/* Row A: Contact/Identification */}
                       <div className="flex items-center space-x-3">
                         {client.company && (
@@ -1628,32 +1692,32 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Użyteczności (Utilities) - Columns 10-12 */}
-                    <div className="col-span-3 lg:col-span-3 md:col-span-6 sm:col-span-1 flex items-center justify-end space-x-3 md:justify-start sm:justify-center">
+                    {/* Action Buttons Section */}
+                    <div className="flex items-center justify-end space-x-1 sm:space-x-2 flex-shrink-0">
                       {/* Delicate divider */}
                       <div className="w-px h-6 bg-[#E9EEF5] mx-3 hidden lg:block"></div>
                       {/* Last Report Mini-widget */}
-                      <div className="flex-shrink-0">
+                      <div className="flex-shrink-0 hidden sm:block">
                         {client.last_report_date ? (
                           <div 
-                            className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-200 transition-colors"
+                            className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-200 transition-colors"
                             title={`Ostatni raport: ${new Date(client.last_report_date).toLocaleDateString()}`}
                             onClick={() => router.push(`/reports?clientId=${client.id}`)}
                           >
-                            <FileText className="h-4 w-4 text-blue-600" />
+                            <FileText className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
                           </div>
                         ) : (
                           <div 
-                            className="w-10 h-10 bg-gray-50 border border-gray-200 rounded-full flex items-center justify-center"
+                            className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-50 border border-gray-200 rounded-full flex items-center justify-center"
                             title="Brak raportów"
                           >
-                            <span className="text-gray-400 text-sm font-medium">—</span>
+                            <span className="text-gray-400 text-xs sm:text-sm font-medium">—</span>
                           </div>
                         )}
                       </div>
                       
                       {/* Action Bar - Icons with Tooltips */}
-                      <div className="flex items-center space-x-2 sm:flex-wrap sm:gap-2 sm:justify-center">
+                      <div className="flex items-center space-x-1 sm:space-x-2">
                         <button
                           aria-label="Edytuj klienta"
                           title="Edytuj klienta"
@@ -1661,7 +1725,7 @@ export default function AdminPage() {
                             setEditingClient(client);
                             setShowEditModal(true);
                           }}
-                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none min-h-[32px] sm:min-h-[40px]"
                         >
                           <svg className="h-4 w-4 text-[#667085] hover:text-[#1F3D8A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -1672,7 +1736,7 @@ export default function AdminPage() {
                           aria-label="Zobacz raporty"
                           title="Zobacz raporty"
                           onClick={() => router.push(`/reports?clientId=${client.id}`)}
-                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none min-h-[32px] sm:min-h-[40px]"
                         >
                           <Eye className="h-4 w-4 text-[#667085]" />
                         </button>
@@ -1682,7 +1746,7 @@ export default function AdminPage() {
                           title="Generuj raport"
                           onClick={() => generateReport(client.id)}
                           disabled={generatingReport === client.id}
-                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed min-h-[32px] sm:min-h-[40px]"
                         >
                           {generatingReport === client.id ? (
                             <RefreshCw className="h-4 w-4 text-[#667085] animate-spin" />
@@ -1700,7 +1764,7 @@ export default function AdminPage() {
                             clientName: client.name,
                             clientEmail: client.email
                           })}
-                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-[#F2F6FF] hover:border-[#E5EBF3] transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-[#BFD2FF] focus:outline-none min-h-[32px] sm:min-h-[40px]"
                         >
                           <UserPlus className="h-4 w-4 text-[#667085]" />
                         </button>
@@ -1709,7 +1773,7 @@ export default function AdminPage() {
                           aria-label="Usuń klienta"
                           title="Usuń klienta"
                           onClick={() => deleteClient(client.id)}
-                          className="w-10 h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-red-50 hover:border-red-300 transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-red-200 focus:outline-none ml-3"
+                          className="w-8 h-8 sm:w-10 sm:h-10 bg-white border border-[#E9EEF5] rounded-full flex items-center justify-center hover:bg-red-50 hover:border-red-300 transition-all duration-[120ms] hover:translate-y-[-1px] focus:ring-2 focus:ring-red-200 focus:outline-none ml-1 sm:ml-3 min-h-[32px] sm:min-h-[40px]"
                         >
                           <Trash2 className="h-4 w-4 text-[#E54545]" />
                         </button>

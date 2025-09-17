@@ -84,8 +84,9 @@ export default function WelcomeSection({ user, profile, client, isLoading = fals
       {/* Logout Button - Top Right */}
       <button
         onClick={handleLogout}
-        className="absolute top-0 right-0 flex items-center space-x-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-slate-200 hover:border-red-200 z-10"
+        className="absolute top-0 right-0 flex items-center space-x-2 px-4 md:px-6 py-3 min-h-[44px] text-sm md:text-base font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200 border border-slate-200 hover:border-red-200 z-10"
         title="Wyloguj się"
+        aria-label="Wyloguj się z aplikacji"
       >
         <LogOut className="w-4 h-4" />
         <span>Wyloguj</span>
@@ -125,10 +126,10 @@ export default function WelcomeSection({ user, profile, client, isLoading = fals
 
         {/* Welcome Text Section */}
         <div className="text-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-2">
             Witaj, {displayName}! 👋
           </h1>
-          <p className="text-slate-600 text-sm sm:text-base font-medium mb-2">
+          <p className="text-slate-600 text-sm sm:text-base md:text-lg font-medium mb-2">
             {profile.role === 'admin' 
               ? `Zarządzasz kontem: ${clientName}` 
               : `Panel dla: ${clientName}`
@@ -142,7 +143,7 @@ export default function WelcomeSection({ user, profile, client, isLoading = fals
         </div>
 
         {/* Status and Info Row */}
-        <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-6">
+        <div className="flex flex-col sm:flex-row md:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4 md:space-x-6">
           <div className="flex items-center space-x-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-full px-4 py-2 border border-green-200">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             <span className="text-xs font-semibold text-green-700">

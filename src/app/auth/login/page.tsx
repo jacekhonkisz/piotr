@@ -4,12 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { signIn } from '@/lib/auth';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Eye, EyeOff } from 'lucide-react';
 import { LoginLoading } from '@/components/LoadingSpinner';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { user, profile, authLoading } = useAuth();
@@ -83,7 +84,28 @@ export default function LoginPage() {
       // Don't redirect manually - let the useEffect handle it when user state updates
     } catch (err: any) {
       console.error('Sign in error:', err);
-      setError(err.message || 'An error occurred during sign in');
+      
+      // Provide more specific error messages based on the error
+      let errorMessage = 'Wystąpił błąd podczas logowania';
+      
+      if (err.message) {
+        const message = err.message.toLowerCase();
+        
+        if (message.includes('invalid login credentials') || 
+            message.includes('invalid email or password')) {
+          errorMessage = 'Nieprawidłowy email lub hasło';
+        } else if (message.includes('email not confirmed')) {
+          errorMessage = 'Email nie został potwierdzony. Sprawdź swoją skrzynkę pocztową';
+        } else if (message.includes('too many requests')) {
+          errorMessage = 'Zbyt wiele prób logowania. Spróbuj ponownie za chwilę';
+        } else if (message.includes('network') || message.includes('fetch')) {
+          errorMessage = 'Problem z połączeniem. Sprawdź połączenie internetowe';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
       redirectedRef.current = false; // Reset redirect flag on error
     } finally {
       setLoading(false);
@@ -163,19 +185,31 @@ export default function LoginPage() {
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Hasło
               </label>
-              <div className="mt-1">
+              <div className="mt-1 relative">
                 <input
                   id="password"
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="appearance-none block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                  title={showPassword ? 'Ukryj hasło' : 'Pokaż hasło'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
               </div>
             </div>
 

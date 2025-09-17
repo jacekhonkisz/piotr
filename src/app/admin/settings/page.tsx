@@ -615,7 +615,7 @@ export default function AdminSettingsPage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       {/* Enhanced Header with Premium Styling */}
       <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-gray-200/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="max-w-7xl xl:max-w-8xl 2xl:max-w-9xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
               <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-3 rounded-2xl shadow-lg">
@@ -641,7 +641,7 @@ export default function AdminSettingsPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 lg:px-8 py-8">
+      <main className="max-w-6xl xl:max-w-7xl 2xl:max-w-8xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Email Configuration */}
           <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8 hover:shadow-3xl transition-all duration-300 ease-out">
@@ -1418,7 +1418,7 @@ export default function AdminSettingsPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
             {tokenHealthData.map((client) => (
               <div key={client.id} className="bg-white/50 rounded-xl p-6 border border-gray-200">
                 <div className="flex items-center justify-between mb-4">
@@ -1492,7 +1492,7 @@ export default function AdminSettingsPage() {
           {cacheStats ? (
             <div className="space-y-6">
               {/* Cache Statistics */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-2xl border border-emerald-100">
                   <div className="flex items-center justify-between mb-4">
                     <div className="bg-emerald-500 p-2 rounded-lg">
@@ -1715,7 +1715,7 @@ export default function AdminSettingsPage() {
           </div>
 
           {systemMetrics ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
               <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
                 <div className="flex items-center gap-3 mb-2">
                   <Heart className="w-5 h-5 text-green-500" />

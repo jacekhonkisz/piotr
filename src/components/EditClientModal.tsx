@@ -718,18 +718,26 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   if (!isOpen || !client) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Edytuj klienta: {client.name}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X className="h-5 w-5" />
-          </button>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-xl sm:rounded-lg w-full max-w-xs sm:max-w-lg md:max-w-2xl lg:max-w-4xl mx-2 sm:mx-4 max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl sm:rounded-t-lg">
+          <div className="flex justify-between items-center">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 truncate pr-2">Edytuj: {client.name}</h2>
+            <button 
+              onClick={onClose} 
+              className="text-gray-400 hover:text-gray-600 p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Zamknij modal"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="p-4 sm:p-6">
+        
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Nazwa firmy *
             </label>
             <input
@@ -737,7 +745,7 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
               required
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 sm:px-4 py-3 sm:py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-base sm:text-sm min-h-[44px]"
               placeholder="Wprowadź nazwę firmy"
             />
           </div>
@@ -1375,23 +1383,24 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
             />
           </div>
           
-          <div className="flex space-x-3 pt-4">
+          <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4 sm:pt-6">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              className="w-full sm:flex-1 px-4 py-3 sm:py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 min-h-[44px] font-medium transition-colors"
             >
-              Cancel
+              Anuluj
             </button>
             <button
               type="submit"
               disabled={loading || (showTokenFields && (formData.meta_access_token || formData.system_user_token) && validationStatus.meta.status !== 'valid') || false}
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
+              className="w-full sm:flex-1 px-4 py-3 sm:py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 min-h-[44px] font-medium transition-colors"
             >
-              {loading ? 'Updating...' : 'Update Client'}
+              {loading ? 'Aktualizowanie...' : 'Aktualizuj klienta'}
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
