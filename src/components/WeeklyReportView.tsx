@@ -17,8 +17,6 @@ interface Campaign {
   impressions: number;
   clicks: number;
   conversions: number;
-  ctr?: number;
-  cpc?: number;
   cpa?: number;
   frequency?: number;
   reach?: number;
@@ -694,8 +692,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         });
         
         // Calculate derived campaign metrics
-        const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
-        const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
 
 
 
@@ -873,29 +869,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     icon={<MousePointer className="w-5 h-5 text-slate-600" />}
                     change={formatComparisonChange(yoyData?.changes?.clicks || 0)}
                   />
-                  
-                  <MetricCard
-                    title="CTR"
-                    value={(() => {
-                      const ctr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
-                      return ctr.toFixed(2) + '%';
-                    })()}
-                    subtitle="Wskaźnik klikalności"
-                    tooltip="Wskaźnik klikalności - procent kliknięć w stosunku do wyświetleń"
-                    icon={<Target className="w-5 h-5 text-slate-600" />}
-                  />
-                  
-                  <MetricCard
-                    title="CPC"
-                    value={(() => {
-                      const cpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
-                      return formatCurrency(cpc);
-                    })()}
-                    subtitle="Koszt za kliknięcie"
-                    tooltip="Koszt za kliknięcie"
-                    icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                  />
-                </div>
+                                  </div>
               </div>
 
               {/* Conversion Funnel - Second Section */}
@@ -1043,6 +1017,33 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 />
                 
                 <MetricCard
+                  title="Potencjalna łączna wartość rezerwacji offline"
+                  value={(() => {
+                    // Calculate offline reservations
+                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                    
+                    // Calculate average reservation value
+                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                    
+                    // Calculate total potential offline value: (wartość rezerwacji/ilość rezerwacji) * potencjalna ilość rezerwacji offline
+                    const totalPotentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+                    
+                    return formatCurrency(totalPotentialOfflineValue);
+                  })()}
+                  subtitle="(wartość rezerwacji/ilość rezerwacji) × potencjalna ilość rezerwacji offline"
+                  tooltip="Łączna szacowana wartość rezerwacji offline"
+                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy
+                />
+              </div>
+              
+              {/* Cost Acquisition Metric - Moved to lower position */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+                <MetricCard
                   title="Koszt pozyskania rezerwacji"
                   value={(() => {
                     // Calculate offline value
@@ -1078,36 +1079,37 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
                   change={formatComparisonChange(yoyData?.changes?.spend || 0)}
                 />
+                
+                <MetricCard
+                  title="Łączna wartość potencjalnych rezerwacji online + offline"
+                  value={(() => {
+                    // Calculate offline value
+                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                    
+                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                    const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+                    
+                    // Calculate online value
+                    const onlineReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    
+                    // Total potential value (offline + online)
+                    const totalPotentialValue = potentialOfflineValue + onlineReservationValue;
+                    
+                    return formatCurrency(totalPotentialValue);
+                  })()}
+                  subtitle="Suma wartości rezerwacji online i offline"
+                  tooltip="Łączna wartość wszystkich potencjalnych rezerwacji"
+                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
+                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy
+                />
               </div>
               
               {/* Main Campaign Metrics */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                <MetricCard
-                  title="Zasięg"
-                  value={formatNumber(report.conversionMetrics?.reach || campaignTotals.reach)}
-                  subtitle="Unikalni użytkownicy"
-                  tooltip="Liczba unikalnych użytkowników, którzy zobaczyli reklamy"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.impressions || 0)} // Using impressions as proxy for reach
-                />
-                
-                <MetricCard
-                  title="CTR"
-                  value={`${ctr.toFixed(2)}%`}
-                  subtitle="Click-through rate"
-                  tooltip="Procent kliknięć w stosunku do wyświetleń"
-                  icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // CTR is related to clicks
-                />
-                
-                <MetricCard
-                  title="CPC"
-                  value={formatCurrency(cpc)}
-                  subtitle="Cost per click"
-                  tooltip="Średni koszt za kliknięcie"
-                  icon={<Download className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.spend || 0)} // CPC is related to spend efficiency
-                />
                 
 
               </div>
@@ -1143,12 +1145,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                           Kliknięcia
                         </th>
                         <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          CTR
-                        </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          CPC
-                        </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
                           Ilość Rezerwacji
                         </th>
                         <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
@@ -1158,9 +1154,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     </thead>
                     <tbody style={{ backgroundColor: '#FFFFFF' }}>
                       {campaignsToShow.map((campaign, index) => {
-                        const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
-                        const cpc = campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0;
-                        
                         return (
                           <tr 
                             key={`${reportId}-${campaign.campaign_id}-${index}`} 
@@ -1209,12 +1202,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                             </td>
                             <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
                               {formatNumber(campaign.clicks)}
-                            </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                              {ctr.toFixed(2)}%
-                            </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                              {formatCurrency(cpc)}
                             </td>
                             <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
                               {formatNumber(campaign.reservations || 0)}

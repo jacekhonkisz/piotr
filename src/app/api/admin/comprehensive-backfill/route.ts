@@ -88,7 +88,10 @@ export async function POST(request: NextRequest) {
       
       try {
         // Call the existing backfill endpoint for this range
-        const backfillResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/admin/backfill-daily-data`, {
+        const baseUrl = process.env.NODE_ENV === 'production' 
+          ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+          : 'http://localhost:3000';
+        const backfillResponse = await fetch(`${baseUrl}/api/admin/backfill-daily-data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

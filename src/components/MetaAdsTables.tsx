@@ -57,7 +57,9 @@ interface AdRelevanceResult {
   spend: number;
   impressions: number;
   clicks: number;
-  cpp?: number;
+  cpc?: number;
+  reservations?: number;
+  reservation_value?: number;
 }
 
 interface MetaAdsTablesProps {
@@ -97,7 +99,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     return label; // Age ranges like "25-34" don't need translation
   };
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
-  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'roas'>('roas');
+  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'reservation_value'>('reservation_value');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
@@ -550,16 +552,16 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 {/* Enhanced Metric Selector */}
                 <div className="flex items-center space-x-2 bg-slate-100 rounded-xl p-1">
                   <button
-                    onClick={() => setDemographicMetric('roas')}
+                    onClick={() => setDemographicMetric('reservation_value')}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'roas'
+                      demographicMetric === 'reservation_value'
                         ? 'bg-slate-900 text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
                   >
                     <div className="flex items-center space-x-2">
                       <BarChart3 className="h-4 w-4" />
-                      <span>ROAS</span>
+                      <span>Wartość rezerwacji</span>
                     </div>
                   </button>
 
@@ -651,7 +653,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                       </thead>
                       <tbody className="bg-white">
                         {demographicData
-                          .sort((a, b) => b.roas - a.roas) // Sort by ROAS (best performing first)
+                          .sort((a, b) => b.reservation_value - a.reservation_value) // Sort by reservation value (highest first)
                           .slice(0, expandedSections['demographic'] ? undefined : 5)
                           .map((demographic, index) => (
                             <tr 
@@ -776,7 +778,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                           Kliknięcia
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          CPP
+                          CPC
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Ilość rezerwacji
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Wartość rezerwacji
                         </th>
                       </tr>
                     </thead>
@@ -806,7 +814,13 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                               <span className="text-sm text-slate-900">{formatNumber(ad.clicks)}</span>
                             </td>
                             <td className="px-6 py-4">
-                              <span className="text-sm text-slate-900">{ad.cpp ? formatCurrency(ad.cpp) : 'N/A'}</span>
+                              <span className="text-sm text-slate-900">{ad.cpc ? formatCurrency(ad.cpc) : 'N/A'}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-slate-900">{formatNumber(ad.reservations || 0)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-sm text-slate-900">{formatCurrency(ad.reservation_value || 0)}</span>
                             </td>
                           </tr>
                         ))}

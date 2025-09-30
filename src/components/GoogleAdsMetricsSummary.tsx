@@ -7,8 +7,6 @@ interface GoogleAdsMetrics {
   wydanaKwota: number; // Wydana kwota
   wyswietlenia: number; // Wyświetlenia
   klikniecia: number; // Kliknięcia
-  cpc: number; // CPC
-  ctr: number; // CTR (as percentage)
   wyslanieFomularza: number; // Wysłanie formularza
   polaczeniaZReklam: number; // Połączenia z reklam
   kliknieciaWAdresEmail: number; // Kliknięcia w adres e-mail
@@ -58,13 +56,6 @@ const GoogleAdsMetricsSummary: React.FC<GoogleAdsMetricsSummaryProps> = ({
     if (roas >= 3) return 'text-orange-600';
     if (roas >= 2) return 'text-yellow-600';
     if (roas >= 1) return 'text-orange-600';
-    return 'text-red-600';
-  };
-
-  const getCtrColor = (ctr: number): string => {
-    if (ctr >= 3) return 'text-orange-600';
-    if (ctr >= 2) return 'text-yellow-600';
-    if (ctr >= 1) return 'text-orange-600';
     return 'text-red-600';
   };
 
@@ -138,30 +129,6 @@ const GoogleAdsMetricsSummary: React.FC<GoogleAdsMetricsSummaryProps> = ({
               <p className="text-2xl font-bold text-gray-900">{formatNumber(data.klikniecia)}</p>
             </div>
             {getTrendIcon(data.klikniecia)}
-          </div>
-        </div>
-
-        {/* CPC */}
-        <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">CPC</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.cpc)}</p>
-            </div>
-            {getTrendIcon(-data.cpc)} {/* Lower CPC is better */}
-          </div>
-        </div>
-
-        {/* CTR */}
-        <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">CTR</p>
-              <p className={`text-2xl font-bold ${getCtrColor(data.ctr)}`}>
-                {formatPercentage(data.ctr)}
-              </p>
-            </div>
-            {getTrendIcon(data.ctr, 2)}
           </div>
         </div>
 

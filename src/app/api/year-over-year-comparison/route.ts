@@ -99,12 +99,17 @@ export async function POST(request: NextRequest) {
     // Fetch current data using the same API as main dashboard for consistency
     console.log(`🔄 [${requestId}] Fetching current data using main dashboard API for consistency...`);
     
+    // Define base URL for API calls
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+      : 'http://localhost:3000';
+    
     let currentData = null;
     
     if (platform === 'google_ads') {
         console.log(`🔄 [${requestId}] Platform: Google Ads - using robust API endpoint`);
       // Use the same robust API endpoint as PDF generation with fallback logic
-      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-google-ads-live-data`, {
+      const response = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,7 +148,7 @@ export async function POST(request: NextRequest) {
       console.log(`🔄 [${requestId}] Platform: Meta - using main dashboard API`);
       
       // Use the same API endpoint as the main dashboard
-      const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-live-data`, {
+      const response = await fetch(`${baseUrl}/api/fetch-live-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

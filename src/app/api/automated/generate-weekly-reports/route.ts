@@ -88,7 +88,10 @@ export async function GET() {
         }
         
         // Generate the report using existing API endpoint
-        const response = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/generate-report`, {
+        const baseUrl = process.env.NODE_ENV === 'production' 
+          ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+          : 'http://localhost:3000';
+        const response = await fetch(`${baseUrl}/api/generate-report`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

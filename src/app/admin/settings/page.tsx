@@ -174,6 +174,7 @@ export default function AdminSettingsPage() {
   const [systemMetrics, setSystemMetrics] = useState<any>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
 
+  // FIXED: Prevent production auto-refresh issues
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
@@ -186,9 +187,10 @@ export default function AdminSettingsPage() {
         return;
       }
       
+      // Only load settings once when auth is ready
       loadSettings();
     }
-  }, [user, profile, authLoading, router]);
+  }, [user, profile, authLoading]); // FIXED: Removed router dependency to prevent production loops
 
   const loadSettings = async () => {
     try {

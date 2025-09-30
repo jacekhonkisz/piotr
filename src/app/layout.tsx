@@ -2,6 +2,10 @@ import React from 'react';
 import { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '../components/AuthProvider';
+import { initializeApp } from '../lib/startup-validation';
+
+// Run startup validation
+initializeApp();
 
 export const metadata = {
   title: 'Meta Ads Reporting SaaS',

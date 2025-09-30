@@ -259,14 +259,6 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
                     <span className="text-gray-600">Clicks</span>
                     <span className="font-semibold">{formatNumber(report.account_summary.total_clicks)}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">CTR</span>
-                    <span className="font-semibold">{formatPercentage(report.account_summary.average_ctr)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Avg. CPC</span>
-                    <span className="font-semibold">{formatCurrency(report.account_summary.average_cpc)}</span>
-                  </div>
                 </div>
               </div>
 
@@ -317,12 +309,6 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
                         Clicks
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        CTR
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        CPC
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Conversions
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -352,12 +338,6 @@ export default function ClientReport({ clientId, accessToken, adAccountId, onClo
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {formatNumber(campaign.clicks)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatPercentage(campaign.ctr)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {formatCurrency(campaign.cpc)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {formatNumber(campaign.conversions)}

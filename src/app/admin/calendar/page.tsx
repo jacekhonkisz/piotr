@@ -347,7 +347,7 @@ export default function AdminCalendarPage() {
     }
   }, [loadScheduledReports, loadClients]); // Depend on the memoized functions
 
-  // Auth check
+  // Auth check - FIXED: Prevent production auto-refresh loops
   useEffect(() => {
     if (!authLoading) {
       if (!user) {
@@ -360,9 +360,10 @@ export default function AdminCalendarPage() {
         return;
       }
       
+      // Only load data once when auth is ready
       loadData();
     }
-  }, [user, profile, authLoading, router, currentDate]); // Remove loadData dependency to prevent loops
+  }, [user, profile, authLoading, router]); // FIXED: Removed currentDate dependency to prevent production loops
 
   const generateCalendarDays = useCallback((reports: ScheduledReport[]) => {
     const year = currentDate.getFullYear();
@@ -406,7 +407,7 @@ export default function AdminCalendarPage() {
     if (scheduledReports.length > 0) {
       generateCalendarDays(scheduledReports);
     }
-  }, [scheduledReports, currentDate]); // Remove generateCalendarDays dependency to prevent circular loops
+  }, [scheduledReports, generateCalendarDays]); // FIXED: Use proper dependencies to prevent production issues
 
 
 

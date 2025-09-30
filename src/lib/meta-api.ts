@@ -775,7 +775,7 @@ export class MetaAPIService {
                 booking_step_1 += valueNum;
               }
               // 4. Rezerwacje (purchase)
-              if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+              if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase') || actionType === 'onsite_web_purchase') {
                 reservations += valueNum;
               }
               // 8. Etap 2 rezerwacji - View content event in Booking Engine
@@ -840,7 +840,7 @@ export class MetaAPIService {
           actionValuesArray.forEach((actionValue: any) => {
             const t = String(actionValue.action_type || '').toLowerCase();
             const v = Number(actionValue.value || 0);
-            if (t === 'purchase' || t.includes('fb_pixel_purchase')) {
+            if (t === 'purchase' || t.includes('fb_pixel_purchase') || t === 'onsite_web_purchase') {
               reservation_value += v;
             }
           });
@@ -1036,7 +1036,7 @@ export class MetaAPIService {
               booking_step_1 += valueNum;
             }
             // 4. Rezerwacje (purchase)
-            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase') || actionType === 'onsite_web_purchase') {
               reservations += valueNum;
             }
             // 8. Etap 2 rezerwacji - View content event in Booking Engine
@@ -1531,7 +1531,7 @@ export class MetaAPIService {
             const valueNum = Number(action.value || 0);
             
             // Reservations (purchase events)
-            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase') || actionType === 'onsite_web_purchase') {
               reservations += valueNum;
             }
           });
@@ -1542,9 +1542,9 @@ export class MetaAPIService {
             const actionType = String(actionValue.action_type || '').toLowerCase();
             const value = Number(actionValue.value || 0);
             
-            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
-              reservation_value += value;
-            }
+          if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase') || actionType === 'onsite_web_purchase') {
+            reservation_value += value;
+          }
           });
           
           return {
@@ -1738,7 +1738,7 @@ export class MetaAPIService {
           actionValuesArray.forEach((actionValue: any) => {
             const actionType = String(actionValue.action_type || '').toLowerCase();
             const value = Number(actionValue.value || 0);
-            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+            if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase') || actionType === 'onsite_web_purchase') {
               reservation_value += value;
             }
           });
@@ -1807,7 +1807,9 @@ export class MetaAPIService {
         'spend',
         'impressions',
         'clicks',
-        'cpp'
+        'cpc',
+        'actions',
+        'action_values'
       ].join(',');
 
       const params = new URLSearchParams({
@@ -1842,13 +1844,46 @@ export class MetaAPIService {
       }
 
       if (data.data) {
-        const ads = data.data.map(insight => ({
-          ad_name: insight.ad_name || 'Unknown Ad',
-          spend: parseFloat(insight.spend || '0'),
-          impressions: parseInt(insight.impressions || '0'),
-          clicks: parseInt(insight.clicks || '0'),
-          cpp: insight.cpp ? parseFloat(insight.cpp) : null,
-        }));
+        const ads = data.data.map(insight => {
+          // Parse conversion tracking data from actions
+          let reservations = 0;
+          let reservation_value = 0;
+
+          // Parse actions for reservation count
+          if (insight.actions && Array.isArray(insight.actions)) {
+            insight.actions.forEach((action: any) => {
+              const actionType = String(action.action_type || '').toLowerCase();
+              const value = parseInt(action.value || '0');
+              
+              // Rezerwacje (purchase)
+              if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase') || actionType === 'onsite_web_purchase') {
+                reservations += value;
+              }
+            });
+          }
+
+          // Parse action_values for reservation value
+          if (insight.action_values && Array.isArray(insight.action_values)) {
+            insight.action_values.forEach((actionValue: any) => {
+              const actionType = String(actionValue.action_type || '').toLowerCase();
+              const value = parseFloat(actionValue.value || '0');
+              
+              if (actionType === 'purchase' || actionType.includes('fb_pixel_purchase')) {
+                reservation_value += value;
+              }
+            });
+          }
+
+          return {
+            ad_name: insight.ad_name || 'Unknown Ad',
+            spend: parseFloat(insight.spend || '0'),
+            impressions: parseInt(insight.impressions || '0'),
+            clicks: parseInt(insight.clicks || '0'),
+            cpc: insight.cpc ? parseFloat(insight.cpc) : null,
+            reservations: reservations,
+            reservation_value: reservation_value,
+          };
+        });
 
         logger.info('✅ Parsed ad relevance results:', ads.length, 'ads');
         return ads;

@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
       
       try {
         // Call the existing daily collection endpoint for this specific date
-        const metaResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/automated/daily-kpi-collection`, {
+        const baseUrl = process.env.NODE_ENV === 'production' 
+          ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+          : 'http://localhost:3000';
+        const metaResponse = await fetch(`${baseUrl}/api/automated/daily-kpi-collection`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ date: targetDate })
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
         const metaResult = await metaResponse.json();
         
         // Call Google Ads collection if needed
-        const googleAdsResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/automated/google-ads-daily-collection?date=${targetDate}`, {
+        const googleAdsResponse = await fetch(`${baseUrl}/api/automated/google-ads-daily-collection?date=${targetDate}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });

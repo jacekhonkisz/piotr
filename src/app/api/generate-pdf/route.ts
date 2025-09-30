@@ -321,13 +321,10 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     { key: 'totalImpressions', label: 'Wyświetlenia', value: metrics.totalImpressions, formatter: formatNumber },
     { key: 'totalClicks', label: 'Kliknięcia', value: metrics.totalClicks, formatter: formatNumber },
     { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
-    { key: 'averageCtr', label: 'CTR (%)', value: metrics.averageCtr, formatter: formatPercentage },
-    { key: 'averageCpc', label: 'CPC (zł)', value: metrics.averageCpc, formatter: formatCurrency },
   ].filter(metric => hasData(metric.value));
   
   // Meta-specific metrics (legacy metrics removed)
   const metaSpecificMetrics = [
-    { key: 'reach', label: 'Zasięg', value: metrics.reach, formatter: formatNumber },
     { key: 'relevanceScore', label: 'Ocena trafności', value: metrics.relevanceScore, formatter: (val: number) => `${val.toFixed(1)}/10` },
     { key: 'landingPageViews', label: 'Wyświetlenia strony docelowej', value: metrics.landingPageViews, formatter: formatNumber }
   ].filter(metric => hasData(metric.value));
@@ -339,6 +336,49 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     { key: 'totalReservations', label: 'Rezerwacje', value: metrics.totalReservations, formatter: formatNumber },
     { key: 'totalReservationValue', label: 'Wartość rezerwacji (zł)', value: metrics.totalReservationValue, formatter: formatCurrency },
     { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
+  ].filter(metric => hasData(metric.value));
+  
+  // Calculated offline potential metrics
+  const offlineMetrics = [
+    { 
+      key: 'potentialOfflineReservations', 
+      label: 'Potencjalna ilość rezerwacji offline', 
+      value: Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2), 
+      formatter: formatNumber 
+    },
+    { 
+      key: 'potentialOfflineValue', 
+      label: 'Potencjalna łączna wartość rezerwacji offline', 
+      value: (() => {
+        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+        return averageReservationValue * potentialOfflineReservations;
+      })(), 
+      formatter: formatCurrency 
+    },
+    { 
+      key: 'costPerReservation', 
+      label: 'Koszt pozyskania rezerwacji', 
+      value: (() => {
+        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+        const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
+        return totalPotentialValue > 0 ? (metrics.totalSpend / totalPotentialValue) * 100 : 0;
+      })(), 
+      formatter: (val: number) => `${val.toFixed(1)}%` 
+    },
+    { 
+      key: 'totalPotentialValue', 
+      label: 'Łączna wartość potencjalnych rezerwacji online + offline', 
+      value: (() => {
+        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+        return potentialOfflineValue + metrics.totalReservationValue;
+      })(), 
+      formatter: formatCurrency 
+    }
   ].filter(metric => hasData(metric.value));
   
   // Generate table rows for each section with YoY comparison
@@ -389,26 +429,6 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
             break;
           case 'bookingStep3':
             change = yoyData.changes?.booking_step_3 || 0;
-            break;
-          case 'averageCtr':
-            // Calculate CTR change from impressions and clicks
-            if (yoyData.current && yoyData.previous) {
-              const currentCtr = yoyData.current.impressions > 0 ? (yoyData.current.clicks / yoyData.current.impressions) * 100 : 0;
-              const previousCtr = yoyData.previous.impressions > 0 ? (yoyData.previous.clicks / yoyData.previous.impressions) * 100 : 0;
-              if (previousCtr > 0) {
-                change = ((currentCtr - previousCtr) / previousCtr) * 100;
-              }
-            }
-            break;
-          case 'averageCpc':
-            // Calculate CPC change from spend and clicks
-            if (yoyData.current && yoyData.previous) {
-              const currentCpc = yoyData.current.clicks > 0 ? yoyData.current.spend / yoyData.current.clicks : 0;
-              const previousCpc = yoyData.previous.clicks > 0 ? yoyData.previous.spend / yoyData.previous.clicks : 0;
-              if (previousCpc > 0) {
-                change = ((currentCpc - previousCpc) / previousCpc) * 100;
-              }
-            }
             break;
           default:
             change = 0;
@@ -508,6 +528,25 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         </thead>
         <tbody>
           ${generateTableRows(contactMetrics, metaYoYData)}
+          </tbody>
+        </table>
+    `;
+  }
+  
+  // Offline Potential Metrics Section
+  if (offlineMetrics.length > 0) {
+    sectionsHTML += `
+      <h3 class="table-title">Potencjalne Metryki Offline</h3>
+      <table class="metrics-table">
+        <thead>
+          <tr>
+            <th>Metryka</th>
+            <th>Wartość</th>
+            <th>vs rok do roku</th>
+            </tr>
+        </thead>
+        <tbody>
+          ${generateTableRows(offlineMetrics, metaYoYData)}
           </tbody>
         </table>
     `;
@@ -716,8 +755,6 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     { key: 'totalImpressions', label: 'Wyświetlenia', value: metrics.totalImpressions, formatter: formatNumber },
     { key: 'totalClicks', label: 'Kliknięcia', value: metrics.totalClicks, formatter: formatNumber },
     { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
-    { key: 'averageCtr', label: 'CTR (%)', value: metrics.averageCtr, formatter: formatPercentage },
-    { key: 'averageCpc', label: 'CPC (zł)', value: metrics.averageCpc, formatter: formatCurrency },
   ];
   
   // Debug filtered metrics
@@ -743,6 +780,49 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     { key: 'totalReservations', label: 'Rezerwacje', value: metrics.totalReservations, formatter: formatNumber },
     { key: 'totalReservationValue', label: 'Wartość rezerwacji (zł)', value: metrics.totalReservationValue, formatter: formatCurrency },
     { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
+  ].filter(metric => hasData(metric.value));
+  
+  // Calculated offline potential metrics
+  const offlineMetrics = [
+    { 
+      key: 'potentialOfflineReservations', 
+      label: 'Potencjalna ilość rezerwacji offline', 
+      value: Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2), 
+      formatter: formatNumber 
+    },
+    { 
+      key: 'potentialOfflineValue', 
+      label: 'Potencjalna łączna wartość rezerwacji offline', 
+      value: (() => {
+        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+        return averageReservationValue * potentialOfflineReservations;
+      })(), 
+      formatter: formatCurrency 
+    },
+    { 
+      key: 'costPerReservation', 
+      label: 'Koszt pozyskania rezerwacji', 
+      value: (() => {
+        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+        const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
+        return totalPotentialValue > 0 ? (metrics.totalSpend / totalPotentialValue) * 100 : 0;
+      })(), 
+      formatter: (val: number) => `${val.toFixed(1)}%` 
+    },
+    { 
+      key: 'totalPotentialValue', 
+      label: 'Łączna wartość potencjalnych rezerwacji online + offline', 
+      value: (() => {
+        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+        return potentialOfflineValue + metrics.totalReservationValue;
+      })(), 
+      formatter: formatCurrency 
+    }
   ].filter(metric => hasData(metric.value));
   
   // Generate table rows for each section with YoY comparison
@@ -792,26 +872,6 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
             break;
           case 'bookingStep3':
             change = yoyData.changes?.booking_step_3 || 0;
-            break;
-          case 'averageCtr':
-            // Calculate CTR change from impressions and clicks
-            if (yoyData.current && yoyData.previous) {
-              const currentCtr = yoyData.current.impressions > 0 ? (yoyData.current.clicks / yoyData.current.impressions) * 100 : 0;
-              const previousCtr = yoyData.previous.impressions > 0 ? (yoyData.previous.clicks / yoyData.previous.impressions) * 100 : 0;
-              if (previousCtr > 0) {
-                change = ((currentCtr - previousCtr) / previousCtr) * 100;
-              }
-            }
-            break;
-          case 'averageCpc':
-            // Calculate CPC change from spend and clicks
-            if (yoyData.current && yoyData.previous) {
-              const currentCpc = yoyData.current.clicks > 0 ? yoyData.current.spend / yoyData.current.clicks : 0;
-              const previousCpc = yoyData.previous.clicks > 0 ? yoyData.previous.spend / yoyData.previous.clicks : 0;
-              if (previousCpc > 0) {
-                change = ((currentCpc - previousCpc) / previousCpc) * 100;
-              }
-            }
             break;
           default:
             change = 0;
@@ -1026,8 +1086,8 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     `;
   }
 
-  // Generate charts for both ROAS and Clicks metrics (matching MetaAdsTables.tsx)
-  const generateChartsForMetric = (metric: 'roas' | 'clicks') => {
+  // Generate charts for both Reservation Value and Clicks metrics (matching MetaAdsTables.tsx)
+  const generateChartsForMetric = (metric: 'reservation_value' | 'clicks') => {
     // Process gender data for the specific metric
   const genderMap = new Map();
     validData.forEach(item => {
@@ -1036,7 +1096,7 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     if (gender.toLowerCase() === 'female') gender = 'Kobiety';
     else if (gender.toLowerCase() === 'male') gender = 'Mężczyźni';
     else if (gender.toLowerCase() === 'unknown') gender = 'Nieznane';
-      const value = metric === 'roas' ? (item.roas || 0) : (item.clicks || 0);
+      const value = metric === 'reservation_value' ? (item.reservation_value || 0) : (item.clicks || 0);
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
   });
 
@@ -1046,7 +1106,7 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     let age = item.age || 'Nieznane';
     // Ensure age labels are in Polish
     if (age.toLowerCase() === 'unknown') age = 'Nieznane';
-      const value = metric === 'roas' ? (item.roas || 0) : (item.clicks || 0);
+      const value = metric === 'reservation_value' ? (item.reservation_value || 0) : (item.clicks || 0);
       ageMap.set(age, (ageMap.get(age) || 0) + value);
   });
 
@@ -1056,9 +1116,9 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     const genderTotal = genderEntries.reduce((sum, [, value]) => sum + value, 0);
     const ageTotal = ageEntries.reduce((sum, [, value]) => sum + value, 0);
 
-    const metricLabel = metric === 'roas' ? 'ROAS' : 'Kliknięcia';
-    const formatValue = metric === 'roas' 
-      ? (val: number | null | undefined) => val ? `${val.toFixed(2)}x` : '0.00x'
+    const metricLabel = metric === 'reservation_value' ? 'Wartość rezerwacji' : 'Kliknięcia';
+    const formatValue = metric === 'reservation_value' 
+      ? (val: number | null | undefined) => formatCurrency(val || 0)
       : (val: number | null | undefined) => formatNumber(val || 0);
 
               return `
@@ -1141,7 +1201,7 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     <div class="demographics-section">
       <h4 class="demographics-title">Analiza Demograficzna</h4>
       
-      ${generateChartsForMetric('roas')}
+      ${generateChartsForMetric('reservation_value')}
       ${generateChartsForMetric('clicks')}
     </div>
   `;
@@ -1172,8 +1232,6 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                 <th>Wydatki</th>
                 <th>Wyświetlenia</th>
                 <th>Kliknięcia</th>
-                <th>CTR</th>
-                <th>CPC</th>
                 <th>Ilość Rezerwacji</th>
                 <th>Wartość Rezerwacji</th>
                 <th>ROAS</th>
@@ -1186,8 +1244,6 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
                   <td class="number">${formatNumber(campaign.impressions || 0)}</td>
                   <td class="number">${formatNumber(campaign.clicks || 0)}</td>
-                  <td class="number">${formatPercentage(campaign.ctr || 0)}</td>
-                  <td class="number">${formatCurrency(campaign.cpc || 0)}</td>
                   <td class="number">${formatNumber(campaign.reservations || 0)}</td>
                   <td class="number">${formatCurrency(campaign.reservation_value || 0)}</td>
                   <td class="number">${(campaign.roas || 0).toFixed(2)}x</td>
@@ -1222,8 +1278,6 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                   <th>Wydatki</th>
                   <th>Wyświetlenia</th>
                   <th>Kliknięcia</th>
-                  <th>CTR</th>
-                  <th>CPC</th>
                 </tr>
               </thead>
               <tbody>
@@ -1233,14 +1287,45 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                     <td class="number">${formatCurrency(placement.spend || 0)}</td>
                     <td class="number">${formatNumber(placement.impressions || 0)}</td>
                     <td class="number">${formatNumber(placement.clicks || 0)}</td>
-                    <td class="number">${formatPercentage(placement.ctr || 0)}</td>
-                    <td class="number">${formatCurrency(placement.cpc || 0)}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
-          ` : ''}
+        ` : ''}
+        
+        <!-- Ad Relevance Results -->
+        ${tables.adRelevanceResults && tables.adRelevanceResults.length > 0 ? `
+          <div class="ad-relevance-table">
+            <h3 class="table-title">Trafność Reklam i Wyniki</h3>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nazwa Reklamy</th>
+                  <th>Wydatki</th>
+                  <th>Wyświetlenia</th>
+                  <th>Kliknięcia</th>
+                  <th>CPC</th>
+                  <th>Ilość Rezerwacji</th>
+                  <th>Wartość Rezerwacji</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tables.adRelevanceResults.slice(0, 10).map(ad => `
+                  <tr>
+                    <td class="campaign-name">${ad.ad_name || 'Nieznana reklama'}</td>
+                    <td class="number">${formatCurrency(ad.spend || 0)}</td>
+                    <td class="number">${formatNumber(ad.impressions || 0)}</td>
+                    <td class="number">${formatNumber(ad.clicks || 0)}</td>
+                    <td class="number">${ad.cpc ? formatCurrency(ad.cpc) : 'N/A'}</td>
+                    <td class="number">${formatNumber(ad.reservations || 0)}</td>
+                    <td class="number">${formatCurrency(ad.reservation_value || 0)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
         ` : ''}
       </div>
     </div>
@@ -1272,8 +1357,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                 <th>Wydatki</th>
                 <th>Wyświetlenia</th>
                 <th>Kliknięcia</th>
-                <th>CTR</th>
-                <th>CPC</th>
                 <th>Ilość Rezerwacji</th>
                 <th>Wartość Rezerwacji</th>
                 <th>ROAS</th>
@@ -1286,8 +1369,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
                   <td class="number">${formatNumber(campaign.impressions || 0)}</td>
                   <td class="number">${formatNumber(campaign.clicks || 0)}</td>
-                  <td class="number">${formatPercentage(campaign.ctr || 0)}</td>
-                  <td class="number">${formatCurrency(campaign.cpc || 0)}</td>
                   <td class="number">${formatNumber(campaign.reservations || 0)}</td>
                   <td class="number">${formatCurrency(campaign.reservation_value || 0)}</td>
                   <td class="number">${(campaign.roas || 0).toFixed(2)}x</td>
@@ -1310,8 +1391,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                   <th>Wydatki</th>
                   <th>Wyświetlenia</th>
                   <th>Kliknięcia</th>
-                  <th>CTR</th>
-                  <th>CPC</th>
                 </tr>
               </thead>
               <tbody>
@@ -1321,8 +1400,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                     <td class="number">${formatCurrency(network.spend || 0)}</td>
                     <td class="number">${formatNumber(network.impressions || 0)}</td>
                     <td class="number">${formatNumber(network.clicks || 0)}</td>
-                    <td class="number">${formatPercentage(network.ctr || 0)}</td>
-                    <td class="number">${formatCurrency(network.cpc || 0)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -1342,8 +1419,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                   <th>Wydatki</th>
                   <th>Wyświetlenia</th>
                   <th>Kliknięcia</th>
-                  <th>CTR</th>
-                  <th>CPC</th>
                 </tr>
               </thead>
               <tbody>
@@ -1353,8 +1428,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                     <td class="number">${formatCurrency(device.spend || 0)}</td>
                     <td class="number">${formatNumber(device.impressions || 0)}</td>
                     <td class="number">${formatNumber(device.clicks || 0)}</td>
-                    <td class="number">${formatPercentage(device.ctr || 0)}</td>
-                    <td class="number">${formatCurrency(device.cpc || 0)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -2097,6 +2170,11 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   });
   
   // Debug why Google Ads condition might not be met
+  // Define base URL for API calls
+  const baseUrl = process.env.NODE_ENV === 'production' 
+    ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+    : 'http://localhost:3000';
+    
   const googleAdsConditionMet = clientData.google_ads_enabled && clientData.google_ads_customer_id;
   logger.info('🔍 GOOGLE ADS CONDITION CHECK:', {
     google_ads_enabled: clientData.google_ads_enabled,
@@ -2112,7 +2190,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       logger.info('📊 Fetching Google Ads data using /api/fetch-google-ads-live-data (same as reports with fallback)...');
       
       // Use the same API endpoint as reports page - this has fallback logic for expired tokens
-      const googleResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-google-ads-live-data`, {
+      const googleResponse = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2175,7 +2253,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       try {
         logger.info('📊 Fetching Meta YoY data from API...');
         
-        const metaYoYResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/year-over-year-comparison`, {
+        const metaYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -2213,7 +2291,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       try {
         logger.info('📊 Fetching Google Ads YoY data from API...');
         
-        const googleYoYResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/year-over-year-comparison`, {
+        const googleYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -2411,7 +2489,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     try {
       logger.info('🔄 FALLBACK: Trying Meta data via API endpoint (same as reports page)...');
       
-      const fallbackResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-live-data`, {
+      const fallbackResponse = await fetch(`${baseUrl}/api/fetch-live-data`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2507,7 +2585,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     try {
       logger.info('📊 Fetching Meta tables data (demographics, placement, ad relevance)...');
       
-      const metaTablesResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/fetch-meta-tables`, {
+      const metaTablesResponse = await fetch(`${baseUrl}/api/fetch-meta-tables`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

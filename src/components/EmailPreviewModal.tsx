@@ -33,10 +33,9 @@ interface PreviewData {
     totalImpressions: number;
     totalClicks: number;
     totalConversions?: number;
-    ctr: number;
-    cpc: number;
     cpm?: number;
     potentialOfflineReservations?: number;
+    potentialOfflineValue?: number;
     totalPotentialValue?: number;
     costPercentage?: number;
     reservations?: number;
@@ -180,8 +179,6 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
       const totalImpressions = finalTotals.impressions || 0;
       const totalClicks = finalTotals.clicks || 0;
       const totalConversions = finalTotals.conversions || 0;
-      const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-      const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
       
       // Calculate new metrics using same logic as WeeklyReportView
       const totalEmailContacts = finalCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
@@ -224,8 +221,6 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
           totalImpressions,
           totalClicks,
           totalConversions,
-          ctr,
-          cpc,
           campaigns: finalCampaigns
         });
       }
@@ -236,10 +231,9 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
         totalImpressions,
         totalClicks,
         totalConversions,
-        ctr: ctr / 100, // Convert to decimal for consistency
-        cpc,
         // New metrics
         potentialOfflineReservations,
+        potentialOfflineValue,
         totalPotentialValue,
         costPercentage,
         // Conversion metrics
@@ -337,8 +331,6 @@ ${content.summary || '[Podsumowanie AI zostanie wygenerowane podczas wysyłania]
 • Łączne Wydatki: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 • Wyświetlenia: ${reportData.totalImpressions.toLocaleString('pl-PL')}
 • Kliknięcia: ${reportData.totalClicks.toLocaleString('pl-PL')}
-• Współczynnik Klikalności (CTR): ${(reportData.ctr * 100).toFixed(2)}%
-• Koszt za Kliknięcie (CPC): ${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 • Koszt za Tysiąc Wyświetleń (CPM): ${(reportData.cpm || 0).toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}${reportData.reservations ? '\n• Rezerwacje: ' + reportData.reservations.toLocaleString('pl-PL') : ''}${reportData.reservationValue ? '\n• Wartość rezerwacji: ' + reportData.reservationValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' }) : ''}
 
 📎 ZAŁĄCZNIK:
@@ -360,14 +352,12 @@ Piotr Bajerlein`;
   const generatePolishReportSummary = (data: {
     dateRange: { start: string; end: string };
     totalSpend: number;
-    totalImpressions: number;
-    totalClicks: number;
-    totalConversions: number;
-    ctr: number;
-    cpc: number;
-    campaigns: any[];
-  }): string => {
-    const { dateRange, totalSpend, totalImpressions, totalClicks, totalConversions, ctr, cpc } = data;
+  totalImpressions: number;
+  totalClicks: number;
+  totalConversions: number;
+  campaigns: any[];
+}): string => {
+    const { dateRange, totalSpend, totalImpressions, totalClicks, totalConversions } = data;
     
     // Detect if it's weekly or monthly
     const startDate = new Date(dateRange.start);
@@ -420,8 +410,7 @@ Piotr Bajerlein`;
     if (totalImpressions > 0) {
       summaryParts.push(`Działania te zaowocowały ${formatNumber(totalImpressions)} wyświetleniami`);
       if (totalClicks > 0) {
-        summaryParts.push(`a liczba kliknięć wyniosła ${formatNumber(totalClicks)}, co dało CTR na poziomie ${formatPercentage(ctr)}.`);
-        summaryParts.push(`Średni koszt kliknięcia (CPC) wyniósł ${formatCurrency(cpc)}.`);
+        summaryParts.push(`a liczba kliknięć wyniosła ${formatNumber(totalClicks)}.`);
       } else {
         summaryParts.push('.');
       }
@@ -626,14 +615,6 @@ Piotr Bajerlein`;
                 <span class="metric-value">${reportData.totalClicks.toLocaleString('pl-PL')}</span>
                 <span class="metric-label">Clicks</span>
               </div>
-              <div class="metric-card">
-                <span class="metric-value">${(reportData.ctr * 100).toFixed(2)}%</span>
-                <span class="metric-label">CTR</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-value">${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">CPC</span>
-              </div>
             </div>
             
             <div class="pdf-notice">
@@ -679,8 +660,6 @@ ${content.summary}
 - Total Spend: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 - Impressions: ${reportData.totalImpressions.toLocaleString('pl-PL')}
 - Clicks: ${reportData.totalClicks.toLocaleString('pl-PL')}
-- CTR: ${(reportData.ctr * 100).toFixed(2)}%
-- CPC: ${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 
 Complete detailed report is attached as PDF. Open the PDF attachment for comprehensive analysis, charts, and campaign details.
 

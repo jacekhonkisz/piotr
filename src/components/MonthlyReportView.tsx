@@ -65,7 +65,6 @@ interface MonthlyStats {
   totalConversions: number;
   totalReach: number;
   averageCtr: number;
-  averageCpc: number;
   averageFrequency: number;
   campaignCount: number;
   reportCount: number;
@@ -74,7 +73,6 @@ interface MonthlyStats {
     spend: number;
     impressions: number;
     clicks: number;
-    ctr: number;
     reach: number;
     conversions: number;
   };
@@ -85,12 +83,9 @@ interface MonthlyStats {
     totalConversions: number;
     totalReach: number;
     averageCtr: number;
-    averageCpc: number;
     averageFrequency: number;
   };
   benchmarks: {
-    ctr: number;
-    cpc: number;
   };
   adVariants: {
     totalAds: number;
@@ -161,7 +156,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
       const totalReach = allCampaigns.reduce((sum, campaign) => sum + (campaign.reach || 0), 0);
       
       const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-      const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
       const averageFrequency = totalReach > 0 ? totalImpressions / totalReach : 0;
       
       // Get top 5 campaigns by spend
@@ -177,7 +171,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
         totalConversions: totalConversions * 0.95,
         totalReach: totalReach * 0.90,
         averageCtr: averageCtr * 0.96,
-        averageCpc: averageCpc * 1.05,
         averageFrequency: averageFrequency * 0.98,
       };
 
@@ -186,13 +179,12 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
         spend: ((totalSpend - previousMonthStats.totalSpend) / previousMonthStats.totalSpend) * 100,
         impressions: ((totalImpressions - previousMonthStats.totalImpressions) / previousMonthStats.totalImpressions) * 100,
         clicks: ((totalClicks - previousMonthStats.totalClicks) / previousMonthStats.totalClicks) * 100,
-        ctr: ((averageCtr - previousMonthStats.averageCtr) / previousMonthStats.averageCtr) * 100,
         reach: ((totalReach - previousMonthStats.totalReach) / previousMonthStats.totalReach) * 100,
         conversions: ((totalConversions - previousMonthStats.totalConversions) / previousMonthStats.totalConversions) * 100,
       };
 
       // Generate insights
-      const insights = generateInsights(performanceChange, averageCtr, totalConversions);
+      const insights = generateInsights(performanceChange, totalConversions);
 
       // Simulate ad variants data
       const adVariants = {
@@ -204,8 +196,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
       // Set benchmarks (industry standards)
       const benchmarks = {
-        ctr: 2.5, // 2.5% target CTR
-        cpc: 2.5, // $2.50 target CPC
       };
 
       setMonthlyStats({
@@ -215,7 +205,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
         totalConversions,
         totalReach,
         averageCtr,
-        averageCpc,
         averageFrequency,
         campaignCount: allCampaigns.length,
         reportCount: monthReports.length,
@@ -231,16 +220,11 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
     }, 800); // Simulate loading time
   };
 
-  const generateInsights = (changes: any, ctr: number, conversions: number): string[] => {
+  const generateInsights = (changes: any, conversions: number): string[] => {
     const insights: string[] = [];
     
     if (changes.conversions > 10) {
       insights.push(`Świetny wynik! ${changes.conversions.toFixed(1)}% wzrost w konwersjach w tym miesiącu`);
-    }
-    
-    
-    if (ctr > 2.5) {
-      insights.push(`Dobry wynik CTR w ${ctr.toFixed(2)}% - powyżej celu`);
     }
     
     if (changes.spend > 0 && changes.conversions > changes.spend) {
@@ -340,27 +324,21 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
     // Performance overview chart data - showing key metrics
     const performanceData = {
-      labels: ['Wydatki', 'CTR', 'Leady'],
+      labels: ['Wydatki', 'Leady'],
       datasets: [
         {
           label: 'Bieżący miesiąc',
           data: [
             monthlyStats.totalSpend / 100, // Scale down for better visualization
-            monthlyStats.averageCtr * 10, // Scale up for visibility
             monthlyStats.totalConversions,
-            monthlyStats.averageCtr * 10 // Scale up for visibility
           ],
           backgroundColor: [
             'rgba(59, 130, 246, 0.8)',
-            'rgba(34, 197, 94, 0.8)',
             'rgba(251, 191, 36, 0.8)',
-            'rgba(239, 68, 68, 0.8)'
           ],
           borderColor: [
             'rgba(59, 130, 246, 1)',
-            'rgba(34, 197, 94, 1)',
             'rgba(251, 191, 36, 1)',
-            'rgba(239, 68, 68, 1)'
           ],
           borderWidth: 2,
         }
@@ -492,39 +470,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                 </div>
               </div>
 
-              {/* CTR */}
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-3">
-                  <TrendingUpIcon className="h-8 w-8 text-purple-600" />
-                </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">CTR</p>
-                <p className="text-4xl font-bold text-gray-900">{monthlyStats.averageCtr.toFixed(2)}%</p>
-                <div className={`flex items-center justify-center mt-2 text-sm ${getPerformanceColor(monthlyStats.performanceChange.ctr)}`}>
-                  {getPerformanceIcon(monthlyStats.performanceChange.ctr)}
-                  <span className="ml-1">{Math.abs(monthlyStats.performanceChange.ctr).toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Key Achievement Banner */}
-            <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl p-6 text-white shadow-lg mb-8">
-              <div className="flex items-center mb-3">
-                <Trophy className="h-6 w-6 mr-3" />
-                <h3 className="text-xl font-bold">Key Achievement</h3>
-              </div>
-              <p className="text-lg font-semibold mb-2">
-                CTR {monthlyStats.averageCtr.toFixed(2)}% 
-                {monthlyStats.averageCtr > monthlyStats.benchmarks.ctr ? (
-                  <span className="ml-2 text-green-200">+{((monthlyStats.averageCtr - monthlyStats.benchmarks.ctr) / monthlyStats.benchmarks.ctr * 100).toFixed(1)}% vs target</span>
-                ) : (
-                  <span className="ml-2 text-red-200">-{((monthlyStats.benchmarks.ctr - monthlyStats.averageCtr) / monthlyStats.benchmarks.ctr * 100).toFixed(1)}% vs target</span>
-                )}
-              </p>
-              <p className="text-green-100">
-                {monthlyStats.averageCtr > monthlyStats.benchmarks.ctr 
-                  ? "Najlepszy wynik w ostatnich 6 miesiącach!" 
-                  : "Poniżej celu - rozważ optymalizację"}
-              </p>
             </div>
 
             {/* Performance Trend Chart */}
@@ -573,14 +518,6 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
 
               <div className="text-center">
                 <div className="flex items-center justify-center mb-2">
-                  <Target className="h-5 w-5 text-gray-600" />
-                </div>
-                <p className="text-sm font-medium text-gray-600 mb-1">CPC</p>
-                <p className="text-xl font-bold text-gray-900">{formatCurrency(monthlyStats.averageCpc)}</p>
-              </div>
-
-              <div className="text-center">
-                <div className="flex items-center justify-center mb-2">
                   <Users className="h-5 w-5 text-gray-600" />
                 </div>
                 <p className="text-sm font-medium text-gray-600 mb-1">Reach</p>
@@ -619,14 +556,10 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                     <p className="text-sm text-gray-600">Total Spend</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-gray-600">Impressions</p>
                     <p className="font-semibold">{formatNumber(monthlyStats.topCampaigns[0]?.impressions || 0)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">CTR</p>
-                    <p className="font-semibold">{(monthlyStats.topCampaigns[0]?.ctr || 0).toFixed(2)}%</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Conversions</p>
@@ -646,7 +579,7 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{campaign.campaign_name}</p>
-                          <p className="text-sm text-gray-600">{formatCurrency(campaign.spend || 0)} • {(campaign.ctr || 0).toFixed(2)}% CTR</p>
+                          <p className="text-sm text-gray-600">{formatCurrency(campaign.spend || 0)}</p>
                         </div>
                       </div>
                       <button
@@ -688,56 +621,14 @@ export default function MonthlyReportView({ reports, onDownloadPDF, onViewDetail
                 {/* Benchmark Comparison Table */}
                 <div>
                   <h3 className="text-md font-medium text-gray-900 mb-4">Benchmark Performance</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">CTR Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCtr, monthlyStats.benchmarks.ctr) === 'osiągnięty' ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                      <div className="text-2xl font-bold text-gray-900">{monthlyStats.averageCtr.toFixed(2)}%</div>
-                      <div className="text-sm text-gray-600">Target: {monthlyStats.benchmarks.ctr}%</div>
-                    </div>
-
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">CPC Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCpc, monthlyStats.benchmarks.cpc, true) === 'osiągnięty' ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                      <div className="text-2xl font-bold text-gray-900">{formatCurrency(monthlyStats.averageCpc)}</div>
-                      <div className="text-sm text-gray-600">Target: {formatCurrency(monthlyStats.benchmarks.cpc)}</div>
-                    </div>
-
-                    <div className="p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">CTR Target</span>
-                        {getBenchmarkStatus(monthlyStats.averageCtr, monthlyStats.benchmarks.ctr, false) === 'osiągnięty' ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </div>
-                      <div className="text-2xl font-bold text-gray-900">{monthlyStats.averageCtr.toFixed(2)}%</div>
-                      <div className="text-sm text-gray-600">Target: {monthlyStats.benchmarks.ctr}%</div>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                   </div>
                 </div>
 
                 {/* Detailed Metrics Grid */}
                 <div>
                   <h3 className="text-md font-medium text-gray-900 mb-4">Detailed Metrics</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-sm text-gray-600">CPC</p>
-                      <p className="text-lg font-semibold">{formatCurrency(monthlyStats.averageCpc)}</p>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
                     <div className="p-3 bg-gray-50 rounded-lg">
                       <p className="text-sm text-gray-600">Frequency</p>
                       <p className="text-lg font-semibold">{monthlyStats.averageFrequency.toFixed(2)}</p>

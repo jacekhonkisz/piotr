@@ -10,7 +10,7 @@ import {
 } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
 import { motion } from 'framer-motion';
-import { Eye, MousePointer, Users } from 'lucide-react';
+import { Eye, MousePointer, Users, BarChart3 } from 'lucide-react';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
@@ -130,6 +130,9 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     switch (metric) {
       case 'impressions': return 'Wyświetlenia';
       case 'clicks': return 'Kliknięcia';
+      case 'reservations': return 'Rezerwacje';
+      case 'roas': return 'ROAS';
+      case 'reservation_value': return 'Wartość rezerwacji';
       default: return 'Metryka';
     }
   };
@@ -138,11 +141,20 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     switch (metric) {
       case 'impressions': return Eye;
       case 'clicks': return MousePointer;
+      case 'reservations': return Users;
+      case 'roas': return BarChart3;
+      case 'reservation_value': return BarChart3;
       default: return Eye;
     }
   };
 
   const formatValue = (value: number) => {
+    if (metric === 'reservation_value') {
+      return new Intl.NumberFormat('pl-PL', {
+        style: 'currency',
+        currency: 'PLN'
+      }).format(value);
+    }
     return value.toLocaleString();
   };
 

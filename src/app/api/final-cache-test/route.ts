@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
     
     // 1. Test Meta API directly
     console.log('1️⃣ Testing Meta API directly...');
-    const metaApiResponse = await fetch('http://localhost:3000/api/fetch-live-data', {
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+      : 'http://localhost:3000';
+    const metaApiResponse = await fetch(`${baseUrl}/api/fetch-live-data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

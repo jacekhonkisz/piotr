@@ -150,8 +150,6 @@ export class EmailService {
       totalSpend: number;
       totalImpressions: number;
       totalClicks: number;
-      ctr: number;
-      cpc: number;
       cpm: number;
     },
     pdfBuffer?: Buffer
@@ -187,8 +185,6 @@ export class EmailService {
       totalSpend: number;
       totalImpressions: number;
       totalClicks: number;
-      ctr: number;
-      cpc: number;
       cpm: number;
     },
     pdfBuffer: Buffer
@@ -240,8 +236,6 @@ export class EmailService {
       totalImpressions: number;
       totalClicks: number;
       totalConversions?: number;
-      ctr: number;
-      cpc: number;
       cpm: number;
     },
     content: {
@@ -493,16 +487,6 @@ Note: This email was redirected for monitoring purposes. In production, it would
             </div>
             
             <div class="metric">
-              <h3>📈 Click-Through Rate</h3>
-              <p>${(reportData.ctr * 100).toFixed(2)}%</p>
-            </div>
-            
-            <div class="metric">
-              <h3>💵 Cost Per Click</h3>
-              <p>$${reportData.cpc.toFixed(2)}</p>
-            </div>
-            
-            <div class="metric">
               <h3>📊 Cost Per Mille</h3>
               <p>$${reportData.cpm.toFixed(2)}</p>
             </div>
@@ -531,8 +515,6 @@ Here's your Meta Ads performance report for the period ${reportData.dateRange}:
 💰 Total Spend: $${reportData.totalSpend.toLocaleString()}
 👁️ Total Impressions: ${reportData.totalImpressions.toLocaleString()}
 🖱️ Total Clicks: ${reportData.totalClicks.toLocaleString()}
-📈 Click-Through Rate: ${(reportData.ctr * 100).toFixed(2)}%
-💵 Cost Per Click: $${reportData.cpc.toFixed(2)}
 📊 Cost Per Mille: $${reportData.cpm.toFixed(2)}
 
 Please find the detailed report attached to this email.
@@ -608,10 +590,6 @@ This is an automated report. Please do not reply to this email.
                 <div class="stat-value">${reportData.totalClicks.toLocaleString()}</div>
                 <div class="stat-label">Clicks</div>
               </div>
-              <div class="stat">
-                <div class="stat-value">${(reportData.ctr * 100).toFixed(2)}%</div>
-                <div class="stat-label">CTR</div>
-              </div>
             </div>
             
             <div class="highlight">
@@ -656,7 +634,6 @@ Report Summary:
 - Total Spend: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
 - Impressions: ${reportData.totalImpressions.toLocaleString()}
 - Clicks: ${reportData.totalClicks.toLocaleString()}
-- CTR: ${(reportData.ctr * 100).toFixed(2)}%
 
 Report Highlights:
 - Top Placement Performance: See which ad placements are performing best
@@ -990,24 +967,22 @@ If you didn't request this access, please contact us immediately.
                 <span class="metric-value">${reportData.totalClicks.toLocaleString('pl-PL')}</span>
                 <span class="metric-label">Kliknięcia linku</span>
               </div>
-              <div class="metric-card">
-                <span class="metric-value">${(reportData.ctr * 100).toFixed(2)}%</span>
-                <span class="metric-label">Wskaźnik klikalności</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-value">${reportData.cpc.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">Koszt za kliknięcie</span>
-              </div>
               ${reportData.potentialOfflineReservations !== undefined ? `
               <div class="metric-card">
                 <span class="metric-value">${reportData.potentialOfflineReservations}</span>
                 <span class="metric-label">Potencjalna ilość rezerwacji offline</span>
               </div>
               ` : ''}
+              ${reportData.potentialOfflineValue !== undefined ? `
+              <div class="metric-card">
+                <span class="metric-value">${reportData.potentialOfflineValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
+                <span class="metric-label">Potencjalna łączna wartość rezerwacji offline</span>
+              </div>
+              ` : ''}
               ${reportData.totalPotentialValue !== undefined ? `
               <div class="metric-card">
                 <span class="metric-value">${reportData.totalPotentialValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">Łączna wartość potencjalnych rezerwacji</span>
+                <span class="metric-label">Łączna wartość potencjalnych rezerwacji online + offline</span>
               </div>
               ` : ''}
               ${reportData.costPercentage !== undefined ? `

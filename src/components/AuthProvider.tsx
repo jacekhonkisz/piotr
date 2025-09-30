@@ -33,12 +33,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initializationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastEventTimeRef = useRef<number>(0);
   
-  // Enhanced development mode detection and stabilization
+  // Enhanced environment detection and stabilization
   const isDevelopment = process.env.NODE_ENV === 'development';
+  const isProduction = process.env.NODE_ENV === 'production';
   const stableUserRef = useRef<User | null>(null);
   const authStabilizedRef = useRef(false);
   const signedInEventCountRef = useRef(0);
   const authStabilizationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const productionStabilityRef = useRef(false);
 
   const refreshProfile = useCallback(async (userToRefresh?: User) => {
     const currentUser = userToRefresh || user;
@@ -232,34 +234,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     
-    // Enhanced development mode stabilization
-    if (isDevelopment && event === 'SIGNED_IN') {
+    // Enhanced environment-specific stabilization
+    if (event === 'SIGNED_IN') {
       signedInEventCountRef.current++;
       
-      // If we've seen multiple SIGNED_IN events rapidly, implement stabilization
-      if (signedInEventCountRef.current > 1 && !authStabilizedRef.current) {
-        console.log(`🔧 Development mode: SIGNED_IN event #${signedInEventCountRef.current}, implementing stabilization`);
-        
-        // Clear any existing stabilization timeout
-        if (authStabilizationTimeoutRef.current) {
-          clearTimeout(authStabilizationTimeoutRef.current);
+      // Production-specific stabilization
+      if (isProduction) {
+        // In production, be more aggressive about preventing duplicate events
+        if (productionStabilityRef.current && stableUserRef.current?.id === session?.user?.id) {
+          console.log('🔧 Production mode: Skipping duplicate SIGNED_IN for same user');
+          return;
         }
         
-        // Set a stabilization timeout - only process if no more events come in the next 3 seconds
-        authStabilizationTimeoutRef.current = setTimeout(() => {
-          console.log('🔧 Auth stabilized, processing final SIGNED_IN event');
-          authStabilizedRef.current = true;
-          // Process the event after stabilization
-          processAuthEvent(event, session, nowTs);
-        }, 3000);
-        
-        return; // Don't process immediately
+        // Set production stability flag
+        if (session?.user) {
+          productionStabilityRef.current = true;
+          stableUserRef.current = session.user;
+        }
       }
       
-      // If already stabilized, check for user consistency
-      if (authStabilizedRef.current && stableUserRef.current?.id === session?.user?.id) {
-        console.log('🔧 Auth already stabilized for this user, skipping duplicate SIGNED_IN');
-        return;
+      // Development mode stabilization
+      if (isDevelopment) {
+        // If we've seen multiple SIGNED_IN events rapidly, implement stabilization
+        if (signedInEventCountRef.current > 1 && !authStabilizedRef.current) {
+          console.log(`🔧 Development mode: SIGNED_IN event #${signedInEventCountRef.current}, implementing stabilization`);
+          
+          // Clear any existing stabilization timeout
+          if (authStabilizationTimeoutRef.current) {
+            clearTimeout(authStabilizationTimeoutRef.current);
+          }
+          
+          // Set a stabilization timeout - only process if no more events come in the next 3 seconds
+          authStabilizationTimeoutRef.current = setTimeout(() => {
+            console.log('🔧 Auth stabilized, processing final SIGNED_IN event');
+            authStabilizedRef.current = true;
+            // Process the event after stabilization
+            processAuthEvent(event, session, nowTs);
+          }, 3000);
+          
+          return; // Don't process immediately
+        }
+        
+        // If already stabilized, check for user consistency
+        if (authStabilizedRef.current && stableUserRef.current?.id === session?.user?.id) {
+          console.log('🔧 Auth already stabilized for this user, skipping duplicate SIGNED_IN');
+          return;
+        }
       }
     }
     
@@ -296,9 +316,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'SIGNED_IN') {
           console.log('Processing SIGNED_IN event');
           
-          // In development mode, add extra check to prevent unnecessary refreshes
+          // Environment-specific checks to prevent unnecessary refreshes
           if (isDevelopment && authStabilizedRef.current && profile && profile.id === sessionUser.id) {
             console.log('🔧 Development mode: User already has profile, skipping refresh');
+            return;
+          }
+          
+          if (isProduction && productionStabilityRef.current && profile && profile.id === sessionUser.id) {
+            console.log('🔧 Production mode: User already has profile, skipping refresh');
             return;
           }
           
@@ -319,10 +344,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
         profileCacheRef.current = {}; // Clear cache on logout
         profileRequestQueueRef.current = null; // Clear pending requests
-        // Reset development mode flags on logout
+        // Reset environment-specific flags on logout
         if (isDevelopment) {
           authStabilizedRef.current = false;
           signedInEventCountRef.current = 0;
+          stableUserRef.current = null;
+        }
+        if (isProduction) {
+          productionStabilityRef.current = false;
           stableUserRef.current = null;
         }
         if (mountedRef.current) {
@@ -353,10 +382,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(authStabilizationTimeoutRef.current);
       }
       
-      // Reset development mode flags on cleanup
+      // Reset environment-specific flags on cleanup
       if (isDevelopment) {
         authStabilizedRef.current = false;
         signedInEventCountRef.current = 0;
+        stableUserRef.current = null;
+      }
+      if (isProduction) {
+        productionStabilityRef.current = false;
         stableUserRef.current = null;
       }
       
