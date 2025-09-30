@@ -633,10 +633,14 @@ export class MetaAPIService {
         params.append('time_increment', timeIncrement.toString());
       }
 
+      // 🔧 FIX: Add attribution windows as JSON array to match Meta Ads Manager (7-day click + 1-day view)
+      params.append('action_attribution_windows', JSON.stringify(['7d_click', '1d_view']));
+
       // Ensure we have the act_ prefix for the API call
       const accountIdWithPrefix = adAccountId.startsWith('act_') ? adAccountId : `act_${adAccountId}`;
       const url = `${this.baseUrl}/${accountIdWithPrefix}/insights?${params.toString()}`;
       logger.info('🔗 Meta API URL:', url);
+      logger.info('🔧 Attribution Windows:', ['7d_click', '1d_view']);
       logger.info('📅 Date Range for API call:', { dateStart, dateEnd, timeIncrement });
 
       logger.info('⏱️ Starting Meta API fetch with timeout...');
@@ -812,6 +816,24 @@ export class MetaAPIService {
             impressions: insight.impressions,
             spend: insight.spend
           });
+          
+          // 🔍 EXTRA DEBUG: Log all purchase-like actions
+          const purchaseActions = actionsArray.filter((a: any) => {
+            const type = String(a.action_type || a.type || '').toLowerCase();
+            return type.includes('purchase') || type.includes('offsite_conversion');
+          });
+          if (purchaseActions.length > 0) {
+            logger.info('🛒 PURCHASE ACTIONS FOUND:', {
+              campaign: insight.campaign_name,
+              purchases: purchaseActions.map((a: any) => ({
+                type: a.action_type,
+                value: a.value,
+                '1d_click': a['1d_click'],
+                '7d_click': a['7d_click'],
+                '1d_view': a['1d_view']
+              }))
+            });
+          }
 
           // 5. Wartość rezerwacji - handle both action_values and value fields
           const actionValuesArray = (insight.action_values && Array.isArray(insight.action_values)) ? insight.action_values : [];
@@ -852,8 +874,9 @@ export class MetaAPIService {
             logger.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 2 (${booking_step_2}) > Etap 1 (${booking_step_1}). This may indicate misconfigured action types.`);
           }
 
-          // Calculate total conversions from all tracked conversion types
-          const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2;
+          // 🔧 CRITICAL FIX: Only count actual purchases as conversions (matches Meta Ads Manager "Zakupy w witrynie")
+          // All other conversion events (click_to_call, email_contacts, booking_steps) are tracked separately
+          const totalConversions = reservations; // Purchase conversions only
           
           return {
             campaign_id: insight.campaign_id || 'unknown',
@@ -1054,8 +1077,9 @@ export class MetaAPIService {
           logger.warn(`⚠️ CONVERSION FUNNEL INVERSION: Campaign "${insight.campaign_name}" has Etap 3 (${booking_step_3}) > Etap 2 (${booking_step_2}). This may indicate misconfigured action types.`);
         }
 
-        // Calculate total conversions from all tracked conversion types
-        const totalConversions = click_to_call + email_contacts + booking_step_1 + reservations + booking_step_2 + booking_step_3;
+        // 🔧 CRITICAL FIX: Only count actual purchases as conversions (matches Meta Ads Manager "Zakupy w witrynie")
+        // All other conversion events (click_to_call, email_contacts, booking_steps) are tracked separately
+        const totalConversions = reservations; // Purchase conversions only
         
         // Calculate CTR and CPC if not provided
         const impressions = parseInt(insight.impressions || '0');

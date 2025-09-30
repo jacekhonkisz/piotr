@@ -338,6 +338,51 @@ export async function fetchFreshCurrentMonthData(client: any) {
       cacheAge: 0
     };
 
+    // 🔧 CRITICAL FIX: Save campaign data to campaigns table for permanent storage (like Google Ads does)
+    try {
+      logger.info('💾 Saving Meta campaigns to database for permanent storage...');
+      
+      // Prepare campaign data for database insertion
+      const campaignsToInsert = syntheticCampaigns.map(campaign => ({
+        client_id: client.id,
+        campaign_id: campaign.campaign_id,
+        campaign_name: campaign.campaign_name,
+        status: campaign.status || 'ACTIVE',
+        date_range_start: currentMonth.startDate,
+        date_range_end: currentMonth.endDate,
+        
+        // Core metrics
+        spend: campaign.spend || 0,
+        impressions: campaign.impressions || 0,
+        clicks: campaign.clicks || 0,
+        conversions: campaign.conversions || campaign.reservations || 0,
+        ctr: campaign.ctr || 0,
+        cpc: campaign.cpc || 0,
+        cpp: campaign.cpp || 0,
+        frequency: campaign.frequency || 0,
+        reach: campaign.reach || 0,
+        
+        // Timestamps
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+
+      // Insert/update campaigns in campaigns table
+      const { error: campaignInsertError } = await supabase
+        .from('campaigns')
+        .upsert(campaignsToInsert, {
+          onConflict: 'client_id,campaign_id,date_range_start,date_range_end'
+        });
+
+      if (campaignInsertError) {
+        logger.error('❌ Failed to save Meta campaigns to database:', campaignInsertError);
+      } else {
+        logger.info(`✅ Saved ${campaignsToInsert.length} Meta campaigns to database`);
+      }
+    } catch (dbError) {
+      logger.error('❌ Database insertion error for Meta campaigns:', dbError);
+    }
+
     // Cache the data for future requests
     try {
       await supabase
@@ -876,6 +921,51 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       }];
       
       logger.info('✅ Created synthetic weekly campaign with aggregated data');
+    }
+
+    // 🔧 CRITICAL FIX: Save weekly campaign data to campaigns table for permanent storage (like Google Ads does)
+    try {
+      logger.info('💾 Saving weekly Meta campaigns to database for permanent storage...');
+      
+      // Prepare campaign data for database insertion
+      const campaignsToInsert = syntheticCampaigns.map(campaign => ({
+        client_id: client.id,
+        campaign_id: campaign.campaign_id,
+        campaign_name: campaign.campaign_name,
+        status: campaign.status || 'ACTIVE',
+        date_range_start: currentWeek.startDate,
+        date_range_end: currentWeek.endDate,
+        
+        // Core metrics
+        spend: campaign.spend || 0,
+        impressions: campaign.impressions || 0,
+        clicks: campaign.clicks || 0,
+        conversions: campaign.conversions || campaign.reservations || 0,
+        ctr: campaign.ctr || 0,
+        cpc: campaign.cpc || 0,
+        cpp: campaign.cpp || 0,
+        frequency: campaign.frequency || 0,
+        reach: campaign.reach || 0,
+        
+        // Timestamps
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+
+      // Insert/update campaigns in campaigns table
+      const { error: campaignInsertError } = await supabase
+        .from('campaigns')
+        .upsert(campaignsToInsert, {
+          onConflict: 'client_id,campaign_id,date_range_start,date_range_end'
+        });
+
+      if (campaignInsertError) {
+        logger.error('❌ Failed to save weekly Meta campaigns to database:', campaignInsertError);
+      } else {
+        logger.info(`✅ Saved ${campaignsToInsert.length} weekly Meta campaigns to database`);
+      }
+    } catch (dbError) {
+      logger.error('❌ Database insertion error for weekly Meta campaigns:', dbError);
     }
 
     return {
