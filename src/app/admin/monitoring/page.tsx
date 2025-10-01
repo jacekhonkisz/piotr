@@ -61,11 +61,29 @@ interface SystemHealthMetrics {
   };
 }
 
+interface DataHealthCheck {
+  status: 'healthy' | 'warning' | 'critical';
+  score: number;
+  checks: {
+    todayCollection: { status: string; message: string };
+    splitData: { status: string; message: string };
+    missingDays: { status: string; message: string };
+    cacheFreshness: { status: string; message: string };
+  };
+  issues: Array<{ severity: string; message: string }>;
+  summary: {
+    totalClients: number;
+    healthyClients: number;
+    issuesFound: number;
+  };
+}
+
 export default function MonitoringPage() {
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [recentLogs, setRecentLogs] = useState<SystemLog[]>([]);
   const [dataValidation, setDataValidation] = useState<DataValidationReport | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealthMetrics | null>(null);
+  const [dataHealth, setDataHealth] = useState<DataHealthCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -123,6 +141,17 @@ export default function MonitoringPage() {
         }
       } catch (error) {
         console.error('Error loading system health:', error);
+      }
+
+      // Load data health check (Step 2)
+      try {
+        const response = await fetch('/api/admin/data-health');
+        if (response.ok) {
+          const result = await response.json();
+          setDataHealth(result);
+        }
+      } catch (error) {
+        console.error('Error loading data health:', error);
       }
 
       // Load recent logs
@@ -371,6 +400,78 @@ export default function MonitoringPage() {
               </div>
             ) : (
               <div className="text-gray-500">No storage data available</div>
+            )}
+          </div>
+
+          {/* Data Health Check - Step 2 */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4">🏥 Data Health</h2>
+            {dataHealth ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl font-bold">{dataHealth.score}/100</span>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    dataHealth.status === 'healthy' ? 'bg-green-100 text-green-800' :
+                    dataHealth.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {dataHealth.status.toUpperCase()}
+                  </span>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Today Collection:</span>
+                    <span className={`font-medium ${
+                      dataHealth.checks.todayCollection.status === 'pass' ? 'text-green-600' : 'text-yellow-600'
+                    }`}>
+                      {dataHealth.summary.healthyClients}/{dataHealth.summary.totalClients} clients
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span>Split Data:</span>
+                    <span className={`font-medium ${
+                      dataHealth.checks.splitData.status === 'pass' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {dataHealth.checks.splitData.message}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span>Missing Days:</span>
+                    <span className={`font-medium ${
+                      dataHealth.checks.missingDays.status === 'pass' ? 'text-green-600' : 'text-yellow-600'
+                    }`}>
+                      {dataHealth.checks.missingDays.message}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between text-sm">
+                    <span>Cache Freshness:</span>
+                    <span className={`font-medium ${
+                      dataHealth.checks.cacheFreshness.status === 'pass' ? 'text-green-600' : 'text-yellow-600'
+                    }`}>
+                      {dataHealth.checks.cacheFreshness.message}
+                    </span>
+                  </div>
+                </div>
+                
+                {dataHealth.issues.length > 0 && (
+                  <div className="mt-4 p-3 bg-yellow-50 rounded border border-yellow-200">
+                    <h3 className="font-semibold text-sm mb-2">⚠️ Issues Found:</h3>
+                    <ul className="space-y-1">
+                      {dataHealth.issues.slice(0, 3).map((issue, idx) => (
+                        <li key={idx} className="text-xs text-gray-700">
+                          🔸 {issue.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-gray-500">Loading health data...</div>
             )}
           </div>
 

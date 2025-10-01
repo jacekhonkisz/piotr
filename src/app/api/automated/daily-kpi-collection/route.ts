@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIService } from '../../../../lib/meta-api';
 import logger from '../../../../lib/logger';
+import { DataValidator } from '../../../../lib/data-validation';
 
 // This endpoint is for automated daily collection - no authentication required
 // Should only be called from internal scripts or cron jobs
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
           const averageCPC = dailyTotals.totalClicks > 0 ? 
             dailyTotals.totalSpend / dailyTotals.totalClicks : 0;
 
-          // Store in database
+          // Prepare database record
           const dailyRecord = {
             client_id: client.id,
             date: targetDate,
@@ -168,6 +169,23 @@ export async function POST(request: NextRequest) {
             reach: dailyTotals.reach
           };
 
+          // 🛡️ STEP 1: VALIDATE DATA BEFORE SAVING
+          // This prevents split data issues (August/September problem)
+          console.log(`🛡️ Validating data for ${client.name}...`);
+          const validation = DataValidator.validate(dailyRecord);
+          
+          if (!validation.isValid) {
+            const errorMsg = validation.errors.map(e => `${e.field}: ${e.message}`).join('; ');
+            throw new Error(`Data validation failed: ${errorMsg}`);
+          }
+          
+          if (validation.warnings.length > 0) {
+            console.warn(`⚠️ Validation warnings for ${client.name}:`, validation.warnings);
+          }
+          
+          console.log(`✅ Data validation passed for ${client.name}`);
+
+          // Store in database
           const { error: insertError } = await supabaseAdmin
             .from('daily_kpi_data')
             .upsert(dailyRecord, {
