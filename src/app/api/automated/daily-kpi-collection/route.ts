@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIService } from '../../../../lib/meta-api';
 import logger from '../../../../lib/logger';
 import { DataValidator } from '../../../../lib/data-validation';
+import { withRetry } from '../../../../lib/retry-helper';
 
 // This endpoint is for automated daily collection - no authentication required
 // Should only be called from internal scripts or cron jobs
@@ -73,41 +74,29 @@ export async function POST(request: NextRequest) {
         continue;
       }
       
-      // Add retry logic for each client
-      const maxRetries = 3;
-      let clientSuccess = false;
+      // 🔄 STEP 4: ENHANCED RETRY LOGIC with exponential backoff
+      console.log(`\n📝 Processing: ${client.name}`);
       
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          console.log(`\n📝 Processing: ${client.name} (attempt ${attempt})`);
+      const result = await withRetry(async () => {
+        // Create MetaAPI service for this client
+        const metaAPI = new MetaAPIService(client.meta_access_token!);
 
-          // Create MetaAPI service for this client
-          const metaAPI = new MetaAPIService(client.meta_access_token);
+        // Fetch campaigns data for the target date
+        const campaigns = await metaAPI.getCampaignInsights(
+          client.ad_account_id,
+          targetDate,
+          targetDate
+        );
+        
+        if (!campaigns || campaigns.length === 0) {
+          // Throw non-retryable error (no point retrying if no data)
+          throw new Error('No campaign data available - not retrying');
+        }
 
-          // Fetch campaigns data for the target date
-          const campaigns = await metaAPI.getCampaignInsights(
-            client.ad_account_id,
-            targetDate,
-            targetDate
-          );
-          
-          if (!campaigns || campaigns.length === 0) {
-            console.warn(`⚠️ No campaign data for ${client.name}`);
-            failureCount++;
-            results.push({
-              clientId: client.id,
-              clientName: client.name,
-              success: false,
-              error: 'No campaign data available',
-              attempts: attempt
-            });
-            break; // No point retrying if no data
-          }
+        console.log(`📊 Found ${campaigns.length} campaigns for ${client.name}`);
 
-          console.log(`📊 Found ${campaigns.length} campaigns for ${client.name}`);
-
-          // Aggregate daily totals INCLUDING conversion metrics
-          const dailyTotals = campaigns.reduce((totals: any, campaign: any) => ({
+        // Aggregate daily totals INCLUDING conversion metrics
+        const dailyTotals = campaigns.reduce((totals: any, campaign: any) => ({
             totalClicks: totals.totalClicks + (parseInt(campaign.clicks) || 0),
             totalImpressions: totals.totalImpressions + (parseInt(campaign.impressions) || 0),
             totalSpend: totals.totalSpend + (parseFloat(campaign.spend) || 0),
@@ -183,56 +172,59 @@ export async function POST(request: NextRequest) {
             console.warn(`⚠️ Validation warnings for ${client.name}:`, validation.warnings);
           }
           
-          console.log(`✅ Data validation passed for ${client.name}`);
+        console.log(`✅ Data validation passed for ${client.name}`);
 
-          // Store in database
-          const { error: insertError } = await supabaseAdmin
-            .from('daily_kpi_data')
-            .upsert(dailyRecord, {
-              onConflict: 'client_id,date'
-            });
-
-          if (insertError) {
-            throw new Error(`Failed to store daily KPI: ${insertError.message}`);
-          }
-
-          console.log(`✅ Successfully processed ${client.name}: ${dailyTotals.campaignsCount} campaigns, $${dailyTotals.totalSpend.toFixed(2)} spend`);
-          successCount++;
-          clientSuccess = true;
-          
-          results.push({
-            clientId: client.id,
-            clientName: client.name,
-            success: true,
-            campaigns: dailyTotals.campaignsCount,
-            spend: dailyTotals.totalSpend,
-            clicks: dailyTotals.totalClicks,
-            impressions: dailyTotals.totalImpressions,
-            conversions: dailyTotals.totalConversions,
-            attempts: attempt
+        // Store in database
+        const { error: insertError } = await supabaseAdmin!
+          .from('daily_kpi_data')
+          .upsert(dailyRecord, {
+            onConflict: 'client_id,date'
           });
-          
-          break; // Success, no need to retry
-          
-        } catch (error) {
-          console.error(`❌ Attempt ${attempt} failed for ${client.name}:`, error);
-          
-          if (attempt === maxRetries) {
-            failureCount++;
-            results.push({
-              clientId: client.id,
-              clientName: client.name,
-              success: false,
-              error: error instanceof Error ? error.message : 'Unknown error',
-              attempts: maxRetries
-            });
-          } else {
-            // Wait before retry with exponential backoff
-            const delayMs = Math.pow(2, attempt) * 1000;
-            console.log(`⏳ Waiting ${delayMs}ms before retry for ${client.name}`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-          }
+
+        if (insertError) {
+          throw new Error(`Failed to store daily KPI: ${insertError.message}`);
         }
+
+        console.log(`✅ Successfully processed ${client.name}: ${dailyTotals.campaignsCount} campaigns, $${dailyTotals.totalSpend.toFixed(2)} spend`);
+        
+        // Return data for result tracking
+        return {
+          clientId: client.id,
+          clientName: client.name,
+          campaigns: dailyTotals.campaignsCount,
+          spend: dailyTotals.totalSpend,
+          clicks: dailyTotals.totalClicks,
+          impressions: dailyTotals.totalImpressions,
+          conversions: dailyTotals.totalConversions
+        };
+      }, {
+        maxRetries: 3,
+        baseDelay: 2000, // 2s, 4s, 8s delays
+        enableJitter: true, // Add randomness to prevent thundering herd
+        onRetry: (attempt, error, delay) => {
+          console.log(`⏳ ${client.name} retry #${attempt} in ${Math.round(delay/1000)}s: ${error.message}`);
+        }
+      });
+
+      // Handle retry result
+      if (result.success && result.data) {
+        successCount++;
+        results.push({
+          ...result.data,
+          success: true,
+          attempts: result.attempts,
+          totalTime: `${Math.round(result.totalTime/1000)}s`
+        });
+      } else {
+        failureCount++;
+        results.push({
+          clientId: client.id,
+          clientName: client.name,
+          success: false,
+          error: result.error?.message || 'Unknown error',
+          attempts: result.attempts,
+          totalTime: `${Math.round((result.totalTime || 0)/1000)}s`
+        });
       }
       
       // Add delay between clients to avoid rate limiting
