@@ -10,6 +10,7 @@
 
 import { supabase } from './supabase';
 import logger from './logger';
+import { saveMonthlySummary as atomicSaveMonthlySummary } from './atomic-operations';
 
 export interface ProductionDataConfig {
   dailyRetentionDays: number;    // How long to keep daily data (90 days)
@@ -231,55 +232,38 @@ export class ProductionDataManager {
       reach: totals.reach
     };
     
-    // Store monthly summary
-    const { data: summary, error: summaryError } = await supabase
-      .from('campaign_summaries')
-      .upsert({
-        client_id: clientId,
-        summary_type: 'monthly',
-        summary_date: startDate,
-        platform,
-        
-        // Aggregated metrics
+    // 💾 STEP 5: ATOMIC SAVE with validation and retry
+    logger.info('💾 Saving monthly summary atomically...');
+    
+    const atomicResult = await atomicSaveMonthlySummary({
+      clientId,
+      summaryDate: startDate,
+      metrics: {
         total_spend: totals.total_spend,
         total_impressions: totals.total_impressions,
         total_clicks: totals.total_clicks,
         total_conversions: totals.total_conversions,
-        average_ctr,
-        average_cpc,
-        
-        // Conversion metrics
         click_to_call: totals.click_to_call,
         email_contacts: totals.email_contacts,
         booking_step_1: totals.booking_step_1,
         booking_step_2: totals.booking_step_2,
-        booking_step_3: totals.booking_step_3,
         reservations: totals.reservations,
         reservation_value: totals.reservation_value,
-        roas,
-        cost_per_reservation,
-        reach: totals.reach,
-        
-        // Metadata
-        active_campaigns: totals.campaigns_count,
-        total_campaigns: totals.campaigns_count,
-        data_source: `${platform}_api`,
-        
-        // Store detailed conversion metrics as JSON
-        conversion_metrics: conversionMetrics,
-        
-        // Store daily breakdown for detailed analysis
-        campaign_data: dailyRecords,
-        
-        last_updated: new Date().toISOString()
-      }, {
-        onConflict: 'client_id,summary_type,summary_date,platform'
-      });
+        campaigns_count: totals.campaigns_count,
+        average_ctr,
+        average_cpc
+      },
+      campaignData: dailyRecords,
+      metaTables: conversionMetrics,
+      supabaseClient: supabase
+    });
     
-    if (summaryError) {
-      logger.error('❌ Failed to store monthly summary:', summaryError);
-      throw summaryError;
+    if (!atomicResult.success) {
+      logger.error('❌ Atomic save failed:', atomicResult.error);
+      throw atomicResult.error || new Error('Failed to save monthly summary atomically');
     }
+    
+    const summary = atomicResult.data;
     
     logger.info('✅ Monthly summary generated successfully:', {
       spend: totals.total_spend,
