@@ -1,0 +1,278 @@
+{
+  "client": {
+    "id": "ab0b4c7e-2bf0-46bc-b455-b18ef6942baa",
+    "name": "Belmonte Hotel"
+  },
+  "timestamp": "2025-10-02T15:42:22.790Z",
+  "periods": [
+    {
+      "period": "February 2025",
+      "dateRange": "2025-02-28 to 2025-02-27",
+      "match": false,
+      "differences": [
+        "Total Impressions: 24.43% difference",
+        "Total Clicks: 24.77% difference",
+        "Average CTR: 9.69% difference",
+        "Average CPC: 71.47% difference",
+        "Campaign count difference: DB 33 vs Live 17"
+      ],
+      "metrics": {
+        "totalSpend": {
+          "db": 24767.04,
+          "live": 25222.780000000006,
+          "diff": "1.84%"
+        },
+        "totalImpressions": {
+          "db": 2470208,
+          "live": 1866729,
+          "diff": "24.43%"
+        },
+        "totalClicks": {
+          "db": 35613,
+          "live": 44433,
+          "diff": "24.77%"
+        },
+        "averageCtr": {
+          "db": 2.17,
+          "live": 2.3802598020387533,
+          "diff": "9.69%"
+        },
+        "averageCpc": {
+          "db": 1.99,
+          "live": 0.5676587221209463,
+          "diff": "71.47%"
+        }
+      },
+      "campaigns": {
+        "db": 33,
+        "live": 17
+      },
+      "conversions": {}
+    },
+    {
+      "period": "August 2025",
+      "dateRange": "2025-08-01 to 2025-08-30",
+      "match": false,
+      "differences": [
+        "Total Spend: 4.14% difference",
+        "Total Impressions: 34.82% difference",
+        "Total Clicks: 10.57% difference",
+        "Average CTR: 70.02% difference",
+        "Average CPC: 5.39% difference"
+      ],
+      "metrics": {
+        "totalSpend": {
+          "db": 24219.17,
+          "live": 25222.820000000003,
+          "diff": "4.14%"
+        },
+        "totalImpressions": {
+          "db": 2864173,
+          "live": 1866743,
+          "diff": "34.82%"
+        },
+        "totalClicks": {
+          "db": 40186,
+          "live": 44433,
+          "diff": "10.57%"
+        },
+        "averageCtr": {
+          "db": 1.4,
+          "live": 2.3802419508202255,
+          "diff": "70.02%"
+        },
+        "averageCpc": {
+          "db": 0.6,
+          "live": 0.5676596223527559,
+          "diff": "5.39%"
+        }
+      },
+      "campaigns": {
+        "db": 17,
+        "live": 17
+      },
+      "conversions": {}
+    },
+    {
+      "period": "September 2025",
+      "dateRange": "2025-09-01 to 2025-09-29",
+      "match": false,
+      "differences": [
+        "Total Spend: 2.36% difference"
+      ],
+      "metrics": {
+        "totalSpend": {
+          "db": 24640.77,
+          "live": 25222.820000000003,
+          "diff": "2.36%"
+        },
+        "totalImpressions": {
+          "db": 1833816,
+          "live": 1866743,
+          "diff": "1.80%"
+        },
+        "totalClicks": {
+          "db": 44328,
+          "live": 44433,
+          "diff": "0.24%"
+        },
+        "averageCtr": {
+          "db": 2.42,
+          "live": 2.3802419508202255,
+          "diff": "1.64%"
+        },
+        "averageCpc": {
+          "db": 0.56,
+          "live": 0.5676596223527559,
+          "diff": "1.37%"
+        }
+      },
+      "campaigns": {
+        "db": 17,
+        "live": 17
+      },
+      "conversions": {}
+    },
+    {
+      "period": "Week of Jul 27, 2025",
+      "dateRange": "2025-07-27 to 2025-08-02",
+      "match": false,
+      "differences": [
+        "Total Spend: 262.77% difference",
+        "Total Impressions: 42.04% difference",
+        "Total Clicks: 254.22% difference",
+        "Average CTR: 14.99% difference",
+        "Average CPC: 56.99% difference",
+        "Campaign count difference: DB 14 vs Live 17"
+      ],
+      "metrics": {
+        "totalSpend": {
+          "db": 6953,
+          "live": 25223.230000000003,
+          "diff": "262.77%"
+        },
+        "totalImpressions": {
+          "db": 1314248,
+          "live": 1866764,
+          "diff": "42.04%"
+        },
+        "totalClicks": {
+          "db": 12544,
+          "live": 44433,
+          "diff": "254.22%"
+        },
+        "averageCtr": {
+          "db": 2.07,
+          "live": 2.380215174494473,
+          "diff": "14.99%"
+        },
+        "averageCpc": {
+          "db": 1.32,
+          "live": 0.5676688497288053,
+          "diff": "56.99%"
+        }
+      },
+      "campaigns": {
+        "db": 14,
+        "live": 17
+      },
+      "conversions": {}
+    },
+    {
+      "period": "Week of Sep 8, 2025",
+      "dateRange": "2025-09-08 to 2025-09-14",
+      "match": false,
+      "differences": [
+        "Total Spend: 1017.41% difference",
+        "Total Impressions: 1018.30% difference",
+        "Total Clicks: 988.51% difference",
+        "Average CTR: 2.85% difference",
+        "Average CPC: 3.21% difference",
+        "Campaign count difference: DB 12 vs Live 17"
+      ],
+      "metrics": {
+        "totalSpend": {
+          "db": 2257.3,
+          "live": 25223.230000000003,
+          "diff": "1017.41%"
+        },
+        "totalImpressions": {
+          "db": 166929,
+          "live": 1866764,
+          "diff": "1018.30%"
+        },
+        "totalClicks": {
+          "db": 4082,
+          "live": 44433,
+          "diff": "988.51%"
+        },
+        "averageCtr": {
+          "db": 2.45,
+          "live": 2.380215174494473,
+          "diff": "2.85%"
+        },
+        "averageCpc": {
+          "db": 0.55,
+          "live": 0.5676688497288053,
+          "diff": "3.21%"
+        }
+      },
+      "campaigns": {
+        "db": 12,
+        "live": 17
+      },
+      "conversions": {}
+    },
+    {
+      "period": "Week of Jun 29, 2025",
+      "dateRange": "2025-06-29 to 2025-07-05",
+      "match": false,
+      "differences": [
+        "Total Spend: 226.66% difference",
+        "Total Impressions: 68.22% difference",
+        "Total Clicks: 311.19% difference",
+        "Average CTR: 58.68% difference",
+        "Average CPC: 60.58% difference"
+      ],
+      "metrics": {
+        "totalSpend": {
+          "db": 7721.63,
+          "live": 25223.690000000002,
+          "diff": "226.66%"
+        },
+        "totalImpressions": {
+          "db": 1109742,
+          "live": 1866771,
+          "diff": "68.22%"
+        },
+        "totalClicks": {
+          "db": 10806,
+          "live": 44433,
+          "diff": "311.19%"
+        },
+        "averageCtr": {
+          "db": 1.5,
+          "live": 2.3802062491864295,
+          "diff": "58.68%"
+        },
+        "averageCpc": {
+          "db": 1.44,
+          "live": 0.5676792023946167,
+          "diff": "60.58%"
+        }
+      },
+      "campaigns": {
+        "db": 18,
+        "live": 17
+      },
+      "conversions": {}
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "perfectMatch": 0,
+    "minorDifferences": 1,
+    "significantDifferences": 5,
+    "failed": 0
+  }
+}
