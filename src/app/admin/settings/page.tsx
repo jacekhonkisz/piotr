@@ -38,6 +38,7 @@ import {
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import CacheMonitoring from '../../../components/CacheMonitoring';
 
 
 
@@ -1760,6 +1761,11 @@ export default function AdminSettingsPage() {
               <p className="text-gray-500">Loading system metrics...</p>
             </div>
           )}
+        </div>
+
+        {/* Cache Monitoring Section */}
+        <div className="mt-8">
+          <CacheMonitoring />
         </div>
       </main>
     </div>

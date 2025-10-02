@@ -59,6 +59,11 @@
     {
       "path": "/api/automated/generate-weekly-reports",
       "schedule": "0 3 * * 1"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection",
+      "schedule": "0 2 1 * *",
+      "comment": "📅 Fetch rich campaign data from APIs on 1st of month at 2 AM"
     }
   ]
 } 

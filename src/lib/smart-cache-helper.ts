@@ -1225,6 +1225,19 @@ async function refreshWeeklyCacheInBackground(clientId: string, periodId: string
       throw new Error('Client not found for weekly background refresh');
     }
 
+    // CRITICAL FIX: Only refresh if cache is actually stale to prevent unnecessary API calls
+    const { data: currentCache } = await supabase
+      .from('current_week_cache')
+      .select('last_updated')
+      .eq('client_id', clientId)
+      .eq('period_id', periodId)
+      .single();
+      
+    if (currentCache && isCacheFresh(currentCache.last_updated)) {
+      logger.info('✅ Weekly cache became fresh during cooldown, skipping background refresh');
+      return;
+    }
+
     // Fetch fresh data (for background refresh, always use current week)
     const freshData = await fetchFreshCurrentWeekData(clientData);
     

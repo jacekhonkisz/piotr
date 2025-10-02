@@ -207,19 +207,45 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       }
     }
   } else {
-    // 📅 MONTHLY DATA: Prioritize daily_kpi_data for current month, fallback to campaign_summaries
-    console.log(`📅 Searching for monthly data - trying daily_kpi_data first for ${startDate} to ${endDate}`);
+    // 📅 MONTHLY DATA: Prioritize campaign_summaries (has campaign details), fallback to daily_kpi_data
+    console.log(`📅 Searching for monthly data - trying campaign_summaries first for ${startDate}`);
     
-    // Try daily_kpi_data first (more accurate for current month)
-    const { data: dailyRecords, error: dailyError } = await supabase
-      .from('daily_kpi_data')
+    // Try campaign_summaries first (has full campaign details)
+    const { data: monthlyResult, error: monthlyError } = await supabase
+      .from('campaign_summaries')
       .select('*')
       .eq('client_id', clientId)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: true });
+      .eq('summary_date', startDate)
+      .eq('summary_type', 'monthly')
+      .eq('platform', platform)
+      .single();
       
-    if (dailyRecords && dailyRecords.length > 0) {
+    console.log(`🔍 campaign_summaries query result:`, {
+      found: !!monthlyResult,
+      error: monthlyError?.message,
+      campaignsCount: monthlyResult?.campaign_data?.length || 0,
+      totalSpend: monthlyResult?.total_spend,
+      platform: monthlyResult?.platform,
+      query: { clientId, startDate, platform }
+    });
+      
+    if (monthlyResult) {
+      storedSummary = monthlyResult;
+      error = null;
+      console.log(`✅ Found monthly data in campaign_summaries with ${monthlyResult.campaign_data?.length || 0} campaigns`);
+    } else {
+      // Fallback to daily_kpi_data aggregation if campaign_summaries doesn't exist
+      console.log(`⚠️ No campaign_summaries found, trying daily_kpi_data aggregation`);
+      
+      const { data: dailyRecords, error: dailyError } = await supabase
+        .from('daily_kpi_data')
+        .select('*')
+        .eq('client_id', clientId)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true });
+        
+      if (dailyRecords && dailyRecords.length > 0) {
       console.log(`✅ Found ${dailyRecords.length} daily records, aggregating for monthly total`);
       
       // Aggregate daily records into monthly summary format
@@ -265,26 +291,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       error = null;
       
       console.log(`✅ Aggregated daily data: ${totalSpend.toFixed(2)} PLN, ${totalClicks} clicks from ${dailyRecords.length} days`);
-    } else {
-      // Fallback to campaign_summaries
-      console.log(`⚠️ No daily records found, falling back to campaign_summaries for ${startDate}`);
-      
-      const { data: monthlyResult, error: monthlyError } = await supabase
-        .from('campaign_summaries')
-        .select('*')
-        .eq('client_id', clientId)
-        .eq('summary_date', startDate)
-        .eq('summary_type', 'monthly')
-        .eq('platform', platform)
-        .single();
-        
-      storedSummary = monthlyResult;
-      error = monthlyError;
-      
-      if (storedSummary) {
-        console.log(`✅ Found monthly data in campaign_summaries for ${storedSummary.summary_date}`);
       } else {
-        console.log(`⚠️ No monthly data found in campaign_summaries for ${startDate}`);
+        // No data found in either source
+        console.log(`⚠️ No daily records or campaign_summaries found for ${startDate}`);
+        storedSummary = null;
+        error = { message: 'No data found' };
       }
     }
   }
@@ -295,6 +306,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   }
 
   console.log(`✅ Found stored ${summaryType} data in database`);
+  console.log(`🔍 DEBUG: campaign_data type:`, typeof storedSummary.campaign_data);
+  console.log(`🔍 DEBUG: campaign_data length:`, Array.isArray(storedSummary.campaign_data) ? storedSummary.campaign_data.length : 'not array');
+  console.log(`🔍 DEBUG: campaign_data sample:`, storedSummary.campaign_data ? JSON.stringify(storedSummary.campaign_data).substring(0, 200) : 'null');
   
   // Extract data from stored summary
   const campaigns = storedSummary.campaign_data || [];
