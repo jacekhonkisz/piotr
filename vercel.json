@@ -1,20 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/archive-periods",
-      "schedule": "0 1 1 * *"
-    },
-    {
-      "path": "/api/cron/archive-periods",
-      "schedule": "0 1 * * 1"
-    },
-    {
-      "path": "/api/cron/period-transition",
-      "schedule": "0 0 1 * *"
-    },
-    {
-      "path": "/api/cron/period-transition",
-      "schedule": "0 0 * * 1"
-    }
-  ]
+  "crons": []
 }
