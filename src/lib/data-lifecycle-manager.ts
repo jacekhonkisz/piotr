@@ -162,21 +162,21 @@ export class DataLifecycleManager {
   }
 
   /**
-   * Clean up data older than 13 months from campaign_summaries table
-   * Note: Keeps 13+ months to ensure year-over-year comparisons always have required data
-   * When in month 13, we need month 1 data for comparison (12 months back)
+   * Clean up data older than 14 months from campaign_summaries table
+   * Note: Keeps 14 months total (13 past + 1 current) to ensure year-over-year comparisons always have required data
+   * When in current month, we need data from 13 months back for comparison
    */
   async cleanupOldData(): Promise<void> {
     logger.info('🧹 Starting old data cleanup process...');
     
     try {
-      // Calculate cutoff date (13 months ago to preserve year-over-year comparison data)
-      // This ensures we always have at least 13 months of data for year-over-year comparisons
+      // Calculate cutoff date (14 months ago = 13 past months + 1 current month)
+      // This ensures we always have at least 14 months of data for year-over-year comparisons
       const cutoffDate = new Date();
-      cutoffDate.setMonth(cutoffDate.getMonth() - 13);
+      cutoffDate.setMonth(cutoffDate.getMonth() - 14);
       const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
       
-      logger.info(`🗑️ Removing data older than: ${cutoffDateStr} (13+ months retention for year-over-year comparisons)`);
+      logger.info(`🗑️ Removing data older than: ${cutoffDateStr} (14 months total: 13 past + 1 current for year-over-year comparisons)`);
       
       // Remove old monthly summaries
       const { data: deletedMonthly, error: monthlyError } = await supabase

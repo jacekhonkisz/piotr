@@ -20,6 +20,7 @@ const supabase = createClient(
 
 /**
  * Get current required periods (rolling window)
+ * Keeps 14 months (13 past + 1 current) and 54 weeks (53 past + 1 current)
  */
 function getCurrentRequiredPeriods() {
   const currentDate = new Date();
@@ -28,19 +29,19 @@ function getCurrentRequiredPeriods() {
     weeks: []
   };
   
-  // Generate exactly 13 months backwards (rolling)
-  for (let i = 0; i < 13; i++) {
+  // Generate exactly 14 months (13 past + 1 current) for year-over-year comparisons
+  for (let i = 0; i < 14; i++) {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
     const summaryDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
     periods.months.push(summaryDate);
   }
   
-  // Generate exactly 53 weeks backwards (rolling)
+  // Generate exactly 54 weeks (53 past + 1 current) for year-over-year comparisons
   const today = new Date(currentDate);
   const currentWeekStart = new Date(today);
   currentWeekStart.setDate(today.getDate() - today.getDay() + 1); // Get Monday of current week
   
-  for (let i = 0; i < 53; i++) {
+  for (let i = 0; i < 54; i++) {
     const weekStart = new Date(currentWeekStart);
     weekStart.setDate(currentWeekStart.getDate() - (i * 7));
     const summaryDate = weekStart.toISOString().split('T')[0];
@@ -201,7 +202,7 @@ async function getTotalRecordCounts() {
  */
 async function automatedDataCleanup() {
   console.log('🤖 AUTOMATED DATA CLEANUP\n');
-  console.log('Maintaining exactly 13 months and 53 weeks for all clients');
+  console.log('Maintaining exactly 14 months (13 past + 1 current) and 54 weeks (53 past + 1 current) for all clients');
   console.log('Running automated cleanup and maintenance...\n');
   console.log('=' .repeat(60));
   

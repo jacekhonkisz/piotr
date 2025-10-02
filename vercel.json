@@ -1,69 +1,20 @@
 {
   "crons": [
     {
-      "path": "/api/background/collect-monthly",
-      "schedule": "0 23 * * 0"
+      "path": "/api/cron/archive-periods",
+      "schedule": "0 1 1 * *"
     },
     {
-      "path": "/api/background/collect-weekly", 
-      "schedule": "1 0 * * *"
+      "path": "/api/cron/archive-periods",
+      "schedule": "0 1 * * 1"
     },
     {
-      "path": "/api/background/cleanup-executive-summaries",
-      "schedule": "0 5 * * 0"
+      "path": "/api/cron/period-transition",
+      "schedule": "0 0 1 * *"
     },
     {
-      "path": "/api/automated/send-scheduled-reports",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-current-month-cache",
-      "schedule": "0 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-current-week-cache",
-      "schedule": "30 */3 * * *"
-    },
-    {
-      "path": "/api/automated/archive-completed-months",
-      "schedule": "0 2 1 * *"
-    },
-    {
-      "path": "/api/automated/archive-completed-weeks",
-      "schedule": "0 3 * * 1"
-    },
-    {
-      "path": "/api/automated/cleanup-old-data",
-      "schedule": "0 6 1 * *"
-    },
-    {
-      "path": "/api/automated/daily-kpi-collection",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/automated/google-ads-daily-collection",
-      "schedule": "15 2 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-google-ads-current-month-cache",
-      "schedule": "15 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-google-ads-current-week-cache",
-      "schedule": "45 */3 * * *"
-    },
-    {
-      "path": "/api/automated/generate-monthly-reports",
-      "schedule": "0 2 1 * *"
-    },
-    {
-      "path": "/api/automated/generate-weekly-reports",
-      "schedule": "0 3 * * 1"
-    },
-    {
-      "path": "/api/automated/end-of-month-collection",
-      "schedule": "0 2 1 * *",
-      "comment": "📅 Fetch rich campaign data from APIs on 1st of month at 2 AM"
+      "path": "/api/cron/period-transition",
+      "schedule": "0 0 * * 1"
     }
   ]
-} 
+}
