@@ -8,7 +8,7 @@ import {
   DollarSign,
   RefreshCw
 } from 'lucide-react';
-import MetaAPIService from '../lib/meta-api';
+import MetaAPIService from '../lib/meta-api-optimized';
 
 interface CampaignInsights {
   campaign_id: string;

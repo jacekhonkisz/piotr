@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
-import { MetaAPIService } from '../../lib/meta-api';
+import { MetaAPIService } from '../../lib/meta-api-optimized';
 import type { Database } from '../../lib/database.types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import CredentialsModal from '../../components/CredentialsModal';

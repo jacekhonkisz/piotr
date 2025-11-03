@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from './meta-api';
+import { MetaAPIService } from './meta-api-optimized';
 import logger from './logger';
 import { getCurrentWeekInfo, parseWeekPeriodId, isCurrentWeekPeriod } from './week-utils';
 

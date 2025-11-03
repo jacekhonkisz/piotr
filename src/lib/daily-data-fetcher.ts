@@ -1,4 +1,4 @@
-import { MetaAPIService } from './meta-api';
+import { MetaAPIService } from './meta-api-optimized';
 import { supabase } from './supabase';
 import logger from './logger';
 

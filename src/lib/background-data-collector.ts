@@ -1,6 +1,6 @@
 // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from './meta-api';
+import { MetaAPIService } from './meta-api-optimized';
 import { GoogleAdsAPIService } from './google-ads-api';
 import { StandardizedDataFetcher } from './standardized-data-fetcher';
 import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';

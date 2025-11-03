@@ -630,7 +630,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           }
           
           // Import MetaAPIService dynamically
-          const { MetaAPIService } = await import('../../../lib/meta-api');
+          const { MetaAPIService } = await import('../../../lib/meta-api-optimized');
           const metaService = new MetaAPIService(clientData.meta_access_token);
           
           const adAccountId = clientData.ad_account_id.startsWith('act_') 

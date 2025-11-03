@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, AlertCircle, CheckCircle, Clock, RefreshCw, Key, Shield, Upload, Trash2, Image, Calendar, Mail, Facebook, Target } from 'lucide-react';
-import { MetaAPIService } from '../lib/meta-api';
+import { MetaAPIService } from '../lib/meta-api-optimized';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../lib/database.types';
 import { getMonthBoundaries, getWeekBoundaries } from '../lib/date-range-utils';
