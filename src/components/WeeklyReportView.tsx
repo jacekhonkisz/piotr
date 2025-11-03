@@ -874,10 +874,10 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
               {/* Conversion Funnel - Second Section */}
               <ConversionFunnel
-                step1={yoyData ? yoyData.current.booking_step_1 : campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0)}
-                step2={yoyData ? yoyData.current.booking_step_2 : campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0)}
-                step3={yoyData ? yoyData.current.booking_step_3 : campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0)}
-                reservations={yoyData ? yoyData.current.reservations : campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)}
+                step1={campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0)}
+                step2={campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0)}
+                step3={campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0)}
+                reservations={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)}
                 reservationValue={campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0)}
                 roas={(() => {
                   const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);

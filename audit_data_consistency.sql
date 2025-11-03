@@ -153,3 +153,7 @@ WHERE cs.summary_type = 'monthly'
 ORDER BY cs.summary_date DESC, c.name
 LIMIT 20;
 
+
+
+
+

@@ -76,13 +76,29 @@ interface GoogleAdsTablesProps {
   onDataLoaded?: (tablesData: any) => void;
 }
 
+interface SearchTermPerformance {
+  search_term: string;
+  match_type: string;
+  campaign_name: string;
+  ad_group_name: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  conversion_value: number;
+  roas: number;
+}
+
 const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded }) => {
   const [placementData, setPlacementData] = useState<GoogleAdsPlacementPerformance[]>([]);
   const [deviceData, setDeviceData] = useState<GoogleAdsDevicePerformance[]>([]);
   const [keywordData, setKeywordData] = useState<GoogleAdsKeywordPerformance[]>([]);
+  const [searchTermData, setSearchTermData] = useState<SearchTermPerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'placement' | 'device' | 'keywords'>('placement');
+  const [activeTab, setActiveTab] = useState<'placement' | 'device' | 'keywords' | 'searchterms'>('placement');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
   const [retryKey, setRetryKey] = useState(0);
   const [isRequestInProgress, setIsRequestInProgress] = useState(false);
@@ -104,6 +120,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     const networkPerformance = googleAdsTables.networkPerformance || [];
     const devicePerformance = googleAdsTables.devicePerformance || [];
     const keywordPerformance = googleAdsTables.keywordPerformance || [];
+    const searchTermPerformance = googleAdsTables.searchTermPerformance || [];
 
     console.log('🔍 Extracted table data:', {
       networkCount: networkPerformance.length,
@@ -167,13 +184,15 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       placementPerformance: placementPerformance,
       demographicPerformance: [], // Empty - not available through Google Ads API
       devicePerformance: transformedDevicePerformance,
-      keywordPerformance: transformedKeywordPerformance
+      keywordPerformance: transformedKeywordPerformance,
+      searchTermPerformance: searchTermPerformance
     };
 
     console.log('🔍 Transform result:', {
       placementCount: result.placementPerformance.length,
       deviceCount: result.devicePerformance.length,
       keywordCount: result.keywordPerformance.length,
+      searchTermCount: result.searchTermPerformance.length,
       sampleDevice: result.devicePerformance[0],
       sampleKeyword: result.keywordPerformance[0]
     });
@@ -270,6 +289,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       setPlacementData(transformedData.placementPerformance);
       setDeviceData(transformedData.devicePerformance);
       setKeywordData(transformedData.keywordPerformance);
+      setSearchTermData(transformedData.searchTermPerformance || []);
       
       console.log('✅ State updated with:', {
         placementCount: transformedData.placementPerformance.length,
@@ -432,6 +452,17 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         >
           <Search className="h-4 w-4" />
           <span>Słowa kluczowe</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('searchterms')}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+            activeTab === 'searchterms'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Search className="h-4 w-4" />
+          <span>Wyszukiwane hasła (R.70)</span>
         </button>
       </div>
 
@@ -599,6 +630,78 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 Brak danych słów kluczowych dla wybranego okresu.
               </div>
             )}
+          </div>
+        )}
+
+        {/* Search Terms Tab (R.70) */}
+        {activeTab === 'searchterms' && (
+          <div>
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900 mb-1">Wyszukiwane hasła (Search Terms)</h3>
+                <p className="text-sm text-slate-600">
+                  Rzeczywiste zapytania wyszukiwania, które uruchomiły Twoje reklamy
+                </p>
+                <div className="mt-2 px-2 py-0.5 bg-green-50 text-green-700 text-xs font-semibold rounded inline-block">
+                  RMF R.70 Required Report
+                </div>
+              </div>
+            </div>
+
+            {searchTermData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyszukiwane hasło</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Typ dopasowania</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Kampania</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Grupa reklam</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {searchTermData.map((term, index) => (
+                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{term.search_term}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded">
+                            {term.match_type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">{term.campaign_name}</td>
+                        <td className="px-6 py-4 text-sm text-slate-600">{term.ad_group_name}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.spend)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.impressions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.clicks)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(term.ctr)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.cpc)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.conversions)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{term.roas.toFixed(2)}x</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                Brak danych wyszukiwanych haseł dla wybranego okresu.
+              </div>
+            )}
+
+            {/* RMF Compliance Note */}
+            <div className="px-6 py-4 bg-green-50 border-t border-green-100">
+              <p className="text-xs text-slate-700">
+                <strong>RMF R.70 Required Fields:</strong> ✅ search_term, ✅ search_term_match_type, 
+                ✅ clicks, ✅ cost_micros (spend), ✅ impressions
+              </p>
+            </div>
           </div>
         )}
       </motion.div>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import EmailService from '../../../../lib/email';
+import FlexibleEmailService from '../../../../lib/flexible-email';
 
 export async function POST() {
   try {
@@ -65,7 +65,7 @@ export async function POST() {
     const errors: string[] = [];
 
     // Prepare bulk email data with rate limiting
-    const emailService = EmailService.getInstance();
+    const emailService = FlexibleEmailService.getInstance();
     const bulkEmailData: any[] = [];
 
     // First, prepare all email data

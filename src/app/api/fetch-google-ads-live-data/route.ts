@@ -308,7 +308,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       networkPerformance: [],
       devicePerformance: [],
       qualityMetrics: [],
-      keywordPerformance: []
+      keywordPerformance: [],
+      searchTermPerformance: []
     };
     console.log('📊 Using empty tables structure - real data will come from API');
 
@@ -853,7 +854,8 @@ export async function POST(request: NextRequest) {
           hasNetwork: !!smartCacheResult.data.googleAdsTables.networkPerformance,
           hasQuality: !!smartCacheResult.data.googleAdsTables.qualityMetrics,
           hasDevice: !!smartCacheResult.data.googleAdsTables.devicePerformance,
-          hasKeyword: !!smartCacheResult.data.googleAdsTables.keywordPerformance
+          hasKeyword: !!smartCacheResult.data.googleAdsTables.keywordPerformance,
+          hasSearchTerm: !!smartCacheResult.data.googleAdsTables.searchTermPerformance
         });
         googleAdsTables = smartCacheResult.data.googleAdsTables;
         logger.info('✅ Fetched Google Ads tables data from smart cache');
@@ -877,7 +879,8 @@ export async function POST(request: NextRequest) {
         networkPerformance: [],
         qualityMetrics: [],
         devicePerformance: [],
-        keywordPerformance: []
+        keywordPerformance: [],
+        searchTermPerformance: []
       };
     }
 

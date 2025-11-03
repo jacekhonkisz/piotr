@@ -478,3 +478,7 @@ FROM daily_kpi_data;
 -- 4. Monitor archival process for October 1st (next month)
 -- ============================================================================
 
+
+
+
+

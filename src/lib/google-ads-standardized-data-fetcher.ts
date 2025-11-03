@@ -179,27 +179,41 @@ export class GoogleAdsStandardizedDataFetcher {
         
         const dbResult = await this.fetchFromDatabaseSummaries(clientId, dateRange);
         if (dbResult.success) {
-          const responseTime = Date.now() - startTime;
+          // 🔧 FIX: Check if conversion metrics are complete
+          // If reservations and reservation_value are both 0, data might be incomplete
+          const hasConversionData = dbResult.data!.conversionMetrics && 
+            (dbResult.data!.conversionMetrics.reservations > 0 || 
+             dbResult.data!.conversionMetrics.reservation_value > 0 ||
+             dbResult.data!.conversionMetrics.email_contacts > 0 ||
+             dbResult.data!.conversionMetrics.click_to_call > 0);
           
-          console.log(`✅ SUCCESS: Google Ads database summaries returned data in ${responseTime}ms`);
-          
-          return {
-            success: true,
-            data: dbResult.data!,
-            debug: {
-              source: 'google-ads-database-summaries',
-              cachePolicy: 'database-historical',
-              responseTime,
-              reason,
-              dataSourcePriority: dataSources,
-              periodType: 'historical'
-            },
-            validation: {
-              actualSource: 'google_ads_database_summaries',
-              expectedSource: 'google_ads_database_summaries',
-              isConsistent: true
-            }
-          };
+          if (hasConversionData) {
+            const responseTime = Date.now() - startTime;
+            
+            console.log(`✅ SUCCESS: Google Ads database summaries returned COMPLETE data in ${responseTime}ms`);
+            
+            return {
+              success: true,
+              data: dbResult.data!,
+              debug: {
+                source: 'google-ads-database-summaries',
+                cachePolicy: 'database-historical',
+                responseTime,
+                reason,
+                dataSourcePriority: dataSources,
+                periodType: 'historical'
+              },
+              validation: {
+                actualSource: 'google_ads_database_summaries',
+                expectedSource: 'google_ads_database_summaries',
+                isConsistent: true
+              }
+            };
+          } else {
+            console.log('⚠️ Google Ads database summaries have incomplete conversion metrics, trying live API...');
+            console.log(`   Reservations: ${dbResult.data!.conversionMetrics?.reservations || 0}`);
+            console.log(`   Reservation Value: ${dbResult.data!.conversionMetrics?.reservation_value || 0}`);
+          }
         }
       }
 

@@ -34,9 +34,10 @@ function getRandomPastMonths(count = 3) {
   const availableMonths = [];
   for (let i = 1; i <= 13; i++) {
     const date = new Date(currentYear, currentMonth - i, 1);
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
     availableMonths.push({
       start: date.toISOString().split('T')[0],
-      end: new Date(date.getFullYear(), date.getMonth() + 1, 0).toISOString().split('T')[0],
+      end: lastDay.toISOString().split('T')[0],
       label: date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
     });
   }
@@ -87,9 +88,7 @@ async function fetchFromDatabase(clientId, startDate, endDate, platform = 'meta'
       .eq('client_id', clientId)
       .eq('summary_type', 'weekly')
       .eq('platform', platform)
-      .gte('period_start', startDate)
-      .lte('period_end', endDate)
-      .order('period_start', { ascending: false })
+      .eq('summary_date', startDate)
       .limit(1);
     
     storedSummary = data?.[0];
@@ -101,7 +100,7 @@ async function fetchFromDatabase(clientId, startDate, endDate, platform = 'meta'
       .eq('client_id', clientId)
       .eq('summary_type', 'monthly')
       .eq('platform', platform)
-      .eq('period_start', startDate)
+      .eq('summary_date', startDate)
       .limit(1);
     
     storedSummary = data?.[0];
@@ -113,7 +112,7 @@ async function fetchFromDatabase(clientId, startDate, endDate, platform = 'meta'
     return null;
   }
   
-  console.log(`✅ Found database data: ${storedSummary.campaigns?.length || 0} campaigns`);
+  console.log(`✅ Found database data: ${storedSummary.campaign_data?.length || 0} campaigns`);
   return storedSummary;
 }
 
@@ -235,7 +234,7 @@ function compareData(dbData, liveData, period) {
   console.log('\n📋 CAMPAIGNS:');
   console.log('─'.repeat(80));
   
-  const dbCampaigns = dbData.campaigns?.length || 0;
+  const dbCampaigns = dbData.campaign_data?.length || 0;
   const liveCampaigns = liveData.campaigns?.length || 0;
   
   results.campaigns = { db: dbCampaigns, live: liveCampaigns };

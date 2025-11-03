@@ -1,347 +1,512 @@
-# Vercel Deployment Guide - Meta Ads Reporting SaaS
+# Vercel Deployment Guide - Google RMF Audit
 
-## 🚀 Quick Deployment (10 minutes)
+**Date:** January 27, 2025  
+**Purpose:** Deploy app to Vercel for Google RMF audit demonstration  
+**Status:** Ready for deployment
 
-### Prerequisites
-- Vercel account
-- GitHub repository access
-- Supabase project setup
-- Meta Developer App configured
-- Resend account for emails
-- OpenAI API key (for AI summaries)
+---
 
-## 📋 Step-by-Step Deployment
+## 📋 Pre-Deployment Checklist
 
-### 1. **Connect Repository to Vercel**
+Before deploying, make sure you have:
+
+- [x] Fixed build errors (Google Ads API issue) ✅
+- [x] All RMF features implemented ✅
+- [ ] Supabase project ready
+- [ ] Google Ads API credentials
+- [ ] Meta API credentials (if using)
+- [ ] OpenAI API key (for AI summaries)
+- [ ] Vercel account
+
+---
+
+## 🚀 Quick Deployment (Fastest Method)
+
+### Step 1: Install Vercel CLI
+
+```bash
+npm install -g vercel
+```
+
+### Step 2: Login to Vercel
+
+```bash
+vercel login
+```
+
+### Step 3: Deploy
+
+```bash
+# From your project directory
+vercel
+```
+
+Follow the prompts:
+- **Set up and deploy?** Yes
+- **Which scope?** Select your account
+- **Link to existing project?** No (first time) or Yes (updating)
+- **Project name?** piotr-hotel-ads-dashboard (or your choice)
+- **Directory?** ./ (current directory)
+- **Override settings?** No
+
+---
+
+## 🔐 Required Environment Variables
+
+You need to add these environment variables in Vercel Dashboard after first deployment.
+
+### **Supabase (Required)**
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+### **Google Ads API (Required for RMF)**
+
+**System Settings** (stored in database `system_settings` table):
+- `google_ads_client_id`
+- `google_ads_client_secret`
+- `google_ads_developer_token`
+- `google_ads_manager_customer_id`
+
+**Per Client** (stored in `clients` table):
+- `google_ads_customer_id`
+- `google_ads_refresh_token`
+
+> Note: Google Ads credentials are stored in database, not environment variables
+
+### **OpenAI (Optional - for AI summaries)**
+
+```bash
+OPENAI_API_KEY=sk-your-key-here
+```
+
+### **Email (Optional - for report sending)**
+
+```bash
+# Gmail API
+GMAIL_CLIENT_ID=your-gmail-client-id
+GMAIL_CLIENT_SECRET=your-gmail-client-secret
+GMAIL_REFRESH_TOKEN=your-gmail-refresh-token
+GMAIL_USER_EMAIL=your-email@gmail.com
+```
+
+---
+
+## 📝 Step-by-Step Deployment Guide
+
+### Method 1: Vercel CLI (Recommended)
+
+#### 1. Prepare Your Code
+
+```bash
+# Make sure all changes are committed
+git add .
+git commit -m "Prepare for Vercel deployment"
+```
+
+#### 2. Deploy to Vercel
+
+```bash
+# Development preview (test first)
+vercel
+
+# Production deployment
+vercel --prod
+```
+
+#### 3. Add Environment Variables
+
+Go to Vercel Dashboard → Your Project → Settings → Environment Variables
+
+Add the required variables listed above.
+
+#### 4. Redeploy with Environment Variables
+
+```bash
+vercel --prod
+```
+
+---
+
+### Method 2: GitHub Integration (Alternative)
+
+#### 1. Push to GitHub
+
+```bash
+git add .
+git commit -m "Ready for deployment"
+git push origin main
+```
+
+#### 2. Connect to Vercel
+
+1. Go to [vercel.com](https://vercel.com)
+2. Click "Add New Project"
+3. Import your GitHub repository
+4. Configure project:
+   - Framework: Next.js
+   - Root Directory: ./
+   - Build Command: `npm run build`
+   - Output Directory: `.next`
+
+#### 3. Add Environment Variables
+
+In Vercel project settings, add all required environment variables.
+
+#### 4. Deploy
+
+Click "Deploy" - Vercel will automatically deploy from your `main` branch.
+
+---
+
+## 🗄️ Database Setup
+
+### Supabase Configuration
+
+1. **Create Supabase Project** (if not exists)
+   - Go to [supabase.com](https://supabase.com)
+   - Create new project
+   - Note down:
+     - Project URL
+     - Anon key
+     - Service role key
+
+2. **Run Database Migrations**
+
+Your database should have these tables:
+- `clients`
+- `campaigns`
+- `campaign_summaries`
+- `daily_kpi`
+- `system_settings`
+- `reports`
+- `sent_reports`
+- `executive_summaries`
+
+3. **Add Google Ads System Settings**
+
+In Supabase SQL Editor:
+
+```sql
+-- Insert system settings for Google Ads
+INSERT INTO system_settings (key, value, description)
+VALUES 
+  ('google_ads_client_id', 'your-client-id', 'Google Ads OAuth Client ID'),
+  ('google_ads_client_secret', 'your-client-secret', 'Google Ads OAuth Client Secret'),
+  ('google_ads_developer_token', 'your-dev-token', 'Google Ads Developer Token'),
+  ('google_ads_manager_customer_id', 'your-manager-id', 'Google Ads Manager Customer ID')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+```
+
+4. **Add Demo Client**
+
+```sql
+-- Insert a demo client for Google to test
+INSERT INTO clients (
+  name,
+  email,
+  company,
+  google_ads_enabled,
+  google_ads_customer_id,
+  google_ads_refresh_token
+)
+VALUES (
+  'Demo Hotel',
+  'demo@example.com',
+  'Demo Hotel Group',
+  true,
+  'your-google-ads-customer-id',
+  'your-google-ads-refresh-token'
+);
+```
+
+---
+
+## 🧪 Testing After Deployment
+
+### 1. Basic Health Check
+
+```bash
+# Check if site is up
+curl https://your-app.vercel.app/
+
+# Expected: Should return HTML
+```
+
+### 2. Test API Endpoints
+
+```bash
+# Test system health
+curl https://your-app.vercel.app/api/monitoring/system-health
+
+# Expected: {"status":"ok",...}
+```
+
+### 3. Test RMF Features
+
+Visit your deployed app:
+1. Go to `https://your-app.vercel.app`
+2. Login as admin
+3. Go to Dashboard
+4. Switch to Google Ads tab
+5. Verify:
+   - ✅ Account Overview displays (R.10)
+   - ✅ Go to Reports page
+   - ✅ Click campaign → See ad groups (R.30)
+   - ✅ Click ad group → See ads (R.40)
+   - ✅ Check "Wyszukiwane hasła" tab (R.70)
+
+---
+
+## 🎯 For Google RMF Audit
+
+### Provide Google With:
+
+1. **Live URL:**
+   ```
+   https://your-app.vercel.app
+   ```
+
+2. **Demo Credentials:**
+   - Email: demo@example.com
+   - Password: [Your secure password]
+
+3. **Access Instructions:**
+   ```
+   1. Go to https://your-app.vercel.app
+   2. Login with provided credentials
+   3. Click "Dashboard" in navigation
+   4. Switch to "Google Ads" tab at top
+   5. View Account Overview (R.10)
+   6. Click "Reports" in navigation
+   7. Select time period (e.g., "Current Month")
+   8. View campaign table
+   9. Click any campaign → See ad groups (R.30)
+   10. Click any ad group → See ads (R.40)
+   11. Switch to "Wyszukiwane hasła (R.70)" tab
+   ```
+
+4. **Screenshots** (Take these from live site)
+   - Account Overview
+   - Campaign table
+   - Expanded ad groups
+   - Expanded ads
+   - Search Terms tab
+   - Network and Device tabs
+
+---
+
+## 🔧 Common Issues & Solutions
+
+### Issue 1: Build Fails
+
+**Error:** Module not found
+
+**Solution:**
+```bash
+# Clean install dependencies
+rm -rf node_modules package-lock.json .next
+npm install
+npm run build
+
+# If successful locally, try deployment again
+vercel --prod
+```
+
+### Issue 2: Environment Variables Not Working
+
+**Solution:**
+1. Verify variables in Vercel Dashboard
+2. Make sure no typos in variable names
+3. Redeploy after adding variables:
+   ```bash
+   vercel --prod
+   ```
+
+### Issue 3: Database Connection Fails
+
+**Solution:**
+1. Check Supabase URL and keys are correct
+2. Verify Supabase project is not paused
+3. Check RLS (Row Level Security) policies allow access
+
+### Issue 4: Google Ads Data Not Loading
+
+**Solution:**
+1. Verify Google Ads credentials in `system_settings` table
+2. Check client has valid `google_ads_refresh_token`
+3. Check browser console for API errors
+4. Test API endpoints directly:
+   ```bash
+   curl -X POST https://your-app.vercel.app/api/google-ads-account-performance \
+     -H "Content-Type: application/json" \
+     -d '{"clientId":"your-client-id","dateStart":"2025-01-01","dateEnd":"2025-01-31"}'
+   ```
+
+---
+
+## 📊 Vercel Configuration
+
+Your `vercel.json` includes cron jobs. After deployment, verify they're scheduled:
+
+**Vercel Dashboard → Your Project → Cron Jobs**
+
+You should see:
+- 3-hour cache refreshes
+- Daily data collection
+- Monthly/weekly report generation
+
+---
+
+## 🎨 Custom Domain (Optional)
+
+### Add Custom Domain
+
+1. Vercel Dashboard → Your Project → Settings → Domains
+2. Add your domain (e.g., `ads-dashboard.example.com`)
+3. Follow DNS configuration instructions
+4. Wait for DNS propagation (up to 24 hours)
+
+---
+
+## 📈 Monitoring After Deployment
+
+### Vercel Analytics
+
+- Vercel Dashboard → Your Project → Analytics
+- Monitor:
+  - Page views
+  - Response times
+  - Error rates
+
+### Supabase Logs
+
+- Supabase Dashboard → Logs
+- Monitor:
+  - API calls
+  - Database queries
+  - Error logs
+
+---
+
+## 🔒 Security Checklist
+
+Before sharing with Google:
+
+- [ ] Environment variables are set (not hardcoded)
+- [ ] Database RLS policies are enabled
+- [ ] Demo account has limited permissions
+- [ ] No sensitive data in Git history
+- [ ] HTTPS is enabled (automatic with Vercel)
+- [ ] API rate limiting is configured
+
+---
+
+## 📞 Deployment Checklist
+
+```bash
+# 1. Ensure code is ready
+npm run build
+# Should complete without errors
+
+# 2. Commit all changes
+git add .
+git commit -m "Ready for production"
+
+# 3. Deploy to Vercel
+vercel --prod
+
+# 4. Add environment variables in Vercel Dashboard
+# - NEXT_PUBLIC_SUPABASE_URL
+# - NEXT_PUBLIC_SUPABASE_ANON_KEY
+# - SUPABASE_SERVICE_ROLE_KEY
+# - OPENAI_API_KEY (optional)
+
+# 5. Redeploy with env vars
+vercel --prod
+
+# 6. Test live site
+# - Visit https://your-app.vercel.app
+# - Test all RMF features
+# - Verify no console errors
+
+# 7. Take screenshots
+
+# 8. Share with Google
+```
+
+---
+
+## 🎯 Quick Commands Reference
 
 ```bash
 # Install Vercel CLI
 npm install -g vercel
 
-# Login to Vercel
+# Login
 vercel login
 
-# Deploy from project root
+# Deploy preview
 vercel
-```
 
-Or use the Vercel Dashboard:
-1. Go to [vercel.com](https://vercel.com)
-2. Click "New Project"
-3. Import your GitHub repository
-4. Configure build settings (automatically detected)
-
-### 2. **Environment Variables Setup**
-
-Configure these environment variables in Vercel Dashboard or via CLI:
-
-#### **Required Environment Variables**
-
-```bash
-# Application Environment
-NODE_ENV=production
-NEXT_PUBLIC_ENVIRONMENT=production
-
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-production-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-production-service-key
-
-# Email Service (Resend)
-RESEND_API_KEY=your-production-resend-key
-
-# Application URL (will be your Vercel domain)
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
-
-# Error Tracking (Sentry) - Optional
-SENTRY_DSN=your-sentry-dsn
-NEXT_PUBLIC_SENTRY_DSN=your-public-sentry-dsn
-
-# Logging
-LOG_LEVEL=info
-
-# OpenAI API for AI Executive Summaries
-OPENAI_API_KEY=your-openai-api-key
-
-# Meta API (for health checks)
-META_ACCESS_TOKEN=your-meta-access-token
-```
-
-#### **Setting Environment Variables via CLI**
-
-```bash
-# Set environment variables
-vercel env add NODE_ENV
-vercel env add NEXT_PUBLIC_SUPABASE_URL
-vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
-vercel env add SUPABASE_SERVICE_ROLE_KEY
-vercel env add RESEND_API_KEY
-vercel env add NEXT_PUBLIC_APP_URL
-vercel env add OPENAI_API_KEY
-# ... continue for all variables
-```
-
-#### **Setting Environment Variables via Dashboard**
-
-1. Go to your project in Vercel Dashboard
-2. Navigate to Settings → Environment Variables
-3. Add each variable with appropriate environment (Production, Preview, Development)
-
-### 3. **Vercel Configuration**
-
-Your `vercel.json` is already configured with cron jobs:
-
-```json
-{
-  "crons": [
-    {
-      "path": "/api/background/collect-monthly",
-      "schedule": "0 23 * * 0"
-    },
-    {
-      "path": "/api/background/collect-weekly", 
-      "schedule": "1 0 * * *"
-    },
-    {
-      "path": "/api/background/cleanup-old-data",
-      "schedule": "0 2 * * 6"
-    },
-    {
-      "path": "/api/background/cleanup-executive-summaries",
-      "schedule": "0 3 * * 6"
-    },
-    {
-      "path": "/api/automated/send-scheduled-reports",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-current-month-cache",
-      "schedule": "0 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-current-week-cache",
-      "schedule": "15 */3 * * *"
-    },
-    {
-      "path": "/api/automated/archive-completed-months",
-      "schedule": "0 1 1 * *"
-    },
-    {
-      "path": "/api/automated/archive-completed-weeks",
-      "schedule": "0 2 * * 1"
-    },
-    {
-      "path": "/api/automated/cleanup-old-data",
-      "schedule": "0 4 1 * *"
-    },
-    {
-      "path": "/api/automated/daily-kpi-collection",
-      "schedule": "0 1 * * *"
-    }
-  ]
-}
-```
-
-### 4. **Deploy the Application**
-
-```bash
 # Deploy to production
 vercel --prod
 
-# Or deploy specific environment
-vercel deploy --prod
-```
-
-### 5. **Post-Deployment Setup**
-
-#### **Database Migration (if needed)**
-```bash
-# Run database migrations on Supabase
-# This should be done in your Supabase dashboard
-```
-
-#### **Test API Endpoints**
-```bash
-# Test health endpoint
-curl https://your-app.vercel.app/api/health
-
-# Test authentication
-curl -X POST https://your-app.vercel.app/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"test123"}'
-```
-
-#### **Verify Cron Jobs**
-Cron jobs are automatically enabled on Vercel Pro plans. Check:
-1. Go to Vercel Dashboard → Functions → Crons
-2. Verify all cron jobs are listed and active
-3. Monitor cron job executions in the logs
-
-## 📅 Cron Jobs Schedule
-
-| Job | Schedule | Description |
-|-----|----------|-------------|
-| **Monthly Collection** | Sunday 23:00 | Collects last 12 months of data |
-| **Weekly Collection** | Daily 00:01 | Collects last 52 weeks of data |
-| **Background Cleanup** | Saturday 02:00 | Removes old data |
-| **Executive Summaries Cleanup** | Saturday 03:00 | Cleans up AI summaries |
-| **Send Scheduled Reports** | Daily 09:00 | Sends automated reports |
-| **Current Month Cache Refresh** | Every 3 hours | Refreshes current month data |
-| **Current Week Cache Refresh** | Every 3 hours (offset) | Refreshes current week data |
-| **Archive Completed Months** | 1st of month 01:00 | Archives completed months |
-| **Archive Completed Weeks** | Monday 02:00 | Archives completed weeks |
-| **Monthly Cleanup** | 1st of month 04:00 | Monthly data cleanup |
-| **Daily KPI Collection** | Daily 01:00 | Collects daily KPI data |
-
-## 🔒 Security Considerations
-
-### **Authentication & Authorization**
-- JWT tokens for API authentication
-- Role-based access control (admin/client)
-- Secure password hashing
-
-### **API Security**
-- Rate limiting on API endpoints
-- CORS configuration
-- Environment variable protection
-
-### **Data Protection**
-- Encrypted database connections
-- Secure Meta API token storage
-- Email encryption for reports
-
-## 🔍 Monitoring & Logging
-
-### **Vercel Monitoring**
-1. **Function Logs**: Monitor cron job executions
-2. **Analytics**: Track application performance
-3. **Error Tracking**: Set up Sentry integration
-
-### **Application Monitoring**
-```bash
-# Check cron job execution
-curl https://your-app.vercel.app/api/health
-
-# Monitor specific endpoints
-curl https://your-app.vercel.app/api/automated/send-scheduled-reports
-```
-
-### **Database Monitoring**
-- Monitor Supabase dashboard for query performance
-- Check database storage usage
-- Review connection limits
-
-## 🚨 Troubleshooting
-
-### **Common Issues**
-
-#### 1. **Environment Variables Missing**
-```bash
-# Check deployed environment variables
-vercel env ls
-
-# Add missing variables
-vercel env add VARIABLE_NAME
-```
-
-#### 2. **Cron Jobs Not Running**
-- Verify Vercel Pro plan (required for cron jobs)
-- Check function logs in Vercel dashboard
-- Ensure endpoints return 200 status codes
-
-#### 3. **Database Connection Issues**
-- Verify Supabase service role key
-- Check database connection limits
-- Review Supabase logs
-
-#### 4. **Build Failures**
-```bash
-# Check build logs
+# Check deployment logs
 vercel logs
 
-# Run build locally
-npm run build
-
-# Check TypeScript errors
-npm run type-check
-```
-
-### **Debug Commands**
-
-```bash
-# Check deployment status
+# List deployments
 vercel ls
 
-# View deployment logs
-vercel logs
-
-# Test specific functions
-vercel dev
+# Remove deployment
+vercel rm deployment-url
 ```
-
-## 📊 Performance Optimization
-
-### **Vercel Optimizations**
-- Enable Edge functions for geo-distributed performance
-- Use Vercel Analytics for monitoring
-- Configure proper caching headers
-
-### **Application Optimizations**
-- Database query optimization
-- Implement smart caching for Meta API calls
-- Use connection pooling for database
-
-## 🔄 Continuous Deployment
-
-### **Automatic Deployments**
-- Connect GitHub repository for automatic deployments
-- Set up preview deployments for pull requests
-- Configure production deployments from main branch
-
-### **Development Workflow**
-```bash
-# Development environment
-vercel dev
-
-# Preview deployment
-git push origin feature-branch
-
-# Production deployment
-git push origin main
-```
-
-## ✅ Post-Deployment Checklist
-
-- [ ] All environment variables configured
-- [ ] Database migrations applied
-- [ ] Cron jobs active and running
-- [ ] Health endpoints responding
-- [ ] Authentication working
-- [ ] Email service configured
-- [ ] Meta API integration working
-- [ ] OpenAI integration working
-- [ ] Monitoring and logging active
-- [ ] Error tracking configured
-- [ ] Performance optimizations applied
-
-## 🎯 Next Steps
-
-1. **Setup Monitoring Alerts**: Configure alerts for failed cron jobs
-2. **Performance Monitoring**: Set up application performance monitoring
-3. **Backup Strategy**: Implement database backup procedures
-4. **Documentation**: Update API documentation
-5. **User Training**: Prepare user guides and training materials
-
-## 📞 Support
-
-For deployment issues:
-1. Check Vercel documentation
-2. Review application logs
-3. Test endpoints manually
-4. Contact support if needed
 
 ---
 
-**Deployment Complete!** 🎉
+## 📧 Contact Info for Google
 
-Your Meta Ads Reporting SaaS is now live on Vercel with automated cron jobs running in the background. 
+Update these in your RMF response:
+
+- **Production URL:** https://your-app.vercel.app
+- **Demo Email:** demo@example.com
+- **Demo Password:** [Provided separately]
+- **Technical Contact:** your-email@example.com
+- **Support:** support@example.com
+
+---
+
+## ✅ Final Verification
+
+Before submitting to Google:
+
+1. ✅ Site loads without errors
+2. ✅ Login works with demo credentials
+3. ✅ Dashboard displays data
+4. ✅ Google Ads tab works
+5. ✅ Account Overview shows (R.10)
+6. ✅ Reports page loads
+7. ✅ Campaigns can be expanded (R.30)
+8. ✅ Ad groups can be expanded (R.40)
+9. ✅ Search Terms tab is visible (R.70)
+10. ✅ All metrics display correctly
+11. ✅ No console errors
+12. ✅ Screenshots taken
+13. ✅ Documentation updated
+
+---
+
+## 🚀 You're Ready!
+
+Your app is now deployed and ready for Google's RMF audit. 
+
+**Next steps:**
+1. Test thoroughly on live URL
+2. Take annotated screenshots
+3. Update `GOOGLE_RMF_AUDIT_RESPONSE.md` with live URL
+4. Submit to Google with confidence!
+
+Good luck with your RMF audit! 🎯

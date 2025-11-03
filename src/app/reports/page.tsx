@@ -22,6 +22,7 @@ import InteractivePDFButton from '../../components/InteractivePDFButton';
 import AdsDataToggle from '../../components/AdsDataToggle';
 import GoogleAdsTables from '../../components/GoogleAdsTables';
 import MetaAdsTables from '../../components/MetaAdsTables';
+import GoogleAdsExpandableCampaignTable from '../../components/GoogleAdsExpandableCampaignTable';
 import ClientSelector from '../../components/ClientSelector';
 
 import { useAuth } from '../../components/AuthProvider';
@@ -4097,18 +4098,45 @@ function ReportsPageContent() {
                     }}
                   />
                 ) : (
-                  <GoogleAdsTables
-                    key={`google-ads-${activeAdsProvider}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
-                    dateStart={selectedReport.date_range_start}
-                    dateEnd={selectedReport.date_range_end}
-                    clientId={client?.id || ''}
-                    onDataLoaded={(data) => {
-                      console.log('Google Ads tables data loaded:', data);
-                      // Clear loading state when Google Ads data is loaded
-                      setLoadingPeriod(null);
-                      setApiCallInProgress(false);
-                    }}
-                  />
+                  <>
+                    <GoogleAdsTables
+                      key={`google-ads-${activeAdsProvider}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                      dateStart={selectedReport.date_range_start}
+                      dateEnd={selectedReport.date_range_end}
+                      clientId={client?.id || ''}
+                      onDataLoaded={(data) => {
+                        console.log('Google Ads tables data loaded:', data);
+                        // Clear loading state when Google Ads data is loaded
+                        setLoadingPeriod(null);
+                        setApiCallInProgress(false);
+                      }}
+                    />
+                    
+                    {/* RMF R.20, R.30, R.40: Campaign Hierarchy with Ad Groups and Ads */}
+                    {selectedReport && selectedReport.campaigns && selectedReport.campaigns.length > 0 && (
+                      <div className="mt-8">
+                        <GoogleAdsExpandableCampaignTable
+                          campaigns={selectedReport.campaigns.map((campaign: any) => ({
+                            campaignId: campaign.campaign_id || '',
+                            campaignName: campaign.campaign_name || 'Unknown Campaign',
+                            status: campaign.status || 'ACTIVE',
+                            spend: campaign.spend || 0,
+                            impressions: campaign.impressions || 0,
+                            clicks: campaign.clicks || 0,
+                            ctr: campaign.ctr || 0,
+                            cpc: campaign.cpc || 0,
+                            conversions: campaign.conversions || campaign.reservations || 0,
+                            reservation_value: campaign.reservation_value || 0,
+                            roas: campaign.roas || 0
+                          }))}
+                          clientId={client?.id || ''}
+                          dateStart={selectedReport.date_range_start}
+                          dateEnd={selectedReport.date_range_end}
+                          currency="PLN"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}

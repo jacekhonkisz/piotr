@@ -342,3 +342,7 @@ WHERE jsonb_array_length(COALESCE(campaign_data, '[]'::jsonb)) > 0;
 
 **Please run Query 1 and tell me what `platform` value shows!**
 
+
+
+
+

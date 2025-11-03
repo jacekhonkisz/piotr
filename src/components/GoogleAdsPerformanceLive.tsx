@@ -7,6 +7,7 @@ import { RefreshCw, Clock, Database, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { DailyMetricsCache } from '../lib/daily-metrics-cache';
 import { DataSourceIndicator } from './DataSourceIndicator';
+import GoogleAdsAccountOverview from './GoogleAdsAccountOverview';
 
 interface GoogleAdsPerformanceLiveProps {
   clientId: string;
@@ -61,6 +62,10 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
   const [conversionsBars, setConversionsBars] = useState<number[]>([]);
   const [ctrBars, setCtrBars] = useState<number[]>([]);
   
+  // RMF R.10: Account-level performance state
+  const [accountPerformance, setAccountPerformance] = useState<any | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
+  
   // Daily metrics cache state
   const [dailyMetricsSource, setDailyMetricsSource] = useState<{
     source: string;
@@ -86,6 +91,34 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
       end: yesterday.toISOString().split('T')[0]
     };
   }, []);
+
+  // Fetch account-level performance (RMF R.10)
+  const fetchAccountPerformance = useCallback(async () => {
+    try {
+      setAccountLoading(true);
+      const response = await fetch('/api/google-ads-account-performance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          dateStart: dateRange.start,
+          dateEnd: dateRange.end
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          setAccountPerformance(result.data);
+          console.log('✅ Account performance fetched:', result.data);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error fetching account performance:', error);
+    } finally {
+      setAccountLoading(false);
+    }
+  }, [clientId, dateRange]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pl-PL', {
@@ -389,6 +422,11 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     }
   }, [loading, clicksBars.length, fetchDailyDataPoints]);
 
+  // Fetch account performance (RMF R.10)
+  useEffect(() => {
+    fetchAccountPerformance();
+  }, [fetchAccountPerformance]);
+
   // Same structure as Meta component
   return (
     <div>
@@ -467,6 +505,14 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
 
         return (
           <div>
+            {/* RMF R.10: Account-level performance overview */}
+            {accountPerformance && !accountLoading && (
+              <GoogleAdsAccountOverview
+                accountData={accountPerformance}
+                currency={currency}
+              />
+            )}
+            
             {/* Enhanced Daily Metrics Data Source Indicator (Week 3) */}
             {dailyMetricsSource && (
               <div className="mb-4">

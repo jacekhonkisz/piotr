@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import EmailService from './email';
+import FlexibleEmailService from './flexible-email';
+import { getPolishMonthName, prepareClientMonthlyReportData } from './email-helpers';
+import { GoogleAdsStandardizedDataFetcher } from './google-ads-standardized-data-fetcher';
+import { StandardizedDataFetcher } from './standardized-data-fetcher';
 import logger from './logger';
 
 interface Client {
@@ -13,6 +16,8 @@ interface Client {
   next_report_scheduled_at: string | null;
   api_status: string;
   admin_id: string;
+  google_ads_enabled?: boolean;
+  meta_access_token?: string;
 }
 
 interface ReportPeriod {
@@ -44,14 +49,14 @@ interface SystemSettings {
 
 export class EmailScheduler {
   private supabase;
-  private emailService: EmailService;
+  private emailService: FlexibleEmailService;
 
   constructor() {
     this.supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    this.emailService = EmailService.getInstance();
+    this.emailService = FlexibleEmailService.getInstance();
   }
 
   /**
@@ -68,10 +73,19 @@ export class EmailScheduler {
     };
 
     try {
+      // 🔒 PRODUCTION ONLY: Prevent automatic sending in development
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (!isProduction) {
+        logger.warn('⚠️ Email scheduler disabled: Not in production environment');
+        logger.warn('   Current NODE_ENV:', process.env.NODE_ENV);
+        logger.warn('   Automatic emails only send in production mode');
+        return result;
+      }
+
       // Check if scheduler is enabled
       const settings = await this.getSystemSettings();
       if (!settings.email_scheduler_enabled) {
-        logger.info('⚠️ Email scheduler is disabled');
+        logger.info('⚠️ Email scheduler is disabled in system settings');
         return result;
       }
 
@@ -280,81 +294,190 @@ export class EmailScheduler {
   }
 
   /**
-   * Send a scheduled report to a client
+   * Send a scheduled report to a client using NEW professional template
    */
   private async sendScheduledReport(client: Client, period: ReportPeriod): Promise<void> {
     logger.info(`📤 Sending scheduled report to ${client.name} for ${period.start} to ${period.end}`);
 
-    // First, ensure the report has been generated (trigger if needed)
-    await this.ensureReportGenerated(client, period);
+    // Use new professional template with dynamic data fetching
+    await this.sendProfessionalMonthlyReport(client, period);
+  }
 
-    // Get the generated report with real data and Polish summary
-    const generatedReport = await this.getGeneratedReport(client.id, period);
-    
-    if (!generatedReport) {
-      throw new Error('Generated report not found - may need to wait for report generation to complete');
-    }
+  /**
+   * NEW: Send professional monthly report with dynamic data fetching
+   * Fetches Google Ads + Meta Ads data and uses the new Polish template
+   */
+  private async sendProfessionalMonthlyReport(client: Client, period: ReportPeriod): Promise<void> {
+    logger.info(`📧 NEW TEMPLATE: Preparing professional report for ${client.name}`);
+    logger.info(`📅 Period: ${period.start} to ${period.end}`);
 
-    // Prepare real report data from generated report
-    const reportData = {
-      dateRange: `${period.start} to ${period.end}`,
-      totalSpend: generatedReport.total_spend,
-      totalImpressions: generatedReport.total_impressions,
-      totalClicks: generatedReport.total_clicks,
-      totalConversions: generatedReport.total_conversions,
-      ctr: generatedReport.ctr,
-      cpc: generatedReport.cpc,
-      cpm: generatedReport.cpm,
-      polishSummary: generatedReport.polish_summary,
-      polishSubject: generatedReport.polish_subject,
-      pdfUrl: generatedReport.pdf_url
-    };
+    try {
+      // Step 1: Fetch Google Ads data
+      logger.info('1️⃣ Fetching Google Ads data...');
+      let googleAdsData = null;
+      
+      if (client.google_ads_enabled) {
+        try {
+          const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
+            clientId: client.id,
+            dateRange: { start: period.start, end: period.end },
+            reason: 'scheduled-email-google-ads'
+          });
 
-    // Send to all contact emails
-    const contactEmails = client.contact_emails || [client.email];
-    
-    for (const email of contactEmails) {
+          if (googleResult.success && googleResult.data) {
+            const stats = googleResult.data.stats;
+            const conversions = googleResult.data.conversionMetrics;
+            
+            googleAdsData = {
+              spend: stats.totalSpend || 0,
+              impressions: stats.totalImpressions || 0,
+              clicks: stats.totalClicks || 0,
+              cpc: stats.totalClicks > 0 ? stats.totalSpend / stats.totalClicks : 0,
+              ctr: stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) * 100 : 0,
+              formSubmits: conversions?.lead_form_submissions || 0,
+              emailClicks: conversions?.email_clicks || 0,
+              phoneClicks: conversions?.phone_calls || 0,
+              bookingStep1: conversions?.booking_step_1 || 0,
+              bookingStep2: conversions?.booking_step_2 || 0,
+              bookingStep3: conversions?.booking_step_3 || 0,
+              reservations: conversions?.reservations || 0,
+              reservationValue: conversions?.reservation_value || 0
+            };
+
+            logger.info(`✅ Google Ads data fetched: ${googleAdsData.spend.toFixed(2)} zł, ${googleAdsData.reservations} reservations`);
+          }
+        } catch (error) {
+          logger.warn('⚠️ Could not fetch Google Ads data:', error);
+        }
+      } else {
+        logger.info('⏭️ Google Ads not enabled for this client');
+      }
+
+      // Step 2: Fetch Meta Ads data
+      logger.info('2️⃣ Fetching Meta Ads data...');
+      let metaAdsData = null;
+      
+      if (client.meta_access_token) {
+        try {
+          const metaResult = await StandardizedDataFetcher.fetchData({
+            clientId: client.id,
+            dateRange: { start: period.start, end: period.end },
+            platform: 'meta',
+            reason: 'scheduled-email-meta-ads'
+          });
+
+          if (metaResult.success && metaResult.data) {
+            const stats = metaResult.data.stats;
+            const conversions = metaResult.data.conversionMetrics;
+            
+            metaAdsData = {
+              spend: stats.totalSpend || 0,
+              impressions: stats.totalImpressions || 0,
+              linkClicks: stats.totalClicks || 0,
+              formSubmits: conversions?.lead_form_submissions || 0,
+              emailClicks: conversions?.email_clicks || 0,
+              phoneClicks: conversions?.phone_calls || 0,
+              reservations: conversions?.reservations || 0,
+              reservationValue: conversions?.reservation_value || 0
+            };
+
+            logger.info(`✅ Meta Ads data fetched: ${metaAdsData.spend.toFixed(2)} zł, ${metaAdsData.reservations} reservations`);
+          }
+        } catch (error) {
+          logger.warn('⚠️ Could not fetch Meta Ads data:', error);
+        }
+      } else {
+        logger.info('⏭️ Meta Ads not configured for this client');
+      }
+
+      // Step 3: Get Polish month name and year
+      const startDate = new Date(period.start);
+      const monthNumber = startDate.getMonth() + 1; // 1-12
+      const year = startDate.getFullYear();
+      const monthName = getPolishMonthName(monthNumber);
+      
+      logger.info(`📅 Report for: ${monthName} ${year}`);
+
+      // Step 4: Prepare report data with all calculations
+      logger.info('3️⃣ Calculating metrics...');
+      const reportData = prepareClientMonthlyReportData(
+        client.id,
+        client.name,
+        monthNumber,
+        year,
+        googleAdsData || undefined,
+        metaAdsData || undefined
+      );
+
+      logger.info('✅ Metrics calculated:', {
+        totalOnlineReservations: reportData.totalOnlineReservations,
+        totalOnlineValue: reportData.totalOnlineValue.toFixed(2),
+        microConversions: reportData.totalMicroConversions,
+        finalCostPercentage: reportData.finalCostPercentage.toFixed(2) + '%'
+      });
+
+      // Step 5: Generate PDF (optional)
+      logger.info('4️⃣ Generating PDF...');
+      let pdfBuffer: Buffer | undefined;
+      
       try {
-        // Download PDF if available
-        let pdfBuffer: Buffer | undefined;
-        if (generatedReport.pdf_url) {
+        // Try to get existing generated report PDF
+        const generatedReport = await this.getGeneratedReport(client.id, period);
+        if (generatedReport?.pdf_url) {
           try {
             const pdfResponse = await fetch(generatedReport.pdf_url);
             if (pdfResponse.ok) {
               pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+              logger.info(`✅ PDF fetched from storage: ${pdfBuffer.length} bytes`);
             }
           } catch (error) {
-            logger.warn('Could not download PDF for email attachment:', error);
+            logger.warn('⚠️ Could not fetch PDF:', error);
           }
         }
-
-        const emailResult = await this.emailService.sendReportEmail(
-          email,
-          client.name,
-          {
-            dateRange: reportData.dateRange,
-            totalSpend: reportData.totalSpend,
-            totalImpressions: reportData.totalImpressions,
-            totalClicks: reportData.totalClicks,
-            ctr: reportData.ctr,
-            cpc: reportData.cpc,
-            cpm: reportData.cpm
-          },
-          pdfBuffer
-        );
-
-        if (!emailResult.success) {
-          throw new Error(emailResult.error || 'Email sending failed');
-        }
-
-        // Log successful email
-        await this.logSchedulerSuccess(client, period);
-
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        logger.error(`Failed to send email to ${email}:`, errorMsg);
-        throw error;
+        logger.warn('⚠️ No PDF available for this report');
       }
+
+      // Step 6: Send to all contact emails
+      const contactEmails = client.contact_emails || [client.email];
+      logger.info(`5️⃣ Sending to ${contactEmails.length} email(s)...`);
+      
+      for (const email of contactEmails) {
+        try {
+          logger.info(`📤 Sending to: ${email}`);
+          
+          const emailResult = await this.emailService.sendClientMonthlyReport(
+            email,
+            client.id,
+            client.name,
+            monthName,
+            year,
+            reportData,
+            pdfBuffer
+          );
+
+          if (!emailResult.success) {
+            throw new Error(emailResult.error || 'Email sending failed');
+          }
+
+          logger.info(`✅ Email sent successfully to ${email} - Message ID: ${emailResult.messageId}`);
+
+          // Log successful email
+          await this.logSchedulerSuccess(client, period);
+
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          logger.error(`❌ Failed to send email to ${email}:`, errorMsg);
+          throw error;
+        }
+      }
+
+      logger.info(`🎉 Professional report sent successfully to ${client.name}`);
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`❌ Failed to send professional report:`, errorMsg);
+      throw error;
     }
   }
 
@@ -553,7 +676,9 @@ export class EmailScheduler {
         last_report_sent_at,
         next_report_scheduled_at,
         api_status,
-        admin_id
+        admin_id,
+        google_ads_enabled,
+        meta_access_token
       `)
       .eq('api_status', 'valid')
       .neq('reporting_frequency', 'on_demand');

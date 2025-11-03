@@ -79,3 +79,7 @@ WHERE summary_type = 'monthly'
   AND summary_date < DATE_TRUNC('month', CURRENT_DATE)
   AND platform = 'meta';
 
+
+
+
+

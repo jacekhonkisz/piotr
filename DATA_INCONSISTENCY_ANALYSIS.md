@@ -284,3 +284,7 @@ ORDER BY summary_date DESC;
 2. Enhance the end-of-month-collection endpoint to fetch complete data?
 3. Both?
 
+
+
+
+

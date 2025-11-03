@@ -235,27 +235,41 @@ export class StandardizedDataFetcher {
       
       const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
       if (cachedResult.success) {
-        const responseTime = Date.now() - startTime;
+        // 🔧 FIX: Check if conversion metrics are complete
+        // If reservations and reservation_value are both 0, data might be incomplete
+        const hasConversionData = cachedResult.data!.conversionMetrics && 
+          (cachedResult.data!.conversionMetrics.reservations > 0 || 
+           cachedResult.data!.conversionMetrics.reservation_value > 0 ||
+           cachedResult.data!.conversionMetrics.email_contacts > 0 ||
+           cachedResult.data!.conversionMetrics.click_to_call > 0);
         
-        console.log(`✅ SUCCESS: Legacy campaign_summaries returned data in ${responseTime}ms`);
-        
-        return {
-          success: true,
-          data: cachedResult.data!,
-          debug: {
-            source: 'campaign-summaries-database',
-            cachePolicy: isCurrentPeriod ? 'database-fallback-current' : 'database-first-historical',
-            responseTime,
-            reason,
-            dataSourcePriority: dataSources,
-            periodType: isCurrentPeriod ? 'current' : 'historical'
-          },
-          validation: {
-            actualSource: 'campaign_summaries',
-            expectedSource: 'campaign_summaries',
-            isConsistent: true
-          }
-        };
+        if (hasConversionData) {
+          const responseTime = Date.now() - startTime;
+          
+          console.log(`✅ SUCCESS: campaign_summaries returned COMPLETE data in ${responseTime}ms`);
+          
+          return {
+            success: true,
+            data: cachedResult.data!,
+            debug: {
+              source: 'campaign-summaries-database',
+              cachePolicy: isCurrentPeriod ? 'database-fallback-current' : 'database-first-historical',
+              responseTime,
+              reason,
+              dataSourcePriority: dataSources,
+              periodType: isCurrentPeriod ? 'current' : 'historical'
+            },
+            validation: {
+              actualSource: 'campaign_summaries',
+              expectedSource: 'campaign_summaries',
+              isConsistent: true
+            }
+          };
+        } else {
+          console.log('⚠️ campaign_summaries has incomplete conversion metrics, trying next source...');
+          console.log(`   Reservations: ${cachedResult.data!.conversionMetrics?.reservations || 0}`);
+          console.log(`   Reservation Value: ${cachedResult.data!.conversionMetrics?.reservation_value || 0}`);
+        }
       }
       
       // 🎯 PRIORITY 3: daily_kpi_data (most accurate for all periods)

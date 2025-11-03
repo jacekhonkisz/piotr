@@ -20,3 +20,7 @@ WHERE summary_date = '2025-09-01'
   AND summary_type = 'monthly'
 ORDER BY client_id;
 
+
+
+
+

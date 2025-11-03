@@ -6,3 +6,7 @@ FROM pg_constraint
 WHERE conrelid = 'campaign_summaries'::regclass
   AND contype = 'u';
 
+
+
+
+

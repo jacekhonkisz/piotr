@@ -115,6 +115,59 @@ interface GoogleAdsKeywordPerformance {
   roas: number;
 }
 
+// RMF R.10: Account-level performance (Customer totals)
+interface GoogleAdsAccountPerformance {
+  customerId: string;
+  customerName: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  conversion_value: number;
+  roas: number;
+  cost_per_conversion: number;
+}
+
+// RMF R.30: Ad Group-level performance
+interface GoogleAdsAdGroupPerformance {
+  adGroupId: string;
+  adGroupName: string;
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  conversion_value: number;
+  roas: number;
+}
+
+// RMF R.40: Ad-level performance
+interface GoogleAdsAdPerformance {
+  adId: string;
+  adGroupId: string;
+  adGroupName: string;
+  campaignId: string;
+  campaignName: string;
+  adType: string;
+  headline: string;
+  description: string;
+  status: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  conversion_value: number;
+  roas: number;
+}
+
 export class GoogleAdsAPIService {
   private credentials: GoogleAdsCredentials;
   private client: GoogleAdsApi;
@@ -1248,44 +1301,377 @@ export class GoogleAdsAPIService {
       throw error;
     });
     
+    logger.info('🚀 Starting Search Term Performance fetch...');
+    const searchTermPromise = this.getSearchTermPerformance(dateStart, dateEnd).then(result => {
+      logger.info('✅ Search Term Performance completed');
+      return result;
+    }).catch(error => {
+      logger.error('❌ Search Term Performance failed:', error);
+      throw error;
+    });
+    
     // Demographics removed as it's not supported by Google Ads API
     const results = await Promise.allSettled([
       networkPromise,
       qualityPromise,
       devicePromise,
-      keywordPromise
+      keywordPromise,
+      searchTermPromise
     ]);
     
     // Extract results, using empty arrays for failed requests
-    const [networkResult, qualityResult, deviceResult, keywordResult] = results;
+    const [networkResult, qualityResult, deviceResult, keywordResult, searchTermResult] = results;
     
     const networkPerformance = networkResult.status === 'fulfilled' ? networkResult.value : [];
     const qualityMetrics = qualityResult.status === 'fulfilled' ? qualityResult.value : [];
     const devicePerformance = deviceResult.status === 'fulfilled' ? deviceResult.value : [];
     const keywordPerformance = keywordResult.status === 'fulfilled' ? keywordResult.value : [];
+    const searchTermPerformance = searchTermResult.status === 'fulfilled' ? searchTermResult.value : [];
     
     // Log individual results
     logger.info(`📊 Google Ads tables results:`, {
       networkPerformance: networkPerformance.length,
       qualityMetrics: qualityMetrics.length,
       devicePerformance: devicePerformance.length,
-      keywordPerformance: keywordPerformance.length
+      keywordPerformance: keywordPerformance.length,
+      searchTermPerformance: searchTermPerformance.length
     });
     
     // Log any failures
     results.forEach((result, index) => {
-      const tableNames = ['Network', 'Quality', 'Device', 'Keyword'];
+      const tableNames = ['Network', 'Quality', 'Device', 'Keyword', 'SearchTerm'];
       if (result.status === 'rejected') {
         logger.warn(`⚠️ ${tableNames[index]} performance fetch failed:`, result.reason?.message || result.reason);
       }
     });
     
     return {
-      networkPerformance,     // Equivalent to Meta's placementPerformance (Sieci Reklamowe)
-      qualityMetrics,         // Equivalent to Meta's adRelevanceResults
-      devicePerformance,      // Device breakdown (Urządzenia)
-      keywordPerformance      // Keyword breakdown (Słowa Kluczowe)
+      networkPerformance,       // Equivalent to Meta's placementPerformance (Sieci Reklamowe)
+      qualityMetrics,           // Equivalent to Meta's adRelevanceResults
+      devicePerformance,        // Device breakdown (Urządzenia)
+      keywordPerformance,       // Keyword breakdown (Słowa Kluczowe)
+      searchTermPerformance     // RMF R.70: Search Term performance (Wyszukiwane hasła)
     };
+  }
+
+  /**
+   * RMF R.10: Get Account-level performance (Customer totals)
+   * Required metrics: clicks, cost_micros, impressions, conversions, conversions_value
+   */
+  async getAccountPerformance(dateStart: string, dateEnd: string): Promise<GoogleAdsAccountPerformance> {
+    try {
+      logger.info(`📊 Fetching Google Ads account performance from ${dateStart} to ${dateEnd}`);
+
+      const query = `
+        SELECT
+          customer.id,
+          customer.descriptive_name,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.ctr,
+          metrics.average_cpc,
+          metrics.conversions,
+          metrics.conversions_value,
+          metrics.cost_per_conversion
+        FROM customer
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+      `;
+
+      const response = await this.executeQuery(query);
+      
+      if (!response || response.length === 0) {
+        throw new Error('No account data returned');
+      }
+
+      // Aggregate all rows (typically there's one row per day)
+      let totalCostMicros = 0;
+      let totalImpressions = 0;
+      let totalClicks = 0;
+      let totalConversions = 0;
+      let totalConversionsValue = 0;
+      let customerId = '';
+      let customerName = '';
+
+      response.forEach((row: any) => {
+        if (!customerId) {
+          customerId = row.customer?.id || this.credentials.customerId;
+          customerName = row.customer?.descriptive_name || 'Account';
+        }
+        
+        totalCostMicros += parseInt(row.metrics?.cost_micros || '0');
+        totalImpressions += parseInt(row.metrics?.impressions || '0');
+        totalClicks += parseInt(row.metrics?.clicks || '0');
+        totalConversions += parseFloat(row.metrics?.conversions || '0');
+        totalConversionsValue += parseFloat(row.metrics?.conversions_value || '0');
+      });
+
+      const spend = totalCostMicros / 1000000;
+      const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+      const cpc = totalClicks > 0 ? spend / totalClicks : 0;
+      const roas = spend > 0 ? totalConversionsValue / spend : 0;
+      const costPerConversion = totalConversions > 0 ? spend / totalConversions : 0;
+
+      const accountPerformance: GoogleAdsAccountPerformance = {
+        customerId,
+        customerName,
+        spend,
+        impressions: totalImpressions,
+        clicks: totalClicks,
+        ctr,
+        cpc,
+        conversions: totalConversions,
+        conversion_value: totalConversionsValue,
+        roas,
+        cost_per_conversion: costPerConversion
+      };
+
+      logger.info(`✅ Account performance: ${spend.toFixed(2)} spend, ${totalClicks} clicks, ${totalConversions} conversions`);
+      
+      return accountPerformance;
+
+    } catch (error) {
+      logger.error('❌ Error fetching account performance:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RMF R.30: Get Ad Group-level performance
+   * Required metrics: clicks, cost_micros, impressions
+   */
+  async getAdGroupPerformance(campaignId: string, dateStart: string, dateEnd: string): Promise<GoogleAdsAdGroupPerformance[]> {
+    try {
+      logger.info(`📊 Fetching ad groups for campaign ${campaignId}`);
+
+      const query = `
+        SELECT
+          ad_group.id,
+          ad_group.name,
+          ad_group.status,
+          campaign.id,
+          campaign.name,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.ctr,
+          metrics.average_cpc,
+          metrics.conversions,
+          metrics.conversions_value
+        FROM ad_group
+        WHERE campaign.id = ${campaignId}
+        AND segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+        AND ad_group.status != 'REMOVED'
+        ORDER BY metrics.cost_micros DESC
+      `;
+
+      const response = await this.executeQuery(query);
+
+      // Group by ad group and aggregate metrics
+      const adGroupStats: { [adGroupId: string]: any } = {};
+      
+      response?.forEach((row: any) => {
+        const adGroupId = row.ad_group?.id || '';
+        const metrics = row.metrics || {};
+        
+        if (!adGroupStats[adGroupId]) {
+          adGroupStats[adGroupId] = {
+            adGroupId,
+            adGroupName: row.ad_group?.name || 'Unknown Ad Group',
+            campaignId: row.campaign?.id || campaignId,
+            campaignName: row.campaign?.name || 'Unknown Campaign',
+            status: row.ad_group?.status || 'UNKNOWN',
+            spend: 0,
+            impressions: 0,
+            clicks: 0,
+            conversions: 0,
+            conversion_value: 0
+          };
+        }
+        
+        adGroupStats[adGroupId].spend += (metrics.cost_micros || 0) / 1000000;
+        adGroupStats[adGroupId].impressions += metrics.impressions || 0;
+        adGroupStats[adGroupId].clicks += metrics.clicks || 0;
+        adGroupStats[adGroupId].conversions += metrics.conversions || 0;
+        adGroupStats[adGroupId].conversion_value += (metrics.conversions_value || 0) / 1000000;
+      });
+
+      const adGroups: GoogleAdsAdGroupPerformance[] = Object.values(adGroupStats).map((stats: any) => ({
+        ...stats,
+        ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
+        cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
+        roas: stats.spend > 0 ? stats.conversion_value / stats.spend : 0,
+      }));
+
+      logger.info(`✅ Fetched ${adGroups.length} ad groups for campaign ${campaignId}`);
+      return adGroups;
+
+    } catch (error) {
+      logger.error('❌ Error fetching ad group performance:', error);
+      return [];
+    }
+  }
+
+  /**
+   * RMF R.40: Get Ad-level performance
+   * Required metrics: clicks, cost_micros, impressions, conversions, conversions_value
+   */
+  async getAdPerformance(adGroupId: string, dateStart: string, dateEnd: string): Promise<GoogleAdsAdPerformance[]> {
+    try {
+      logger.info(`📊 Fetching ads for ad group ${adGroupId}`);
+
+      const query = `
+        SELECT
+          ad_group_ad.ad.id,
+          ad_group_ad.ad.type,
+          ad_group_ad.ad.responsive_search_ad.headlines,
+          ad_group_ad.ad.responsive_search_ad.descriptions,
+          ad_group_ad.status,
+          ad_group.id,
+          ad_group.name,
+          campaign.id,
+          campaign.name,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.ctr,
+          metrics.average_cpc,
+          metrics.conversions,
+          metrics.conversions_value
+        FROM ad_group_ad
+        WHERE ad_group.id = ${adGroupId}
+        AND segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+        AND ad_group_ad.status != 'REMOVED'
+        ORDER BY metrics.cost_micros DESC
+      `;
+
+      const response = await this.executeQuery(query);
+
+      // Group by ad and aggregate metrics
+      const adStats: { [adId: string]: any } = {};
+      
+      response?.forEach((row: any) => {
+        const adId = row.ad_group_ad?.ad?.id || '';
+        const ad = row.ad_group_ad?.ad || {};
+        const metrics = row.metrics || {};
+        
+        if (!adStats[adId]) {
+          // Extract headline and description
+          let headline = 'Ad';
+          let description = '';
+          
+          if (ad.responsive_search_ad?.headlines && ad.responsive_search_ad.headlines.length > 0) {
+            headline = ad.responsive_search_ad.headlines[0]?.text || 'Ad';
+          }
+          
+          if (ad.responsive_search_ad?.descriptions && ad.responsive_search_ad.descriptions.length > 0) {
+            description = ad.responsive_search_ad.descriptions[0]?.text || '';
+          }
+          
+          adStats[adId] = {
+            adId,
+            adGroupId: row.ad_group?.id || adGroupId,
+            adGroupName: row.ad_group?.name || 'Unknown Ad Group',
+            campaignId: row.campaign?.id || '',
+            campaignName: row.campaign?.name || 'Unknown Campaign',
+            adType: ad.type || 'UNKNOWN',
+            headline,
+            description,
+            status: row.ad_group_ad?.status || 'UNKNOWN',
+            spend: 0,
+            impressions: 0,
+            clicks: 0,
+            conversions: 0,
+            conversion_value: 0
+          };
+        }
+        
+        adStats[adId].spend += (metrics.cost_micros || 0) / 1000000;
+        adStats[adId].impressions += metrics.impressions || 0;
+        adStats[adId].clicks += metrics.clicks || 0;
+        adStats[adId].conversions += metrics.conversions || 0;
+        adStats[adId].conversion_value += (metrics.conversions_value || 0) / 1000000;
+      });
+
+      const ads: GoogleAdsAdPerformance[] = Object.values(adStats).map((stats: any) => ({
+        ...stats,
+        ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
+        cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
+        roas: stats.spend > 0 ? stats.conversion_value / stats.spend : 0,
+      }));
+
+      logger.info(`✅ Fetched ${ads.length} ads for ad group ${adGroupId}`);
+      return ads;
+
+    } catch (error) {
+      logger.error('❌ Error fetching ad performance:', error);
+      return [];
+    }
+  }
+
+  /**
+   * RMF R.70: Get Search Term performance (improved)
+   * Required fields: search_term, search_term_match_type, clicks, cost_micros, impressions
+   */
+  async getSearchTermPerformance(dateStart: string, dateEnd: string): Promise<any[]> {
+    try {
+      logger.info(`📊 Fetching search term performance from ${dateStart} to ${dateEnd}`);
+
+      const query = `
+        SELECT
+          segments.search_term,
+          segments.search_term_match_type,
+          campaign.name,
+          ad_group.name,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.ctr,
+          metrics.average_cpc,
+          metrics.conversions,
+          metrics.conversions_value
+        FROM search_term_view
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+        AND metrics.impressions > 0
+        ORDER BY metrics.cost_micros DESC
+        LIMIT 100
+      `;
+
+      const response = await this.executeQuery(query);
+
+      const searchTerms = response?.map((row: any) => {
+        const segments = row.segments || {};
+        const metrics = row.metrics || {};
+        const campaign = row.campaign || {};
+        const adGroup = row.ad_group || {};
+        
+        const spend = (metrics.cost_micros || 0) / 1000000;
+        const conversions = metrics.conversions || 0;
+        const conversionValue = (metrics.conversions_value || 0) / 1000000;
+        
+        return {
+          search_term: segments.search_term || 'Unknown',
+          match_type: this.getMatchTypeDisplayName(segments.search_term_match_type || 'UNKNOWN'),
+          campaign_name: campaign.name || 'Unknown Campaign',
+          ad_group_name: adGroup.name || 'Unknown Ad Group',
+          spend,
+          impressions: metrics.impressions || 0,
+          clicks: metrics.clicks || 0,
+          ctr: metrics.ctr || 0,
+          cpc: (metrics.average_cpc || 0) / 1000000,
+          conversions,
+          conversion_value: conversionValue,
+          roas: spend > 0 ? conversionValue / spend : 0,
+        };
+      }) || [];
+
+      logger.info(`✅ Fetched ${searchTerms.length} search terms`);
+      return searchTerms;
+
+    } catch (error) {
+      logger.error('❌ Error fetching search term performance:', error);
+      return [];
+    }
   }
 
   /**

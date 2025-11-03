@@ -1,0 +1,235 @@
+Subject: Re: Google Ads API RMF Audit - Demo Access and Screenshots Request
+
+Dear Google RMF Review Team,
+
+Thank you for your email regarding the RMF compliance audit for our reporting tool. We are pleased to provide you with complete access information and implementation details as requested.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. TOOL ACCESS INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Our Google Ads reporting tool is now live in production and ready for audit.
+
+📱 PRODUCTION URL:
+https://piotr-276pjhx8m-jachonkisz-gmailcoms-projects.vercel.app
+
+🔑 ACCESS CREDENTIALS:
+
+We will provide access credentials for our existing production account ("Belmonte") which contains real Google Ads campaign data. This will give you the most authentic view of our reporting tool's capabilities.
+
+Credentials will be provided via separate secure channel to ensure security.
+Please contact us at [YOUR EMAIL] to receive access information.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. TOOL CLASSIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Tool Type: Reporting-Only Tool
+Developer Token: WCX04VxQqB0fsV0YDX0w1g
+Tool Name: Piotr - Hotel Booking Campaign Performance Dashboard
+
+Our application provides READ-ONLY reporting functionality to end-advertisers. The tool does NOT provide any campaign creation or management capabilities. Users can ONLY view their performance data.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. RMF REPORTS IMPLEMENTED (R.10 to R.130)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Our tool provides the following RMF reports:
+
+✅ R.10 - Customer/Account Performance Report
+   Location: Dashboard → Switch to "Google Ads" tab → Account Overview section
+   Metrics: Total spend, impressions, clicks, conversions, CTR, CPC, cost per conversion
+
+✅ R.20 - Campaign Performance Report
+   Location: Reports page → Campaign table
+   Metrics: Campaign-level performance with expandable details
+
+✅ R.30 - Ad Group Performance Report
+   Location: Reports → Click any campaign row → Expands to show ad groups
+   Metrics: Ad group performance, status, optimization score
+
+✅ R.40 - Ad Performance Report
+   Location: Reports → Click any ad group row → Expands to show individual ads
+   Metrics: Ad copy, performance metrics, approval status
+
+✅ R.50 - Keyword Performance Report
+   Location: Reports → "Słowa kluczowe" tab
+   Metrics: Keyword-level performance and quality scores
+
+✅ R.70 - Search Terms Performance Report
+   Location: Reports → "Wyszukiwane hasła (R.70)" tab (prominently displayed)
+   Metrics: Search query, impressions, clicks, conversions, match type
+
+✅ R.80 - Network Performance Report
+   Location: Reports → "Sieć i urządzenia" tab → Network breakdown
+   Metrics: Performance by network (Search, Display, Search Partners, etc.)
+
+✅ R.90 - Device Performance Report
+   Location: Reports → "Sieć i urządzenia" tab → Device breakdown
+   Metrics: Performance by device (Mobile, Desktop, Tablet)
+
+✅ R.100 - Demographic Performance Report
+   Location: Dashboard → Demographics section
+   Metrics: Age range, gender, performance breakdown
+
+✅ R.110 - Site Category Performance
+   Status: Available when applicable
+   Metrics: Site placement and category performance
+
+✅ R.120 - Video Performance
+   Status: Available for Video campaigns
+   Metrics: Video views, view rate, engagement
+
+✅ R.130 - Shopping Performance
+   Status: Available for Shopping campaigns
+   Metrics: Shopping campaign performance metrics
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. REQUIRED METRICS - COMPLIANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All required metrics are displayed by default for each report level:
+
+✅ metrics.clicks
+✅ metrics.cost_micros
+✅ metrics.impressions
+✅ metrics.conversions
+✅ metrics.conversions_value
+✅ metrics.ctr
+✅ metrics.average_cpc
+✅ metrics.cost_per_conversion
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. ACCESS INSTRUCTIONS - STEP BY STEP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STEP 1: Login
+→ Visit: https://piotr-276pjhx8m-jachonkisz-gmailcoms-projects.vercel.app
+→ Click "Sign In"
+→ Login with credentials provided separately (Belmonte account)
+→ After login, you'll have access to real Google Ads campaign data
+
+STEP 2: View R.10 (Account Performance)
+→ After login, you'll see the Dashboard
+→ Click "Dashboard" in navigation (if not already there)
+→ Switch to "Google Ads" tab at the top
+→ See "Account Overview" section with total account metrics
+→ Annotate: "R.10 - Account Performance Report with totals"
+
+STEP 3: View R.20, R.30, R.40 (Campaign → Ad Group → Ad)
+→ Click "Reports" in the navigation menu
+→ Select a time period using date range selector (e.g., "Current Month")
+→ You'll see a table of Google Ads campaigns
+→ Click on any campaign row → Expands to show ad groups (R.30)
+→ Click on any ad group → Expands to show individual ads (R.40)
+→ Annotate: "R.20 - Campaign performance", "R.30 - Ad groups (expandable)", "R.40 - Ads (expandable)"
+
+STEP 4: View R.70 (Search Terms)
+→ On the Reports page
+→ Click the tab labeled "Wyszukiwane hasła (R.70)" or "Search Terms"
+→ View search term performance table
+→ Annotate: "R.70 - Search Terms Performance"
+
+STEP 5: View R.80 & R.90 (Network & Device)
+→ On the Reports page
+→ Click the tab labeled "Sieć i urządzenia" or "Network & Devices"
+→ View network performance breakdown
+→ View device performance breakdown
+→ Annotate: "R.80 - Network Performance", "R.90 - Device Performance"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. ANNOTATED SCREENSHOTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+We will provide annotated screenshots within 3 business days showing:
+
+📸 Screenshot Package:
+   1. R.10 - Account Overview with total metrics (Dashboard → Google Ads tab)
+   2. R.20 - Campaign Performance table (Reports page)
+   3. R.30 - Expanded ad groups (click campaign to view)
+   4. R.40 - Expanded individual ads (click ad group to view)
+   5. R.70 - Search Terms tab (prominently displayed)
+   6. R.80 & R.90 - Network & Device performance (tab view)
+
+Each screenshot will include:
+   ✅ Red arrows pointing to RMF features
+   ✅ Numbered callouts explaining functionality
+   ✅ RMF reference codes (R.10, R.30, R.40, R.70, etc.)
+   ✅ Location indicators in the UI
+   ✅ Metric labels matching API field names
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. TECHNICAL IMPLEMENTATION DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+API Library: Official google-ads-api (v21.0.1)
+Environment: Production on Vercel
+Database: Supabase PostgreSQL
+Framework: Next.js 14
+
+Key Files:
+- src/lib/google-ads-api.ts - Core API service with R.10, R.30, R.40 implementation
+- src/components/GoogleAdsExpandableCampaignTable.tsx - Campaign/Ad Group/Ad hierarchy
+- src/app/reports/page.tsx - Reports UI with all RMF features
+- src/app/api/google-ads-account-performance/route.ts - R.10 endpoint
+- src/app/api/google-ads-ad-groups/route.ts - R.30 endpoint
+- src/app/api/google-ads-ads/route.ts - R.40 endpoint
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. CONTACT INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Technical Contact: [Your Name]
+Email: [Your Email]
+Phone: [Your Phone Number]
+
+For Access Credentials:
+Email: [YOUR EMAIL]
+Subject: "Google RMF Audit - Belmonte Account Access"
+
+Response Time: Within 24 hours
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. ADDITIONAL INFORMATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Data Availability: Last 30+ days
+Custom Date Ranges: Fully supported
+Download Options: CSV and PDF available
+All Metrics Prominence: Displayed by default
+Data Freshness: Real-time (3-hour cache refresh)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. CERTIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+We certify that:
+
+✅ Our tool is a Reporting-Only tool for Google Ads API
+✅ We display all required metrics (clicks, cost_micros, impressions, conversions, conversions_value) for all levels
+✅ All required metrics are displayed by default when accessing each report level
+✅ Our tool provides reports at: Account, Campaign, Ad Group, Ad, Keyword levels
+✅ We support custom date ranges and display at least the last 30 days of data
+✅ Our implementation uses the official google-ads-api library
+✅ All reports are reasonably prominent and accessible to end users
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+We look forward to your RMF audit and are ready to provide any additional information you may need.
+
+Please contact us at [YOUR EMAIL] to:
+1. Receive Belmonte account credentials
+2. Request specific additional screenshots
+3. Schedule a live walkthrough session
+
+Best regards,
+
+[Your Name]
+[Your Title]
+[Company Name]
+
+Developer Token: WCX04VxQqB0fsV0YDX0w1g
+Production URL: https://piotr-276pjhx8m-jachonkisz-gmailcoms-projects.vercel.app
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
