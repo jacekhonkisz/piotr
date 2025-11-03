@@ -232,9 +232,20 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     window.URL.revokeObjectURL(url);
   };
 
-  const formatCurrency = (value: number) => `${value.toFixed(2)} zł`;
-  const formatPercentage = (value: number) => `${value.toFixed(2)}%`;
-  const formatNumber = (value: number) => value.toLocaleString();
+  const formatCurrency = (value: number) => {
+    const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+    return `${numValue.toFixed(2)} zł`;
+  };
+  
+  const formatPercentage = (value: number) => {
+    const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+    return `${numValue.toFixed(2)}%`;
+  };
+  
+  const formatNumber = (value: number) => {
+    const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+    return numValue.toLocaleString();
+  };
 
   // Enhanced ranking badge component with hover effects
   const RankingBadge = ({ rank, index }: { rank: number; index: number }) => {
