@@ -7,8 +7,13 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // 🔧 REMOVED: Authentication check - not required for this project
-    logger.info('🔐 Smart cache request (no auth required)');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    }
+    const user = authResult.user;
+    logger.info('🔐 Smart cache request authenticated for user:', user.email);
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
       platform,
       forceRefresh,
       dateRange,
-      authenticatedUser: 'auth-disabled'
+      authenticatedUser: user.email
     });
     
     // 🔧 FIX: Handle dateRange parameter for specific period requests
@@ -53,7 +58,7 @@ export async function POST(request: NextRequest) {
         source: result.source,
         responseTime,
         cacheAge: result.data.cacheAge,
-        authenticatedUser: 'auth-disabled'
+        authenticatedUser: user.email
       }
     });
     

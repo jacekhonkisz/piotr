@@ -15,8 +15,13 @@ export async function POST(request: NextRequest) {
   try {
     logger.info('Meta tables fetch started', { endpoint: '/api/fetch-meta-tables' });
     
-    // 🔓 AUTH DISABLED: Same as reports page - no authentication required
-    logger.info('🔓 Authentication disabled for fetch-meta-tables API (same as reports page)');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    }
+    const user = authResult.user;
+    logger.info('🔐 Meta tables fetch authenticated for user:', user.email);
     
     // Parse request body
     const requestBody = await request.json();
@@ -41,8 +46,6 @@ export async function POST(request: NextRequest) {
       console.error('❌ Client not found:', { clientId, error: clientError });
       return createErrorResponse('Client not found', 404);
     }
-    
-    // No access control check (auth disabled)
 
     const client = clientData;
     
