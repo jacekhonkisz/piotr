@@ -377,6 +377,102 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Get placement performance data
+   */
+  async getPlacementPerformance(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {
+    const endpoint = `act_${adAccountId}/insights`;
+    const params = `since=${dateStart}&until=${dateEnd}&breakdowns=publisher_platform,platform_position`;
+    const cacheKey = this.getCacheKey(endpoint, params);
+    
+    // Check cache first
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for placement performance');
+      return cached;
+    }
+
+    logger.info('Meta API: Fetching placement performance from API');
+    
+    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,cpm,cpc,ctr&breakdowns=publisher_platform,platform_position&limit=500&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.error('Meta API: Placement performance fetch failed:', response.error);
+      return [];
+    }
+
+    const data = response.data || [];
+    this.setCachedResponse(cacheKey, data);
+    
+    logger.info(`Meta API: Fetched ${data.length} placement records`);
+    return data;
+  }
+
+  /**
+   * Get demographic performance data
+   */
+  async getDemographicPerformance(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {
+    const endpoint = `act_${adAccountId}/insights`;
+    const params = `since=${dateStart}&until=${dateEnd}&breakdowns=age,gender`;
+    const cacheKey = this.getCacheKey(endpoint, params);
+    
+    // Check cache first
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for demographic performance');
+      return cached;
+    }
+
+    logger.info('Meta API: Fetching demographic performance from API');
+    
+    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,cpm,cpc,ctr&breakdowns=age,gender&limit=500&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.error('Meta API: Demographic performance fetch failed:', response.error);
+      return [];
+    }
+
+    const data = response.data || [];
+    this.setCachedResponse(cacheKey, data);
+    
+    logger.info(`Meta API: Fetched ${data.length} demographic records`);
+    return data;
+  }
+
+  /**
+   * Get ad relevance diagnostics data
+   */
+  async getAdRelevanceResults(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {
+    const endpoint = `act_${adAccountId}/insights`;
+    const params = `since=${dateStart}&until=${dateEnd}&level=ad`;
+    const cacheKey = this.getCacheKey(endpoint, params);
+    
+    // Check cache first
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for ad relevance results');
+      return cached;
+    }
+
+    logger.info('Meta API: Fetching ad relevance results from API');
+    
+    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,quality_score_organic,quality_score_ectr,quality_score_ecvr,engagement_rate_ranking,conversion_rate_ranking&level=ad&limit=500&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.error('Meta API: Ad relevance fetch failed:', response.error);
+      return [];
+    }
+
+    const data = response.data || [];
+    this.setCachedResponse(cacheKey, data);
+    
+    logger.info(`Meta API: Fetched ${data.length} ad relevance records`);
+    return data;
+  }
+
+  /**
    * Clear cache for this service instance
    */
   clearCache(): void {

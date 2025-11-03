@@ -71,11 +71,20 @@ export class StandardizedDataFetcher {
     if (typeof window !== 'undefined') {
       console.log('⚠️ StandardizedDataFetcher called on client-side, redirecting to API...');
       
-      // Make API call to server-side endpoint
+      // Get authentication token from Supabase
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Make API call to server-side endpoint with authentication
       const response = await fetch('/api/fetch-live-data', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`
         },
         body: JSON.stringify({
           clientId: params.clientId,

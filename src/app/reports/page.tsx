@@ -200,11 +200,19 @@ const fetchReportDataUnified = async (params: {
           sessionToken: session?.access_token
         });
       } else {
-        // Client-side: redirect to API endpoint
+        // Client-side: redirect to API endpoint with authentication
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const { data: { session: clientSession } } = await supabase.auth.getSession();
+        
         const response = await fetch('/api/fetch-google-ads-live-data', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${clientSession?.access_token || ''}`
           },
           body: JSON.stringify({
             clientId,
