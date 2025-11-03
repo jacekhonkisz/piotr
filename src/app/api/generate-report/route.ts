@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from '../../../lib/meta-api';
+import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { GoogleAdsAPIService } from '../../../lib/google-ads-api';
 import logger from '../../../lib/logger';
 import { performanceMonitor } from '../../../lib/performance';

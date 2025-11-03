@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from '../../../lib/meta-api';
+import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
 import logger from '../../../lib/logger';
 

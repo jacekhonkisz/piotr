@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
 import logger from '../../../lib/logger';
-import { MetaAPIService } from '../../../lib/meta-api';
+import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { GoogleAdsAPIService } from '../../../lib/google-ads-api';
 
 const supabase = createClient(

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
-import { MetaAPIService } from '../../../lib/meta-api';
+import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { ProductionDataManager } from '../../../lib/production-data-manager';
 import logger from '../../../lib/logger';
 

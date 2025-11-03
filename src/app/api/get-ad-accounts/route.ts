@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MetaAPIService } from '../../../lib/meta-api';
+import { MetaAPIService } from '../../../lib/meta-api-optimized';
 
 export async function POST(request: NextRequest) {
   try {
