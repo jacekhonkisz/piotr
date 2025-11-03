@@ -459,3 +459,6 @@ export function destroyGlobalCache() {
 
 // Export the optimized cache for monitoring
 export { optimizedApiCache };
+
+// Export with legacy name for backward compatibility
+export { MetaAPIServiceOptimized as MetaAPIService };

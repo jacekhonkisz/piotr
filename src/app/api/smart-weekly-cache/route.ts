@@ -7,8 +7,13 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // 🔧 REMOVED: Authentication check - not required for this project
-    logger.info('🔐 Weekly smart cache request (no auth required)');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    }
+    const user = authResult.user;
+    logger.info('🔐 Weekly smart cache request authenticated for user:', user.email);
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -21,7 +26,7 @@ export async function POST(request: NextRequest) {
     logger.info('Data processing', {
       clientId,
       forceRefresh,
-      authenticatedUser: 'auth-disabled'
+      authenticatedUser: user.email
     });
     
     // Use the shared weekly smart cache helper
@@ -42,7 +47,7 @@ export async function POST(request: NextRequest) {
       debug: {
         source: result.source,
         responseTime,
-        authenticatedUser: 'auth-disabled',
+        authenticatedUser: user.email,
         currency: 'PLN',
         period: 'current-week'
       }
