@@ -7,9 +7,13 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // 🔓 AUTH DISABLED: Skip authentication as requested
-    console.log('🔓 Authentication disabled for Google Ads smart cache API');
-    logger.info('🔓 Google Ads smart cache API authentication disabled - allowing direct access');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    }
+    const user = authResult.user;
+    logger.info('🔐 Google Ads smart cache authenticated for user:', user.email);
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -22,7 +26,7 @@ export async function POST(request: NextRequest) {
     logger.info('Google Ads data processing', {
       clientId,
       forceRefresh,
-      authDisabled: true
+      authenticatedUser: user.email
     });
     
     // Use the Google Ads smart cache helper
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest) {
         source: result.source,
         responseTime,
         cacheAge: result.data?.cacheAge,
-        authenticatedUser: 'auth-disabled',
+        authenticatedUser: user.email,
         platform: 'google-ads'
       }
     });

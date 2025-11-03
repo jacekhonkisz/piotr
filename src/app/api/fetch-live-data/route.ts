@@ -399,9 +399,14 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       endpoint: '/api/fetch-live-data',
       cacheFirstEnforced: ENFORCE_STRICT_CACHE_FIRST
     });
-    // 🔓 AUTH DISABLED: Skip authentication for easier testing
-    console.log('🔓 Authentication disabled for fetch-live-data API');
-    const user = { role: 'admin' }; // Mock user for compatibility
+    
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    }
+    const user = authResult.user;
+    logger.info('🔐 Fetch-live-data authenticated for user:', user.email);
     
     // Parse request body
     const requestBody = await request.json();
@@ -585,7 +590,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
               debug: {
                 source: 'database-historical',
                 responseTime,
-                authenticatedUser: 'auth-disabled',
+                authenticatedUser: user.email,
                 currency: 'PLN',
                 cachePolicy: 'strict-database-first'
               }
@@ -603,7 +608,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                 debug: {
                   source: 'database-not-found',
                   responseTime: Date.now() - startTime,
-                  authenticatedUser: 'auth-disabled',
+                  authenticatedUser: user.email,
                   currency: 'PLN',
                   cachePolicy: 'strict-database-first-blocked',
                   reason: 'Historical data not found and live API blocked by cache-first policy'
@@ -752,7 +757,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                 debug: {
                   source: 'historical-database',
                   responseTime,
-                  authenticatedUser: 'auth-disabled',
+                  authenticatedUser: user.email,
                   currency: 'PLN',
                   period: requestedPeriodId || 'historical-week'
                 }
@@ -771,7 +776,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
               debug: {
                 source: cacheResult.source,
                 responseTime,
-                authenticatedUser: 'auth-disabled',
+                authenticatedUser: user.email,
                 currency: 'PLN',
                 period: requestedPeriodId || 'current-week'
               }
@@ -810,7 +815,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                 source: smartCacheResult.source || 'smart-cache',
                 responseTime,
                 cacheAge: smartCacheResult.data.cacheAge || 0,
-                authenticatedUser: 'auth-disabled',
+                authenticatedUser: user.email,
                 currency: 'PLN',
                 cacheInfo: 'Smart cache (current month)'
               }
@@ -963,7 +968,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                   source: 'database-cache-enhanced',
                   responseTime,
                   cacheAge: cacheAge,
-                  authenticatedUser: 'auth-disabled',
+                  authenticatedUser: user.email,
                   currency: 'PLN',
                   cacheInfo: `Fresh cache (${Math.round(cacheAge / 1000 / 60)} minutes old)${needsConversionEnhancement ? ' + enhanced conversion metrics' : ''}`,
                   cachePolicy: 'smart-cache-fresh'
@@ -1040,7 +1045,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                   source: 'database-cache-stale-enhanced',
                   responseTime,
                   cacheAge: cacheAge,
-                  authenticatedUser: 'auth-disabled',
+                  authenticatedUser: user.email,
                   currency: 'PLN',
                   cacheInfo: `Stale cache (${Math.round(cacheAgeHours * 10) / 10} hours old) - database-first policy${needsConversionEnhancement ? ' + enhanced conversion metrics' : ''}`,
                   cachePolicy: 'smart-cache-stale'
@@ -1083,7 +1088,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                 debug: {
                   source: 'enhanced-smart-cache',
                   responseTime,
-                  authenticatedUser: 'auth-disabled',
+                  authenticatedUser: user.email,
                   currency: 'PLN',
                   cacheInfo: 'Enhanced logic with daily_kpi_data integration'
                 }
@@ -1123,7 +1128,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
                 debug: {
                   source: 'database-no-cache-fallback',
                   responseTime,
-                  authenticatedUser: 'auth-disabled',
+                  authenticatedUser: user.email,
                   currency: 'PLN',
                   cacheInfo: 'Enhanced logic failed - fallback to empty structure'
                 }

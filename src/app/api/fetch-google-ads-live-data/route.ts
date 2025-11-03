@@ -402,9 +402,13 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Date range with start and end dates is required', 400);
     }
     
-    // 🔓 AUTH DISABLED: Skip authentication as requested
-    console.log('🔓 Authentication disabled for Google Ads live data API');
-    logger.info('🔓 Google Ads API authentication disabled - allowing direct access');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    }
+    const user = authResult.user;
+    logger.info('🔐 Google Ads live data request authenticated for user:', user.email);
     
     // Get client data
     const { data: clientData, error: clientError } = await supabase
@@ -427,8 +431,6 @@ export async function POST(request: NextRequest) {
       customerId: clientData.google_ads_customer_id
     });
     
-    // 🔓 ACCESS CONTROL DISABLED: Skip client access checks
-    console.log('🔓 Client access control disabled - allowing direct access to client:', clientData.email);
     const client = clientData;
 
     // Early check: Verify client has Google Ads configured

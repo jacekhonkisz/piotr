@@ -54,10 +54,15 @@ interface ExecutiveSummaryData {
 
 export async function POST(request: NextRequest) {
   try {
-    logger.info('🔑 AI Summary: Starting (no auth, same as reports page)');
+    logger.info('🔑 AI Summary: Starting');
     
-    // 🔓 AUTH DISABLED: Same as reports page - no authentication required
-    logger.info('🔓 Authentication disabled for generate-executive-summary API (same as reports page)');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const user = authResult.user;
+    logger.info('🔐 Executive summary request authenticated for user:', user.email);
 
     // Parse request body
     const { clientId, dateRange, reportData } = await request.json();
@@ -99,8 +104,6 @@ export async function POST(request: NextRequest) {
       logger.error('❌ AI Summary: Client not found:', { clientId, error: clientError });
       return NextResponse.json({ error: 'Client not found' }, { status: 404 });
     }
-    
-    // No access control check (auth disabled)
     
     logger.info('✅ AI Summary: Client data loaded:', { id: client.id, name: client.name });
 

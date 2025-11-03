@@ -17,16 +17,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Database connection error' }, { status: 500 });
     }
 
-    logger.debug('Debug info', {
-      authorization: request.headers.get('authorization'),
-      contentType: request.headers.get('content-type'),
-      userAgent: request.headers.get('user-agent'),
-      origin: request.headers.get('origin'),
-      referer: request.headers.get('referer')
-    });
-
-    // 🔓 AUTH DISABLED: Skip authentication for easier testing
-    console.log('🔓 Authentication disabled for daily-kpi-data API');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const user = authResult.user;
+    logger.info('🔐 Daily KPI data request authenticated for user:', user.email);
 
     logger.info('Data processing', clientId);
 
