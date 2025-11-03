@@ -2074,10 +2074,7 @@ function generatePDFHTML(reportData: ReportData): string {
 async function fetchReportData(clientId: string, dateRange: { start: string; end: string }, request: NextRequest): Promise<ReportData> {
   logger.info('📊 PDF Generation using EXACT same system as reports page');
   
-  // 🔓 AUTH DISABLED: Same as reports page - no authentication required
-  logger.info('🔓 Authentication disabled for PDF generation (same as reports page)');
-  
-  // Get client data using same pattern as reports page (no auth)
+  // Get client data
   const { data: clientData, error: clientError } = await supabase
     .from('clients')
     .select('*')
@@ -2589,7 +2586,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
-          // No Authorization header (same as reports page)
+          // No Authorization header needed (internal fetch)
         },
         body: JSON.stringify({
           clientId,
@@ -2831,8 +2828,13 @@ export async function POST(request: NextRequest) {
 
     const { clientId, dateRange } = body;
     
-    // 🔓 AUTH DISABLED: Same as reports page - no authentication required
-    logger.info('🔓 Authentication disabled for PDF generation (same as reports page)');
+    // Authenticate the request
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const user = authResult.user;
+    logger.info('🔐 PDF generation authenticated for user:', user.email);
 
     logger.info('🔄 Fetching report data from same sources as /reports page...');
     let reportData: ReportData;
