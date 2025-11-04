@@ -1,8 +1,21 @@
 import { GoogleAdsApi } from 'google-ads-api';
 import logger from './logger';
+import { RateLimiter } from './rate-limiter';
 
 // Cache duration for API responses
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Token cache
+interface TokenCache {
+  accessToken: string;
+  expiresAt: number;
+}
+
+// Quota tracking
+interface QuotaTracker {
+  dailyCallCount: number;
+  quotaResetTime: number;
+}
 
 interface GoogleAdsCredentials {
   refreshToken: string;
@@ -172,9 +185,26 @@ export class GoogleAdsAPIService {
   private credentials: GoogleAdsCredentials;
   private client: GoogleAdsApi;
   private customer: any;
+  private rateLimiter: RateLimiter;
+  private tokenCache: TokenCache | null = null;
+  private quotaTracker: QuotaTracker;
 
   constructor(credentials: GoogleAdsCredentials) {
     this.credentials = credentials;
+    
+    // Initialize rate limiter with safe defaults
+    this.rateLimiter = new RateLimiter({
+      minDelay: 2000, // 2 seconds between calls
+      maxCallsPerMinute: 25, // Stay under 30 to be safe
+      backoffMultiplier: 2,
+      maxBackoffDelay: 60000 // 1 minute max
+    });
+    
+    // Initialize quota tracker
+    this.quotaTracker = {
+      dailyCallCount: 0,
+      quotaResetTime: Date.now() + 86400000 // 24 hours
+    };
     
     // Validate required credentials
     if (!credentials.customerId) {
@@ -219,11 +249,30 @@ export class GoogleAdsAPIService {
   }
 
   /**
-   * Execute Google Ads query using official library
+   * Execute Google Ads query using official library with rate limiting and error handling
    */
-  private async executeQuery(query: string): Promise<any> {
+  private async executeQuery(query: string, retries = 3): Promise<any> {
     try {
-      logger.info('📊 Executing Google Ads query');
+      // Check and reset quota if needed
+      const now = Date.now();
+      if (now > this.quotaTracker.quotaResetTime) {
+        this.quotaTracker.dailyCallCount = 0;
+        this.quotaTracker.quotaResetTime = now + 86400000;
+        logger.info('🔄 Daily quota reset');
+      }
+      
+      // Check quota limit (warn at 80%)
+      if (this.quotaTracker.dailyCallCount >= 20) {
+        logger.warn(`⚠️ High API usage: ${this.quotaTracker.dailyCallCount} calls today`);
+      }
+      
+      // Apply rate limiting - wait before making call
+      await this.rateLimiter.waitForNextCall();
+      
+      logger.info('📊 Executing Google Ads query', {
+        dailyCallCount: this.quotaTracker.dailyCallCount + 1,
+        retriesLeft: retries
+      });
       
       // Add timeout protection to prevent hanging
       const queryPromise = this.customer.query(query);
@@ -232,21 +281,79 @@ export class GoogleAdsAPIService {
       });
       
       const response = await Promise.race([queryPromise, timeoutPromise]);
-      logger.info('✅ Google Ads query executed successfully');
+      
+      // Increment quota counter on success
+      this.quotaTracker.dailyCallCount++;
+      
+      logger.info('✅ Google Ads query executed successfully', {
+        dailyCallCount: this.quotaTracker.dailyCallCount
+      });
+      
       return response;
-    } catch (error) {
+    } catch (error: any) {
       logger.error('❌ Error executing Google Ads query:', error);
+      
+      // Handle rate limit errors (429)
+      if (error.status === 429 || error.code === 'RATE_EXCEEDED' || 
+          error.message?.includes('RATE_EXCEEDED') || 
+          error.message?.includes('429')) {
+        
+        if (retries > 0) {
+          const backoffDelay = Math.min(
+            1000 * Math.pow(2, 4 - retries), // Exponential: 2s, 4s, 8s
+            60000 // Max 60 seconds
+          );
+          
+          logger.warn(`⚠️ Rate limit hit, retrying in ${backoffDelay}ms (${retries} retries left)`);
+          
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          return this.executeQuery(query, retries - 1);
+        }
+        
+        throw new Error('Rate limit exceeded after retries. Please try again later.');
+      }
+      
+      // Handle quota errors (403)
+      if (error.status === 403 && error.message?.includes('quota')) {
+        logger.error('❌ API quota exhausted for today');
+        throw new Error('Google Ads API quota exhausted. Data collection will resume tomorrow.');
+      }
+      
+      // Handle authentication errors (401)
+      if (error.status === 401 || error.code === 'AUTHENTICATION_ERROR') {
+        logger.error('❌ Authentication failed - token may be expired or invalid');
+        // Clear token cache to force refresh on next call
+        this.tokenCache = null;
+        
+        if (retries > 0) {
+          logger.info('🔄 Retrying after authentication error...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return this.executeQuery(query, retries - 1);
+        }
+        
+        throw new Error('Authentication failed. Please check your Google Ads credentials.');
+      }
+      
       throw error;
     }
   }
 
   /**
-   * Test token refresh manually
+   * Get cached access token or refresh if needed
    */
-  async testTokenRefresh(): Promise<{ success: boolean; error?: string }> {
+  private async getAccessToken(): Promise<string> {
+    const now = Date.now();
+    
+    // Return cached token if still valid (with 5 minute buffer)
+    if (this.tokenCache && now < this.tokenCache.expiresAt - 300000) {
+      logger.info('✅ Using cached access token');
+      return this.tokenCache.accessToken;
+    }
+    
+    // Need to refresh token
+    logger.info('🔄 Refreshing access token');
+    
     try {
-      logger.info('🔄 Testing Google Ads token refresh');
-      
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -258,21 +365,66 @@ export class GoogleAdsAPIService {
         })
       });
       
-      if (response.ok) {
-        const tokenData = await response.json();
-        logger.info('✅ Token refresh successful');
-        return { success: true };
-      } else {
+      if (!response.ok) {
         const errorText = await response.text();
         logger.error('❌ Token refresh failed:', response.status, errorText);
-        return { success: false, error: `Token refresh failed: ${response.status} - ${errorText}` };
+        throw new Error(`Token refresh failed: ${response.status}`);
       }
+      
+      const tokenData = await response.json();
+      
+      // Cache the token
+      this.tokenCache = {
+        accessToken: tokenData.access_token,
+        expiresAt: now + (tokenData.expires_in * 1000)
+      };
+      
+      logger.info('✅ Access token refreshed and cached', {
+        expiresIn: `${Math.floor(tokenData.expires_in / 60)} minutes`
+      });
+      
+      return tokenData.access_token;
     } catch (error) {
-      logger.error('❌ Error testing token refresh:', error);
+      logger.error('❌ Error refreshing access token:', error);
+      this.tokenCache = null;
+      throw error;
+    }
+  }
+  
+  /**
+   * Test token refresh manually
+   */
+  async testTokenRefresh(): Promise<{ success: boolean; error?: string }> {
+    try {
+      logger.info('🔄 Testing Google Ads token refresh');
+      
+      // Clear cache to force refresh
+      this.tokenCache = null;
+      
+      // Try to get access token (will refresh)
+      await this.getAccessToken();
+      
+      logger.info('✅ Token refresh successful');
+      return { success: true };
+    } catch (error) {
+      logger.error('❌ Token refresh failed:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
+  /**
+   * Get current quota usage stats
+   */
+  getQuotaStats(): { dailyCallCount: number; quotaResetIn: number } {
+    const now = Date.now();
+    const resetIn = Math.max(0, this.quotaTracker.quotaResetTime - now);
+    
+    return {
+      dailyCallCount: this.quotaTracker.dailyCallCount,
+      quotaResetIn: Math.floor(resetIn / 1000 / 60) // minutes
+    };
+  }
+  
   /**
    * Validate Google Ads credentials
    */
@@ -286,7 +438,7 @@ export class GoogleAdsAPIService {
         return { valid: false, error: `Token refresh failed: ${tokenTest.error}` };
       }
       
-      // Test with a simple customer query
+      // Test with a simple customer query (will use rate limiting)
       const query = `
         SELECT 
           customer.id,

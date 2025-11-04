@@ -42,20 +42,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!client.google_ads_customer_id || !client.google_ads_refresh_token) {
+    if (!client.google_ads_customer_id) {
       return NextResponse.json(
-        { error: 'Google Ads credentials not configured for this client' },
+        { error: 'Google Ads Customer ID not configured for this client' },
         { status: 400 }
       );
     }
 
     // Get system settings
-    const { data: settings, error: settingsError } = await supabase
+    const { data: settingsData, error: settingsError } = await supabase
       .from('system_settings')
-      .select('google_ads_client_id, google_ads_client_secret, google_ads_developer_token, google_ads_manager_customer_id')
-      .single();
+      .select('key, value')
+      .in('key', [
+        'google_ads_client_id',
+        'google_ads_client_secret',
+        'google_ads_developer_token',
+        'google_ads_manager_customer_id',
+        'google_ads_manager_refresh_token'
+      ]);
 
-    if (settingsError || !settings) {
+    if (settingsError || !settingsData) {
       logger.error('❌ System settings not found:', settingsError);
       return NextResponse.json(
         { error: 'Google Ads system settings not configured' },
@@ -63,10 +69,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const settings = settingsData.reduce((acc, setting) => {
+      acc[setting.key] = setting.value;
+      return acc;
+    }, {} as Record<string, any>);
+
+    // Prefer manager refresh token over client-specific token
+    let refreshToken = null;
+    if (settings.google_ads_manager_refresh_token) {
+      refreshToken = settings.google_ads_manager_refresh_token;
+    } else if (client.google_ads_refresh_token) {
+      refreshToken = client.google_ads_refresh_token;
+    }
+
+    if (!refreshToken) {
+      return NextResponse.json(
+        { error: 'Google Ads refresh token not found. Please configure Google Ads authentication.' },
+        { status: 400 }
+      );
+    }
+
     // Initialize Google Ads API service
     const googleAdsService = new GoogleAdsAPIService({
       customerId: client.google_ads_customer_id,
-      refreshToken: client.google_ads_refresh_token,
+      refreshToken: refreshToken,
       clientId: settings.google_ads_client_id,
       clientSecret: settings.google_ads_client_secret,
       developmentToken: settings.google_ads_developer_token,

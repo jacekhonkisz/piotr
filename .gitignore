@@ -44,6 +44,10 @@ next-env.d.ts
 # OS
 Thumbs.db
 
+# Sensitive data - scripts with hardcoded credentials
+scripts/quick-update-oauth.js
+scripts/update-refresh-token.js
+
 # Supabase
 /supabase/.temp
 /supabase/.branches
