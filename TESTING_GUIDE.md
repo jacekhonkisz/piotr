@@ -429,3 +429,5 @@ LIMIT 10;
 3. Monitor for any errors
 4. Adjust send_day if needed
 
+
+

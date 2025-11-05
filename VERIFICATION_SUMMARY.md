@@ -340,3 +340,5 @@ await emailService.sendClientMonthlyReport(
 
 **That's it!** Your professional Polish monthly reports will be sent! 🎉
 
+
+

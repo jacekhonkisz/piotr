@@ -1,5 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import logger from '@/lib/logger';
+import { supabase } from '@/lib/supabase';
+
+// ✅ GLOBAL deduplication cache - shared across ALL component instances
+const globalFetchCache = new Map<string, {
+  inProgress: boolean;
+  timestamp: number;
+  promise?: Promise<any>;
+}>();
+
+// Manual cleanup function (called inline, not with setInterval in SSR)
+function cleanupOldEntries() {
+  const now = Date.now();
+  for (const [key, value] of globalFetchCache.entries()) {
+    if (now - value.timestamp > 30000) {
+      globalFetchCache.delete(key);
+    }
+  }
+}
 
 interface YearOverYearData {
   current: {
@@ -92,19 +110,57 @@ export function useYearOverYearComparison({
       setLoading(false);
       return;
     }
+    
+    // ✅ GLOBAL FIX: Prevent duplicate calls across ALL component instances
+    const fetchKey = `yoy-${clientId}-${dateRange.start}-${dateRange.end}-${platform}`;
+    const now = Date.now();
+    
+    // Clean up old entries before checking
+    cleanupOldEntries();
+    
+    const cached = globalFetchCache.get(fetchKey);
+    
+    if (cached && cached.inProgress) {
+      console.log('🚫 YoY Hook: GLOBAL duplicate call prevented', { 
+        fetchKey, 
+        timeSinceStart: now - cached.timestamp 
+      });
+      
+      // Wait for the existing promise to complete
+      if (cached.promise) {
+        setLoading(true);
+        cached.promise.then(result => {
+          setData(result);
+          setLoading(false);
+        }).catch(err => {
+          setError(err.message);
+          setLoading(false);
+        });
+      }
+      return;
+    }
 
     const fetchYearOverYearData = async () => {
-      setLoading(true);
-      setError(null);
+      // Mark as in progress GLOBALLY
+      const fetchPromise = (async () => {
+        setLoading(true);
+        setError(null);
 
-      try {
-        console.log(`🔄 Fetching production comparison data (NO TIMEOUT) for ${platform}...`);
+        try {
+          console.log(`🔄 Fetching production comparison data (NO TIMEOUT) for ${platform}...`);
         console.log(`🔄 API Request details:`, {
           clientId: clientId?.substring(0,8),
           dateRange,
           platform,
           url: '/api/year-over-year-comparison'
         });
+        
+        // Get the current session token from Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          console.error('❌ No authentication token available');
+          throw new Error('No authentication token available');
+        }
         
         // Clear previous data immediately when platform changes
         setData(null);
@@ -114,7 +170,10 @@ export function useYearOverYearComparison({
         console.log(`🔄 Making API call to: ${apiUrl}`);
         const response = await fetch(apiUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
           body: JSON.stringify({ clientId, dateRange, platform })
         });
         
@@ -196,17 +255,33 @@ export function useYearOverYearComparison({
           console.log('ℹ️ No comparison data available for this period (expected behavior)');
         }
 
+          return result;
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Unknown error';
           console.error('❌ Error fetching comparison data:', errorMessage);
           setError(errorMessage);
           setData(null); // Clear any existing data
-      } finally {
-        setLoading(false);
-      }
+          throw err;
+        } finally {
+          setLoading(false);
+          // Clean up global cache
+          globalFetchCache.delete(fetchKey);
+        }
+      })();
+      
+      // Store the promise in global cache
+      globalFetchCache.set(fetchKey, {
+        inProgress: true,
+        timestamp: now,
+        promise: fetchPromise
+      });
+      
+      return fetchPromise;
     };
 
-    fetchYearOverYearData();
+    fetchYearOverYearData().catch(err => {
+      console.error('YoY fetch error:', err);
+    });
   }, [clientId, dateRange.start, dateRange.end, enabled, platform]);
 
   return {

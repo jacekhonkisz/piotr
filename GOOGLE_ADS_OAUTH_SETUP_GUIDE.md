@@ -238,3 +238,5 @@ Once everything is configured:
 **Congratulations on your Google Ads API approval!** 🎊
 
 
+
+

@@ -283,6 +283,19 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       // Log what we're actually getting
       console.log('🔍 MetaPerformanceLive: Raw stats from API:', json.data.stats);
       console.log('🔍 MetaPerformanceLive: Extracted stats object:', s);
+
+      // 🚨 DIAGNOSTIC: Detect and warn about zero data
+      if (s.totalSpend === 0 && s.totalImpressions === 0 && s.totalClicks === 0) {
+        console.error('🚨 ZERO DATA DETECTED IN FRONTEND!');
+        console.error('🚨 All metrics are 0 - check backend logs for Meta API issues');
+        console.error('🚨 Debug info:', {
+          source: json.debug?.source || json.source,
+          cacheAge: json.debug?.cacheAge,
+          hasData: !!json.data,
+          hasStats: !!json.data.stats,
+          statsKeys: json.data.stats ? Object.keys(json.data.stats) : 'N/A'
+        });
+      }
       
       const cm: ConversionMetrics = json.data.conversionMetrics || {
         click_to_call: 0,

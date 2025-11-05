@@ -43,6 +43,13 @@ export async function POST(request: NextRequest) {
 
     const requestId = Math.random().toString(36).substring(7);
     console.log(`🔄 [${requestId}] YoY Comparison Request:`, { clientId: clientId.substring(0,8), dateRange, platform });
+    
+    // Extract authorization header to forward to internal API calls
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      console.error(`❌ [${requestId}] Missing authorization header`);
+      return NextResponse.json({ error: 'Missing authorization' }, { status: 401 });
+    }
 
     // Parse date range
     const currentStart = new Date(dateRange.start);
@@ -106,12 +113,19 @@ export async function POST(request: NextRequest) {
     
     let currentData = null;
     
-    if (platform === 'google_ads') {
+    // Normalize platform parameter to match database values
+    // Frontend might send 'google' but DB uses 'google', or 'meta' for both
+    const normalizedPlatform = platform === 'google_ads' ? 'google' : platform;
+    
+    if (platform === 'google_ads' || platform === 'google') {
         console.log(`🔄 [${requestId}] Platform: Google Ads - using robust API endpoint`);
       // Use the same robust API endpoint as PDF generation with fallback logic
       const response = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
         body: JSON.stringify({
           clientId,
           dateRange,
@@ -150,7 +164,10 @@ export async function POST(request: NextRequest) {
       // Use the same API endpoint as the main dashboard
       const response = await fetch(`${baseUrl}/api/fetch-live-data`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
         body: JSON.stringify({
         clientId,
         dateRange,
@@ -198,12 +215,17 @@ export async function POST(request: NextRequest) {
     // Determine summary type based on date range
     const summaryType = isWeekly ? 'weekly' : 'monthly';
     
+    // Use normalized platform to match database values ('google' or 'meta')
+    const dbPlatform = platform === 'google_ads' ? 'google' : platform;
+    
+    console.log(`🔍 [${requestId}] Querying previous year with platform='${dbPlatform}'`);
+    
     const { data: previousSummariesData, error: previousSummariesError } = await supabase
       .from('campaign_summaries')
       .select('*')
           .eq('client_id', clientId)
       .eq('summary_type', summaryType)
-      .eq('platform', platform)
+      .eq('platform', dbPlatform)  // ⬅️ Use normalized platform
       .gte('summary_date', prevDateRange.start!)
       .lte('summary_date', prevDateRange.end!)
       .order('summary_date', { ascending: false });
@@ -211,9 +233,11 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 [${requestId}] Previous summaries query result:`, {
           clientId: clientId.substring(0,8),
       summaryType,
+      platform: dbPlatform,  // ⬅️ Log which platform was used
       searchRange: [prevDateRange.start!, prevDateRange.end!],
       foundRecords: previousSummariesData?.length || 0,
-      totalSpend: previousSummariesData?.reduce((sum, r) => sum + (r.total_spend || 0), 0) || 0
+      totalSpend: previousSummariesData?.reduce((sum, r) => sum + (r.total_spend || 0), 0) || 0,
+      firstRecordPlatform: previousSummariesData?.[0]?.platform || 'none'  // ⬅️ Verify platform in results
     });
 
     let previousData = {
@@ -312,6 +336,14 @@ export async function POST(request: NextRequest) {
         booking_step_3: changes.booking_step_3 || 0,
         reservations: changes.reservations || 0,
         reservation_value: changes.reservation_value || 0
+      },
+      // Add metadata for debugging
+      _metadata: {
+        platformRequested: platform,
+        platformUsed: dbPlatform,
+        currentPlatform: dbPlatform,
+        previousPlatform: dbPlatform,
+        previousDataFound: previousSummariesData && previousSummariesData.length > 0
       }
     };
 

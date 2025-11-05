@@ -10,6 +10,7 @@ import {
   validateDateRange
 } from '../../../lib/date-range-utils';
 import { getCurrentWeekInfo } from '../../../lib/week-utils';
+import { StandardizedDataFetcher } from '../../../lib/standardized-data-fetcher';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -441,7 +442,41 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     
     const client = clientData;
 
-    // Use standardized date range strategy
+    // ✅ NEW: Use StandardizedDataFetcher if request comes from standardized system
+    if (reason?.includes('standardized') || reason?.includes('period-') || reason?.includes('meta_performance')) {
+      logger.info('🎯 Using StandardizedDataFetcher for request:', { reason, clientId, dateRange, platform });
+      
+      try {
+        const result = await StandardizedDataFetcher.fetchData({
+          clientId,
+          dateRange: dateRange || { start: '', end: '' },
+          platform: platform as 'meta' | 'google',
+          reason,
+          sessionToken: undefined // Server-side doesn't need token
+        });
+        
+        const responseTime = Date.now() - startTime;
+        logger.info('✅ StandardizedDataFetcher completed:', {
+          success: result.success,
+          source: result.debug?.source,
+          responseTime
+        });
+        
+        return NextResponse.json({
+          ...result,
+          debug: {
+            ...result.debug,
+            authenticatedUser: user.email,
+            responseTime
+          }
+        });
+      } catch (error) {
+        logger.error('❌ StandardizedDataFetcher failed:', error);
+        // Fall through to legacy logic as fallback
+      }
+    }
+
+    // Legacy logic for non-standardized requests (keep for backwards compatibility)
     let startDate: string;
     let endDate: string;
     let rangeAnalysis;

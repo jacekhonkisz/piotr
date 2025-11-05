@@ -287,6 +287,21 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Clear all cached responses (useful for debugging or forcing fresh data)
+   */
+  clearCache(): void {
+    optimizedApiCache.clear();
+    logger.info('Meta API: Cache cleared');
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { size: number; memoryMB: number } {
+    return optimizedApiCache.getStats();
+  }
+
+  /**
    * Make API request with timeout and error handling
    */
   private async makeRequest(url: string, options: RequestInit = {}): Promise<MetaAPIResponse> {
@@ -409,7 +424,7 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
-   * Get demographic performance data
+   * Get demographic performance data with conversion actions
    */
   async getDemographicPerformance(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {
     const endpoint = `act_${adAccountId}/insights`;
@@ -423,9 +438,10 @@ export class MetaAPIServiceOptimized {
       return cached;
     }
 
-    logger.info('Meta API: Fetching demographic performance from API');
+    logger.info('Meta API: Fetching demographic performance from API (with conversion actions)');
     
-    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,cpm,cpc,ctr&breakdowns=age,gender&limit=500&access_token=${this.accessToken}`;
+    // 🔧 FIX: Include actions and action_values to get conversion data (reservation_value, etc.)
+    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,cpm,cpc,ctr,actions,action_values,conversions,conversion_values&breakdowns=age,gender&limit=500&access_token=${this.accessToken}`;
     const response = await this.makeRequest(url);
 
     if (response.error) {
@@ -433,11 +449,37 @@ export class MetaAPIServiceOptimized {
       return [];
     }
 
-    const data = response.data || [];
-    this.setCachedResponse(cacheKey, data);
+    // 🔧 FIX: Transform data to extract conversion metrics (same as campaign data)
+    const rawData = response.data || [];
+    const transformedData = rawData.map(item => {
+      // Extract conversion actions
+      const actions = item.actions || [];
+      const actionValues = item.action_values || [];
+      
+      // Find reservation-related conversions (same logic as campaign processing)
+      const reservationAction = actions.find((a: any) => 
+        a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+        a.action_type === 'offsite_conversion.fb_pixel_complete_registration' ||
+        a.action_type === 'omni_purchase'
+      );
+      
+      const reservationValueAction = actionValues.find((a: any) => 
+        a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+        a.action_type === 'offsite_conversion.fb_pixel_complete_registration' ||
+        a.action_type === 'omni_purchase'
+      );
+      
+      return {
+        ...item,
+        reservation_value: parseFloat(reservationValueAction?.value || '0'),
+        reservations: parseInt(reservationAction?.value || '0')
+      };
+    });
     
-    logger.info(`Meta API: Fetched ${data.length} demographic records`);
-    return data;
+    this.setCachedResponse(cacheKey, transformedData);
+    
+    logger.info(`Meta API: Fetched ${transformedData.length} demographic records with conversion data`);
+    return transformedData;
   }
 
   /**
@@ -457,7 +499,8 @@ export class MetaAPIServiceOptimized {
 
     logger.info('Meta API: Fetching ad relevance results from API');
     
-    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,quality_score_organic,quality_score_ectr,quality_score_ecvr,engagement_rate_ranking,conversion_rate_ranking&level=ad&limit=500&access_token=${this.accessToken}`;
+    // Note: quality_score_organic doesn't exist in Meta API - removed
+    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,quality_score_ectr,quality_score_ecvr,engagement_rate_ranking,conversion_rate_ranking&level=ad&limit=500&access_token=${this.accessToken}`;
     const response = await this.makeRequest(url);
 
     if (response.error) {

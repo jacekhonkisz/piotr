@@ -659,3 +659,5 @@ function getPolishMonthName(monthNumber: number): string {
 - The template is **responsive** and looks good on mobile devices
 - The design is **simpler and more business-focused** than the previous colorful template
 
+
+

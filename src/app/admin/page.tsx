@@ -880,6 +880,11 @@ export default function AdminPage() {
     }
   };
 
+  // Track initial load to prevent duplicate calls
+  const initialLoadDone = React.useRef(false);
+  const isAuthReady = !authLoading && user && profile;
+
+  // Handle authentication and initial load
   useEffect(() => {
     // Don't do anything while auth is still loading
     if (authLoading) {
@@ -898,14 +903,15 @@ export default function AdminPage() {
       return;
     }
 
-    // Load clients if user and profile are available
-    if (user && profile) {
+    // Load clients only once on initial auth completion
+    if (isAuthReady && !initialLoadDone.current) {
+      initialLoadDone.current = true;
       fetchClients();
-    } else {
+    } else if (!isAuthReady && !authLoading) {
       // If we don't have user/profile but auth is not loading, stop loading
       setLoading(false);
     }
-  }, [user, profile, authLoading, router]);
+  }, [user, profile, authLoading, router, isAuthReady]);
 
   // Header condensation on scroll
   useEffect(() => {
@@ -918,17 +924,20 @@ export default function AdminPage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Refetch clients when search/filter/sort changes - THROTTLED to prevent excessive refreshing
+  // Refetch clients when search/filter/sort changes - DEBOUNCED to prevent excessive refreshing
   useEffect(() => {
+    // Skip if initial load hasn't happened yet
+    if (!initialLoadDone.current || !isAuthReady) {
+      return;
+    }
+
     // Add debouncing to prevent rapid API calls when typing in search
     const timeoutId = setTimeout(() => {
-      if (user && profile) {
-        fetchClients(1); // Reset to first page when filters change
-      }
+      fetchClients(1); // Reset to first page when filters change
     }, 300); // 300ms debounce
 
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, statusFilter, frequencyFilter, sortBy, sortOrder]);
+  }, [searchTerm, statusFilter, frequencyFilter, sortBy, sortOrder, isAuthReady]);
 
   const fetchClients = async (page = 1) => {
     if (!user) {

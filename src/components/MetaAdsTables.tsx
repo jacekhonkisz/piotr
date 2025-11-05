@@ -79,6 +79,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [adRelevanceData, setAdRelevanceData] = useState<AdRelevanceResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dataSource, setDataSource] = useState<string>('unknown');
+  const [cacheAge, setCacheAge] = useState<number | null>(null);
 
   // Helper function to translate gender labels
   const translateGenderLabel = (label: string) => {
@@ -99,7 +101,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     return label; // Age ranges like "25-34" don't need translation
   };
   const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
-  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'reservation_value'>('reservation_value');
+  // 🔧 FIX: Default to 'spend' since reservation_value not available in demographic breakdowns
+  const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'spend'>('spend');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
@@ -140,12 +143,18 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
       const result = await response.json();
       
       if (result.success) {
+        // Set data source information for cache indicator
+        setDataSource(result.debug?.source || 'unknown');
+        setCacheAge(result.debug?.cacheAge || null);
+        
         console.log('🔍 MetaAdsTables received data:', {
           placementDataLength: result.data.metaTables?.placementPerformance?.length || 0,
           demographicDataLength: result.data.metaTables?.demographicPerformance?.length || 0,
           adRelevanceDataLength: result.data.metaTables?.adRelevanceResults?.length || 0,
           sampleDemographicData: result.data.metaTables?.demographicPerformance?.slice(0, 2),
-          fullDemographicData: result.data.metaTables?.demographicPerformance
+          fullDemographicData: result.data.metaTables?.demographicPerformance,
+          source: result.debug?.source,
+          cacheAge: result.debug?.cacheAge
         });
         
         console.log('🔍 MetaAdsTables FULL RESULT:', result);
@@ -160,12 +169,31 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         const rawDemographicArray = result.data.metaTables?.demographicPerformance || [];
         const adRelevanceArray = result.data.metaTables?.adRelevanceResults || [];
         
-        // Clean up demographic data to ensure Polish labels
+        // 🔧 DIAGNOSTIC: Log raw demographic data to see exact structure
+        console.log('🔍 RAW DEMOGRAPHIC DATA FROM API:', {
+          count: rawDemographicArray.length,
+          firstItem: rawDemographicArray[0],
+          allKeys: rawDemographicArray[0] ? Object.keys(rawDemographicArray[0]) : [],
+          hasSpend: rawDemographicArray[0]?.spend !== undefined,
+          hasImpressions: rawDemographicArray[0]?.impressions !== undefined,
+          hasClicks: rawDemographicArray[0]?.clicks !== undefined,
+          spendValue: rawDemographicArray[0]?.spend,
+          spendType: typeof rawDemographicArray[0]?.spend
+        });
+        
+        // Clean up demographic data to ensure Polish labels AND convert strings to numbers
         const demographicArray = rawDemographicArray.map((item: any) => ({
           ...item,
           // Gender is already translated in meta-api.ts, so just use it directly
           gender: item.gender || 'Nieznane',
-          age: translateAgeLabel(item.age || 'Nieznane')
+          age: translateAgeLabel(item.age || 'Nieznane'),
+          // 🔧 FIX: Convert string values to numbers (Meta API returns strings)
+          spend: typeof item.spend === 'string' ? parseFloat(item.spend) : (item.spend || 0),
+          impressions: typeof item.impressions === 'string' ? parseInt(item.impressions) : (item.impressions || 0),
+          clicks: typeof item.clicks === 'string' ? parseInt(item.clicks) : (item.clicks || 0),
+          cpm: typeof item.cpm === 'string' ? parseFloat(item.cpm) : (item.cpm || 0),
+          cpc: typeof item.cpc === 'string' ? parseFloat(item.cpc) : (item.cpc || 0),
+          ctr: typeof item.ctr === 'string' ? parseFloat(item.ctr) : (item.ctr || 0)
         }));
         
         console.log('🔍 MetaAdsTables BEFORE setState:', {
@@ -174,7 +202,8 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           adRelevanceArray: adRelevanceArray.length,
           placementSample: placementArray.slice(0, 2),
           demographicSample: demographicArray.slice(0, 2),
-          adRelevanceSample: adRelevanceArray.slice(0, 2)
+          adRelevanceSample: adRelevanceArray.slice(0, 2),
+          demographicHasSpend: demographicArray[0]?.spend !== undefined
         });
 
         // Debug gender data specifically
@@ -376,8 +405,38 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     );
   }
 
+  // Format cache age for display
+  const formatCacheAge = (ageMs: number | null) => {
+    if (ageMs === null || ageMs === 0) return null;
+    const minutes = Math.floor(ageMs / 60000);
+    const hours = Math.floor(minutes / 60);
+    if (hours > 0) return `${hours}h temu`;
+    if (minutes > 0) return `${minutes}min temu`;
+    return 'teraz';
+  };
+
+  const cacheAgeDisplay = formatCacheAge(cacheAge);
+
   return (
     <div className="space-y-8">
+      {/* Cache Status Indicator */}
+      {dataSource && (
+        <div className="flex items-center justify-end gap-2 text-xs">
+          <span className="text-slate-600">Źródło danych:</span>
+          {dataSource === 'smart-cache' ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded-md font-medium">
+              <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+              Cache {cacheAgeDisplay && `(${cacheAgeDisplay})`}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-md font-medium">
+              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+              Live API
+            </span>
+          )}
+        </div>
+      )}
+      
       {/* Tab Navigation - Premium Design */}
       <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl">
         <button
@@ -563,16 +622,30 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 {/* Enhanced Metric Selector */}
                 <div className="flex items-center space-x-2 bg-slate-100 rounded-xl p-1">
                   <button
-                    onClick={() => setDemographicMetric('reservation_value')}
+                    onClick={() => setDemographicMetric('spend')}
                     className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      demographicMetric === 'reservation_value'
+                      demographicMetric === 'spend'
                         ? 'bg-slate-900 text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
                   >
                     <div className="flex items-center space-x-2">
                       <BarChart3 className="h-4 w-4" />
-                      <span>Wartość rezerwacji</span>
+                      <span>Wydatki</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => setDemographicMetric('impressions')}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                      demographicMetric === 'impressions'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Eye className="h-4 w-4" />
+                      <span>Wyświetlenia</span>
                     </div>
                   </button>
 

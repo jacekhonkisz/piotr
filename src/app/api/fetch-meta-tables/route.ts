@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     
     // Parse request body
     const requestBody = await request.json();
-    const { dateRange, clientId } = requestBody;
+    const { dateRange, clientId, forceRefresh } = requestBody;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -57,8 +57,81 @@ export async function POST(request: NextRequest) {
     logger.info('Success', {
       id: client.id,
       name: client.name,
-      dateRange
+      dateRange,
+      forceRefresh
     });
+    
+    // 🔧 NEW: Check if this is a current month request - use smart cache
+    const startDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    const isCurrentMonth = 
+      startDate.getFullYear() === currentYear &&
+      startDate.getMonth() === currentMonth &&
+      endDate >= now;
+    
+    logger.info('🔍 Meta tables date range analysis:', {
+      isCurrentMonth,
+      startDate: dateRange.start,
+      endDate: dateRange.end,
+      currentDate: now.toISOString().split('T')[0]
+    });
+    
+    // 🚀 OPTIMIZATION: Use smart cache for current month (unless force refresh)
+    if (isCurrentMonth && !forceRefresh) {
+      logger.info('📊 Current month detected - checking smart cache for meta tables...');
+      
+      try {
+        const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
+        const smartCacheResult = await getSmartCacheData(clientId, false, 'meta');
+        
+        if (smartCacheResult.success && smartCacheResult.data?.metaTables) {
+          const metaTables = smartCacheResult.data.metaTables;
+          const cacheAge = smartCacheResult.data.cacheAge || 0;
+          const responseTime = Date.now() - startTime;
+          
+          logger.info('✅ Meta tables loaded from smart cache:', {
+            placementCount: metaTables.placementPerformance?.length || 0,
+            demographicCount: metaTables.demographicPerformance?.length || 0,
+            adRelevanceCount: metaTables.adRelevanceResults?.length || 0,
+            cacheAge: `${Math.round(cacheAge / 1000)}s`,
+            responseTime: `${responseTime}ms`
+          });
+          
+          return NextResponse.json({
+            success: true,
+            data: {
+              metaTables,
+              dateRange,
+              client: {
+                id: client.id,
+                name: client.name
+              }
+            },
+            debug: {
+              responseTime,
+              source: 'smart-cache',
+              cacheAge,
+              metaApiError: null,
+              hasMetaApiError: false,
+              authenticatedUser: user.email
+            }
+          });
+        } else {
+          logger.info('⚠️ Smart cache miss or no meta tables in cache, falling back to live API');
+        }
+      } catch (cacheError) {
+        logger.warn('⚠️ Smart cache check failed, falling back to live API:', cacheError);
+      }
+    } else {
+      logger.info('📡 Historical data or force refresh - fetching from live API');
+    }
+    
+    // 🔴 FALLBACK: Fetch from live Meta API (historical data or cache miss)
+    logger.info('📊 Fetching meta tables from live API...');
     
     // Initialize Meta API service
     const metaService = new MetaAPIService(client.meta_access_token);
@@ -66,8 +139,6 @@ export async function POST(request: NextRequest) {
     const adAccountId = client.ad_account_id.startsWith('act_') 
       ? client.ad_account_id.substring(4)
       : client.ad_account_id;
-    
-    logger.info('📊 Fetching meta tables in parallel...');
     
     let metaTables = null;
     let metaApiError: string | null = null;
@@ -143,7 +214,8 @@ export async function POST(request: NextRequest) {
     logger.info('Meta tables fetch completed', {
       clientId: client.id,
       responseTime,
-      hasError: !!metaApiError
+      hasError: !!metaApiError,
+      source: 'live-api'
     });
 
     return NextResponse.json({
@@ -158,9 +230,11 @@ export async function POST(request: NextRequest) {
       },
       debug: {
         responseTime,
+        source: 'live-api',
+        cacheAge: 0,
         metaApiError,
         hasMetaApiError: !!metaApiError,
-        authenticatedUser: 'auth-disabled'
+        authenticatedUser: user.email
       }
     });
 

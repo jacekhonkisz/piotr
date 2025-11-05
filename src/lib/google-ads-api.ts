@@ -653,7 +653,15 @@ export class GoogleAdsAPIService {
       `;
       
       logger.info('🔍 Fetching all conversion actions from account...');
-      const conversionActions = await this.executeQuery(conversionActionsQuery);
+      let conversionActions;
+      
+      try {
+        conversionActions = await this.executeQuery(conversionActionsQuery);
+      } catch (error) {
+        logger.error('❌ Error fetching conversion actions:', error);
+        logger.warn('⚠️  Continuing with empty conversion actions list');
+        conversionActions = [];
+      }
       
       if (conversionActions && conversionActions.length > 0) {
         logger.info(`📋 Found ${conversionActions.length} conversion actions in account:`);
@@ -687,21 +695,33 @@ export class GoogleAdsAPIService {
         SELECT
           campaign.id,
           campaign.name,
+          segments.conversion_action_name,
+          segments.date,
           metrics.conversions,
           metrics.conversions_value
         FROM campaign
-        WHERE metrics.conversions > 0
-        ORDER BY campaign.id
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+          AND metrics.conversions > 0
+        ORDER BY campaign.id, segments.conversion_action_name
       `;
       
-      const response = await this.executeQuery(query);
+      let response;
+      
+      try {
+        response = await this.executeQuery(query);
+      } catch (error) {
+        logger.error('❌ Error executing conversion query:', error);
+        logger.warn('⚠️  Continuing with empty conversion data - will use fallback tracking');
+        response = [];
+      }
+      
       const breakdown: { [campaignId: string]: any } = {};
       
       logger.info(`📊 Conversion query returned ${response?.length || 0} rows`);
       if (response && response.length > 0) {
         logger.info(`🔍 Sample conversion row:`, JSON.stringify(response[0], null, 2));
       } else {
-        logger.warn('⚠️  No conversion data returned from query - this is why conversions are not being mapped');
+        logger.warn('⚠️  No conversion data returned from query - campaigns will use fallback conversion tracking');
       }
       
       // Conversion action mapping (Google → Meta format)
@@ -749,14 +769,20 @@ export class GoogleAdsAPIService {
       };
       
       response?.forEach((row: any) => {
+        // Add null safety checks for segments
+        if (!row.segments) {
+          logger.warn(`⚠️  Row missing segments data for campaign ${row.campaign?.name || 'unknown'}`);
+          return;
+        }
+        
         const campaignId = row.campaign.id;
-        const actionName = (row.segments.conversion_action_name || '').toLowerCase();
+        const actionName = (row.segments?.conversion_action_name || '').toLowerCase();
         const conversions = row.metrics.conversions || 0;
         const conversionValue = (row.metrics.conversions_value || 0) / 1000000;
         
         // DEBUG: Log actual conversion action names to fix mapping
         if (conversions > 0) {
-          logger.info(`🔍 DEBUG: Campaign ${row.campaign.name} (${campaignId}) - Action: "${row.segments.conversion_action_name || 'NO_ACTION_NAME'}" (${conversions} conversions, ${conversionValue} value)`);
+          logger.info(`🔍 DEBUG: Campaign ${row.campaign.name} (${campaignId}) - Action: "${row.segments?.conversion_action_name || 'NO_ACTION_NAME'}" (${conversions} conversions, ${conversionValue} value)`);
         }
         
         if (!breakdown[campaignId]) {
@@ -780,13 +806,13 @@ export class GoogleAdsAPIService {
               breakdown[campaignId].reservation_value += conversionValue;
             }
             mapped = true;
-            logger.info(`✅ Mapped "${row.segments.conversion_action_name}" → ${metaType} (${conversions} conversions)`);
+            logger.info(`✅ Mapped "${row.segments?.conversion_action_name}" → ${metaType} (${conversions} conversions)`);
           }
         });
         
         // Log unmapped conversions for debugging - DO NOT assign to any category
         if (!mapped && conversions > 0) {
-          logger.warn(`⚠️  UNMAPPED CONVERSION: "${row.segments.conversion_action_name}" (${conversions} conversions) - need to add to mapping`);
+          logger.warn(`⚠️  UNMAPPED CONVERSION: "${row.segments?.conversion_action_name}" (${conversions} conversions) - need to add to mapping`);
         }
       });
       
@@ -797,11 +823,11 @@ export class GoogleAdsAPIService {
       const unmappedActions = new Set();
       
       response?.forEach((row: any) => {
-        if (row.segments.conversion_action_name) {
+        if (row.segments?.conversion_action_name) {
           allActionNames.add(row.segments.conversion_action_name);
           
           // Check if this action was mapped
-          const actionName = (row.segments.conversion_action_name || '').toLowerCase();
+          const actionName = (row.segments?.conversion_action_name || '').toLowerCase();
           let mapped = false;
           Object.entries(conversionMapping).forEach(([metaType, googleTypes]) => {
             if (googleTypes.some(googleType => actionName.includes(googleType))) {
@@ -837,7 +863,26 @@ export class GoogleAdsAPIService {
       
     } catch (error) {
       logger.error('❌ Error fetching conversion breakdown:', error);
-      return {};
+      
+      // Graceful degradation: return empty breakdown with debug info
+      // This allows the system to continue functioning with fallback conversion tracking
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      logger.warn('⚠️  Returning empty conversion breakdown due to error - campaigns will use fallback conversion tracking');
+      logger.info('💡 Error details:', { message: errorMessage, stack: errorStack?.substring(0, 200) });
+      
+      return {
+        _debug: {
+          error: true,
+          errorMessage: errorMessage,
+          allActionNames: [],
+          unmappedActions: [],
+          totalActions: 0,
+          unmappedCount: 0,
+          message: 'Error fetching conversion breakdown - using fallback tracking'
+        }
+      };
     }
   }
 

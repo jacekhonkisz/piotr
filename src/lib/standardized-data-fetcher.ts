@@ -13,6 +13,23 @@
 import { supabase } from './supabase';
 import logger from './logger';
 
+// ✅ GLOBAL deduplication cache for ALL data fetches (Meta & Google)
+const globalDataFetchCache = new Map<string, {
+  inProgress: boolean;
+  timestamp: number;
+  promise?: Promise<any>;
+}>();
+
+// Manual cleanup function (called inline, not with setInterval in SSR)
+function cleanupOldDataEntries() {
+  const now = Date.now();
+  for (const [key, value] of globalDataFetchCache.entries()) {
+    if (now - value.timestamp > 30000) {
+      globalDataFetchCache.delete(key);
+    }
+  }
+}
+
 export interface StandardizedDataResult {
   success: boolean;
   data: {
@@ -67,9 +84,63 @@ export class StandardizedDataFetcher {
     sessionToken?: string;
   }): Promise<StandardizedDataResult> {
     
-    // 🔧 FIX: Only run on server-side to avoid Google Ads API browser issues
+    // ✅ GLOBAL DEDUPLICATION: Prevent duplicate calls across ALL contexts
+    const fetchKey = `data-${params.platform || 'meta'}-${params.clientId}-${params.dateRange.start}-${params.dateRange.end}`;
+    const now = Date.now();
+    
+    // Clean up old entries before checking
+    cleanupOldDataEntries();
+    
+    const cached = globalDataFetchCache.get(fetchKey);
+    
+    if (cached && cached.inProgress) {
+      console.log('🚫 StandardizedDataFetcher: GLOBAL duplicate call prevented', { 
+        fetchKey, 
+        timeSinceStart: now - cached.timestamp,
+        platform: params.platform || 'meta'
+      });
+      
+      // Wait for the existing promise to complete
+      if (cached.promise) {
+        return await cached.promise;
+      }
+    }
+    
+    // Create the fetch promise and store it in global cache
+    const fetchPromise = (async () => {
+      try {
+        return await this._fetchDataInternal(params);
+      } finally {
+        // Clean up global cache after completion
+        globalDataFetchCache.delete(fetchKey);
+      }
+    })();
+    
+    // Store in global cache
+    globalDataFetchCache.set(fetchKey, {
+      inProgress: true,
+      timestamp: now,
+      promise: fetchPromise
+    });
+    
+    return await fetchPromise;
+  }
+  
+  /**
+   * Internal fetch method - not to be called directly
+   */
+  private static async _fetchDataInternal(params: {
+    clientId: string;
+    dateRange: { start: string; end: string };
+    platform?: 'meta' | 'google';
+    reason?: string;
+    sessionToken?: string;
+  }): Promise<StandardizedDataResult> {
+    
+    // ✅ CRITICAL FIX: ALL client-side requests MUST go through API routes
+    // Smart cache requires server-side Supabase client with service role key
     if (typeof window !== 'undefined') {
-      console.log('⚠️ StandardizedDataFetcher called on client-side, redirecting to API...');
+      console.log('🌐 Client-side request detected, redirecting to server-side API...');
       
       // Get authentication token from Supabase
       const { createClient } = await import('@supabase/supabase-js');
@@ -79,8 +150,15 @@ export class StandardizedDataFetcher {
       );
       const { data: { session } } = await supabase.auth.getSession();
       
+      // Determine the correct API endpoint based on platform
+      const apiUrl = params.platform === 'google' 
+        ? '/api/fetch-google-ads-live-data'
+        : '/api/fetch-live-data';
+      
+      console.log(`📡 Calling ${apiUrl} for ${params.platform || 'meta'} data...`);
+      
       // Make API call to server-side endpoint with authentication
-      const response = await fetch('/api/fetch-live-data', {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -95,12 +173,21 @@ export class StandardizedDataFetcher {
       });
       
       if (!response.ok) {
-        throw new Error(`API call failed: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`API call failed: ${response.status} - ${errorText}`);
       }
       
       const result = await response.json();
+      console.log(`✅ API response received:`, {
+        success: result.success,
+        source: result.debug?.source,
+        campaignsCount: result.data?.campaigns?.length || 0
+      });
       return result;
     }
+    
+    // ✅ Server-side execution continues below
+    console.log('🖥️ Server-side execution - direct access to smart cache and database');
     
     const { clientId, dateRange, platform = 'meta', reason = 'standardized-fetch', sessionToken } = params;
     const startTime = Date.now();
@@ -113,7 +200,7 @@ export class StandardizedDataFetcher {
       timestamp: new Date().toISOString()
     });
     
-    // 🎯 PRODUCTION FIX: FORCE LIVE API FOR RECENT PERIODS
+    // ✅ FIXED Priority 5: Improved period detection for accurate smart cache routing
     const now = new Date();
     const today: string = now.toISOString().split('T')[0]!;
     const currentYear = now.getFullYear();
@@ -123,18 +210,23 @@ export class StandardizedDataFetcher {
     const startYear = startDate.getFullYear();
     const startMonth = startDate.getMonth() + 1;
     
+    // ✅ IMPROVED: More accurate current month detection
+    // Check if date range is within current month boundaries
     const isCurrentMonth = startYear === currentYear && startMonth === currentMonth;
     const includesCurrentDay = dateRange.end >= today;
     
-    // Check if this is current week (exactly 7 days, starts on Monday, includes current day)
+    // ✅ IMPROVED: Better current week detection
+    // Check if this is current week (6-7 days, includes current day, starts on Monday)
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const isCurrentWeek = daysDiff === 7 && includesCurrentDay && startDate.getDay() === 1; // Monday start
+    const isCurrentWeek = (daysDiff >= 6 && daysDiff <= 7) && includesCurrentDay && startDate.getDay() === 1; // Monday start, allow 6-7 days
     
-    // 🔧 CRITICAL FIX: Ensure current month and current week don't overlap
-    // If it's a current week, it should NOT be classified as current month
-    const isCurrentMonthOnly = isCurrentMonth && !isCurrentWeek;
+    // ✅ CRITICAL FIX: Current month must include current day to be "current"
+    // A week in current month but NOT including today is historical, not current
+    const isCurrentMonthOnly = isCurrentMonth && !isCurrentWeek && includesCurrentDay;
     
-    const isCurrentPeriod = isCurrentMonth || isCurrentWeek;
+    // ✅ FINAL: Current period is either current week OR current month (but not both)
+    // Both must include the current day to be considered "current"
+    const isCurrentPeriod = isCurrentWeek || isCurrentMonthOnly;
     
     // 🎯 SMART CACHE INTEGRATION: Use smart cache for current periods, database for historical
     const needsSmartCache = isCurrentPeriod;
@@ -158,70 +250,142 @@ export class StandardizedDataFetcher {
       note: isCurrentWeek ? 'CURRENT WEEK - using weekly cache' : isCurrentMonthOnly ? 'CURRENT MONTH - using monthly cache' : 'HISTORICAL - using database'
     });
     
-    // 🔧 CRITICAL FIX: For current periods, use appropriate smart cache endpoint
-    if (needsSmartCache) {
-      console.log('🎯 USING SMART CACHE ENDPOINT for current period...');
-      console.log('🎯 Smart cache parameters:', { clientId, dateRange, platform, isCurrentWeek, isCurrentMonthOnly });
-      
-      let smartCacheResult;
-      
-      if (isCurrentWeek) {
-        // Use weekly smart cache for current week
-        console.log('📅 Using WEEKLY smart cache for current week...');
-        smartCacheResult = await this.fetchFromWeeklySmartCache(clientId, dateRange, platform);
-      } else {
-        // Use monthly smart cache for current month
-        console.log('📅 Using MONTHLY smart cache for current month...');
-        smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
-      }
-      
-      console.log('🎯 Smart cache result:', { 
-        success: smartCacheResult.success, 
-        source: smartCacheResult.debug?.source,
-        campaignsCount: smartCacheResult.data?.campaigns?.length || 0,
-        cacheType: isCurrentWeek ? 'weekly' : 'monthly'
-      });
-      
-      if (smartCacheResult.success) {
-        return smartCacheResult as StandardizedDataResult;
-      }
-      console.log('⚠️ Smart cache failed, falling back to database/live API logic');
-      // If smart cache fails, fall through to database/live API logic
-    }
-    
-    console.log('🔍 DEBUG: Date comparison details:', {
-      startDate: dateRange.start,
-      endDate: dateRange.end,
-      startYear,
-      startMonth,
-      currentYear,
-      currentMonth,
-      isCurrentPeriod,
-      needsSmartCache
-    });
-    
     const dataSources: string[] = [];
     
     try {
-      // 🎯 PRIORITY 1: Smart Cache for current periods (3-hour refresh)
+      // ✅ FIXED Priority 3: For HISTORICAL periods, check database FIRST (instant return)
+      if (!needsSmartCache) {
+        console.log(`⚡ HISTORICAL PERIOD: Checking campaign_summaries FIRST for instant return...`);
+        dataSources.push('campaign_summaries_database');
+        
+        const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
+        if (cachedResult.success) {
+          // Check if conversion metrics are complete
+          const hasConversionData = cachedResult.data!.conversionMetrics && 
+            (cachedResult.data!.conversionMetrics.reservations > 0 || 
+             cachedResult.data!.conversionMetrics.reservation_value > 0 ||
+             cachedResult.data!.conversionMetrics.email_contacts > 0 ||
+             cachedResult.data!.conversionMetrics.click_to_call > 0);
+          
+          if (hasConversionData) {
+            const responseTime = Date.now() - startTime;
+            
+            console.log(`✅ INSTANT RETURN: campaign_summaries returned COMPLETE data in ${responseTime}ms`);
+            
+            return {
+              success: true,
+              data: cachedResult.data!,
+              debug: {
+                source: 'campaign-summaries-database',
+                cachePolicy: 'database-first-historical-instant',
+                responseTime,
+                reason,
+                dataSourcePriority: dataSources,
+                periodType: 'historical'
+              },
+              validation: {
+                actualSource: 'campaign_summaries',
+                expectedSource: 'campaign_summaries',
+                isConsistent: true
+              }
+            };
+          } else {
+            console.log('⚠️ campaign_summaries has incomplete conversion metrics, trying next source...');
+          }
+        }
+        
+        // ✅ FIXED: Try daily_kpi_data for historical if summaries incomplete
+        console.log(`📊 HISTORICAL: Trying daily_kpi_data for ${platform}...`);
+        dataSources.push('daily_kpi_data');
+        
+        const dailyResult = await this.fetchFromDailyKpiData(clientId, dateRange, platform);
+        if (dailyResult.success) {
+          const responseTime = Date.now() - startTime;
+          
+          console.log(`✅ SUCCESS: daily_kpi_data returned data in ${responseTime}ms`);
+          
+          return {
+            success: true,
+            data: dailyResult.data!,
+            debug: {
+              source: 'daily-kpi-data',
+              cachePolicy: 'database-first-historical',
+              responseTime,
+              reason,
+              dataSourcePriority: dataSources,
+              periodType: 'historical'
+            },
+            validation: {
+              actualSource: 'daily_kpi_data',
+              expectedSource: 'daily_kpi_data',
+              isConsistent: true
+            }
+          };
+        }
+        
+        // Last resort for historical: live API
+        console.log('4️⃣ HISTORICAL: No database data, trying live API fallback...');
+        dataSources.push('live_api_with_cache_storage');
+        
+        const liveResult = await this.fetchFromLiveAPIWithCaching(clientId, dateRange, platform, sessionToken);
+        if (liveResult.success) {
+          const responseTime = Date.now() - startTime;
+        
+          console.log(`✅ SUCCESS: Live API fallback returned data in ${responseTime}ms`);
+          
+          return {
+            success: true,
+            data: liveResult.data!,
+            debug: {
+              source: 'live-api-with-cache-storage',
+              cachePolicy: 'live-api-smart-cache-update',
+              responseTime,
+              reason,
+              dataSourcePriority: dataSources
+            },
+            validation: {
+              actualSource: 'live_api',
+              expectedSource: 'campaign_summaries',
+              isConsistent: true
+            }
+          };
+        }
+      }
+      
+      // ✅ FIXED Priority 2: For CURRENT periods, use smart cache (direct access, no HTTP)
       if (needsSmartCache) {
-        console.log(`1️⃣ SMART CACHE: Using smart cache system for current ${platform} period...`);
+        console.log(`⚡ CURRENT PERIOD: Using smart cache (DIRECT ACCESS) for ${platform}...`);
         dataSources.push('smart_cache_system');
         
-        const smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
-        console.log(`🔍 Smart cache result:`, { success: smartCacheResult.success, hasData: !!smartCacheResult.data });
+        let smartCacheResult;
+        
+        if (isCurrentWeek) {
+          // Use weekly smart cache for current week
+          console.log('📅 Using WEEKLY smart cache for current week (DIRECT)...');
+          smartCacheResult = await this.fetchFromWeeklySmartCache(clientId, dateRange, platform);
+        } else {
+          // Use monthly smart cache for current month
+          console.log('📅 Using MONTHLY smart cache for current month (DIRECT)...');
+          smartCacheResult = await this.fetchFromSmartCache(clientId, dateRange, platform);
+        }
+        
+        console.log('🎯 Smart cache result:', { 
+          success: smartCacheResult.success, 
+          source: smartCacheResult.debug?.source,
+          campaignsCount: smartCacheResult.data?.campaigns?.length || 0,
+          cacheType: isCurrentWeek ? 'weekly' : 'monthly'
+        });
         
         if (smartCacheResult.success) {
           const responseTime = Date.now() - startTime;
-          
-          console.log(`✅ SUCCESS: Smart cache returned data in ${responseTime}ms`);
+          console.log(`✅ SUCCESS: Smart cache returned data in ${responseTime}ms (DIRECT ACCESS)`);
           
           return {
             success: true,
             data: smartCacheResult.data!,
             debug: {
-              source: 'smart-cache-system',
-              cachePolicy: 'smart-cache-3hour',
+              source: smartCacheResult.debug?.source || 'smart-cache-system',
+              cachePolicy: smartCacheResult.debug?.cachePolicy || 'smart-cache-3hour',
               responseTime,
               reason,
               dataSourcePriority: dataSources,
@@ -236,116 +400,100 @@ export class StandardizedDataFetcher {
         }
         
         console.log('⚠️ Smart cache failed for current period, falling back to database...');
+        // Fall through to database check as fallback
       }
       
-      // 🎯 PRIORITY 2: Database lookup for historical periods (campaign_summaries)
-      console.log(`2️⃣ DATABASE: Trying campaign_summaries for ${platform}...`);
-      dataSources.push('campaign_summaries_database');
-      
-      const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
-      if (cachedResult.success) {
-        // 🔧 FIX: Check if conversion metrics are complete
-        // If reservations and reservation_value are both 0, data might be incomplete
-        const hasConversionData = cachedResult.data!.conversionMetrics && 
-          (cachedResult.data!.conversionMetrics.reservations > 0 || 
-           cachedResult.data!.conversionMetrics.reservation_value > 0 ||
-           cachedResult.data!.conversionMetrics.email_contacts > 0 ||
-           cachedResult.data!.conversionMetrics.click_to_call > 0);
+      // ✅ FALLBACK: For current periods, try database if smart cache fails
+      if (needsSmartCache) {
+        console.log(`📊 CURRENT PERIOD FALLBACK: Trying campaign_summaries for ${platform}...`);
+        dataSources.push('campaign_summaries_database');
         
-        if (hasConversionData) {
-          const responseTime = Date.now() - startTime;
+        const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
+        if (cachedResult.success) {
+          const hasConversionData = cachedResult.data!.conversionMetrics && 
+            (cachedResult.data!.conversionMetrics.reservations > 0 || 
+             cachedResult.data!.conversionMetrics.reservation_value > 0 ||
+             cachedResult.data!.conversionMetrics.email_contacts > 0 ||
+             cachedResult.data!.conversionMetrics.click_to_call > 0);
           
-          console.log(`✅ SUCCESS: campaign_summaries returned COMPLETE data in ${responseTime}ms`);
+          if (hasConversionData) {
+            const responseTime = Date.now() - startTime;
+            console.log(`✅ FALLBACK SUCCESS: campaign_summaries returned data in ${responseTime}ms`);
+            
+            return {
+              success: true,
+              data: cachedResult.data!,
+              debug: {
+                source: 'campaign-summaries-database',
+                cachePolicy: 'database-fallback-current',
+                responseTime,
+                reason,
+                dataSourcePriority: dataSources,
+                periodType: 'current'
+              },
+              validation: {
+                actualSource: 'campaign_summaries',
+                expectedSource: 'smart_cache',
+                isConsistent: false
+              }
+            };
+          }
+        }
+        
+        // ✅ FALLBACK: Try daily_kpi_data for current period if smart cache and summaries failed
+        console.log(`📊 CURRENT PERIOD FALLBACK: Trying daily_kpi_data for ${platform}...`);
+        dataSources.push('daily_kpi_data');
+        
+        const dailyResult = await this.fetchFromDailyKpiData(clientId, dateRange, platform);
+        if (dailyResult.success) {
+          const responseTime = Date.now() - startTime;
+          console.log(`✅ FALLBACK SUCCESS: daily_kpi_data returned data in ${responseTime}ms`);
           
           return {
             success: true,
-            data: cachedResult.data!,
+            data: dailyResult.data!,
             debug: {
-              source: 'campaign-summaries-database',
-              cachePolicy: isCurrentPeriod ? 'database-fallback-current' : 'database-first-historical',
+              source: 'daily-kpi-data',
+              cachePolicy: 'database-fallback-current',
               responseTime,
               reason,
               dataSourcePriority: dataSources,
-              periodType: isCurrentPeriod ? 'current' : 'historical'
+              periodType: 'current'
             },
             validation: {
-              actualSource: 'campaign_summaries',
-              expectedSource: 'campaign_summaries',
-              isConsistent: true
+              actualSource: 'daily_kpi_data',
+              expectedSource: 'smart_cache',
+              isConsistent: false
             }
           };
-        } else {
-          console.log('⚠️ campaign_summaries has incomplete conversion metrics, trying next source...');
-          console.log(`   Reservations: ${cachedResult.data!.conversionMetrics?.reservations || 0}`);
-          console.log(`   Reservation Value: ${cachedResult.data!.conversionMetrics?.reservation_value || 0}`);
         }
-      }
-      
-      // 🎯 PRIORITY 3: daily_kpi_data (most accurate for all periods)
-      console.log(`3️⃣ DAILY KPI DATA: Trying daily_kpi_data for ${platform}...`);
-      dataSources.push('daily_kpi_data');
-      
-      const dailyResult = await this.fetchFromDailyKpiData(clientId, dateRange, platform);
-      if (dailyResult.success) {
-        const responseTime = Date.now() - startTime;
         
-        console.log(`✅ SUCCESS: daily_kpi_data returned data in ${responseTime}ms`);
-        console.log('🔍 DAILY KPI DATA DEBUG:', {
-          totalSpend: dailyResult.data?.stats?.totalSpend,
-          totalReservations: dailyResult.data?.conversionMetrics?.reservations,
-          totalReservationValue: dailyResult.data?.conversionMetrics?.reservation_value
-        });
+        // ✅ LAST RESORT: Live API for current period
+        console.log('🚀 CURRENT PERIOD LAST RESORT: Trying live API...');
+        dataSources.push('live_api_with_cache_storage');
         
-        return {
-          success: true,
-          data: dailyResult.data!,
-          debug: {
-            source: 'daily-kpi-data',
-            cachePolicy: isCurrentPeriod ? 'database-first-current' : 'database-first-historical',
-            responseTime,
-            reason,
-            dataSourcePriority: dataSources,
-            periodType: isCurrentPeriod ? 'current' : 'historical'
-          },
-          validation: {
-            actualSource: 'daily_kpi_data',
-            expectedSource: 'daily_kpi_data',
-            isConsistent: true
-          }
-        };
-      }
-      
-      // 🎯 PRIORITY 4: Live API fallback (last resort with smart cache storage)
-      console.log('4️⃣ No database data, trying live API fallback with smart cache storage...');
-      dataSources.push('live_api_with_cache_storage');
-      
-      const liveResult = await this.fetchFromLiveAPIWithCaching(clientId, dateRange, platform, sessionToken);
-      if (liveResult.success) {
-        const responseTime = Date.now() - startTime;
-      
-        console.log(`✅ SUCCESS: Live API fallback returned data in ${responseTime}ms`);
-        console.log('🔍 META LIVE API DEBUG:', {
-          totalSpend: liveResult.data?.stats?.totalSpend,
-          totalReservations: liveResult.data?.conversionMetrics?.reservations,
-          totalReservationValue: liveResult.data?.conversionMetrics?.reservation_value
-        });
-        
-        return {
-          success: true,
-          data: liveResult.data!,
-          debug: {
-            source: 'live-api-with-cache-storage',
-            cachePolicy: 'live-api-smart-cache-update',
-            responseTime,
-            reason,
-            dataSourcePriority: dataSources
-          },
-          validation: {
-            actualSource: 'live_api',
-            expectedSource: 'smart_cache',
-            isConsistent: true
-          }
-        };
+        const liveResult = await this.fetchFromLiveAPIWithCaching(clientId, dateRange, platform, sessionToken);
+        if (liveResult.success) {
+          const responseTime = Date.now() - startTime;
+          console.log(`✅ LAST RESORT SUCCESS: Live API returned data in ${responseTime}ms`);
+          
+          return {
+            success: true,
+            data: liveResult.data!,
+            debug: {
+              source: 'live-api-with-cache-storage',
+              cachePolicy: 'live-api-smart-cache-update',
+              responseTime,
+              reason,
+              dataSourcePriority: dataSources
+            },
+            validation: {
+              actualSource: 'live_api',
+              expectedSource: 'smart_cache',
+              isConsistent: false
+            }
+          };
+        }
       }
       
       // FAILURE: No data available
@@ -546,7 +694,9 @@ export class StandardizedDataFetcher {
   }
   
   /**
-   * NEW: Fetch from Smart Cache System (direct integration)
+   * ✅ FIXED: Fetch from Smart Cache System (DIRECT ACCESS - no HTTP overhead)
+   * Priority 2 Fix: Removed HTTP layer, calls smart cache helper directly
+   * ✅ FIXED: Validates requested date range matches current period before using cache
    */
   private static async fetchFromSmartCache(
     clientId: string,
@@ -554,36 +704,49 @@ export class StandardizedDataFetcher {
     platform: string
   ): Promise<Partial<StandardizedDataResult>> {
     
-    console.log(`🎯 SMART CACHE: Making API call for ${platform}...`);
+    console.log(`🎯 SMART CACHE: Direct access for ${platform} (validating date range)...`);
     
     try {
-      // Make HTTP request to smart cache API (use relative URL)
-      const response = await fetch('/api/smart-cache', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          clientId,
-          platform,
-          forceRefresh: false,
-          dateRange // Add dateRange to smart cache call
-        })
-      });
+      // ✅ CRITICAL FIX: Validate that requested date range matches current month
+      const { getCurrentMonthInfo } = await import('./smart-cache-helper');
+      const currentMonth = getCurrentMonthInfo();
       
-      if (!response.ok) {
-        console.log(`⚠️ Smart cache API failed with status ${response.status}`);
+      // Check if requested date range matches current month boundaries
+      const requestedStart = new Date(dateRange.start);
+      const requestedEnd = new Date(dateRange.end);
+      const currentMonthStart = new Date(currentMonth.startDate);
+      const currentMonthEnd = new Date(currentMonth.endDate);
+      
+      // Validate date range matches current month
+      const startMatches = requestedStart.toISOString().split('T')[0] === currentMonthStart.toISOString().split('T')[0];
+      const endMatches = requestedEnd.toISOString().split('T')[0] === currentMonthEnd.toISOString().split('T')[0];
+      
+      if (!startMatches || !endMatches) {
+        console.log(`⚠️ Date range mismatch: Requested ${dateRange.start} to ${dateRange.end}, but current month is ${currentMonth.startDate} to ${currentMonth.endDate}`);
+        console.log(`⚠️ Smart cache only works for current month, falling back to database...`);
         return { success: false };
       }
       
-      const result = await response.json();
+      console.log(`✅ Date range validated: Requested period matches current month (${currentMonth.periodId})`);
+      
+      // ✅ FIXED: Direct call to smart cache helper (removes HTTP latency)
+      const { getSmartCacheData } = await import('./smart-cache-helper');
+      const result = await getSmartCacheData(clientId, false, platform);
       
       if (result.success && result.data) {
-        console.log(`✅ Smart cache API returned data for ${platform}:`, {
-          source: result.debug?.source,
+        console.log(`✅ Smart cache returned data for ${platform} (DIRECT ACCESS):`, {
+          source: result.source,
+          periodId: currentMonth.periodId,
+          fromCache: result.data.fromCache,
+          cacheAge: result.data.cacheAge,
           campaignsCount: result.data.campaigns?.length || 0,
           totalSpend: result.data.stats?.totalSpend || 0
         });
+        
+        // ✅ VALIDATION: Verify cache data period matches requested period
+        if (result.data.periodId && result.data.periodId !== currentMonth.periodId) {
+          console.warn(`⚠️ Cache period mismatch: Cache has ${result.data.periodId}, expected ${currentMonth.periodId}`);
+        }
         
         return {
           success: true,
@@ -591,21 +754,31 @@ export class StandardizedDataFetcher {
             stats: result.data.stats || this.getZeroData().stats,
             conversionMetrics: result.data.conversionMetrics || this.getZeroData().conversionMetrics,
             campaigns: result.data.campaigns || []
+          },
+          debug: {
+            source: result.source || 'smart-cache-direct',
+            cachePolicy: result.data.fromCache ? 'smart-cache-fresh' : 'smart-cache-stale',
+            responseTime: 0,
+            reason: 'direct-smart-cache-access',
+            dataSourcePriority: ['smart-cache-direct'],
+            periodType: 'current',
+            periodId: currentMonth.periodId
           }
         };
       } else {
-        console.log(`⚠️ Smart cache API returned no data for ${platform}`);
+        console.log(`⚠️ Smart cache returned no data for ${platform}`);
         return { success: false };
       }
       
     } catch (error) {
-      console.error(`❌ Smart cache API error for ${platform}:`, error);
+      console.error(`❌ Smart cache error for ${platform}:`, error);
       return { success: false };
     }
   }
   
   /**
-   * NEW: Fetch from Weekly Smart Cache
+   * ✅ FIXED: Fetch from Weekly Smart Cache (with date range validation)
+   * Validates requested date range matches current week before using cache
    */
   private static async fetchFromWeeklySmartCache(
     clientId: string,
@@ -613,14 +786,36 @@ export class StandardizedDataFetcher {
     platform: string
   ): Promise<Partial<StandardizedDataResult>> {
     
-    console.log(`📅 WEEKLY SMART CACHE for ${platform}...`);
+    console.log(`📅 WEEKLY SMART CACHE for ${platform} (validating date range)...`);
     
     try {
+      // ✅ CRITICAL FIX: Validate that requested date range matches current week
+      const { getCurrentWeekInfo, parseWeekPeriodId } = await import('./week-utils');
+      const currentWeek = getCurrentWeekInfo();
+      
+      // Check if requested date range matches current week boundaries
+      const requestedStart = dateRange.start;
+      const requestedEnd = dateRange.end;
+      const currentWeekStart = currentWeek.startDate;
+      const currentWeekEnd = currentWeek.endDate;
+      
+      // Validate date range matches current week
+      const startMatches = requestedStart === currentWeekStart;
+      const endMatches = requestedEnd === currentWeekEnd;
+      
+      if (!startMatches || !endMatches) {
+        console.log(`⚠️ Date range mismatch: Requested ${dateRange.start} to ${dateRange.end}, but current week is ${currentWeek.startDate} to ${currentWeek.endDate}`);
+        console.log(`⚠️ Weekly smart cache only works for current week, falling back to database...`);
+        return { success: false };
+      }
+      
+      console.log(`✅ Date range validated: Requested period matches current week (${currentWeek.periodId})`);
+      
       if (platform === 'google') {
         // Use Google Ads weekly smart cache (server-side only)
         if (typeof window === 'undefined') {
           const { getGoogleAdsSmartWeekCacheData } = await import('./google-ads-smart-cache-helper');
-          const result = await getGoogleAdsSmartWeekCacheData(clientId, false);
+          const result = await getGoogleAdsSmartWeekCacheData(clientId, false, currentWeek.periodId);
         
           if (result.success && result.data) {
             return {
@@ -632,7 +827,8 @@ export class StandardizedDataFetcher {
                 responseTime: 0,
                 reason: 'weekly-smart-cache',
                 dataSourcePriority: ['weekly-smart-cache'],
-                periodType: 'current-week'
+                periodType: 'current-week',
+                periodId: currentWeek.periodId
               },
               validation: {
                 actualSource: 'google_ads_weekly_cache',
@@ -647,11 +843,18 @@ export class StandardizedDataFetcher {
           return { success: false };
         }
       } else {
-        // Use Meta weekly smart cache
+        // Use Meta weekly smart cache with validated period ID
         const { getSmartWeekCacheData } = await import('./smart-cache-helper');
-        const result = await getSmartWeekCacheData(clientId, false);
+        const result = await getSmartWeekCacheData(clientId, false, currentWeek.periodId);
         
         if (result.success && result.data) {
+          console.log(`✅ Weekly smart cache returned data for ${platform}:`, {
+            source: result.source,
+            periodId: currentWeek.periodId,
+            fromCache: result.data.fromCache,
+            campaignsCount: result.data.campaigns?.length || 0
+          });
+          
           return {
             success: true,
             data: result.data,
@@ -661,7 +864,8 @@ export class StandardizedDataFetcher {
               responseTime: 0,
               reason: 'weekly-smart-cache',
               dataSourcePriority: ['weekly-smart-cache'],
-              periodType: 'current-week'
+              periodType: 'current-week',
+              periodId: currentWeek.periodId
             },
             validation: {
               actualSource: 'meta_weekly_cache',
@@ -796,10 +1000,15 @@ export class StandardizedDataFetcher {
       
       if (weeklyResults && weeklyResults.length > 0) {
         storedSummary = weeklyResults[0];
-        console.log(`✅ Found weekly summary for ${dateRange.start}: ${storedSummary?.total_spend} PLN spend`);
+        console.log(`✅ Found weekly summary for ${dateRange.start} to ${dateRange.end}:`, {
+          summaryDate: storedSummary?.summary_date,
+          totalSpend: storedSummary?.total_spend,
+          reservations: (storedSummary as any)?.reservations,
+          periodMatch: storedSummary?.summary_date >= dateRange.start && storedSummary?.summary_date <= dateRange.end
+        });
       } else {
         error = weeklyError;
-        console.log(`⚠️ No weekly summary found for ${dateRange.start}`);
+        console.log(`⚠️ No weekly summary found for ${dateRange.start} to ${dateRange.end}`);
       }
     } else {
       // 📅 MONTHLY DATA: Search for monthly data in campaign_summaries
@@ -816,10 +1025,17 @@ export class StandardizedDataFetcher {
       
       if (monthlyResults && monthlyResults.length > 0) {
         storedSummary = monthlyResults[0];
-        console.log(`✅ Found monthly summary for ${dateRange.start}: ${storedSummary?.total_spend} PLN spend`);
+        console.log(`✅ Found monthly summary for ${dateRange.start}:`, {
+          summaryDate: storedSummary?.summary_date,
+          totalSpend: storedSummary?.total_spend,
+          reservations: (storedSummary as any)?.reservations,
+          periodMatch: storedSummary?.summary_date === dateRange.start,
+          requestedPeriod: dateRange.start,
+          actualPeriod: storedSummary?.summary_date
+        });
       } else {
         error = monthlyError;
-        console.log(`⚠️ No monthly summary found for ${dateRange.start}`);
+        console.log(`⚠️ No monthly summary found for ${dateRange.start} (requested period)`);
       }
     }
       

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
 import logger from '../../../lib/logger';
+import { authenticateRequest } from '../../../lib/auth-middleware';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

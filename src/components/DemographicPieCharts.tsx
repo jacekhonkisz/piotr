@@ -39,7 +39,7 @@ interface DemographicPerformance {
 
 interface DemographicPieChartsProps {
   data: DemographicPerformance[];
-  metric: 'impressions' | 'clicks' | 'reservations' | 'roas' | 'reservation_value';
+  metric: 'impressions' | 'clicks' | 'spend' | 'reservations' | 'roas' | 'reservation_value';
 }
 
 export default function DemographicPieCharts({ data, metric }: DemographicPieChartsProps) {
@@ -58,9 +58,30 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
   const processGenderData = () => {
     const genderMap = new Map<string, number>();
     
+    // 🔧 DIAGNOSTIC: Log first item to see structure
+    if (data && data.length > 0) {
+      console.log('🔍 DEMOGRAPHIC DATA STRUCTURE:', {
+        firstItem: data[0],
+        allKeys: Object.keys(data[0] || {}),
+        metric: metric,
+        metricValue: data[0]?.[metric],
+        sampleGender: data[0]?.gender,
+        sampleAge: data[0]?.age
+      });
+    }
+    
     data.forEach(item => {
       const gender = item.gender || 'Nieznane';
-      const value = item[metric];
+      const value = item[metric] || 0; // 🔧 FIX: Default to 0 if undefined
+      
+      console.log('🔍 Processing item:', {
+        gender,
+        age: item.age,
+        metric,
+        value,
+        rawItem: item
+      });
+      
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
     });
 
@@ -70,7 +91,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
       labels: Array.from(genderMap.keys()),
       data: Array.from(genderMap.values()),
       total,
-      percentages: Array.from(genderMap.values()).map(value => ((value / total) * 100).toFixed(1))
+      percentages: Array.from(genderMap.values()).map(value => total > 0 ? ((value / total) * 100).toFixed(1) : '0')
     };
 
     console.log('🔍 Processed gender data:', result);
@@ -83,7 +104,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     
     data.forEach(item => {
       const age = item.age || 'Nieznane';
-      const value = item[metric];
+      const value = item[metric] || 0; // 🔧 FIX: Default to 0 if undefined
       ageMap.set(age, (ageMap.get(age) || 0) + value);
     });
 
@@ -93,7 +114,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
       labels: Array.from(ageMap.keys()),
       data: Array.from(ageMap.values()),
       total,
-      percentages: Array.from(ageMap.values()).map(value => ((value / total) * 100).toFixed(1))
+      percentages: Array.from(ageMap.values()).map(value => total > 0 ? ((value / total) * 100).toFixed(1) : '0')
     };
 
     console.log('🔍 Processed age data:', result);
@@ -130,6 +151,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     switch (metric) {
       case 'impressions': return 'Wyświetlenia';
       case 'clicks': return 'Kliknięcia';
+      case 'spend': return 'Wydatki';
       case 'reservations': return 'Rezerwacje';
       case 'roas': return 'ROAS';
       case 'reservation_value': return 'Wartość rezerwacji';
@@ -149,7 +171,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
   };
 
   const formatValue = (value: number) => {
-    if (metric === 'reservation_value') {
+    if (metric === 'reservation_value' || metric === 'spend') {
       return new Intl.NumberFormat('pl-PL', {
         style: 'currency',
         currency: 'PLN'

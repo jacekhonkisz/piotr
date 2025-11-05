@@ -19,8 +19,8 @@ export class RateLimiter {
     backoffMultiplier?: number; // Exponential backoff multiplier
     maxBackoffDelay?: number; // Maximum backoff delay (ms)
   } = {}) {
-    this.minDelay = options.minDelay || 1000; // 1 second default
-    this.maxCallsPerMinute = options.maxCallsPerMinute || 30; // 30 calls per minute
+    this.minDelay = options.minDelay || 500; // 500ms default - optimized for better performance
+    this.maxCallsPerMinute = options.maxCallsPerMinute || 60; // 60 calls per minute (1 per second on average)
     this.backoffMultiplier = options.backoffMultiplier || 2;
     this.maxBackoffDelay = options.maxBackoffDelay || 30000; // 30 seconds max
   }
@@ -182,10 +182,11 @@ export class RequestQueue {
 
 /**
  * Global rate limiter instance
+ * Optimized for Google Ads API performance while staying within safe limits
  */
 export const globalRateLimiter = new RateLimiter({
-  minDelay: 1000, // 1 second between calls
-  maxCallsPerMinute: 30, // 30 calls per minute
+  minDelay: 500, // 500ms between calls - optimized for better performance
+  maxCallsPerMinute: 60, // 60 calls per minute (well within Google's limits)
   backoffMultiplier: 2, // Exponential backoff
   maxBackoffDelay: 30000 // 30 seconds max backoff
 });

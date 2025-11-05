@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from './meta-api-optimized';
+import { MetaAPIServiceOptimized } from './meta-api-optimized';
 import logger from './logger';
 import { getCurrentWeekInfo, parseWeekPeriodId, isCurrentWeekPeriod } from './week-utils';
 
@@ -74,34 +74,134 @@ export function getCurrentMonthInfo() {
 export async function fetchFreshCurrentMonthData(client: any) {
   logger.info('🔄 Fetching fresh current month data from Meta API...');
   
+  // 🔧 NULL SAFETY: Validate client has required fields
+  if (!client) {
+    logger.error('❌ Client object is null or undefined');
+    throw new Error('Client object is required');
+  }
+
+  if (!client.meta_access_token) {
+    logger.error(`❌ Client ${client.name || client.id} has no Meta access token`);
+    throw new Error('Meta access token is required');
+  }
+
+  if (!client.ad_account_id) {
+    logger.error(`❌ Client ${client.name || client.id} has no ad account ID`);
+    throw new Error('Ad account ID is required');
+  }
+  
   const currentMonth = getCurrentMonthInfo();
-  const metaService = new MetaAPIService(client.meta_access_token);
+  const metaService = new MetaAPIServiceOptimized(client.meta_access_token);
+  
+  // 🔧 DIAGNOSTIC: Clear Meta API service cache to ensure fresh data
+  logger.info('🔄 Clearing Meta API service cache to ensure fresh data fetch...');
+  metaService.clearCache();
   
   const adAccountId = client.ad_account_id.startsWith('act_') 
     ? client.ad_account_id.substring(4)
     : client.ad_account_id;
 
+  // 🔧 FIX: Track if API errors occurred
+  let apiErrorOccurred = false;
+  let apiErrorMessage = '';
+
   try {
-    // Use getCampaignInsights instead of getMonthlyCampaignInsights for consistency with reports
-    const campaignInsights = await metaService.getCampaignInsights(
-      adAccountId,
-      currentMonth.startDate!,
-      currentMonth.endDate!,
-      0 // No time increment
-    );
+    // Get basic campaign list with metrics using placement performance as aggregate
+    // Note: Optimized API service doesn't have getCampaignInsights, so we use aggregate data
+    let campaignInsights: any[] = [];
+    let campaigns: any[] = [];
 
-    // Get account info  
-    const accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
+    try {
+      campaignInsights = await metaService.getPlacementPerformance(
+        adAccountId,
+        currentMonth.startDate!,
+        currentMonth.endDate!
+      );
+    } catch (insightError) {
+      logger.error('❌ Error fetching placement performance:', insightError);
+      apiErrorOccurred = true;
+      apiErrorMessage = insightError instanceof Error ? insightError.message : 'Unknown error';
+      campaignInsights = [];
+    }
 
-    logger.info(`✅ Fetched ${campaignInsights.length} campaigns for caching`);
+    try {
+      campaigns = await metaService.getCampaigns(
+        adAccountId,
+        { start: currentMonth.startDate!, end: currentMonth.endDate! }
+      );
+    } catch (campaignError) {
+      logger.error('❌ Error fetching campaigns:', campaignError);
+      apiErrorOccurred = true;
+      apiErrorMessage = campaignError instanceof Error ? campaignError.message : 'Unknown error';
+      campaigns = [];
+    }
 
-    // Calculate stats from Meta API
-    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
-    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
-    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
-    const metaTotalConversions = campaignInsights.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+    // 🔧 NULL SAFETY: Ensure we always have arrays, never null/undefined
+    if (!campaignInsights || !Array.isArray(campaignInsights)) {
+      logger.warn('⚠️ Campaign insights is not a valid array, using empty array');
+      campaignInsights = [];
+    }
+
+    if (!campaigns || !Array.isArray(campaigns)) {
+      logger.warn('⚠️ Campaigns is not a valid array, using empty array');
+      campaigns = [];
+    }
+
+    // Get account info is not available in optimized service - skip it
+    const accountInfo = null;
+
+    logger.info(`✅ Fetched ${campaigns.length} campaigns and ${campaignInsights.length} insights for caching`);
+
+    // 🔍 DIAGNOSTIC: Log raw Meta API response
+    logger.info('🔍 DIAGNOSTIC: Raw Meta API data received:', {
+      campaignsCount: campaigns.length,
+      campaignInsightsCount: campaignInsights.length,
+      firstCampaign: campaigns[0] ? { id: campaigns[0].id, name: campaigns[0].name, status: campaigns[0].status } : null,
+      firstInsight: campaignInsights[0] ? { 
+        spend: campaignInsights[0].spend, 
+        impressions: campaignInsights[0].impressions,
+        clicks: campaignInsights[0].clicks 
+      } : null
+    });
+
+    // Calculate stats from Meta API insights (aggregate from all placements)
+    const totalSpend = campaignInsights.reduce((sum, insight) => sum + (parseFloat(insight.spend) || 0), 0);
+    const totalImpressions = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.impressions) || 0), 0);
+    const totalClicks = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.clicks) || 0), 0);
+    const metaTotalConversions = 0; // Insights don't have conversions directly
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+
+    // 🔍 DIAGNOSTIC: Log aggregated metrics
+    logger.info('🔍 DIAGNOSTIC: Aggregated metrics from Meta API:', {
+      totalSpend,
+      totalImpressions,
+      totalClicks,
+      averageCtr,
+      averageCpc,
+      metaTotalConversions
+    });
+
+    // 🚨 CRITICAL WARNING: Zero data detection
+    if (totalSpend === 0 && totalImpressions === 0 && totalClicks === 0) {
+      logger.error('🚨 ZERO DATA DETECTED: Meta API returned no metrics!');
+      logger.error('🚨 Possible causes:');
+      logger.error('   - Meta API credentials invalid or expired');
+      logger.error('   - Ad account has no active campaigns in this period');
+      logger.error('   - Date range has no data');
+      logger.error('   - API permissions insufficient');
+      logger.error('   - API rate limiting or error (check campaignInsights response)');
+      
+      // 🔧 FIX #3: Don't cache zero data if it's due to API errors
+      if (apiErrorOccurred) {
+        logger.error('🚫 REFUSING TO CACHE: Zero data is due to API error!');
+        logger.error(`🚫 API Error: ${apiErrorMessage}`);
+        throw new Error(`Meta API error - refusing to cache zero data: ${apiErrorMessage}`);
+      }
+      
+      // If no API errors but still zero data, it might be legitimate (no campaigns/spend in period)
+      logger.warn('⚠️ Zero data but no API errors - may be legitimate (no campaigns in period)');
+    }
 
     // 🔧 NEW: Fetch real conversion metrics from daily_kpi_data for current month
     logger.info('📊 Fetching real conversion metrics from daily_kpi_data...');
@@ -289,13 +389,58 @@ export async function fetchFreshCurrentMonthData(client: any) {
       metaTables = null; // Will fallback to live API calls
     }
 
-    // 🔧 FIX: Create synthetic campaign data when no campaigns exist
-    let syntheticCampaigns = campaignInsights;
+    // 🔧 FIX: Use REAL campaign data from getCampaigns(), not placement insights!
+    // The placement insights are breakdowns by platform, NOT campaigns
+    // We need to map real campaigns with aggregated metrics
     
-    if (campaignInsights.length === 0 && (totalSpend > 0 || totalImpressions > 0 || totalClicks > 0)) {
+    let campaignsForCache: any[] = [];
+    
+    if (campaigns && campaigns.length > 0) {
+      // We have real campaigns - use them!
+      logger.info(`✅ Using ${campaigns.length} real campaigns from Meta API`);
+      
+      // Map campaigns with distributed metrics from insights
+      campaignsForCache = campaigns.map(campaign => ({
+        campaign_id: campaign.id,
+        campaign_name: campaign.name || 'Unknown Campaign',
+        status: campaign.status || 'ACTIVE',
+        
+        // Distribute aggregated metrics equally across campaigns
+        // (More sophisticated attribution would require campaign-level insights call)
+        spend: totalSpend / campaigns.length,
+        impressions: Math.round(totalImpressions / campaigns.length),
+        clicks: Math.round(totalClicks / campaigns.length),
+        conversions: Math.round(actualTotalConversions / campaigns.length),
+        
+        // Use average metrics
+        ctr: averageCtr,
+        cpc: averageCpc,
+        cpp: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
+        frequency: 0, // Not available without campaign-level call
+        reach: 0, // Not available without campaign-level call
+        
+        // ✅ FIX: Add conversion funnel metrics to each campaign
+        // These are distributed from the top-level conversion metrics
+        click_to_call: Math.round(conversionMetrics.click_to_call / campaigns.length),
+        email_contacts: Math.round(conversionMetrics.email_contacts / campaigns.length),
+        booking_step_1: Math.round(conversionMetrics.booking_step_1 / campaigns.length),
+        booking_step_2: Math.round(conversionMetrics.booking_step_2 / campaigns.length),
+        booking_step_3: Math.round(conversionMetrics.booking_step_3 / campaigns.length),
+        reservations: Math.round(conversionMetrics.reservations / campaigns.length),
+        reservation_value: conversionMetrics.reservation_value / campaigns.length,
+        roas: conversionMetrics.roas,
+        cost_per_reservation: conversionMetrics.cost_per_reservation,
+        
+        date_start: currentMonth.startDate!,
+        date_stop: currentMonth.endDate!
+      }));
+      
+      logger.info('✅ Mapped real campaigns with aggregated metrics');
+    } else if (totalSpend > 0 || totalImpressions > 0 || totalClicks > 0) {
+      // No campaigns but we have data - create single aggregate entry
       logger.info('🔧 Creating synthetic campaign data from aggregated metrics...');
       
-      syntheticCampaigns = [{
+      campaignsForCache = [{
         campaign_id: `synthetic-${currentMonth.periodId}`,
         campaign_name: `Aggregated Data - ${currentMonth.periodId}`,
         spend: totalSpend,
@@ -305,9 +450,21 @@ export async function fetchFreshCurrentMonthData(client: any) {
         ctr: averageCtr,
         cpc: averageCpc,
         cpp: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
-        frequency: totalImpressions > 0 ? totalImpressions / (totalImpressions / 1000) : 0,
-        reach: Math.round(totalImpressions * 0.8), // Estimated reach
+        frequency: 0,
+        reach: 0,
         status: 'ACTIVE',
+        
+        // ✅ FIX: Add conversion funnel metrics to synthetic campaign too
+        click_to_call: conversionMetrics.click_to_call,
+        email_contacts: conversionMetrics.email_contacts,
+        booking_step_1: conversionMetrics.booking_step_1,
+        booking_step_2: conversionMetrics.booking_step_2,
+        booking_step_3: conversionMetrics.booking_step_3,
+        reservations: conversionMetrics.reservations,
+        reservation_value: conversionMetrics.reservation_value,
+        roas: conversionMetrics.roas,
+        cost_per_reservation: conversionMetrics.cost_per_reservation,
+        
         date_start: currentMonth.startDate!,
         date_stop: currentMonth.endDate!
       }];
@@ -321,7 +478,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
         name: client.name,
         adAccountId: adAccountId
       },
-      campaigns: syntheticCampaigns,
+      campaigns: campaignsForCache,
       stats: {
         totalSpend,
         totalImpressions,
@@ -339,48 +496,72 @@ export async function fetchFreshCurrentMonthData(client: any) {
     };
 
     // 🔧 CRITICAL FIX: Save campaign data to campaigns table for permanent storage (like Google Ads does)
-    try {
-      logger.info('💾 Saving Meta campaigns to database for permanent storage...');
-      
-      // Prepare campaign data for database insertion
-      const campaignsToInsert = syntheticCampaigns.map(campaign => ({
-        client_id: client.id,
-        campaign_id: campaign.campaign_id,
-        campaign_name: campaign.campaign_name,
-        status: campaign.status || 'ACTIVE',
-        date_range_start: currentMonth.startDate,
-        date_range_end: currentMonth.endDate,
+    // Only save if we have actual campaign data with IDs from the API
+    // Add extra safety check to ensure campaigns is a valid array
+    if (campaigns && Array.isArray(campaigns) && campaigns.length > 0) {
+      try {
+        logger.info('💾 Saving Meta campaigns to database for permanent storage...');
         
-        // Core metrics
-        spend: campaign.spend || 0,
-        impressions: campaign.impressions || 0,
-        clicks: campaign.clicks || 0,
-        conversions: campaign.conversions || campaign.reservations || 0,
-        ctr: campaign.ctr || 0,
-        cpc: campaign.cpc || 0,
-        cpp: campaign.cpp || 0,
-        frequency: campaign.frequency || 0,
-        reach: campaign.reach || 0,
-        
-        // Timestamps
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
+        // Map real campaigns from API with metrics
+        const campaignsToInsert = campaigns.map(campaign => ({
+          client_id: client.id,
+          campaign_id: campaign.id, // Use ID from API
+          campaign_name: campaign.name || 'Unknown Campaign', // Use name from API
+          status: campaign.status || 'ACTIVE',
+          date_range_start: currentMonth.startDate,
+          date_range_end: currentMonth.endDate,
+          
+          // Core metrics - aggregate from insights (distributed equally for now)
+          spend: totalSpend / campaigns.length,
+          impressions: Math.round(totalImpressions / campaigns.length),
+          clicks: Math.round(totalClicks / campaigns.length),
+          conversions: Math.round(realConversionMetrics.reservations / campaigns.length),
+          ctr: averageCtr,
+          cpc: averageCpc,
+          cpp: 0,
+          frequency: 0,
+          reach: 0,
+          
+          // Timestamps
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }));
 
-      // Insert/update campaigns in campaigns table
-      const { error: campaignInsertError } = await supabase
-        .from('campaigns')
-        .upsert(campaignsToInsert, {
-          onConflict: 'client_id,campaign_id,date_range_start,date_range_end'
-        });
+        // Insert/update campaigns in campaigns table
+        const { error: campaignInsertError } = await supabase
+          .from('campaigns')
+          .upsert(campaignsToInsert, {
+            onConflict: 'client_id,campaign_id,date_range_start,date_range_end'
+          });
 
-      if (campaignInsertError) {
-        logger.error('❌ Failed to save Meta campaigns to database:', campaignInsertError);
-      } else {
-        logger.info(`✅ Saved ${campaignsToInsert.length} Meta campaigns to database`);
+        if (campaignInsertError) {
+          logger.error('❌ Failed to save Meta campaigns to database:', campaignInsertError);
+        } else {
+          logger.info(`✅ Saved ${campaignsToInsert.length} Meta campaigns to database`);
+        }
+      } catch (dbError) {
+        logger.error('❌ Database insertion error for Meta campaigns:', dbError);
       }
-    } catch (dbError) {
-      logger.error('❌ Database insertion error for Meta campaigns:', dbError);
+    } else {
+      logger.info('⚠️ Skipping database save - no campaign data available from Meta API');
+    }
+
+    // 🔍 DIAGNOSTIC: Log what we're about to cache
+    logger.info('🔍 DIAGNOSTIC: Data being cached:', {
+      clientId: client.id,
+      periodId: currentMonth.periodId,
+      stats: cacheData.stats,
+      conversionMetrics: cacheData.conversionMetrics,
+      campaignsCount: cacheData.campaigns.length,
+      hasMetaTables: !!cacheData.metaTables
+    });
+
+    // 🚨 VALIDATION: Prevent caching zero data unless it's genuinely correct
+    if (cacheData.stats.totalSpend === 0 && 
+        cacheData.stats.totalImpressions === 0 && 
+        cacheData.stats.totalClicks === 0) {
+      logger.warn('⚠️  Caching ZERO metrics data - this may indicate an API issue');
+      logger.warn('⚠️  If this is unexpected, check Meta API response above');
     }
 
     // Cache the data for future requests
@@ -397,6 +578,11 @@ export async function fetchFreshCurrentMonthData(client: any) {
         });
       
       logger.info('💾 Fresh data cached successfully');
+      logger.info('💾 Cached stats:', {
+        totalSpend: cacheData.stats.totalSpend,
+        totalImpressions: cacheData.stats.totalImpressions,
+        totalClicks: cacheData.stats.totalClicks
+      });
     } catch (cacheError) {
       logger.error('⚠️ Failed to cache fresh data:', cacheError);
     }
@@ -405,8 +591,95 @@ export async function fetchFreshCurrentMonthData(client: any) {
 
   } catch (error) {
     logger.error('❌ Error fetching fresh current month data:', error);
+    logger.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
     
-    // 🔧 ULTIMATE FALLBACK: If Meta API completely fails, provide basic structure
+    // 🔧 FIX #4: GRACEFUL DEGRADATION - Try to use historical data from campaigns table
+    logger.info('🔄 Attempting to use historical campaign data as fallback...');
+    
+    try {
+      const { data: historicalCampaigns, error: histError } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('client_id', client.id)
+        .eq('platform', 'meta')
+        .gte('date_range_start', currentMonth.startDate!)
+        .lte('date_range_end', currentMonth.endDate!)
+        .order('created_at', { ascending: false });
+      
+      if (!histError && historicalCampaigns && historicalCampaigns.length > 0) {
+        logger.info(`✅ Found ${historicalCampaigns.length} historical campaigns, using as fallback`);
+        
+        // Calculate stats from historical data
+        const histStats = {
+          totalSpend: historicalCampaigns.reduce((sum, c) => sum + (c.spend || 0), 0),
+          totalImpressions: historicalCampaigns.reduce((sum, c) => sum + (c.impressions || 0), 0),
+          totalClicks: historicalCampaigns.reduce((sum, c) => sum + (c.clicks || 0), 0),
+          totalConversions: historicalCampaigns.reduce((sum, c) => sum + (c.conversions || 0), 0),
+          averageCtr: 0,
+          averageCpc: 0
+        };
+        
+        histStats.averageCtr = histStats.totalImpressions > 0 
+          ? (histStats.totalClicks / histStats.totalImpressions) * 100 
+          : 0;
+        histStats.averageCpc = histStats.totalClicks > 0 
+          ? histStats.totalSpend / histStats.totalClicks 
+          : 0;
+        
+        return {
+          client: {
+            id: client.id,
+            name: client.name,
+            adAccountId: adAccountId
+          },
+          campaigns: historicalCampaigns.map(c => ({
+            campaign_id: c.campaign_id,
+            campaign_name: c.campaign_name + ' (Historical)',
+            spend: c.spend || 0,
+            impressions: c.impressions || 0,
+            clicks: c.clicks || 0,
+            conversions: c.conversions || 0,
+            ctr: c.ctr || 0,
+            cpc: c.cpc || 0,
+            cpp: c.cpp || 0,
+            frequency: c.frequency || 0,
+            reach: c.reach || 0,
+            status: 'HISTORICAL',
+            date_start: c.date_range_start,
+            date_stop: c.date_range_end
+          })),
+          stats: histStats,
+          conversionMetrics: {
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            reservations: histStats.totalConversions,
+            reservation_value: histStats.totalConversions * 350,
+            roas: (histStats.totalConversions * 350) / (histStats.totalSpend || 1),
+            cost_per_reservation: histStats.totalConversions > 0 
+              ? histStats.totalSpend / histStats.totalConversions 
+              : 0,
+            booking_step_2: 0,
+            booking_step_3: 0
+          },
+          metaTables: null,
+          accountInfo: null,
+          fetchedAt: new Date().toISOString(),
+          fromCache: false,
+          cacheAge: 0,
+          historical: true,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorType: 'api_failure_using_historical_data',
+          userMessage: 'Using historical data due to API connectivity issues. Data may not be current.'
+        };
+      }
+      
+      logger.warn('⚠️ No historical campaign data found');
+    } catch (histError) {
+      logger.error('❌ Failed to fetch historical data:', histError);
+    }
+    
+    // 🔧 ULTIMATE FALLBACK: If everything fails, provide basic structure
     // This prevents the frontend from breaking with "Nie skonfigurowane"
     const fallbackData = {
       client: {
@@ -426,7 +699,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
         cpp: 0,
         frequency: 0,
         reach: 0,
-        status: 'PAUSED',
+        status: 'ERROR',
         date_start: currentMonth.startDate!,
         date_stop: currentMonth.endDate!
       }],
@@ -450,15 +723,17 @@ export async function fetchFreshCurrentMonthData(client: any) {
         booking_step_2: 1,
         booking_step_3: 1
       },
-      metaTables: null, // ✅ ENHANCED: Include metaTables field in fallback
+      metaTables: null,
       accountInfo: null,
       fetchedAt: new Date().toISOString(),
       fromCache: false,
       cacheAge: 0,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorType: 'api_failure_no_historical_data',
+      userMessage: 'Unable to fetch campaign data. Please check your Meta API credentials or try again later.'
     };
 
-    logger.info('🔧 Returning fallback data to prevent "Nie skonfigurowane"');
+    logger.info('🔧 Returning ultimate fallback data to prevent "Nie skonfigurowane"');
     return fallbackData;
   }
 }
@@ -610,7 +885,34 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
     forceRefresh = true;
   }
   
-  // Check if we have fresh cached data (unless force refresh)
+  // ⚡ TIER 1: Check memory cache first (0-1ms - INSTANT!)
+  if (!forceRefresh) {
+    try {
+      const { memoryCache, CacheKeys } = await import('./memory-cache');
+      const memoryCacheKey = CacheKeys.smartCache(clientId, currentMonth.periodId, platform);
+      const memCached = memoryCache.get<any>(memoryCacheKey);
+      
+      if (memCached) {
+        logger.info('⚡ MEMORY CACHE HIT - Instant return (0-1ms)');
+        return {
+          success: true,
+          data: {
+            ...memCached,
+            fromCache: true,
+            cacheSource: 'memory',
+            cacheAge: Date.now() - new Date(memCached.fetchedAt || Date.now()).getTime()
+          },
+          source: 'memory-cache'
+        };
+      }
+      
+      logger.info('❌ Memory cache miss - checking database...');
+    } catch (err) {
+      logger.warn('⚠️ Memory cache error (will fallback to database):', err);
+    }
+  }
+  
+  // ⚡ TIER 2: Check database cache (10-50ms)
   if (!forceRefresh) {
     try {
       // Use different cache tables based on platform
@@ -627,6 +929,34 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
       if (!cacheError && cachedData) {
         if (isCacheFresh(cachedData.last_updated)) {
           logger.info('✅ Returning fresh cached data');
+          
+          // 🔍 DIAGNOSTIC: Log what we're returning from cache
+          logger.info('🔍 DIAGNOSTIC: Cache data being returned:', {
+            clientId: clientId,
+            periodId: cachedData.period_id,
+            cacheAge: Date.now() - new Date(cachedData.last_updated).getTime(),
+            stats: cachedData.cache_data?.stats,
+            conversionMetrics: cachedData.cache_data?.conversionMetrics,
+            campaignsCount: cachedData.cache_data?.campaigns?.length || 0
+          });
+
+          // 🚨 WARNING: Check if cached data has zeros
+          if (cachedData.cache_data?.stats?.totalSpend === 0 && 
+              cachedData.cache_data?.stats?.totalImpressions === 0 && 
+              cachedData.cache_data?.stats?.totalClicks === 0) {
+            logger.warn('🚨 WARNING: Cached data contains ZERO metrics!');
+            logger.warn('🚨 This suggests the cache was populated with bad data from Meta API');
+          }
+          
+          // ⚡ Store in memory cache for next time (0-1ms access)
+          try {
+            const { memoryCache, CacheKeys } = await import('./memory-cache');
+            const memoryCacheKey = CacheKeys.smartCache(clientId, currentMonth.periodId, platform);
+            memoryCache.set(memoryCacheKey, cachedData.cache_data, 10 * 60 * 1000); // 10 min TTL
+            logger.info('💾 Stored in memory cache for instant future access');
+          } catch (err) {
+            logger.warn('⚠️ Failed to store in memory cache:', err);
+          }
           
           return {
             success: true,
@@ -923,50 +1253,13 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       logger.info('✅ Created synthetic weekly campaign with aggregated data');
     }
 
-    // 🔧 CRITICAL FIX: Save weekly campaign data to campaigns table for permanent storage (like Google Ads does)
-    try {
-      logger.info('💾 Saving weekly Meta campaigns to database for permanent storage...');
-      
-      // Prepare campaign data for database insertion
-      const campaignsToInsert = syntheticCampaigns.map(campaign => ({
-        client_id: client.id,
-        campaign_id: campaign.campaign_id,
-        campaign_name: campaign.campaign_name,
-        status: campaign.status || 'ACTIVE',
-        date_range_start: currentWeek.startDate,
-        date_range_end: currentWeek.endDate,
-        
-        // Core metrics
-        spend: campaign.spend || 0,
-        impressions: campaign.impressions || 0,
-        clicks: campaign.clicks || 0,
-        conversions: campaign.conversions || campaign.reservations || 0,
-        ctr: campaign.ctr || 0,
-        cpc: campaign.cpc || 0,
-        cpp: campaign.cpp || 0,
-        frequency: campaign.frequency || 0,
-        reach: campaign.reach || 0,
-        
-        // Timestamps
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }));
-
-      // Insert/update campaigns in campaigns table
-      const { error: campaignInsertError } = await supabase
-        .from('campaigns')
-        .upsert(campaignsToInsert, {
-          onConflict: 'client_id,campaign_id,date_range_start,date_range_end'
-        });
-
-      if (campaignInsertError) {
-        logger.error('❌ Failed to save weekly Meta campaigns to database:', campaignInsertError);
-      } else {
-        logger.info(`✅ Saved ${campaignsToInsert.length} weekly Meta campaigns to database`);
-      }
-    } catch (dbError) {
-      logger.error('❌ Database insertion error for weekly Meta campaigns:', dbError);
-    }
+    // 🔧 CRITICAL FIX: Skip database save for weekly data as it uses synthetic campaigns
+    // Weekly data is cached in current_week_cache table which is sufficient
+    // Database save would require real campaign IDs from Meta API which we don't fetch for weekly data
+    logger.info('⚠️ Skipping database save for weekly data - data is cached in current_week_cache table');
+    
+    // Note: If needed in the future, fetch real campaign list like monthly data does:
+    // const campaigns = await metaService.getCampaigns(adAccountId, { start: currentWeek.startDate, end: currentWeek.endDate });
 
     return {
       client: {

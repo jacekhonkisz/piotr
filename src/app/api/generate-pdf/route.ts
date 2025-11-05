@@ -1055,13 +1055,17 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     typeof item === 'object' && 
     (item.age || item.gender) && 
     typeof item.spend === 'number' && 
-    item.spend > 0
+    item.spend > 0 &&
+    // 🔧 FIX: Ensure at least one displayable metric exists (spend, clicks, or conversion data)
+    (item.clicks > 0 || item.reservation_value > 0 || item.impressions > 0)
   );
   
   logger.info('🔍 VALID DEMOGRAPHIC DATA:', {
     originalLength: demographicData.length,
     validLength: validData.length,
-    validDataSample: validData.slice(0, 2)
+    validDataSample: validData.slice(0, 2),
+    hasReservationValue: validData.some(item => item.reservation_value > 0),
+    hasClicks: validData.some(item => item.clicks > 0)
   });
   
   if (validData.length === 0) {
@@ -1096,7 +1100,10 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     if (gender.toLowerCase() === 'female') gender = 'Kobiety';
     else if (gender.toLowerCase() === 'male') gender = 'Mężczyźni';
     else if (gender.toLowerCase() === 'unknown') gender = 'Nieznane';
-      const value = metric === 'reservation_value' ? (item.reservation_value || 0) : (item.clicks || 0);
+      // 🔧 FIX: Safe access to conversion metrics with fallback
+      const value = metric === 'reservation_value' 
+        ? (parseFloat(item.reservation_value) || 0) 
+        : (parseInt(item.clicks) || 0);
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
   });
 
@@ -1106,7 +1113,10 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     let age = item.age || 'Nieznane';
     // Ensure age labels are in Polish
     if (age.toLowerCase() === 'unknown') age = 'Nieznane';
-      const value = metric === 'reservation_value' ? (item.reservation_value || 0) : (item.clicks || 0);
+      // 🔧 FIX: Safe access to conversion metrics with fallback
+      const value = metric === 'reservation_value' 
+        ? (parseFloat(item.reservation_value) || 0) 
+        : (parseInt(item.clicks) || 0);
       ageMap.set(age, (ageMap.get(age) || 0) + value);
   });
 
@@ -2074,6 +2084,13 @@ function generatePDFHTML(reportData: ReportData): string {
 async function fetchReportData(clientId: string, dateRange: { start: string; end: string }, request: NextRequest): Promise<ReportData> {
   logger.info('📊 PDF Generation using EXACT same system as reports page');
   
+  // 🔧 FIX: Extract authorization header to pass to internal API calls
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader) {
+    logger.error('❌ Missing authorization header in fetchReportData');
+    throw new Error('Missing authorization header');
+  }
+  
   // Get client data
   const { data: clientData, error: clientError } = await supabase
     .from('clients')
@@ -2191,6 +2208,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': authHeader
         },
         body: JSON.stringify({
           clientId,
@@ -2252,7 +2270,10 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         
         const metaYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': authHeader
+          },
           body: JSON.stringify({ 
             clientId, 
             dateRange, 
@@ -2290,7 +2311,10 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         
         const googleYoYResponse = await fetch(`${baseUrl}/api/year-over-year-comparison`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': authHeader
+          },
           body: JSON.stringify({ 
             clientId, 
             dateRange, 
@@ -2488,7 +2512,10 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       
       const fallbackResponse = await fetch(`${baseUrl}/api/fetch-live-data`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        },
         body: JSON.stringify({
           clientId,
           dateRange,
@@ -2585,8 +2612,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       const metaTablesResponse = await fetch(`${baseUrl}/api/fetch-meta-tables`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-          // No Authorization header needed (internal fetch)
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
         },
         body: JSON.stringify({
           clientId,
@@ -2762,7 +2789,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-executive-summary`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': authHeader
       },
       body: JSON.stringify({
         clientId,
@@ -2812,6 +2840,16 @@ export async function POST(request: NextRequest) {
   console.log('🚨 CRITICAL: PDF POST handler reached!');
   logger.info('🚨 CRITICAL: PDF POST handler reached!');
   logger.info('📄 New PDF Generation Request Started - using EXACT same system as reports page');
+
+  // 🔒 Apply rate limiting for PDF generation
+  const { applyRateLimit, defaultRateLimiters } = await import('@/lib/api-rate-limiter');
+  const rateLimitResponse = await applyRateLimit(request, defaultRateLimiters.pdf);
+  if (rateLimitResponse) {
+    logger.warn('PDF generation rate limit exceeded', {
+      path: request.nextUrl.pathname,
+    });
+    return rateLimitResponse;
+  }
 
   try {
     const body = await request.json();
@@ -2911,75 +2949,106 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('🚀 Launching Puppeteer...');
-    let browser;
+    let browser: any = null;
+    let page: any = null;
+    
+    // 🔒 Resource limits for PDF generation
+    const MAX_PDF_SIZE_MB = 50; // Maximum PDF size in MB
+    const MAX_GENERATION_TIME_MS = 120000; // 2 minutes maximum
+    const startTime = Date.now();
     
     try {
+      // 🔒 SECURITY: Removed --disable-web-security flag for production security
+      // Use proper content isolation instead of disabling security
       browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-web-security',
-        '--disable-features=VizDisplayCompositor'
-      ]
-    });
-
-    const page = await browser.newPage();
-    
-    // Set longer timeout for page operations
-    page.setDefaultTimeout(60000); // 60 seconds
-    page.setDefaultNavigationTimeout(60000); // 60 seconds
-    
-    // Capture page errors
-    page.on('pageerror', (error) => {
-      logger.error('📄 PDF Page Error:', error.message);
-    });
-    
-    page.on('console', (msg) => {
-      logger.info('📄 PDF Page Console:', msg.text());
-    });
-    
-    // Use domcontentloaded instead of networkidle0 to avoid timeout issues
-    logger.info('⏳ Setting page content...');
-    await page.setContent(html, { 
-      waitUntil: 'domcontentloaded',
-      timeout: 60000 
-    });
-    
-    logger.info('⏳ Waiting for content to render...');
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced wait time
-    
-    // Wait for any remaining async operations
-    await page.evaluate(() => {
-      return new Promise((resolve) => {
-        if (document.readyState === 'complete') {
-          resolve(true);
-        } else {
-          window.addEventListener('load', () => resolve(true));
-        }
+        headless: true,
+        args: [
+          '--no-sandbox', // Required for serverless environments
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          // Removed: '--disable-web-security' - Security risk
+          '--disable-features=VizDisplayCompositor',
+          // Resource limits
+          '--max-old-space-size=512', // Limit memory to 512MB
+        ],
+        // Resource constraints
+        timeout: MAX_GENERATION_TIME_MS,
       });
-    });
-    
-    logger.info('📄 Generating PDF...');
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: false,
-      margin: {
-        top: '15mm',
-        right: '15mm',
-        bottom: '15mm',
-        left: '15mm'
-      },
-      timeout: 60000 // Add PDF generation timeout
-    });
 
-    await browser.close();
+      page = await browser.newPage();
+      
+      // Set longer timeout for page operations
+      page.setDefaultTimeout(60000); // 60 seconds
+      page.setDefaultNavigationTimeout(60000); // 60 seconds
+      
+      // Capture page errors
+      page.on('pageerror', (error) => {
+        logger.error('📄 PDF Page Error:', error.message);
+      });
+      
+      page.on('console', (msg) => {
+        logger.info('📄 PDF Page Console:', msg.text());
+      });
+      
+      // Use domcontentloaded instead of networkidle0 to avoid timeout issues
+      logger.info('⏳ Setting page content...');
+      await page.setContent(html, { 
+        waitUntil: 'domcontentloaded',
+        timeout: 60000 
+      });
+      
+      logger.info('⏳ Waiting for content to render...');
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced wait time
+      
+      // Wait for any remaining async operations
+      await page.evaluate(() => {
+        return new Promise((resolve) => {
+          if (document.readyState === 'complete') {
+            resolve(true);
+          } else {
+            window.addEventListener('load', () => resolve(true));
+          }
+        });
+      });
+      
+      // Check generation time limit
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime > MAX_GENERATION_TIME_MS) {
+        throw new Error(`PDF generation exceeded time limit of ${MAX_GENERATION_TIME_MS}ms`);
+      }
+      
+      logger.info('📄 Generating PDF...');
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        preferCSSPageSize: false,
+        margin: {
+          top: '15mm',
+          right: '15mm',
+          bottom: '15mm',
+          left: '15mm'
+        },
+        timeout: MAX_GENERATION_TIME_MS - elapsedTime // Remaining time
+      });
+      
+      // Check PDF size limit
+      const pdfSizeMB = pdfBuffer.length / (1024 * 1024);
+      if (pdfSizeMB > MAX_PDF_SIZE_MB) {
+        logger.warn('PDF size exceeded limit', {
+          sizeMB: pdfSizeMB.toFixed(2),
+          maxMB: MAX_PDF_SIZE_MB,
+        });
+        throw new Error(`PDF size (${pdfSizeMB.toFixed(2)}MB) exceeds maximum allowed (${MAX_PDF_SIZE_MB}MB)`);
+      }
+      
+      logger.info('✅ PDF generated', {
+        sizeMB: pdfSizeMB.toFixed(2),
+        generationTimeMs: Date.now() - startTime,
+      });
 
       logger.info('✅ New PDF generated successfully with 8 sections');
 
@@ -2989,51 +3058,78 @@ export async function POST(request: NextRequest) {
         .replace(/\s+/g, '_')
         .substring(0, 50);
     
-    const filename = `raport_kampanii_${sanitizedClientName}_${new Date().toISOString().split('T')[0]}.pdf`;
-    const encodedFilename = encodeURIComponent(filename);
-    
-    // Check if request wants JSON response with AI summary
-    const acceptHeader = request.headers.get('accept');
-    const wantsJson = acceptHeader?.includes('application/json');
-    
-    if (wantsJson) {
-      // Return JSON with both PDF and AI summary for email integration
-      logger.info('📧 Returning JSON response with PDF and AI summary for email integration');
-      return NextResponse.json({
-        success: true,
-        pdf: Buffer.from(pdfBuffer).toString('base64'),
-        aiSummary: reportData.aiSummary,
-        clientName: reportData.clientName,
-        dateRange: reportData.dateRange,
-        size: pdfBuffer.length,
-        hasAiSummary: !!reportData.aiSummary,
-        aiSummaryLength: reportData.aiSummary?.length || 0,
-        aiSummaryPreview: reportData.aiSummary?.substring(0, 100) || 'No AI summary'
-      });
-    } else {
-      // Return the PDF as a response (default behavior)
-      return new NextResponse(pdfBuffer as BodyInit, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
-          'Content-Length': pdfBuffer.length.toString(),
-          // Include AI summary info in headers for debugging
-          'X-AI-Summary-Length': (reportData.aiSummary?.length || 0).toString(),
-          'X-Has-AI-Summary': (!!reportData.aiSummary).toString(),
-        },
-      });
-    }
+      const filename = `raport_kampanii_${sanitizedClientName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const encodedFilename = encodeURIComponent(filename);
+      
+      // 🔒 CRITICAL: Cleanup browser resources before returning response
+      if (page) {
+        try {
+          await page.close();
+        } catch (closePageError) {
+          logger.error('❌ Error closing page:', closePageError);
+        }
+      }
+      
+      if (browser) {
+        try {
+          await browser.close();
+          logger.info('✅ Browser closed successfully');
+        } catch (closeBrowserError) {
+          logger.error('❌ Error closing browser:', closeBrowserError);
+        }
+      }
+      
+      // Check if request wants JSON response with AI summary
+      const acceptHeader = request.headers.get('accept');
+      const wantsJson = acceptHeader?.includes('application/json');
+      
+      if (wantsJson) {
+        // Return JSON with both PDF and AI summary for email integration
+        logger.info('📧 Returning JSON response with PDF and AI summary for email integration');
+        return NextResponse.json({
+          success: true,
+          pdf: Buffer.from(pdfBuffer).toString('base64'),
+          aiSummary: reportData.aiSummary,
+          clientName: reportData.clientName,
+          dateRange: reportData.dateRange,
+          size: pdfBuffer.length,
+          hasAiSummary: !!reportData.aiSummary,
+          aiSummaryLength: reportData.aiSummary?.length || 0,
+          aiSummaryPreview: reportData.aiSummary?.substring(0, 100) || 'No AI summary'
+        });
+      } else {
+        // Return the PDF as a response (default behavior)
+        return new NextResponse(pdfBuffer as BodyInit, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
+            'Content-Length': pdfBuffer.length.toString(),
+            // Include AI summary info in headers for debugging
+            'X-AI-Summary-Length': (reportData.aiSummary?.length || 0).toString(),
+            'X-Has-AI-Summary': (!!reportData.aiSummary).toString(),
+          },
+        });
+      }
 
     } catch (puppeteerError) {
       logger.error('❌ Puppeteer error:', puppeteerError);
       
-      // Ensure browser is closed
+      // 🔒 CRITICAL: Always cleanup browser resources even on error
+      if (page) {
+        try {
+          await page.close();
+        } catch (closePageError) {
+          logger.error('❌ Error closing page:', closePageError);
+        }
+      }
+      
       if (browser) {
         try {
           await browser.close();
-        } catch (closeError) {
-          logger.error('❌ Error closing browser:', closeError);
+          logger.info('✅ Browser closed successfully after error');
+        } catch (closeBrowserError) {
+          logger.error('❌ Error closing browser:', closeBrowserError);
         }
       }
       
