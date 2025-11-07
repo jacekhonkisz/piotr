@@ -6,7 +6,8 @@ import LoadingSpinner, {
   DataLoading, 
   InlineLoading, 
   ButtonLoading,
-  LoginLoading
+  LoginLoading,
+  AdminLoading
 } from './LoadingSpinner';
 import { BarChart3, Download, RefreshCw } from 'lucide-react';
 
@@ -45,6 +46,11 @@ export const LoadingExamplesPage = () => {
             <div className="bg-white rounded-xl p-6 border border-stroke">
               <h3 className="font-medium text-text mb-4">Login Loading</h3>
               <LoginLoading text="Inicjalizacja..." />
+            </div>
+            
+            <div className="bg-white rounded-xl p-6 border border-stroke">
+              <h3 className="font-medium text-text mb-4">Admin Loading</h3>
+              <AdminLoading text="Ładowanie klientów..." />
             </div>
           </div>
           

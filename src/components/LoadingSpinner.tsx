@@ -35,22 +35,17 @@ export default function LoadingSpinner({
     xl: 'text-xl'
   };
 
-  const spinnerVariants = {
-    default: (
-      <div className={`${sizeClasses[size]} border-4 border-navy/20 border-t-navy rounded-full animate-spin`}></div>
-    ),
-    minimal: (
-      <div className={`${sizeClasses[size]} border-2 border-navy/30 border-t-navy rounded-full animate-spin`}></div>
-    ),
-    fullscreen: (
-      <div className={`${sizeClasses[size]} border-4 border-navy/20 border-t-navy rounded-full animate-spin`}></div>
-    ),
-    centered: (
-      <div className={`${sizeClasses[size]} border-4 border-navy/20 border-t-navy rounded-full animate-spin`}></div>
-    ),
-    card: (
-      <div className={`${sizeClasses[size]} border-4 border-navy/20 border-t-navy rounded-full animate-spin`}></div>
-    )
+  // Consolidated spinner rendering - default, fullscreen, centered, and card all use the same spinner
+  // Only minimal variant uses different styling (thinner border)
+  const renderSpinner = () => {
+    const isMinimal = variant === 'minimal';
+    const borderClass = isMinimal 
+      ? 'border-2 border-navy/30' 
+      : 'border-4 border-navy/20';
+    
+    return (
+      <div className={`${sizeClasses[size]} ${borderClass} border-t-navy rounded-full animate-spin`}></div>
+    );
   };
 
   const renderContent = () => (
@@ -63,7 +58,7 @@ export default function LoadingSpinner({
       
       {showSpinner && (
         <div className="mb-4">
-          {spinnerVariants[variant]}
+          {renderSpinner()}
         </div>
       )}
       
@@ -189,5 +184,14 @@ export const LoginLoading = ({ text = "Ładowanie..." }: { text?: string }) => (
     text={text}
     showProgress={false}
     className="bg-white"
+  />
+);
+
+export const AdminLoading = ({ text = "Ładowanie klientów..." }: { text?: string }) => (
+  <LoadingSpinner
+    variant="fullscreen"
+    size="lg"
+    text={text}
+    showProgress={false}
   />
 ); 

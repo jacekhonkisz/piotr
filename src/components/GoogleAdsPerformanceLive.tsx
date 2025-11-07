@@ -1,13 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import KPICarousel, { KPI } from './KPICarousel';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { RefreshCw, Clock, Database, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { DailyMetricsCache } from '../lib/daily-metrics-cache';
-import { DataSourceIndicator } from './DataSourceIndicator';
-import GoogleAdsAccountOverview from './GoogleAdsAccountOverview';
 
 interface GoogleAdsPerformanceLiveProps {
   clientId: string;
@@ -57,68 +52,50 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
   const [dataSource, setDataSource] = useState<string>('');
   const [cacheAge, setCacheAge] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [clicksBars, setClicksBars] = useState<number[]>([]);
-  const [spendBars, setSpendBars] = useState<number[]>([]);
-  const [conversionsBars, setConversionsBars] = useState<number[]>([]);
-  const [ctrBars, setCtrBars] = useState<number[]>([]);
-  
-  // RMF R.10: Account-level performance state
-  const [accountPerformance, setAccountPerformance] = useState<any | null>(null);
-  const [accountLoading, setAccountLoading] = useState(true);
-  
-  // Daily metrics cache state
-  const [dailyMetricsSource, setDailyMetricsSource] = useState<{
-    source: string;
-    completeness?: number;
-    cacheAge?: number;
-    fromCache: boolean;
-  } | null>(null);
   
   const requestInProgress = useRef(false);
   const [isRequesting, setIsRequesting] = useState(false);
   const [waitingForSharedData, setWaitingForSharedData] = useState(false);
+  
+  // Month-over-month comparison state
+  const [previousMonthStats, setPreviousMonthStats] = useState<{
+    totalSpend: number;
+    totalClicks: number;
+    totalConversions: number;
+  } | null>(null);
 
-  const dateRange = useMemo(() => {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    
-    const sevenDaysAgo = new Date(yesterday);
-    sevenDaysAgo.setDate(yesterday.getDate() - 6);
-    
-    return {
-      start: sevenDaysAgo.toISOString().split('T')[0],
-      end: yesterday.toISOString().split('T')[0]
-    };
-  }, []);
-
-  // Fetch account-level performance (RMF R.10)
-  const fetchAccountPerformance = useCallback(async () => {
+  // Fetch previous month data for comparison
+  const fetchPreviousMonthComparison = useCallback(async () => {
     try {
-      setAccountLoading(true);
-      const response = await fetch('/api/google-ads-account-performance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId,
-          dateStart: dateRange.start,
-          dateEnd: dateRange.end
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          setAccountPerformance(result.data);
-          console.log('✅ Account performance fetched:', result.data);
-        }
+      const now = new Date();
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const previousMonthStr = previousMonth.toISOString().split('T')[0];
+      
+      console.log('📊 GoogleAds: Fetching previous month data for comparison:', previousMonthStr);
+      
+      const { data, error } = await supabase
+        .from('campaign_summaries')
+        .select('total_spend, total_clicks, total_conversions')
+        .eq('client_id', clientId)
+        .eq('summary_type', 'monthly')
+        .eq('platform', 'google')
+        .eq('summary_date', previousMonthStr)
+        .single();
+      
+      if (!error && data) {
+        setPreviousMonthStats({
+          totalSpend: data.total_spend || 0,
+          totalClicks: data.total_clicks || 0,
+          totalConversions: data.total_conversions || 0
+        });
+        console.log('✅ GoogleAds: Previous month data loaded:', data);
+      } else {
+        console.log('ℹ️ GoogleAds: No previous month data available for comparison');
       }
     } catch (error) {
-      console.error('❌ Error fetching account performance:', error);
-    } finally {
-      setAccountLoading(false);
+      console.warn('⚠️ GoogleAds: Failed to fetch previous month data:', error);
     }
-  }, [clientId, dateRange]);
+  }, [clientId]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pl-PL', {
@@ -200,207 +177,102 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     }
   }, [clientId]);
 
-  // 🔧 STANDARDIZED: Fetch daily data using smart cache (same pattern as Meta component)
-  const fetchDailyDataPoints = useCallback(async () => {
-    try {
-      console.log('📊 GoogleAdsPerformanceLive: Fetching daily data using smart cache for clientId:', clientId);
-      
-      // Calculate date range for last 7 days (same as Meta component)
-      const today = new Date();
-      const last7Days = [];
-      
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date(today);
-        date.setDate(today.getDate() - i - 1); // -1 to exclude today
-        const dateStr = date.toISOString().split('T')[0];
-        last7Days.push(dateStr);
-      }
-      
-      const startDate = last7Days[0];
-      const endDate = last7Days[last7Days.length - 1];
-      
-      if (!startDate || !endDate) {
-        console.error('❌ Invalid date range for Google Ads daily metrics cache');
-        const emptyData = Array.from({ length: 7 }, () => 0);
-        setClicksBars(emptyData);
-        setSpendBars(emptyData);
-        setConversionsBars(emptyData);
-        setCtrBars(emptyData);
-        return false;
-      }
-      
-      const dateRange = { start: startDate, end: endDate };
-      console.log('📅 Google Ads date range:', dateRange);
-      
-      // Use daily metrics cache (same pattern as Meta component)
-      const result = await DailyMetricsCache.getDailyMetrics(
-        clientId, 
-        dateRange, 
-        'google'
-      );
-      
-      // Update daily metrics source info
-      setDailyMetricsSource({
-        source: result.source,
-        completeness: result.completeness,
-        cacheAge: result.cacheAge,
-        fromCache: result.fromCache
-      });
-      
-      if (result.success && result.data.length > 0) {
-        console.log(`✅ GoogleAdsPerformanceLive: Got ${result.data.length} daily data points from ${result.source} (${Math.round((result.completeness || 0) * 100)}% complete)`);
-        
-        // Map daily data to arrays (same logic as before)
-        const clicksData = last7Days.map(date => {
-          const dayData = result.data.find(d => d.date === date);
-          return dayData ? dayData.total_clicks : 0;
-        });
-        
-        const spendData = last7Days.map(date => {
-          const dayData = result.data.find(d => d.date === date);
-          return dayData ? dayData.total_spend : 0;
-        });
-        
-        const conversionsData = last7Days.map(date => {
-          const dayData = result.data.find(d => d.date === date);
-          return dayData ? dayData.total_conversions : 0;
-        });
-        
-        const ctrData = last7Days.map(date => {
-          const dayData = result.data.find(d => d.date === date);
-          if (!dayData || dayData.total_impressions === 0) return 0;
-          return (dayData.total_clicks / dayData.total_impressions) * 100;
-        });
-
-        setClicksBars(clicksData);
-        setSpendBars(spendData);
-        setConversionsBars(conversionsData);
-        setCtrBars(ctrData);
-
-        console.log('📊 GoogleAdsPerformanceLive: Set smart cache daily data bars:', {
-          source: result.source,
-          clicks: clicksData,
-          spend: spendData,
-          conversions: conversionsData,
-          ctr: ctrData,
-          completeness: Math.round((result.completeness || 0) * 100) + '%'
-        });
-
-        return true;
-      } else {
-        console.log('ℹ️ No Google Ads daily data available from smart cache - using empty arrays');
-        const emptyData = Array.from({ length: 7 }, () => 0);
-        setClicksBars(emptyData);
-        setSpendBars(emptyData);
-        setConversionsBars(emptyData);
-        setCtrBars(emptyData);
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Failed to fetch Google Ads daily data from smart cache:', error);
-      const emptyData = Array.from({ length: 7 }, () => 0);
-      setClicksBars(emptyData);
-      setSpendBars(emptyData);
-      setConversionsBars(emptyData);
-      setCtrBars(emptyData);
-      return false;
-    }
-  }, [clientId]);
 
   const handleRefresh = useCallback(() => {
     console.log('🔄 GoogleAdsPerformanceLive: Manual refresh requested');
     fetchGoogleAdsData(true);
-  }, [fetchGoogleAdsData]);
+    fetchPreviousMonthComparison();
+  }, [fetchGoogleAdsData, fetchPreviousMonthComparison]);
+  
+  // Calculate month-over-month change
+  const calculateChange = (current: number, previous: number): { value: number; isPositive: boolean } => {
+    if (previous === 0) return { value: 0, isPositive: true };
+    const change = ((current - previous) / previous) * 100;
+    return { value: Math.abs(change), isPositive: change >= 0 };
+  };
 
-  // 🔧 FIX: Process shared data from dashboard (like MetaPerformanceLive does)
+  // 🚀 OPTIMIZED: Process shared data from dashboard - USE SHARED DATA FIRST!
   useEffect(() => {
-    console.log('📡 CRITICAL DEBUG - GoogleAdsPerformanceLive useEffect triggered:', {
+    console.log('📡 GoogleAdsPerformanceLive useEffect triggered:', {
       hasSharedData: !!sharedData,
       hasStats: !!sharedData?.stats,
-      sharedDataStats: sharedData?.stats,
       debugSource: sharedData?.debug?.source
     });
 
-    if (sharedData) {
+    // 🚀 PERFORMANCE: If shared data is available, use it immediately and skip component fetch
+    if (sharedData && sharedData.stats) {
+      console.log('✅ GoogleAdsPerformanceLive: Using shared data from dashboard, skipping component fetch');
       setWaitingForSharedData(false);
       
-      if (sharedData.stats) {
-        console.log('📡 CRITICAL DEBUG - GoogleAdsPerformanceLive received sharedData:', {
-          hasStats: !!sharedData.stats,
-          stats: sharedData.stats,
-          hasConversionMetrics: !!sharedData.conversionMetrics,
-          conversionMetrics: sharedData.conversionMetrics,
-          debugSource: sharedData.debug?.source,
-          lastUpdated: sharedData.lastUpdated
-        });
-
-        // 🔧 PREVENT DATA LOSS: Don't overwrite good data with empty/zero data
-        const hasValidData = sharedData.stats && (
-          sharedData.stats.totalClicks > 0 || 
-          sharedData.stats.totalSpend > 0 || 
-          sharedData.stats.totalImpressions > 0
-        );
-        
-        const currentHasValidData = stats && (
-          stats.totalClicks > 0 || 
-          stats.totalSpend > 0 || 
-          stats.totalImpressions > 0
-        );
-        
+      // 🔧 PREVENT DATA LOSS: Don't overwrite good data with empty/zero data
+      const hasValidData = sharedData.stats && (
+        sharedData.stats.totalClicks > 0 || 
+        sharedData.stats.totalSpend > 0 || 
+        sharedData.stats.totalImpressions > 0
+      );
+      
+      const currentHasValidData = stats && (
+        stats.totalClicks > 0 || 
+        stats.totalSpend > 0 || 
+        stats.totalImpressions > 0
+      );
+      
         // 🔧 FIX: Always update if it's Google Ads data, even if values are small
         const isGoogleAdsUpdate = sharedData.debug?.source?.includes('google') || 
-                                 sharedData.debug?.source === 'database' ||
-                                 sharedData.debug?.reason?.includes('Google');
-        
-        console.log('🔍 GoogleAds Data Update Decision:', {
+                               sharedData.debug?.source === 'database' ||
+                               sharedData.debug?.reason?.includes('google');
+      
+        console.log('🔍 GoogleAds data validation:', {
           hasValidData,
           currentHasValidData,
           isGoogleAdsUpdate,
-          willUpdate: hasValidData || !currentHasValidData || isGoogleAdsUpdate,
-          sharedDataSpend: sharedData.stats?.totalSpend,
-          currentSpend: stats?.totalSpend
+          willUpdate: hasValidData || !currentHasValidData || isGoogleAdsUpdate
         });
-        
+      
         if (hasValidData || !currentHasValidData || isGoogleAdsUpdate) {
+          console.log('✅ GoogleAdsPerformanceLive: Updating with shared data');
           // Use shared data from dashboard
           setStats(sharedData.stats);
           setMetrics(sharedData.conversionMetrics);
           setLastUpdated(sharedData.lastUpdated || new Date().toLocaleTimeString('pl-PL'));
-          setDataSource(sharedData.debug?.source || 'dashboard-shared');
+          setDataSource(sharedData.debug?.source || 'cache');  // 🔧 SIMPLIFIED: Consistent source naming
           setCacheAge(sharedData.debug?.cacheAge || null);
           setLoading(false);
-
-          console.log('📊 CRITICAL DEBUG - GoogleAdsPerformanceLive state after setting:', {
-            statsSet: sharedData.stats,
-            metricsSet: sharedData.conversionMetrics,
-            hasValidData,
-            currentHasValidData
-          });
+          
+          // Fetch previous month comparison data
+          if (!previousMonthStats) {
+            fetchPreviousMonthComparison();
+          }
+        
+          // 🚀 CRITICAL: Mark that we have data, so we don't make unnecessary API calls
+          requestInProgress.current = false;
+          setIsRequesting(false);
+        
+          return; // ← EXIT EARLY! Don't wait for other fetches
         } else {
-          console.log('🚫 PREVENTED DATA OVERWRITE: Keeping current valid data instead of empty shared data');
-          setLoading(false); // Still stop loading even if we don't update data
+          console.log('⚠️ GoogleAdsPerformanceLive: Keeping current valid data instead of empty shared data');
+          setLoading(false); // Still stop loading
         }
-      } else {
-        // SharedData exists but no stats - still stop loading to avoid "Brak danych"
-        console.log('📡 SharedData exists but no stats - stopping loading state');
-        setLoading(false);
-      }
       
       return; // Don't fetch placeholder data if we have shared data
     } else {
       // No shared data yet - we might be waiting for it
-      console.log('📡 No sharedData yet - checking if we should wait');
+      console.log('ℹ️ GoogleAdsPerformanceLive: No valid shared data yet, waiting');
       setWaitingForSharedData(true);
     }
   }, [sharedData, stats]);
 
   // Initialize with placeholder data only if no shared data and not waiting
   useEffect(() => {
+    // 🚀 OPTIMIZATION: Only fetch if we don't have shared data AND not already requesting
     if (!sharedData && !waitingForSharedData && !isRequesting && !requestInProgress.current && clientId) {
-      console.log('🔄 GoogleAdsPerformanceLive: Initializing with placeholder data (no shared data)');
-      fetchGoogleAdsData(false);
+      console.log('ℹ️ GoogleAdsPerformanceLive: No shared data available, will initialize with placeholder (fetch disabled in component)');
+      // 🔧 DISABLED: Component should NOT fetch data independently
+      // The dashboard provides all data via sharedData prop
+      // If you need this component to work independently, uncomment:
+      // fetchGoogleAdsData(false);
     }
-  }, [clientId, isRequesting, fetchGoogleAdsData, sharedData, waitingForSharedData]);
+  }, [clientId, isRequesting, sharedData, waitingForSharedData]);
 
   // Component instance tracking
   useEffect(() => {
@@ -416,16 +288,6 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     };
   }, [clientId]);
 
-  useEffect(() => {
-    if (clicksBars.length === 0 && !loading) {
-      fetchDailyDataPoints();
-    }
-  }, [loading, clicksBars.length, fetchDailyDataPoints]);
-
-  // Fetch account performance (RMF R.10)
-  useEffect(() => {
-    fetchAccountPerformance();
-  }, [fetchAccountPerformance]);
 
   // Same structure as Meta component
   return (
@@ -492,105 +354,7 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
             </span>
           </div>
         </div>
-      ) : stats ? (() => {
-        // 🔍 CRITICAL DEBUG: Log what we're about to render
-        console.log('🎨 CRITICAL DEBUG - GoogleAdsPerformanceLive render:', {
-          hasStats: !!stats,
-          stats: stats,
-          willRenderKPI: !!stats,
-          clicksValue: stats ? stats.totalClicks.toLocaleString('pl-PL') : 'no stats',
-          spendValue: stats ? formatCurrency(stats.totalSpend) : 'no stats',
-          conversionsValue: stats ? stats.totalConversions.toLocaleString('pl-PL') : 'no stats'
-        });
-
-        return (
-          <div>
-            {/* RMF R.10: Account-level performance overview */}
-            {accountPerformance && !accountLoading && (
-              <GoogleAdsAccountOverview
-                accountData={accountPerformance}
-                currency={currency}
-              />
-            )}
-            
-            {/* Enhanced Daily Metrics Data Source Indicator (Week 3) */}
-            {dailyMetricsSource && (
-              <div className="mb-4">
-                <div className="text-sm text-gray-600 mb-2">Daily Metrics:</div>
-                <DataSourceIndicator 
-                  debug={{
-                    source: dailyMetricsSource.source,
-                    responseTime: dailyMetricsSource.cacheAge
-                  }}
-                  showCacheAge={true}
-                  cacheAge={dailyMetricsSource.cacheAge}
-                  completeness={dailyMetricsSource.completeness}
-                  onRefresh={() => {
-                    console.log('🔄 Manual refresh requested for Google Ads daily metrics');
-                    fetchDailyDataPoints();
-                  }}
-                  isRefreshing={loading}
-                />
-              </div>
-            )}
-            
-            <KPICarousel
-              items={[
-                {
-                  id: 'clicks',
-                  label: 'Kliknięcia',
-                  value: stats.totalClicks.toLocaleString('pl-PL'),
-                  sublabel: 'Bieżący miesiąc',
-                  bars: clicksBars,
-                  dateForMarker: new Date().toISOString()
-                },
-              {
-                id: 'spend',
-                label: 'Wydatki',
-                value: formatCurrency(stats.totalSpend),
-                sublabel: 'Bieżący miesiąc',
-                bars: spendBars,
-                dateForMarker: new Date().toISOString()
-              },
-              {
-                id: 'conversions',
-                label: 'Konwersje',
-                value: (() => {
-                  const allBookingSteps = 
-                    (metrics?.form_submissions || 0) + 
-                    (metrics?.phone_calls || 0) + 
-                    (metrics?.email_clicks || 0) + 
-                    (metrics?.phone_clicks || 0) + 
-                    (metrics?.booking_step_1 || 0) + 
-                    (metrics?.booking_step_2 || 0) + 
-                    (metrics?.booking_step_3 || 0) + 
-                    (metrics?.reservations || 0);
-                  
-                  console.log('🎯 GoogleAdsPerformanceLive: All booking steps calculation:', {
-                    form_submissions: metrics?.form_submissions || 0,
-                    phone_calls: metrics?.phone_calls || 0,
-                    email_clicks: metrics?.email_clicks || 0,
-                    phone_clicks: metrics?.phone_clicks || 0,
-                    booking_step_1: metrics?.booking_step_1 || 0,
-                    booking_step_2: metrics?.booking_step_2 || 0,
-                    booking_step_3: metrics?.booking_step_3 || 0,
-                    reservations: metrics?.reservations || 0,
-                    total: allBookingSteps,
-                    statsTotalConversions: stats?.totalConversions || 0
-                  });
-                  
-                  return allBookingSteps.toLocaleString('pl-PL');
-                })(),
-                sublabel: 'Bieżący miesiąc',
-                bars: conversionsBars,
-                dateForMarker: new Date().toISOString()
-              }
-            ] as KPI[]}
-              variant="light"
-            />
-          </div>
-        );
-      })() : (
+      ) : !stats && (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <Target className="h-16 w-16 text-stroke mx-auto mb-4" />

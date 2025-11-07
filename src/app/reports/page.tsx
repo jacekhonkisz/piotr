@@ -250,14 +250,16 @@ const fetchReportDataUnified = async (params: {
           stats: result.data.stats,
           conversionMetrics: result.data.conversionMetrics,
           dataSourceValidation: {
-            expectedSource: 'daily_kpi_data',
-            actualSource: result.debug?.source || 'unknown',
+            // ✅ FIX: Use actual validation from fetcher, not hardcoded values
+            expectedSource: result.validation?.expectedSource || 'unknown',
+            actualSource: result.validation?.actualSource || result.debug?.source || 'unknown',
             isConsistent: result.validation?.isConsistent || false
           }
         },
         debug: {
           source: result.debug?.source || 'standardized-fetcher',
-          cachePolicy: result.debug?.cachePolicy || 'database-first-standardized',
+          // ✅ FIX: Use actual cache policy from fetcher, better default for unknown
+          cachePolicy: result.debug?.cachePolicy || (platform === 'google' ? 'google-ads-smart-cache' : 'database-first-standardized'),
           responseTime: result.debug?.responseTime || 0,
           reason: result.debug?.reason || reason,
           periodType: result.debug?.periodType || 'unknown'
@@ -410,9 +412,6 @@ const getWeekDateRange = (year: number, week: number) => {
 
 
 import { ReportsLoading } from '../../components/LoadingSpinner';
-
-// Loading Screen Component
-const LoadingScreen = () => <ReportsLoading />;
 
 // Main Reports Component
 function ReportsPageContent() {
@@ -3037,7 +3036,7 @@ function ReportsPageContent() {
   }, [viewType, selectedPeriod, availablePeriods, reports, dropdownOpen, generateDevReport]);
 
   if (loading) {
-    return <LoadingScreen />;
+    return <ReportsLoading />;
   }
 
   return (
@@ -4183,11 +4182,11 @@ export default function ReportsPage() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <LoadingScreen />;
+    return <ReportsLoading />;
   }
 
   if (!user) {
-    return <LoadingScreen />;
+    return <ReportsLoading />;
   }
 
   return <ReportsPageContent />;

@@ -22,7 +22,7 @@ import {
 import { useAuth } from '../../../../components/AuthProvider';
 import { supabase } from '../../../../lib/supabase';
 import type { Database } from '../../../../lib/database.types';
-import LoadingSpinner from '../../../../components/LoadingSpinner';
+import { AdminLoading } from '../../../../components/LoadingSpinner';
 import EditClientModal from '../../../../components/EditClientModal';
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -410,11 +410,7 @@ export default function ClientDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner text="Ładowanie szczegółów klienta..." />
-      </div>
-    );
+    return <AdminLoading text="Ładowanie szczegółów klienta..." />;
   }
 
   if (!client) {

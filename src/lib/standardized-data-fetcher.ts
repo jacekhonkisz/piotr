@@ -10,7 +10,7 @@
  * 3. Fallback to cached summaries (last resort)
  */
 
-import { supabase } from './supabase';
+import { supabase, supabaseAdmin } from './supabase';
 import logger from './logger';
 
 // ✅ GLOBAL deduplication cache for ALL data fetches (Meta & Google)
@@ -142,12 +142,8 @@ export class StandardizedDataFetcher {
     if (typeof window !== 'undefined') {
       console.log('🌐 Client-side request detected, redirecting to server-side API...');
       
-      // Get authentication token from Supabase
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
+      // 🔧 FIX: Reuse singleton Supabase client instead of creating new one
+      // This prevents "Multiple GoTrueClient instances" warnings
       const { data: { session } } = await supabase.auth.getSession();
       
       // Determine the correct API endpoint based on platform
@@ -200,54 +196,63 @@ export class StandardizedDataFetcher {
       timestamp: new Date().toISOString()
     });
     
-    // ✅ FIXED Priority 5: Improved period detection for accurate smart cache routing
+    // ✅ FIXED Priority 5: STRICT period detection - past months ALWAYS use database
     const now = new Date();
     const today: string = now.toISOString().split('T')[0]!;
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentDay = now.getDate();
+    
     const startDate = new Date(dateRange.start);
     const endDate = new Date(dateRange.end);
     const startYear = startDate.getFullYear();
-    const startMonth = startDate.getMonth() + 1;
+    const startMonth = startDate.getMonth() + 1; // 1-12
+    const endYear = endDate.getFullYear();
+    const endMonth = endDate.getMonth() + 1;
     
-    // ✅ IMPROVED: More accurate current month detection
-    // Check if date range is within current month boundaries
-    const isCurrentMonth = startYear === currentYear && startMonth === currentMonth;
+    // 🔒 STRICT RULE #1: Only current month gets smart cache
+    // Even if it's the 1st of the new month, previous month is HISTORICAL
+    const isExactCurrentMonth = (
+      startYear === currentYear && 
+      startMonth === currentMonth &&
+      endYear === currentYear &&
+      endMonth === currentMonth
+    );
+    
+    // 🔒 STRICT RULE #2: Month must include TODAY to be current
     const includesCurrentDay = dateRange.end >= today;
     
-    // ✅ IMPROVED: Better current week detection
-    // Check if this is current week (6-7 days, includes current day, starts on Monday)
+    // 🔒 STRICT RULE #3: Current week detection (only if includes today)
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const isCurrentWeek = (daysDiff >= 6 && daysDiff <= 7) && includesCurrentDay && startDate.getDay() === 1; // Monday start, allow 6-7 days
+    const isCurrentWeek = (daysDiff >= 6 && daysDiff <= 7) && includesCurrentDay && startDate.getDay() === 1;
     
-    // ✅ CRITICAL FIX: Current month must include current day to be "current"
-    // A week in current month but NOT including today is historical, not current
-    const isCurrentMonthOnly = isCurrentMonth && !isCurrentWeek && includesCurrentDay;
-    
-    // ✅ FINAL: Current period is either current week OR current month (but not both)
-    // Both must include the current day to be considered "current"
+    // 🔒 FINAL DECISION: Only truly current periods use cache
+    // Any past month (even last month) uses DATABASE
+    const isCurrentMonthOnly = isExactCurrentMonth && !isCurrentWeek && includesCurrentDay;
     const isCurrentPeriod = isCurrentWeek || isCurrentMonthOnly;
     
-    // 🎯 SMART CACHE INTEGRATION: Use smart cache for current periods, database for historical
+    // 🎯 FORCE DATABASE FOR ALL PAST MONTHS
     const needsSmartCache = isCurrentPeriod;
-    const needsLiveData = false; // Let smart cache system handle live API calls
+    const needsLiveData = false;
     
-    console.log('🎯 SMART CACHE PERIOD CLASSIFICATION:', {
+    console.log('🎯 STRICT PERIOD CLASSIFICATION (DATABASE-FIRST FOR PAST):', {
+      today,
       currentYear,
       currentMonth,
+      currentDay,
+      requestStartDate: dateRange.start,
+      requestEndDate: dateRange.end,
       requestYear: startYear,
       requestMonth: startMonth,
-      isCurrentMonth,
+      requestEndMonth: endMonth,
+      isExactCurrentMonth,
       isCurrentWeek,
       isCurrentMonthOnly,
-      isCurrentPeriod,
       includesCurrentDay,
-      daysDiff,
+      isCurrentPeriod,
       needsSmartCache,
-      today,
-      dateRangeEnd: dateRange.end,
-      strategy: needsSmartCache ? 'SMART_CACHE (3-hour refresh)' : 'DATABASE_FIRST (historical data)',
-      note: isCurrentWeek ? 'CURRENT WEEK - using weekly cache' : isCurrentMonthOnly ? 'CURRENT MONTH - using monthly cache' : 'HISTORICAL - using database'
+      strategy: needsSmartCache ? '🔄 SMART_CACHE (current period)' : '💾 DATABASE_FIRST (past period)',
+      note: isCurrentWeek ? '📅 CURRENT WEEK' : isCurrentMonthOnly ? '📅 CURRENT MONTH' : '📚 HISTORICAL PERIOD - USING DATABASE'
     });
     
     const dataSources: string[] = [];
@@ -260,17 +265,23 @@ export class StandardizedDataFetcher {
         
         const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
         if (cachedResult.success) {
-          // Check if conversion metrics are complete
-          const hasConversionData = cachedResult.data!.conversionMetrics && 
-            (cachedResult.data!.conversionMetrics.reservations > 0 || 
-             cachedResult.data!.conversionMetrics.reservation_value > 0 ||
-             cachedResult.data!.conversionMetrics.email_contacts > 0 ||
-             cachedResult.data!.conversionMetrics.click_to_call > 0);
+          // ✅ FIXED: Return data if we have ANY metrics (spend, impressions, clicks, or conversions)
+          // Don't require conversions - some periods legitimately have 0 conversions
+          const hasAnyData = cachedResult.data!.stats && 
+            (cachedResult.data!.stats.totalSpend > 0 || 
+             cachedResult.data!.stats.totalImpressions > 0 ||
+             cachedResult.data!.stats.totalClicks > 0 ||
+             cachedResult.data!.stats.totalConversions > 0 ||
+             (cachedResult.data!.campaigns && cachedResult.data!.campaigns.length > 0));
           
-          if (hasConversionData) {
+          if (hasAnyData) {
             const responseTime = Date.now() - startTime;
             
-            console.log(`✅ INSTANT RETURN: campaign_summaries returned COMPLETE data in ${responseTime}ms`);
+            console.log(`✅ INSTANT RETURN: campaign_summaries returned data in ${responseTime}ms`, {
+              totalSpend: cachedResult.data!.stats.totalSpend,
+              campaigns: cachedResult.data!.campaigns?.length || 0,
+              reservations: cachedResult.data!.conversionMetrics?.reservations || 0
+            });
             
             return {
               success: true,
@@ -290,7 +301,7 @@ export class StandardizedDataFetcher {
               }
             };
           } else {
-            console.log('⚠️ campaign_summaries has incomplete conversion metrics, trying next source...');
+            console.log('⚠️ campaign_summaries has no metrics data, trying next source...');
           }
         }
         
@@ -403,29 +414,36 @@ export class StandardizedDataFetcher {
         // Fall through to database check as fallback
       }
       
-      // ✅ FALLBACK: For current periods, try database if smart cache fails
+      // ⚠️ FALLBACK: For current periods, try database if smart cache fails
+      // WARNING: This should rarely happen - current period data should come from smart cache!
       if (needsSmartCache) {
-        console.log(`📊 CURRENT PERIOD FALLBACK: Trying campaign_summaries for ${platform}...`);
+        console.warn(`⚠️ UNEXPECTED FALLBACK: Smart cache failed for CURRENT period! Trying campaign_summaries...`);
+        console.warn(`⚠️ This suggests either: 1) Smart cache validation failed, 2) Cache is empty, or 3) Current month was manually archived`);
         dataSources.push('campaign_summaries_database');
         
         const cachedResult = await this.fetchFromCachedSummaries(clientId, dateRange, platform);
         if (cachedResult.success) {
-          const hasConversionData = cachedResult.data!.conversionMetrics && 
-            (cachedResult.data!.conversionMetrics.reservations > 0 || 
-             cachedResult.data!.conversionMetrics.reservation_value > 0 ||
-             cachedResult.data!.conversionMetrics.email_contacts > 0 ||
-             cachedResult.data!.conversionMetrics.click_to_call > 0);
+          // ✅ FIXED: Return data if we have ANY metrics, not just conversions
+          const hasAnyData = cachedResult.data!.stats && 
+            (cachedResult.data!.stats.totalSpend > 0 || 
+             cachedResult.data!.stats.totalImpressions > 0 ||
+             cachedResult.data!.stats.totalClicks > 0 ||
+             (cachedResult.data!.campaigns && cachedResult.data!.campaigns.length > 0));
           
-          if (hasConversionData) {
+          if (hasAnyData) {
             const responseTime = Date.now() - startTime;
-            console.log(`✅ FALLBACK SUCCESS: campaign_summaries returned data in ${responseTime}ms`);
+            console.warn(`⚠️ USING STALE DATA: campaign_summaries returned data for CURRENT period in ${responseTime}ms`, {
+              totalSpend: cachedResult.data!.stats.totalSpend,
+              campaigns: cachedResult.data!.campaigns?.length || 0,
+              warning: 'This data may be outdated! Smart cache should be used for current periods.'
+            });
             
             return {
               success: true,
               data: cachedResult.data!,
               debug: {
                 source: 'campaign-summaries-database',
-                cachePolicy: 'database-fallback-current',
+                cachePolicy: 'database-fallback-current-stale',
                 responseTime,
                 reason,
                 dataSourcePriority: dataSources,
@@ -530,10 +548,13 @@ export class StandardizedDataFetcher {
     platform: 'meta' | 'google' = 'meta'
   ): Promise<Partial<StandardizedDataResult>> {
     
+    // ✅ CRITICAL FIX: Use admin client to bypass RLS policies
+    const dbClient = (typeof window === 'undefined' && supabaseAdmin) ? supabaseAdmin : supabase;
+    
     // Map platform to data_source field
     const dataSource = platform === 'meta' ? 'meta_api' : 'google_ads_api';
     
-    const { data: dailyRecords, error } = await supabase
+    const { data: dailyRecords, error } = await dbClient
       .from('daily_kpi_data')
       .select('*')
       .eq('client_id', clientId)
@@ -707,31 +728,47 @@ export class StandardizedDataFetcher {
     console.log(`🎯 SMART CACHE: Direct access for ${platform} (validating date range)...`);
     
     try {
-      // ✅ CRITICAL FIX: Validate that requested date range matches current month
+      // ✅ RELAXED VALIDATION: Check if requested month/year matches current month
       const { getCurrentMonthInfo } = await import('./smart-cache-helper');
       const currentMonth = getCurrentMonthInfo();
       
-      // Check if requested date range matches current month boundaries
+      // Parse requested dates
       const requestedStart = new Date(dateRange.start);
       const requestedEnd = new Date(dateRange.end);
-      const currentMonthStart = new Date(currentMonth.startDate);
-      const currentMonthEnd = new Date(currentMonth.endDate);
       
-      // Validate date range matches current month
-      const startMatches = requestedStart.toISOString().split('T')[0] === currentMonthStart.toISOString().split('T')[0];
-      const endMatches = requestedEnd.toISOString().split('T')[0] === currentMonthEnd.toISOString().split('T')[0];
+      // Check if requested month/year matches current month (relaxed validation)
+      const requestedStartMonth = requestedStart.getFullYear() * 100 + requestedStart.getMonth();
+      const requestedEndMonth = requestedEnd.getFullYear() * 100 + requestedEnd.getMonth();
+      const currentMonthNum = new Date().getFullYear() * 100 + new Date().getMonth();
       
-      if (!startMatches || !endMatches) {
-        console.log(`⚠️ Date range mismatch: Requested ${dateRange.start} to ${dateRange.end}, but current month is ${currentMonth.startDate} to ${currentMonth.endDate}`);
+      const isCurrentMonth = (requestedStartMonth === currentMonthNum && requestedEndMonth === currentMonthNum);
+      
+      if (!isCurrentMonth) {
+        console.log(`⚠️ Month mismatch: Requested ${dateRange.start} to ${dateRange.end} is not current month (${currentMonth.periodId})`);
         console.log(`⚠️ Smart cache only works for current month, falling back to database...`);
         return { success: false };
       }
       
-      console.log(`✅ Date range validated: Requested period matches current month (${currentMonth.periodId})`);
+      console.log(`✅ Month validated: Requested period is current month (${currentMonth.periodId})`);
+      console.log(`📅 Exact dates: Requested ${dateRange.start} to ${dateRange.end}, Cache has ${currentMonth.startDate} to ${currentMonth.endDate}`);
       
-      // ✅ FIXED: Direct call to smart cache helper (removes HTTP latency)
-      const { getSmartCacheData } = await import('./smart-cache-helper');
-      const result = await getSmartCacheData(clientId, false, platform);
+      // ✅ PLATFORM-SPECIFIC: Call the correct smart cache helper based on platform
+      let result;
+      if (platform === 'google') {
+        // ✅ CRITICAL: Google Ads cache is server-side only (requires Node.js fs module)
+        if (typeof window === 'undefined') {
+          console.log(`🔵 Using Google Ads smart cache helper (server-side)...`);
+          const { getGoogleAdsSmartCacheData } = await import('./google-ads-smart-cache-helper');
+          result = await getGoogleAdsSmartCacheData(clientId, false);
+        } else {
+          console.log(`⚠️ Google Ads cache not available on client-side, falling back...`);
+          return { success: false };
+        }
+      } else {
+        console.log(`🔵 Using Meta smart cache helper...`);
+        const { getSmartCacheData } = await import('./smart-cache-helper');
+        result = await getSmartCacheData(clientId, false, platform);
+      }
       
       if (result.success && result.data) {
         console.log(`✅ Smart cache returned data for ${platform} (DIRECT ACCESS):`, {
@@ -789,27 +826,30 @@ export class StandardizedDataFetcher {
     console.log(`📅 WEEKLY SMART CACHE for ${platform} (validating date range)...`);
     
     try {
-      // ✅ CRITICAL FIX: Validate that requested date range matches current week
+      // ✅ RELAXED VALIDATION: Check if requested week overlaps with current week
       const { getCurrentWeekInfo, parseWeekPeriodId } = await import('./week-utils');
       const currentWeek = getCurrentWeekInfo();
       
-      // Check if requested date range matches current week boundaries
-      const requestedStart = dateRange.start;
-      const requestedEnd = dateRange.end;
-      const currentWeekStart = currentWeek.startDate;
-      const currentWeekEnd = currentWeek.endDate;
+      // Parse dates
+      const requestedStart = new Date(dateRange.start);
+      const requestedEnd = new Date(dateRange.end);
+      const currentWeekStart = new Date(currentWeek.startDate);
+      const currentWeekEnd = new Date(currentWeek.endDate);
       
-      // Validate date range matches current week
-      const startMatches = requestedStart === currentWeekStart;
-      const endMatches = requestedEnd === currentWeekEnd;
+      // Check if requested week overlaps with current week
+      const isOverlapping = (
+        (requestedStart <= currentWeekEnd && requestedEnd >= currentWeekStart) ||
+        (requestedStart.toISOString().split('T')[0] === currentWeek.startDate)
+      );
       
-      if (!startMatches || !endMatches) {
-        console.log(`⚠️ Date range mismatch: Requested ${dateRange.start} to ${dateRange.end}, but current week is ${currentWeek.startDate} to ${currentWeek.endDate}`);
+      if (!isOverlapping) {
+        console.log(`⚠️ Week mismatch: Requested ${dateRange.start} to ${dateRange.end} does not match current week (${currentWeek.periodId})`);
         console.log(`⚠️ Weekly smart cache only works for current week, falling back to database...`);
         return { success: false };
       }
       
-      console.log(`✅ Date range validated: Requested period matches current week (${currentWeek.periodId})`);
+      console.log(`✅ Week validated: Requested period matches current week (${currentWeek.periodId})`);
+      console.log(`📅 Exact dates: Requested ${dateRange.start} to ${dateRange.end}, Cache has ${currentWeek.startDate} to ${currentWeek.endDate}`);
       
       if (platform === 'google') {
         // Use Google Ads weekly smart cache (server-side only)
@@ -973,6 +1013,13 @@ export class StandardizedDataFetcher {
     
     console.log(`📊 Loading from campaign_summaries for ${clientId} (${dateRange.start} to ${dateRange.end}) - Platform: ${platform}`);
     
+    // ✅ CRITICAL FIX: Use admin client to bypass RLS policies
+    // Server-side queries need supabaseAdmin to access all client data
+    const dbClient = (typeof window === 'undefined' && supabaseAdmin) ? supabaseAdmin : supabase;
+    const usingAdmin = (typeof window === 'undefined' && supabaseAdmin) ? true : false;
+    
+    console.log(`🔑 Using ${usingAdmin ? 'ADMIN' : 'ANON'} client for database query (server-side: ${typeof window === 'undefined'})`);
+    
     // Determine if this is a weekly or monthly request based on date range
     const start = new Date(dateRange.start);
     const end = new Date(dateRange.end);
@@ -987,7 +1034,7 @@ export class StandardizedDataFetcher {
       // 📅 WEEKLY DATA: Search for weekly data in campaign_summaries
       console.log(`📅 Searching for weekly data in campaign_summaries between ${dateRange.start} and ${dateRange.end}`);
       
-      const { data: weeklyResults, error: weeklyError } = await supabase
+      const { data: weeklyResults, error: weeklyError } = await dbClient
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
@@ -1014,7 +1061,7 @@ export class StandardizedDataFetcher {
       // 📅 MONTHLY DATA: Search for monthly data in campaign_summaries
       console.log(`📅 Searching for monthly data in campaign_summaries for ${dateRange.start}`);
       
-      const { data: monthlyResults, error: monthlyError } = await supabase
+      const { data: monthlyResults, error: monthlyError } = await dbClient
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
@@ -1028,14 +1075,25 @@ export class StandardizedDataFetcher {
         console.log(`✅ Found monthly summary for ${dateRange.start}:`, {
           summaryDate: storedSummary?.summary_date,
           totalSpend: storedSummary?.total_spend,
+          totalImpressions: storedSummary?.total_impressions,
+          totalClicks: storedSummary?.total_clicks,
           reservations: (storedSummary as any)?.reservations,
+          campaignCount: storedSummary?.campaign_data ? (storedSummary.campaign_data as any[]).length : 0,
           periodMatch: storedSummary?.summary_date === dateRange.start,
           requestedPeriod: dateRange.start,
-          actualPeriod: storedSummary?.summary_date
+          actualPeriod: storedSummary?.summary_date,
+          platform: storedSummary?.platform
         });
       } else {
         error = monthlyError;
-        console.log(`⚠️ No monthly summary found for ${dateRange.start} (requested period)`);
+        console.log(`⚠️ No monthly summary found for ${dateRange.start} (requested period)`, {
+          clientId: clientId.substring(0, 8) + '...',
+          platform,
+          summaryType: 'monthly',
+          requestedDate: dateRange.start,
+          error: monthlyError?.message,
+          note: 'Check if data exists in database with this exact date'
+        });
       }
     }
       

@@ -118,8 +118,9 @@ export default function LoginPage() {
     }
   };
 
-  // Show loading while auth is initializing or if user is authenticated but we haven't redirected
-  if (authLoading || (user && profile && !redirectedRef.current) || (user && !profile)) {
+  // Show loading only during auth initialization or when waiting for profile
+  // Don't show loading when redirect is about to happen - let the destination page handle its own loading
+  if (authLoading || (user && !profile)) {
     return (
       <>
         <LoginLoading text={authLoading ? "Inicjalizacja..." : "Ładowanie profilu..."} />
@@ -132,6 +133,14 @@ export default function LoginPage() {
         )}
       </>
     );
+  }
+  
+  // If user and profile are ready, redirect immediately without showing loading screen
+  // The redirect happens in useEffect, but we don't want to show LoginLoading here
+  // to avoid double loading screens (LoginLoading -> DashboardLoading)
+  // Return minimal blank screen to avoid flash during redirect
+  if (user && profile && !redirectedRef.current) {
+    return <div className="min-h-screen bg-white" />;
   }
 
   return (

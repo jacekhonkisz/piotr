@@ -551,6 +551,55 @@ export async function POST(request: NextRequest) {
       }
     } else {
       console.log('🔄 CURRENT PERIOD OR FORCE FRESH - SKIPPING DATABASE CHECK');
+      
+      // ✅ NEW: Check smart cache for current period (same as Meta)
+      if (isCurrentPeriod && !forceFresh) {
+        console.log('📊 🔴 CURRENT PERIOD DETECTED - CHECKING GOOGLE ADS SMART CACHE...');
+        logger.info('📊 🔴 CURRENT PERIOD DETECTED - USING GOOGLE ADS SMART CACHE SYSTEM...');
+        
+        try {
+          // Use the Google Ads smart cache system for current period
+          const { getGoogleAdsSmartCacheData } = await import('../../../lib/google-ads-smart-cache-helper');
+          const smartCacheResult = await getGoogleAdsSmartCacheData(client.id, false);
+          
+          if (smartCacheResult.success && smartCacheResult.data) {
+            const responseTime = Date.now() - startTime;
+            console.log(`🚀 ✅ GOOGLE ADS SMART CACHE SUCCESS: Current period data loaded in ${responseTime}ms`);
+            console.log(`📊 Smart cache data structure:`, {
+              hasCampaigns: !!smartCacheResult.data.campaigns,
+              campaignsCount: smartCacheResult.data.campaigns?.length || 0,
+              hasStats: !!smartCacheResult.data.stats,
+              totalSpend: smartCacheResult.data.stats?.totalSpend || 0,
+              hasGoogleAdsTables: !!smartCacheResult.data.googleAdsTables
+            });
+            
+            logger.info('🚀 Google Ads API response completed', {
+              responseTime: `${responseTime}ms`,
+              source: 'smart_cache',
+              campaignCount: smartCacheResult.data.campaigns?.length || 0,
+              totalSpend: smartCacheResult.data.stats?.totalSpend || 0
+            });
+            
+            return NextResponse.json({
+              success: true,
+              data: smartCacheResult.data,
+              responseTime,
+              source: 'smart_cache'
+            });
+          } else {
+            console.log('⚠️ Smart cache miss or no data, proceeding to live API...');
+            console.log('🔍 Cache result:', {
+              success: smartCacheResult.success,
+              hasData: !!smartCacheResult.data,
+              error: smartCacheResult.error
+            });
+          }
+        } catch (cacheError: any) {
+          console.log('❌ SMART CACHE ERROR:', cacheError.message);
+          console.log('🔄 Proceeding to live API...');
+          logger.error('❌ Smart cache error, falling back to live API:', cacheError);
+        }
+      }
     }
 
     // Get Google Ads API credentials from system settings

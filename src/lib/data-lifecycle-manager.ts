@@ -19,9 +19,10 @@ export class DataLifecycleManager {
   /**
    * Archive completed current month data to permanent storage
    * This runs when a month ends to preserve the cached data
+   * NOW SUPPORTS BOTH META AND GOOGLE ADS
    */
   async archiveCompletedMonths(): Promise<void> {
-    logger.info('📅 Starting monthly data archival process...');
+    logger.info('📅 Starting monthly data archival process for both Meta and Google Ads...');
     
     try {
       // Get current date info
@@ -36,43 +37,74 @@ export class DataLifecycleManager {
       
       logger.info(`📊 Archiving completed month: ${prevMonthPeriodId}`);
       
-      // Get all clients with cache data for the previous month
-      const { data: cacheData, error: cacheError } = await supabase
+      let totalArchived = 0;
+      let totalErrors = 0;
+      
+      // ============================================
+      // ARCHIVE META ADS CACHE
+      // ============================================
+      logger.info('📱 Archiving Meta Ads monthly cache...');
+      const { data: metaCacheData, error: metaCacheError } = await supabase
         .from('current_month_cache')
         .select('*')
         .eq('period_id', prevMonthPeriodId);
       
-      if (cacheError) {
-        throw new Error(`Failed to fetch month cache data: ${cacheError.message}`);
-      }
-      
-      if (!cacheData || cacheData.length === 0) {
-        logger.info('📝 No monthly cache data found to archive');
-        return;
-      }
-      
-      logger.info(`📦 Found ${cacheData.length} monthly cache entries to archive`);
-      
-      // Archive each cache entry to campaign_summaries
-      let archivedCount = 0;
-      let errorCount = 0;
-      
-      for (const cacheEntry of cacheData) {
-        try {
-          await this.archiveMonthlyData(cacheEntry);
-          archivedCount++;
-        } catch (error) {
-          logger.error(`❌ Failed to archive monthly data for client ${cacheEntry.client_id}:`, error);
-          errorCount++;
+      if (metaCacheError) {
+        logger.error(`❌ Failed to fetch Meta month cache data: ${metaCacheError.message}`);
+      } else if (!metaCacheData || metaCacheData.length === 0) {
+        logger.info('📝 No Meta monthly cache data found to archive');
+      } else {
+        logger.info(`📦 Found ${metaCacheData.length} Meta monthly cache entries to archive`);
+        
+        for (const cacheEntry of metaCacheData) {
+          try {
+            await this.archiveMonthlyData(cacheEntry, 'meta');
+            totalArchived++;
+          } catch (error) {
+            logger.error(`❌ Failed to archive Meta monthly data for client ${cacheEntry.client_id}:`, error);
+            totalErrors++;
+          }
+        }
+        
+        // Clean up archived Meta cache
+        if (metaCacheData.length > 0) {
+          await this.cleanupArchivedMonthlyCache(prevMonthPeriodId);
         }
       }
       
-      logger.info(`✅ Monthly archival completed: ${archivedCount} archived, ${errorCount} errors`);
+      // ============================================
+      // ARCHIVE GOOGLE ADS CACHE (NEW)
+      // ============================================
+      logger.info('🔍 Archiving Google Ads monthly cache...');
+      const { data: googleCacheData, error: googleCacheError } = await supabase
+        .from('google_ads_current_month_cache')
+        .select('*')
+        .eq('period_id', prevMonthPeriodId);
       
-      // Clean up archived cache entries
-      if (archivedCount > 0) {
-        await this.cleanupArchivedMonthlyCache(prevMonthPeriodId);
+      if (googleCacheError) {
+        logger.error(`❌ Failed to fetch Google Ads month cache data: ${googleCacheError.message}`);
+      } else if (!googleCacheData || googleCacheData.length === 0) {
+        logger.info('📝 No Google Ads monthly cache data found to archive');
+      } else {
+        logger.info(`📦 Found ${googleCacheData.length} Google Ads monthly cache entries to archive`);
+        
+        for (const cacheEntry of googleCacheData) {
+          try {
+            await this.archiveGoogleAdsMonthlyData(cacheEntry);
+            totalArchived++;
+          } catch (error) {
+            logger.error(`❌ Failed to archive Google Ads monthly data for client ${cacheEntry.client_id}:`, error);
+            totalErrors++;
+          }
+        }
+        
+        // Clean up archived Google Ads cache
+        if (googleCacheData.length > 0) {
+          await this.cleanupArchivedGoogleAdsMonthlyCache(prevMonthPeriodId);
+        }
       }
+      
+      logger.info(`✅ Monthly archival completed: ${totalArchived} total archived (Meta + Google), ${totalErrors} errors`);
       
     } catch (error) {
       logger.error('❌ Monthly data archival failed:', error);
@@ -86,9 +118,10 @@ export class DataLifecycleManager {
   /**
    * Archive completed current week data to permanent storage
    * This runs when a week ends to preserve the cached data
+   * NOW SUPPORTS BOTH META AND GOOGLE ADS
    */
   async archiveCompletedWeeks(): Promise<void> {
-    logger.info('📅 Starting weekly data archival process...');
+    logger.info('📅 Starting weekly data archival process for both Meta and Google Ads...');
     
     try {
       // Get previous week info
@@ -114,43 +147,74 @@ export class DataLifecycleManager {
       
       logger.info(`📊 Archiving completed week: ${prevWeekPeriodId}`);
       
-      // Get all clients with cache data for the previous week
-      const { data: cacheData, error: cacheError } = await supabase
+      let totalArchived = 0;
+      let totalErrors = 0;
+      
+      // ============================================
+      // ARCHIVE META ADS CACHE
+      // ============================================
+      logger.info('📱 Archiving Meta Ads weekly cache...');
+      const { data: metaCacheData, error: metaCacheError } = await supabase
         .from('current_week_cache')
         .select('*')
         .eq('period_id', prevWeekPeriodId);
       
-      if (cacheError) {
-        throw new Error(`Failed to fetch week cache data: ${cacheError.message}`);
-      }
-      
-      if (!cacheData || cacheData.length === 0) {
-        logger.info('📝 No weekly cache data found to archive');
-        return;
-      }
-      
-      logger.info(`📦 Found ${cacheData.length} weekly cache entries to archive`);
-      
-      // Archive each cache entry to campaign_summaries
-      let archivedCount = 0;
-      let errorCount = 0;
-      
-      for (const cacheEntry of cacheData) {
-        try {
-          await this.archiveWeeklyData(cacheEntry);
-          archivedCount++;
-        } catch (error) {
-          logger.error(`❌ Failed to archive weekly data for client ${cacheEntry.client_id}:`, error);
-          errorCount++;
+      if (metaCacheError) {
+        logger.error(`❌ Failed to fetch Meta week cache data: ${metaCacheError.message}`);
+      } else if (!metaCacheData || metaCacheData.length === 0) {
+        logger.info('📝 No Meta weekly cache data found to archive');
+      } else {
+        logger.info(`📦 Found ${metaCacheData.length} Meta weekly cache entries to archive`);
+        
+        for (const cacheEntry of metaCacheData) {
+          try {
+            await this.archiveWeeklyData(cacheEntry, 'meta');
+            totalArchived++;
+          } catch (error) {
+            logger.error(`❌ Failed to archive Meta weekly data for client ${cacheEntry.client_id}:`, error);
+            totalErrors++;
+          }
+        }
+        
+        // Clean up archived Meta cache
+        if (metaCacheData.length > 0) {
+          await this.cleanupArchivedWeeklyCache(prevWeekPeriodId);
         }
       }
       
-      logger.info(`✅ Weekly archival completed: ${archivedCount} archived, ${errorCount} errors`);
+      // ============================================
+      // ARCHIVE GOOGLE ADS CACHE (NEW)
+      // ============================================
+      logger.info('🔍 Archiving Google Ads weekly cache...');
+      const { data: googleCacheData, error: googleCacheError } = await supabase
+        .from('google_ads_current_week_cache')
+        .select('*')
+        .eq('period_id', prevWeekPeriodId);
       
-      // Clean up archived cache entries
-      if (archivedCount > 0) {
-        await this.cleanupArchivedWeeklyCache(prevWeekPeriodId);
+      if (googleCacheError) {
+        logger.error(`❌ Failed to fetch Google Ads week cache data: ${googleCacheError.message}`);
+      } else if (!googleCacheData || googleCacheData.length === 0) {
+        logger.info('📝 No Google Ads weekly cache data found to archive');
+      } else {
+        logger.info(`📦 Found ${googleCacheData.length} Google Ads weekly cache entries to archive`);
+        
+        for (const cacheEntry of googleCacheData) {
+          try {
+            await this.archiveGoogleAdsWeeklyData(cacheEntry);
+            totalArchived++;
+          } catch (error) {
+            logger.error(`❌ Failed to archive Google Ads weekly data for client ${cacheEntry.client_id}:`, error);
+            totalErrors++;
+          }
+        }
+        
+        // Clean up archived Google Ads cache
+        if (googleCacheData.length > 0) {
+          await this.cleanupArchivedGoogleAdsWeeklyCache(prevWeekPeriodId);
+        }
       }
+      
+      logger.info(`✅ Weekly archival completed: ${totalArchived} total archived (Meta + Google), ${totalErrors} errors`);
       
     } catch (error) {
       logger.error('❌ Weekly data archival failed:', error);
@@ -228,9 +292,9 @@ export class DataLifecycleManager {
   }
 
   /**
-   * Archive monthly cache data to campaign_summaries
+   * Archive monthly cache data to campaign_summaries (Meta Ads)
    */
-  private async archiveMonthlyData(cacheEntry: any): Promise<void> {
+  private async archiveMonthlyData(cacheEntry: any, platform: 'meta' | 'google'): Promise<void> {
     const cacheData = cacheEntry.cache_data;
     
     // Calculate the first day of the month from period_id (e.g., "2025-08" -> "2025-08-01")
@@ -240,6 +304,7 @@ export class DataLifecycleManager {
       client_id: cacheEntry.client_id,
       summary_type: 'monthly',
       summary_date: summaryDate,
+      platform: platform,  // ✅ NOW INCLUDES PLATFORM
       total_spend: cacheData?.stats?.totalSpend || 0,
       total_impressions: cacheData?.stats?.totalImpressions || 0,
       total_clicks: cacheData?.stats?.totalClicks || 0,
@@ -258,20 +323,20 @@ export class DataLifecycleManager {
     const { error } = await supabase
       .from('campaign_summaries')
       .upsert(summary, {
-        onConflict: 'client_id,summary_type,summary_date'
+        onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ UPDATED CONFLICT RESOLUTION
       });
 
     if (error) {
       throw new Error(`Failed to archive monthly summary: ${error.message}`);
     }
 
-    logger.info(`💾 Archived monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Archived ${platform} monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
   }
 
   /**
-   * Archive weekly cache data to campaign_summaries
+   * Archive weekly cache data to campaign_summaries (Meta Ads)
    */
-  private async archiveWeeklyData(cacheEntry: any): Promise<void> {
+  private async archiveWeeklyData(cacheEntry: any, platform: 'meta' | 'google'): Promise<void> {
     const cacheData = cacheEntry.cache_data;
     
     // Use the start date of the week from the cached data
@@ -310,6 +375,7 @@ export class DataLifecycleManager {
     logger.info(`📊 Weekly archive conversion metrics calculated:`, {
       client_id: cacheEntry.client_id,
       period: cacheEntry.period_id,
+      platform,
       conversionTotals,
       roas,
       cost_per_reservation
@@ -319,6 +385,7 @@ export class DataLifecycleManager {
       client_id: cacheEntry.client_id,
       summary_type: 'weekly',
       summary_date: summaryDate,
+      platform: platform,  // ✅ NOW INCLUDES PLATFORM
       total_spend: cacheData?.stats?.totalSpend || 0,
       total_impressions: cacheData?.stats?.totalImpressions || 0,
       total_clicks: cacheData?.stats?.totalClicks || 0,
@@ -347,14 +414,14 @@ export class DataLifecycleManager {
     const { error } = await supabase
       .from('campaign_summaries')
       .upsert(summary, {
-        onConflict: 'client_id,summary_type,summary_date'
+        onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ UPDATED CONFLICT RESOLUTION
       });
 
     if (error) {
       throw new Error(`Failed to archive weekly summary: ${error.message}`);
     }
 
-    logger.info(`💾 Archived weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Archived ${platform} weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
     logger.info(`💾 Conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value, ${roas.toFixed(2)} ROAS`);
   }
 
@@ -416,6 +483,190 @@ export class DataLifecycleManager {
     targetWeekStart.setDate(startOfWeek1.getDate() + (weekNumber - 1) * 7);
     
     return targetWeekStart.toISOString().split('T')[0] as string;
+  }
+
+  /**
+   * Archive Google Ads monthly cache data to campaign_summaries
+   * NEW METHOD - handles Google Ads specific data structure
+   */
+  private async archiveGoogleAdsMonthlyData(cacheEntry: any): Promise<void> {
+    const cacheData = cacheEntry.cache_data;
+    const summaryDate = `${cacheEntry.period_id}-01`;
+    
+    const summary = {
+      client_id: cacheEntry.client_id,
+      summary_type: 'monthly',
+      summary_date: summaryDate,
+      platform: 'google',  // ✅ EXPLICIT PLATFORM
+      total_spend: cacheData?.stats?.totalSpend || 0,
+      total_impressions: cacheData?.stats?.totalImpressions || 0,
+      total_clicks: cacheData?.stats?.totalClicks || 0,
+      total_conversions: cacheData?.stats?.totalConversions || 0,
+      average_ctr: cacheData?.stats?.averageCtr || 0,
+      average_cpc: cacheData?.stats?.averageCpc || 0,
+      // Google Ads specific conversion metrics
+      click_to_call: cacheData?.conversionMetrics?.click_to_call || 0,
+      email_contacts: cacheData?.conversionMetrics?.email_contacts || 0,
+      booking_step_1: cacheData?.conversionMetrics?.booking_step_1 || 0,
+      booking_step_2: cacheData?.conversionMetrics?.booking_step_2 || 0,
+      booking_step_3: cacheData?.conversionMetrics?.booking_step_3 || 0,
+      reservations: cacheData?.conversionMetrics?.reservations || 0,
+      reservation_value: cacheData?.conversionMetrics?.reservation_value || 0,
+      // Calculate CPA and ROAS
+      average_cpa: cacheData?.conversionMetrics?.reservations > 0 
+        ? (cacheData?.stats?.totalSpend || 0) / cacheData.conversionMetrics.reservations 
+        : 0,
+      roas: (cacheData?.stats?.totalSpend || 0) > 0 
+        ? (cacheData?.conversionMetrics?.reservation_value || 0) / cacheData.stats.totalSpend 
+        : 0,
+      active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ENABLED').length || 0,
+      total_campaigns: cacheData?.campaigns?.length || 0,
+      campaign_data: cacheData?.campaigns || [],
+      // Google Ads has googleAdsTables instead of metaTables
+      google_ads_tables: cacheData?.googleAdsTables || null,
+      data_source: 'google_ads_smart_cache_archive',
+      last_updated: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date,platform'
+      });
+
+    if (error) {
+      throw new Error(`Failed to archive Google Ads monthly summary: ${error.message}`);
+    }
+
+    logger.info(`💾 Archived Google Ads monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+  }
+
+  /**
+   * Archive Google Ads weekly cache data to campaign_summaries
+   * NEW METHOD - handles Google Ads specific data structure
+   */
+  private async archiveGoogleAdsWeeklyData(cacheEntry: any): Promise<void> {
+    const cacheData = cacheEntry.cache_data;
+    
+    // Use the start date of the week from the cached data
+    const cachedStartDate = cacheData?.period?.startDate;
+    const summaryDate: string = typeof cachedStartDate === 'string' ? cachedStartDate : this.getWeekStartDate(cacheEntry.period_id);
+    
+    // Calculate conversion metrics from Google Ads campaign data
+    const campaigns = cacheData?.campaigns || [];
+    const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      total_spend: acc.total_spend + (campaign.spend || 0)
+    }), {
+      click_to_call: 0,
+      email_contacts: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
+      reservations: 0,
+      reservation_value: 0,
+      total_spend: 0
+    });
+
+    // Calculate derived conversion metrics
+    const roas = conversionTotals.total_spend > 0 && conversionTotals.reservation_value > 0 
+      ? conversionTotals.reservation_value / conversionTotals.total_spend 
+      : 0;
+    
+    const cost_per_reservation = conversionTotals.reservations > 0 
+      ? conversionTotals.total_spend / conversionTotals.reservations 
+      : 0;
+
+    logger.info(`📊 Google Ads weekly archive conversion metrics calculated:`, {
+      client_id: cacheEntry.client_id,
+      period: cacheEntry.period_id,
+      conversionTotals,
+      roas,
+      cost_per_reservation
+    });
+    
+    const summary = {
+      client_id: cacheEntry.client_id,
+      summary_type: 'weekly',
+      summary_date: summaryDate,
+      platform: 'google',  // ✅ EXPLICIT PLATFORM
+      total_spend: cacheData?.stats?.totalSpend || 0,
+      total_impressions: cacheData?.stats?.totalImpressions || 0,
+      total_clicks: cacheData?.stats?.totalClicks || 0,
+      total_conversions: cacheData?.stats?.totalConversions || 0,
+      average_ctr: cacheData?.stats?.averageCtr || 0,
+      average_cpc: cacheData?.stats?.averageCpc || 0,
+      average_cpa: cost_per_reservation,
+      active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ENABLED').length || 0,
+      total_campaigns: cacheData?.campaigns?.length || 0,
+      campaign_data: cacheData?.campaigns || [],
+      google_ads_tables: cacheData?.googleAdsTables || null,
+      data_source: 'google_ads_smart_cache_archive',
+      // Add aggregated conversion metrics
+      click_to_call: conversionTotals.click_to_call,
+      email_contacts: conversionTotals.email_contacts,
+      booking_step_1: conversionTotals.booking_step_1,
+      booking_step_2: conversionTotals.booking_step_2,
+      booking_step_3: conversionTotals.booking_step_3,
+      reservations: conversionTotals.reservations,
+      reservation_value: conversionTotals.reservation_value,
+      roas: roas,
+      cost_per_reservation: cost_per_reservation,
+      last_updated: new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date,platform'
+      });
+
+    if (error) {
+      throw new Error(`Failed to archive Google Ads weekly summary: ${error.message}`);
+    }
+
+    logger.info(`💾 Archived Google Ads weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Google Ads conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value, ${roas.toFixed(2)} ROAS`);
+  }
+
+  /**
+   * Clean up archived Google Ads monthly cache entries
+   * NEW METHOD - for Google Ads cache cleanup
+   */
+  private async cleanupArchivedGoogleAdsMonthlyCache(periodId: string): Promise<void> {
+    const { error } = await supabase
+      .from('google_ads_current_month_cache')
+      .delete()
+      .eq('period_id', periodId);
+
+    if (error) {
+      logger.error(`⚠️ Failed to cleanup Google Ads monthly cache for ${periodId}:`, error.message);
+    } else {
+      logger.info(`🧹 Cleaned up Google Ads monthly cache for period ${periodId}`);
+    }
+  }
+
+  /**
+   * Clean up archived Google Ads weekly cache entries
+   * NEW METHOD - for Google Ads cache cleanup
+   */
+  private async cleanupArchivedGoogleAdsWeeklyCache(periodId: string): Promise<void> {
+    const { error } = await supabase
+      .from('google_ads_current_week_cache')
+      .delete()
+      .eq('period_id', periodId);
+
+    if (error) {
+      logger.error(`⚠️ Failed to cleanup Google Ads weekly cache for ${periodId}:`, error.message);
+    } else {
+      logger.info(`🧹 Cleaned up Google Ads weekly cache for period ${periodId}`);
+    }
   }
 
   /**

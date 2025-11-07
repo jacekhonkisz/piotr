@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
-import LoadingSpinner from '../../../components/LoadingSpinner';
+import { AdminLoading } from '../../../components/LoadingSpinner';
 import CalendarEmailPreviewModal from '../../../components/CalendarEmailPreviewModal';
 import { getMonthBoundaries, getWeekBoundaries } from '../../../lib/date-range-utils';
 
@@ -670,13 +670,7 @@ export default function AdminCalendarPage() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
-        <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-12">
-          <LoadingSpinner text="Ładowanie kalendarza..." />
-        </div>
-      </div>
-    );
+    return <AdminLoading text="Ładowanie kalendarza..." />;
   }
 
   return (

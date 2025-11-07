@@ -1,6 +1,6 @@
 // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
 import { createClient } from '@supabase/supabase-js';
-import { MetaAPIService } from './meta-api-optimized';
+import { MetaAPIServiceOptimized } from './meta-api-optimized';
 import { GoogleAdsAPIService } from './google-ads-api';
 import { StandardizedDataFetcher } from './standardized-data-fetcher';
 import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';
@@ -68,6 +68,37 @@ export class BackgroundDataCollector {
   }
 
   /**
+   * Collect monthly summaries for a specific client (used for new client initialization)
+   * NEW METHOD - for auto-initializing new clients with historical data
+   */
+  async collectMonthlySummariesForSingleClient(clientId: string): Promise<void> {
+    logger.info(`📅 Starting monthly data collection for single client: ${clientId}`);
+
+    try {
+      // Fetch client data
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single();
+
+      if (clientError || !client) {
+        throw new Error(`Client ${clientId} not found: ${clientError?.message}`);
+      }
+
+      logger.info(`📊 Collecting monthly data for: ${client.name}`);
+
+      // Collect monthly summaries for this client
+      await this.collectMonthlySummaryForClient(client as Client);
+
+      logger.info(`✅ Monthly data collection completed for ${client.name}`);
+    } catch (error) {
+      logger.error(`❌ Error collecting monthly data for client ${clientId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Collect and store weekly summaries for all active clients
    */
   async collectWeeklySummaries(): Promise<void> {
@@ -98,6 +129,37 @@ export class BackgroundDataCollector {
       logger.error('❌ Error in weekly data collection:', error);
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  /**
+   * Collect weekly summaries for a specific client (used for new client initialization)
+   * NEW METHOD - for auto-initializing new clients with historical data
+   */
+  async collectWeeklySummariesForSingleClient(clientId: string): Promise<void> {
+    logger.info(`📅 Starting weekly data collection for single client: ${clientId}`);
+
+    try {
+      // Fetch client data
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .single();
+
+      if (clientError || !client) {
+        throw new Error(`Client ${clientId} not found: ${clientError?.message}`);
+      }
+
+      logger.info(`📊 Collecting weekly data for: ${client.name}`);
+
+      // Collect weekly summaries for this client
+      await this.collectWeeklySummaryForClient(client as Client);
+
+      logger.info(`✅ Weekly data collection completed for ${client.name}`);
+    } catch (error) {
+      logger.error(`❌ Error collecting weekly data for client ${clientId}:`, error);
+      throw error;
     }
   }
 
@@ -158,7 +220,7 @@ export class BackgroundDataCollector {
     const metaAccessToken = client.meta_access_token as string;
     const adAccountId = client.ad_account_id as string;
 
-    const metaService = new MetaAPIService(metaAccessToken);
+    const metaService = new MetaAPIServiceOptimized(metaAccessToken);
     
     // Validate token
     const tokenValidation = await metaService.validateToken();
@@ -175,9 +237,9 @@ export class BackgroundDataCollector {
       try {
         logger.info(`📅 Collecting ${monthData.year}-${monthData.month.toString().padStart(2, '0')} for ${client.name}`);
 
-        // Fetch COMPLETE campaign insights using improved method with pagination
+        // Fetch campaign insights using placement performance (MetaAPIServiceOptimized method)
         // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-        const campaignInsights = await metaService.getCompleteCampaignInsights(
+        const campaignInsights = await metaService.getPlacementPerformance(
           processedAdAccountId,
           monthData.startDate,
           monthData.endDate
@@ -363,7 +425,8 @@ export class BackgroundDataCollector {
 
     logger.info(`🔧 Starting from last completed week ending: ${lastCompletedWeekEnd.toISOString().split('T')[0]}`);
 
-    for (let i = 0; i < 52; i++) {
+    // 🔧 Collect 53 weeks (full year + 1 week for complete coverage)
+    for (let i = 0; i < 53; i++) {
       const weekEndDate = new Date(lastCompletedWeekEnd.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
       const weekStartDate = new Date(weekEndDate.getTime() - (6 * 24 * 60 * 60 * 1000)); // 7 days before
       const weekRange = getWeekBoundaries(weekStartDate);
@@ -383,7 +446,7 @@ export class BackgroundDataCollector {
       }
     }
 
-    logger.info(`📅 Will collect ${weeksToCollect.length} completed weeks (skipping current partial week)`);
+    logger.info(`📅 Will collect ${weeksToCollect.length} completed weeks (53 weeks = 1 year + 1 week for complete coverage)`);
     
     // 🔧 FIX: Also collect current week if it has significant data (for real-time updates)
     const currentWeekStart = new Date(currentDate);
@@ -419,7 +482,7 @@ export class BackgroundDataCollector {
     const metaAccessToken = client.meta_access_token as string;
     const adAccountId = client.ad_account_id as string;
 
-    const metaService = new MetaAPIService(metaAccessToken);
+    const metaService = new MetaAPIServiceOptimized(metaAccessToken);
     
     // Validate token
     const tokenValidation = await metaService.validateToken();
@@ -437,8 +500,8 @@ export class BackgroundDataCollector {
         const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
         logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
 
-        // Fetch COMPLETE weekly campaign insights using improved method with pagination
-        const campaignInsights = await metaService.getCompleteCampaignInsights(
+        // Fetch weekly campaign insights using placement performance (MetaAPIServiceOptimized method)
+        const campaignInsights = await metaService.getPlacementPerformance(
           processedAdAccountId,
           weekData.startDate,
           weekData.endDate
@@ -450,12 +513,12 @@ export class BackgroundDataCollector {
         if (weekData.isCurrent) {
           const sampleCampaigns = campaignInsights.slice(0, 3);
           logger.info(`🔍 Sample current week funnel data:`);
-          sampleCampaigns.forEach((campaign, index) => {
+          sampleCampaigns.forEach((campaign: any, index: number) => {
             logger.info(`   Campaign ${index + 1}: ${campaign.campaign_name || 'Unknown'}`);
             logger.info(`     Funnel: ${campaign.booking_step_1 || 0}→${campaign.booking_step_2 || 0}→${campaign.booking_step_3 || 0}→${campaign.reservations || 0}`);
           });
           
-          const aggregatedFunnel = campaignInsights.reduce((sum, c) => ({
+          const aggregatedFunnel = campaignInsights.reduce((sum: any, c: any) => ({
             step1: sum.step1 + (c.booking_step_1 || 0),
             step2: sum.step2 + (c.booking_step_2 || 0),
             step3: sum.step3 + (c.booking_step_3 || 0),
@@ -494,7 +557,7 @@ export class BackgroundDataCollector {
           logger.info(`⏭️ Skipping meta tables for current week to reduce API calls`);
         }
 
-        // Store the summary
+        // Store the Meta weekly summary
         await this.storeWeeklySummary(client.id, {
           summary_date: weekData.startDate,
           campaigns: campaignInsights,
@@ -502,7 +565,7 @@ export class BackgroundDataCollector {
           metaTables,
           activeCampaignCount,
           isCurrentWeek: weekData.isCurrent
-        });
+        }, 'meta'); // ✅ Explicitly specify Meta platform
 
         logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
 
@@ -512,6 +575,150 @@ export class BackgroundDataCollector {
       } catch (error) {
         logger.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
       }
+    }
+
+    // ✨ NEW: Collect Google Ads weekly data if enabled
+    if (client.google_ads_customer_id) {
+      logger.info(`🔵 Collecting Google Ads weekly data for ${client.name}...`);
+      
+      try {
+        // Get Google Ads system settings
+        const { data: settingsData, error: settingsError } = await supabase
+          .from('system_settings')
+          .select('key, value')
+          .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
+
+        if (settingsError) {
+          logger.error(`❌ Failed to get Google Ads system settings for ${client.name}:`, settingsError);
+          return;
+        }
+
+        const settings = settingsData.reduce((acc: any, setting: any) => {
+          acc[setting.key] = setting.value;
+          return acc;
+        }, {});
+
+        // Determine refresh token (manager token takes priority)
+        let refreshToken = null;
+        if (settings.google_ads_manager_refresh_token) {
+          refreshToken = settings.google_ads_manager_refresh_token;
+        } else if (client.google_ads_refresh_token) {
+          refreshToken = client.google_ads_refresh_token;
+        }
+
+        if (!refreshToken) {
+          logger.warn(`⚠️ No Google Ads refresh token available for ${client.name}, skipping weekly Google Ads collection`);
+          return;
+        }
+
+        const googleAdsCredentials = {
+          refreshToken,
+          clientId: settings.google_ads_client_id,
+          clientSecret: settings.google_ads_client_secret,
+          developmentToken: settings.google_ads_developer_token,
+          customerId: client.google_ads_customer_id!,
+          managerCustomerId: settings.google_ads_manager_customer_id,
+        };
+
+        // Initialize Google Ads API service
+        const googleAdsService = new GoogleAdsAPIService(googleAdsCredentials);
+
+        for (const weekData of weeksToCollect) {
+          try {
+            const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
+            logger.info(`📅 Collecting ${weekType} Google Ads week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate})`);
+
+            // Fetch Google Ads weekly campaign data
+            const campaigns = await googleAdsService.getCampaignData(
+              weekData.startDate,
+              weekData.endDate
+            );
+
+            if (!campaigns || campaigns.length === 0) {
+              logger.warn(`⚠️ No Google Ads campaigns for week ${weekData.weekNumber}, skipping`);
+              continue;
+            }
+
+            logger.info(`📊 Retrieved ${campaigns.length} Google Ads campaigns for week ${weekData.weekNumber}`);
+
+            // Calculate totals from campaigns
+            const totals: any = campaigns.reduce((acc: any, campaign: any) => ({
+              spend: acc.spend + (campaign.spend || 0),
+              impressions: acc.impressions + (campaign.impressions || 0),
+              clicks: acc.clicks + (campaign.clicks || 0),
+              conversions: acc.conversions + (campaign.conversions || 0),
+              click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+              email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+              booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+              booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+              booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+              reservations: acc.reservations + (campaign.reservations || 0),
+              reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+            }), {
+              spend: 0,
+              impressions: 0,
+              clicks: 0,
+              conversions: 0,
+              click_to_call: 0,
+              email_contacts: 0,
+              booking_step_1: 0,
+              booking_step_2: 0,
+              booking_step_3: 0,
+              reservations: 0,
+              reservation_value: 0,
+            });
+
+            // Calculate derived metrics
+            totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+            totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+
+            // Fetch Google Ads tables (skip for current week)
+            let googleAdsTables = null;
+            if (!weekData.isCurrent) {
+              try {
+                googleAdsTables = await googleAdsService.getGoogleAdsTables(
+                  weekData.startDate,
+                  weekData.endDate
+                );
+                logger.info(`📊 Fetched Google Ads tables for week ${weekData.weekNumber}`);
+              } catch (error) {
+                logger.warn(`⚠️ Failed to fetch Google Ads tables for week ${weekData.weekNumber}:`, error);
+              }
+            } else {
+              logger.info(`⏭️ Skipping Google Ads tables for current week to reduce API calls`);
+            }
+
+            // Count active campaigns
+            const activeCampaignCount = campaigns.filter((c: any) => c.status === 'ENABLED').length;
+
+            // Store Google Ads weekly summary
+            await this.storeWeeklySummary(
+              client.id,
+              {
+                summary_date: weekData.startDate,
+                campaigns,
+                totals,
+                googleAdsTables,
+                activeCampaignCount,
+                isCurrentWeek: weekData.isCurrent
+              },
+              'google' // ✅ Specify platform
+            );
+
+            logger.info(`✅ Stored ${weekType} Google Ads weekly summary for ${client.name} week ${weekData.weekNumber}`);
+
+            // Add delay to avoid rate limiting
+            await this.delay(weekData.isCurrent ? 500 : 1000);
+
+          } catch (error) {
+            logger.error(`❌ Failed to collect Google Ads week ${weekData.weekNumber} for ${client.name}:`, error);
+          }
+        }
+      } catch (error) {
+        logger.error(`❌ Failed to initialize Google Ads weekly collection for ${client.name}:`, error);
+      }
+    } else {
+      logger.info(`⏭️ Google Ads not configured for ${client.name}, skipping weekly Google collection`);
     }
   }
 
@@ -699,12 +906,15 @@ export class BackgroundDataCollector {
       cost_per_reservation: cost_per_reservation,
       campaign_data: campaigns, // Store raw campaign data for detailed analysis
       active_campaign_count: data.activeCampaignCount || 0,
+      data_source: 'google_ads_api', // ✅ FIX: Explicitly set data source
       last_updated: new Date().toISOString()
     };
 
     const { error } = await supabase
       .from('campaign_summaries')
-      .upsert(summary);
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date,platform' // ✅ FIX: Specify conflict resolution
+      });
 
     if (error) {
       throw new Error(`Failed to store Google Ads monthly summary: ${error.message}`);
@@ -716,8 +926,8 @@ export class BackgroundDataCollector {
   /**
    * Store weekly summary in database
    */
-  private async storeWeeklySummary(clientId: string, data: any): Promise<void> {
-    logger.info(`💾 Storing weekly summary for client ${clientId} on ${data.summary_date}`);
+  private async storeWeeklySummary(clientId: string, data: any, platform: 'meta' | 'google' = 'meta'): Promise<void> {
+    logger.info(`💾 Storing ${platform} weekly summary for client ${clientId} on ${data.summary_date}`);
 
     // Aggregate conversion metrics from campaigns
     const campaigns = data.campaigns || [];
@@ -824,10 +1034,16 @@ export class BackgroundDataCollector {
       isCurrentWeek: data.isCurrentWeek || false
     });
 
+    // ✅ FIX: Set correct data_source and tables field based on platform
+    const dataSource = platform === 'google' ? 'google_ads_api' : 'meta_api';
+    const tablesField = platform === 'google' ? 'google_ads_tables' : 'meta_tables';
+    const tablesData = platform === 'google' ? data.googleAdsTables : data.metaTables;
+
     const summary = {
       client_id: clientId,
       summary_type: 'weekly',
       summary_date: data.summary_date,
+      platform: platform, // ✅ FIX: Add platform field
       total_spend: data.totals.spend || 0,
       total_impressions: data.totals.impressions || 0,
       total_clicks: data.totals.clicks || 0,
@@ -838,8 +1054,8 @@ export class BackgroundDataCollector {
       active_campaigns: data.activeCampaignCount || data.campaigns.filter((c: any) => c.status === 'ACTIVE').length,
       total_campaigns: data.campaigns.length,
       campaign_data: data.campaigns,
-      meta_tables: data.metaTables,
-      data_source: 'meta_api',
+      [tablesField]: tablesData, // ✅ FIX: Use correct field name based on platform
+      data_source: dataSource, // ✅ FIX: Set correct data source
       // Add enhanced conversion metrics (either from Meta API or daily_kpi_data fallback)
       click_to_call: enhancedConversionMetrics.click_to_call,
       email_contacts: enhancedConversionMetrics.email_contacts,

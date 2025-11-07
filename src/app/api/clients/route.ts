@@ -389,6 +389,30 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Ad Account: ${accountValidation?.account?.name || requestData.ad_account_id}`);
     console.log(`🔑 Token Status: ${tokenValidation?.convertedToken ? 'Converted to long-lived' : 'Already long-lived'}`);
 
+    // ✨ NEW: Trigger automatic historical data collection for new client
+    logger.info(`🔄 Initializing historical data for new client ${newClient.id}...`);
+    try {
+      const { BackgroundDataCollector } = await import('@/lib/background-data-collector');
+      const collector = BackgroundDataCollector.getInstance();
+      
+      // Trigger historical collection in background (don't await to avoid timeout)
+      // This will collect last 12 months + 53 weeks for both Meta & Google (if configured)
+      collector.collectMonthlySummariesForSingleClient(newClient.id).catch(error => {
+        logger.error(`Failed to initialize monthly data for ${newClient.id}:`, error);
+      });
+
+      collector.collectWeeklySummariesForSingleClient(newClient.id).catch(error => {
+        logger.error(`Failed to initialize weekly data for ${newClient.id}:`, error);
+      });
+      
+      logger.info(`✅ Historical data initialization started for ${newClient.name}`);
+      console.log(`📊 Historical data collection started in background (12 months + 53 weeks)`);
+    } catch (error) {
+      logger.warn(`⚠️ Failed to trigger historical data collection for ${newClient.name}:`, error);
+      // Don't fail client creation if background collection fails
+      console.log(`⚠️ Note: Historical data collection failed to start, will be collected by scheduled jobs`);
+    }
+
     return NextResponse.json({
       success: true,
       client: newClient,
@@ -399,7 +423,8 @@ export async function POST(request: NextRequest) {
       tokenInfo: {
         converted: !!tokenValidation?.convertedToken,
         isLongLived: tokenValidation?.isLongLived
-      }
+      },
+      message: 'Client created successfully. Historical data is being initialized in the background.'
     });
 
   } catch (error) {

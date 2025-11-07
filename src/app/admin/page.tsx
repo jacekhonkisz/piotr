@@ -32,7 +32,7 @@ import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import { MetaAPIService } from '../../lib/meta-api-optimized';
 import type { Database } from '../../lib/database.types';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { AdminLoading } from '../../components/LoadingSpinner';
 import CredentialsModal from '../../components/CredentialsModal';
 import EditClientModal from '../../components/EditClientModal';
 import SearchFilters from '../../components/SearchFilters';
@@ -1369,13 +1369,7 @@ export default function AdminPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
-        <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-12">
-          <LoadingSpinner text="Ładowanie klientów..." />
-        </div>
-      </div>
-    );
+    return <AdminLoading />;
   }
 
   return (

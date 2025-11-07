@@ -76,7 +76,7 @@ export class DailyMetricsCache {
         return {
           success: true,
           data: cached.data,
-          source: 'daily-cache-fresh',
+          source: 'cache',  // 🔧 SIMPLIFIED: Consistent source naming
           fromCache: true,
           completeness: cached.completeness,
           cacheAge: Date.now() - cached.timestamp
@@ -92,12 +92,12 @@ export class DailyMetricsCache {
         console.log(`✅ Daily Metrics: Found ${dbData.length} records in daily_kpi_data (${Math.round(completeness * 100)}% complete)`);
         
         // Cache the database result
-        this.cacheDailyMetrics(cacheKey, dbData, 'daily-database', completeness);
+        this.cacheDailyMetrics(cacheKey, dbData, 'database', completeness);
         
         return {
           success: true,
           data: dbData,
-          source: 'daily-database',
+          source: 'database',  // 🔧 SIMPLIFIED: Consistent source naming
           fromCache: false,
           completeness: completeness
         };
@@ -115,12 +115,12 @@ export class DailyMetricsCache {
         console.log(`✅ Daily Metrics: Extracted ${dailyMetrics.length} daily records from unified API`);
         
         // Cache the result
-        this.cacheDailyMetrics(cacheKey, dailyMetrics, 'daily-unified-fallback', completeness);
+        this.cacheDailyMetrics(cacheKey, dailyMetrics, 'database', completeness);
         
         return {
           success: true,
           data: dailyMetrics,
-          source: 'daily-unified-fallback',
+          source: 'database',  // 🔧 SIMPLIFIED: It's from database via unified API
           fromCache: false,
           completeness: completeness
         };
@@ -236,6 +236,16 @@ export class DailyMetricsCache {
       return [];
     }
     
+    // 🔧 FIX: Check if campaigns have date fields (for daily extraction)
+    // Google Ads monthly aggregates don't have dates - that's OK!
+    const firstCampaign = campaigns[0];
+    const hasDateField = firstCampaign && (firstCampaign.date_start || firstCampaign.date || firstCampaign.day);
+    
+    if (!hasDateField) {
+      console.log('ℹ️ Campaigns are aggregated (no date field) - cannot extract daily metrics');
+      return []; // ← Return empty array, this is expected for monthly data
+    }
+    
     // Group campaigns by date and aggregate
     const dailyMap = new Map<string, DailyMetrics>();
     
@@ -243,7 +253,7 @@ export class DailyMetricsCache {
       // Try different date fields that might be present
       const date = campaign.date_start || campaign.date || campaign.day;
       if (!date) {
-        console.warn('⚠️ Campaign missing date field:', campaign);
+        // ← This shouldn't happen now since we check above, but keep as safety
         return;
       }
       

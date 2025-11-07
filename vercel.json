@@ -57,12 +57,12 @@
       "schedule": "0 3 * * 1"
     },
     {
-      "path": "/api/background/collect-monthly",
+      "path": "/api/automated/collect-monthly-summaries",
       "schedule": "0 23 * * 0"
     },
     {
-      "path": "/api/background/collect-weekly",
-      "schedule": "1 0 * * *"
+      "path": "/api/automated/collect-weekly-summaries",
+      "schedule": "0 2 * * 1"
     },
     {
       "path": "/api/background/cleanup-old-data",

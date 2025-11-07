@@ -109,6 +109,17 @@ export default function DashboardPage() {
     lastUpdated?: string;
   }>({});
 
+  // 📊 PREVIOUS MONTH COMPARISON: Track previous month conversion metrics for AnimatedMetricsCharts
+  const [previousMonthConversionMetrics, setPreviousMonthConversionMetrics] = useState<{
+    booking_step_1: number;
+    reservations: number;
+    reservation_value: number;
+  }>({
+    booking_step_1: 0,
+    reservations: 0,
+    reservation_value: 0
+  });
+
   // Handle tab switching - reload data when switching between platforms
   const handleTabSwitch = async (provider: 'meta' | 'google') => {
     console.log('🔄 TAB SWITCH CALLED:', {
@@ -138,6 +149,18 @@ export default function DashboardPage() {
     // 🔧 CRITICAL FIX: Set refreshing state BEFORE switching provider
     setRefreshingData(true);
     
+    // 🔧 FIX: Clear old data immediately to prevent showing stale numbers
+    // This fixes the issue where old data flashes before new data loads
+    if (clientData) {
+      setClientData(prev => ({
+        ...prev!,
+        stats: undefined,  // ← Force loading state
+        conversionMetrics: undefined,
+        campaigns: []
+      }));
+      console.log('🧹 Cleared old data to prevent stale numbers during tab switch');
+    }
+    
     // Clear any existing API call trackers to prevent blocking
     if ((window as any).apiCallTracker) {
       Object.keys((window as any).apiCallTracker).forEach(key => {
@@ -154,10 +177,10 @@ export default function DashboardPage() {
     // 🔧 CRITICAL: Wait for state update before loading data
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    // Reload data for the new platform
+    // 🚀 PERFORMANCE OPTIMIZATION: Load data with cache-preferred mode for instant display
     if (currentClient) {
-      console.log('🔄 TAB SWITCH: Loading data for provider:', provider);
-      const newData = await loadMainDashboardData(currentClient, provider);
+      console.log('🔄 TAB SWITCH: Loading data for provider (CACHE-FIRST):', provider);
+      const newData = await loadMainDashboardData(currentClient, provider, true); // ← Add cacheFirst flag
       
       console.log('🔄 TAB SWITCH: Received data:', {
         hasData: !!newData,
@@ -184,11 +207,22 @@ export default function DashboardPage() {
         console.log('🔄 TAB SWITCH: Setting updated client data:', {
           hasStats: !!updatedClientData.stats,
           statsSpend: updatedClientData.stats?.totalSpend,
-          debugSource: updatedClientData.debug?.source
+          debugSource: updatedClientData.debug?.source,
+          provider: provider
         });
         
         setClientData(updatedClientData);
         setDataSource(newData.debug?.source || 'unknown');
+        
+        // 🔧 FIX: Update dataSourceInfo for the new provider
+        setDataSourceInfo({
+          validation: newData.validation,
+          debug: newData.debug,
+          lastUpdated: new Date().toISOString()
+        });
+        
+        // 📊 Fetch previous month conversion metrics for the new provider
+        fetchPreviousMonthConversionMetrics(currentClient);
       }
     }
     
@@ -315,6 +349,9 @@ export default function DashboardPage() {
 
       setClientData(dashboardData);
       setDataSource(mainDashboardData?.debug?.source || 'database');
+      
+      // 📊 Fetch previous month conversion metrics for comparison
+      fetchPreviousMonthConversionMetrics(client);
       
       setLoadingProgress(100);
       setLoadingMessage('Gotowe!');
@@ -560,6 +597,9 @@ export default function DashboardPage() {
       // Force re-render to ensure display updates
       setRenderKey(prev => prev + 1);
       
+      // 📊 Fetch previous month conversion metrics for comparison
+      fetchPreviousMonthConversionMetrics(clientData);
+      
       // Note: Smart caching is now handled by the API, no need for localStorage cache
     } catch (error) {
       console.error('Error loading client dashboard:', error);
@@ -716,9 +756,14 @@ export default function DashboardPage() {
   };
 
 
-  const loadMainDashboardData = async (currentClient: any, forceProvider?: 'meta' | 'google') => {
+  const loadMainDashboardData = async (
+    currentClient: any, 
+    forceProvider?: 'meta' | 'google',
+    cacheFirst: boolean = false // 🚀 NEW: Cache-first mode for instant tab switching
+  ) => {
     console.log('🚀 DASHBOARD: loadMainDashboardData called for client:', currentClient?.id);
     console.log('🔄 DASHBOARD: Force refresh timestamp:', Date.now());
+    console.log('⚡ DASHBOARD: Cache-first mode:', cacheFirst);
     try {
       // 🔧 USE SAME DATE LOGIC AS SMART CACHE HELPER: Ensures proper cache detection
       const currentMonthInfo = getCurrentMonthInfo();
@@ -731,7 +776,8 @@ export default function DashboardPage() {
         periodId: currentMonthInfo.periodId,
         dateRange,
         year: currentMonthInfo.year,
-        month: currentMonthInfo.month
+        month: currentMonthInfo.month,
+        cacheFirst
       });
       
       // 🔧 REMOVED: Authentication check - not required for this project
@@ -771,28 +817,43 @@ export default function DashboardPage() {
         
         if (effectiveProvider === 'google') {
           // Use separate Google Ads system
-          console.log('🎯 Using GoogleAdsStandardizedDataFetcher for dashboard...');
+                console.log('🎯🎯🎯 Using GoogleAdsStandardizedDataFetcher for dashboard...');
+                console.log('🎯🎯🎯 GOOGLE FETCH: cacheFirst =', cacheFirst);
+                console.log('🎯🎯🎯 GOOGLE FETCH: Current client:', currentClient.id);
+                
+                // 🔧 FIX: Get session token for Google Ads too
+                const { data: { session } } = await supabase.auth.getSession();
+                console.log('🎯🎯🎯 GOOGLE FETCH: Session retrieved, has token:', !!session?.access_token);
           
-          // Use Google Ads fetcher only on server-side
+          // 🔧 FIX: Always use GoogleAdsStandardizedDataFetcher (same as reports page)
+          // This ensures we check daily_kpi_data FIRST, then smart cache, then database, then live API
+          // The standardized fetcher handles cache-first logic internally
+          console.log('🔧 DASHBOARD: Using GoogleAdsStandardizedDataFetcher (same as reports page)');
+          console.log('🔧 DASHBOARD: This ensures daily_kpi_data is checked FIRST for accuracy');
+          
+          // Use Google Ads fetcher (same logic as reports page)
           if (typeof window === 'undefined') {
+            // Server-side: use fetcher directly
             const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
             
             result = await GoogleAdsStandardizedDataFetcher.fetchData({
               clientId: currentClient.id,
               dateRange,
-              reason: 'google-ads-dashboard-standardized-load'
+              reason: cacheFirst ? 'google-ads-dashboard-tab-switch' : 'google-ads-dashboard-standardized-load',
+              sessionToken: session?.access_token
             });
           } else {
-            // Client-side: redirect to API endpoint
+            // Client-side: redirect to API endpoint with authentication (same as reports page)
             const response = await fetch('/api/fetch-google-ads-live-data', {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session?.access_token}`
               },
               body: JSON.stringify({
                 clientId: currentClient.id,
                 dateRange,
-                reason: 'google-ads-dashboard-standardized-load'
+                reason: cacheFirst ? 'google-ads-dashboard-tab-switch' : 'google-ads-dashboard-standardized-load'
               })
             });
             
@@ -804,21 +865,119 @@ export default function DashboardPage() {
           }
         } else {
           // Use Meta system
-          console.log('🎯 Using StandardizedDataFetcher for Meta dashboard...');
+          console.log('🎯🎯🎯 Using StandardizedDataFetcher for Meta dashboard...');
+          console.log('🎯🎯🎯 META FETCH: cacheFirst =', cacheFirst);
           
+          // 🔧 FIX: Get session token like reports page does
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          // 🚀 PERFORMANCE: Use smart cache API directly for cache-first mode
+          if (cacheFirst) {
+            console.log('⚡ CACHE-FIRST MODE: Using Meta smart cache API directly');
+            const cacheResponse = await fetch('/api/fetch-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session?.access_token}` // ← CRITICAL: Add auth for cache API!
+              },
+              body: JSON.stringify({
+                clientId: currentClient.id,
+                forceRefresh: false // ← Always use cache for instant loading
+              })
+            });
+            
+            console.log('📡 CACHE-FIRST: Meta cache response status:', cacheResponse.status);
+            
+            if (cacheResponse.ok) {
+              const cacheResult = await cacheResponse.json();
+              console.log('📡 CACHE-FIRST: Meta cache result:', {
+                success: cacheResult.success,
+                hasData: !!cacheResult.data,
+                dataKeys: cacheResult.data ? Object.keys(cacheResult.data) : [],
+                hasStats: !!cacheResult.data?.stats,
+                hasCampaigns: !!cacheResult.data?.campaigns
+              });
+              
+              // 🔧 CRITICAL: Validate cache data is complete before accepting it
+              const hasCacheData = cacheResult.success && cacheResult.data;
+              const hasValidStats = cacheResult.data?.stats && (
+                typeof cacheResult.data.stats.totalSpend === 'number' ||
+                typeof cacheResult.data.stats.totalClicks === 'number' ||
+                typeof cacheResult.data.stats.totalImpressions === 'number'
+              );
+              const hasValidMetrics = cacheResult.data?.conversionMetrics && (
+                typeof cacheResult.data.conversionMetrics.reservations === 'number'
+              );
+              const hasCampaigns = Array.isArray(cacheResult.data?.campaigns);
+              
+              console.log('🔍 CACHE-FIRST: Meta cache data validation:', {
+                hasCacheData,
+                hasValidStats,
+                hasValidMetrics,
+                hasCampaigns,
+                statsValues: cacheResult.data?.stats,
+                isComplete: hasCacheData && hasValidStats && hasValidMetrics
+              });
+              
+              if (hasCacheData && hasValidStats && hasValidMetrics) {
+                console.log('✅ CACHE-FIRST: Loaded COMPLETE Meta data from smart cache - SKIPPING live API call!');
+                result = {
+                  success: true,
+                  data: cacheResult.data,
+                  debug: {
+                    source: 'meta-cache',  // 🔧 SIMPLIFIED: Consistent source naming
+                    reason: 'dashboard-tab-switch-cache-first',
+                    cachePolicy: 'prefer-cache',
+                    responseTime: cacheResult.debug?.responseTime || cacheResult.responseTime || 0
+                  },
+                  validation: {
+                    actualSource: 'meta-cache',
+                    expectedSource: 'meta-cache',
+                    isConsistent: true
+                  }
+                };
+              } else {
+                console.warn('⚠️ CACHE-FIRST: Meta cache data incomplete or invalid, will fallback:', {
+                  hasData: hasCacheData,
+                  hasStats: hasValidStats,
+                  hasMetrics: hasValidMetrics,
+                  reason: !hasCacheData ? 'no data' : !hasValidStats ? 'invalid stats' : 'invalid metrics'
+                });
+              }
+            } else {
+              console.warn('⚠️ CACHE-FIRST: Meta cache response NOT OK:', cacheResponse.status, await cacheResponse.text());
+            }
+          }
+          
+          // Fallback to standard fetcher if cache-first failed or not requested
+          console.log('🔍 CACHE-FIRST META: Checking if fallback needed:', {
+            hasResult: !!result,
+            resultSuccess: result?.success,
+            resultSource: result?.debug?.source,
+            willFallback: !result || !result.success
+          });
+          
+          if (!result || !result.success) {
+            console.log('⚠️ CACHE-FIRST META: Falling back to standard fetcher');
           result = await StandardizedDataFetcher.fetchData({
             clientId: currentClient.id,
             dateRange,
             platform: 'meta',
-            reason: 'meta-dashboard-standardized-load-force-refresh'
+              reason: cacheFirst ? 'meta-dashboard-tab-switch' : 'meta-dashboard-standardized-load-force-refresh',
+              sessionToken: session?.access_token // ← CRITICAL FIX: Pass session token like reports page!
           });
+          }
         }
 
         if (result.success && result.data) {
           console.log('✅ DASHBOARD: Unified fetch successful:', {
             campaignCount: result.data.campaigns?.length || 0,
             source: result.debug?.source,
-            cachePolicy: result.debug?.cachePolicy
+            cachePolicy: result.debug?.cachePolicy,
+            hasStats: !!result.data.stats,
+            statsDetails: result.data.stats,
+            hasConversionMetrics: !!result.data.conversionMetrics,
+            conversionMetricsDetails: result.data.conversionMetrics
           });
 
           // Update data source tracking (same as reports)
@@ -845,7 +1004,10 @@ export default function DashboardPage() {
             totalSpend: stats.totalSpend,
             totalClicks: stats.totalClicks,
             totalImpressions: stats.totalImpressions,
-            source: 'standardized-fetcher'
+            totalConversions: stats.totalConversions,
+            campaignCount: campaigns.length,
+            source: 'standardized-fetcher',
+            debug: result.debug
           });
 
           // Use pre-calculated derived metrics from StandardizedDataFetcher
@@ -899,6 +1061,13 @@ export default function DashboardPage() {
         }
       } catch (error) {
         console.error('❌ DASHBOARD: Unified fetch error:', error);
+        console.error('❌ DASHBOARD: Error details:', {
+          errorMessage: error instanceof Error ? error.message : 'Unknown',
+          errorStack: error instanceof Error ? error.stack : 'No stack',
+          clientId: currentClient?.id,
+          dateRange,
+          provider: effectiveProvider
+        });
         
         // Fallback to empty data (same as reports)
                 return {
@@ -979,6 +1148,102 @@ export default function DashboardPage() {
     }
   };
 
+  // 📊 FETCH PREVIOUS MONTH CONVERSION METRICS: For AnimatedMetricsCharts comparison
+  const fetchPreviousMonthConversionMetrics = async (currentClient: Client) => {
+    try {
+      const now = new Date();
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const previousMonthStr = previousMonth.toISOString().split('T')[0];
+      
+      console.log('📊 FETCHING PREVIOUS MONTH CONVERSION METRICS:', {
+        clientId: currentClient.id,
+        clientName: currentClient.name,
+        platform: activeAdsProvider,
+        previousMonth: previousMonthStr,
+        query: {
+          table: 'campaign_summaries',
+          filters: {
+            client_id: currentClient.id,
+            summary_type: 'monthly',
+            platform: activeAdsProvider,
+            summary_date: previousMonthStr
+          }
+        }
+      });
+      
+      // First, let's check what data exists for this client
+      const { data: allData, error: checkError } = await supabase
+        .from('campaign_summaries')
+        .select('*')
+        .eq('client_id', currentClient.id)
+        .eq('summary_type', 'monthly')
+        .order('summary_date', { ascending: false })
+        .limit(5);
+      
+      console.log('📊 ALL MONTHLY SUMMARIES FOR CLIENT:', {
+        count: allData?.length || 0,
+        summaries: allData?.map(d => ({
+          date: d.summary_date,
+          platform: d.platform,
+          booking_step_1: d.booking_step_1,
+          reservations: d.reservations,
+          reservation_value: d.reservation_value
+        }))
+      });
+      
+      const { data, error } = await supabase
+        .from('campaign_summaries')
+        .select('booking_step_1, reservations, reservation_value, summary_date, platform')
+        .eq('client_id', currentClient.id)
+        .eq('summary_type', 'monthly')
+        .eq('platform', activeAdsProvider)
+        .eq('summary_date', previousMonthStr)
+        .single();
+      
+      console.log('📊 PREVIOUS MONTH QUERY RESULT:', {
+        found: !!data,
+        error: error?.message,
+        data: data
+      });
+      
+      if (!error && data) {
+        setPreviousMonthConversionMetrics({
+          booking_step_1: data.booking_step_1 || 0,
+          reservations: data.reservations || 0,
+          reservation_value: data.reservation_value || 0
+        });
+        console.log('✅ Previous month conversion metrics loaded:', data);
+      } else {
+        console.warn('⚠️ No previous month data found:', {
+          error: error?.message,
+          searchedFor: {
+            client: currentClient.id,
+            platform: activeAdsProvider,
+            month: previousMonthStr
+          }
+        });
+        setPreviousMonthConversionMetrics({
+          booking_step_1: 0,
+          reservations: 0,
+          reservation_value: 0
+        });
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch previous month conversion metrics:', error);
+      setPreviousMonthConversionMetrics({
+        booking_step_1: 0,
+        reservations: 0,
+        reservation_value: 0
+      });
+    }
+  };
+
+  // 📊 CALCULATE MONTH-OVER-MONTH CHANGE: For AnimatedMetricsCharts
+  const calculateMonthOverMonthChange = (current: number, previous: number): number => {
+    if (previous === 0) return 0;
+    return ((current - previous) / previous) * 100;
+  };
+
   const refreshLiveData = async () => {
     if (!user || loadingRef.current || refreshingData) return;
     
@@ -1052,7 +1317,11 @@ export default function DashboardPage() {
     return new Intl.NumberFormat('pl-PL').format(num);
   };
 
-  if (authLoading || loading) {
+  // Only show loading if:
+  // 1. Auth is still loading (initial load)
+  // 2. Dashboard data is loading AND we don't have any client data yet
+  // Don't show loading if we're just refreshing data (refreshingData handles that)
+  if (authLoading || (loading && !clientData)) {
     return <DashboardLoading />;
   }
 
@@ -1130,73 +1399,142 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Data Source Diagnostic (only shown when all metrics are 0) */}
+        {clientData && clientData.stats && clientData.stats.totalSpend === 0 && clientData.stats.totalClicks === 0 && clientData.stats.totalImpressions === 0 && (
+          <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-6 mb-6 shadow-lg">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="h-6 w-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-yellow-900 mb-2">
+                  Brak danych dla bieżącego okresu
+                </h3>
+                <p className="text-yellow-800 text-sm mb-3">
+                  Dashboard nie wyświetla danych, ponieważ system nie znalazł informacji o kampaniach dla wybranego okresu.
+                </p>
+                {dataSourceInfo.debug && (
+                  <div className="bg-yellow-100 rounded-lg p-4 mt-3">
+                    <p className="text-xs font-mono text-yellow-900 mb-2">
+                      <strong>Źródło danych:</strong> {dataSourceInfo.debug.source || 'unknown'}
+                    </p>
+                    <p className="text-xs font-mono text-yellow-900">
+                      <strong>Przyczyna:</strong> {dataSourceInfo.debug.reason || 'No reason provided'}
+                    </p>
+                  </div>
+                )}
+                <div className="mt-4 space-y-2 text-sm text-yellow-800">
+                  <p><strong>Możliwe przyczyny:</strong></p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>Brak danych w tabeli <code className="bg-yellow-200 px-1 rounded">daily_kpi_data</code> dla bieżącego miesiąca</li>
+                    <li>System wciąż zbiera dane z Meta Ads API</li>
+                    <li>Cache systemowy jest pusty i wymaga odświeżenia</li>
+                    <li>Brak aktywnych kampanii w wybranym okresie</li>
+                  </ul>
+                </div>
+                <div className="mt-4 pt-4 border-t border-yellow-300">
+                  <p className="text-sm text-yellow-900 mb-2">
+                    <strong>Zalecane działania:</strong>
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2 text-sm text-yellow-800">
+                    <li>Sprawdź czy w tabeli <code className="bg-yellow-200 px-1 rounded">daily_kpi_data</code> są dane dla {getCurrentMonthInfo().periodId}</li>
+                    <li>Zweryfikuj czy klient ma skonfigurowany dostęp do Meta Ads API</li>
+                    <li>Użyj przycisku "Odśwież dane" aby wymusić ponowne pobranie</li>
+                    <li>Sprawdź stronę raportów - jeśli tam też są 0, to problem jest w źródle danych</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main Dashboard Content */}
-        {clientData && (
+        {clientData && clientData.stats && (
           <div className="space-y-8">
             {/* Key Metrics Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-6 gap-4 sm:gap-6 xl:gap-8" role="region" aria-labelledby="metrics-heading">
+            <div className="flex justify-center">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 max-w-6xl w-full" role="region" aria-labelledby="metrics-heading">
               <h2 id="metrics-heading" className="sr-only">Kluczowe metryki kampanii</h2>
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="spend-metric">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="spend-metric" key={`spend-${renderKey}-${activeAdsProvider}`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="spend-metric">
-                    Wydatki
+                    Wydatki {activeAdsProvider === 'google' && <span className="text-xs">(Google)</span>}
                   </div>
                   <div className="p-2 bg-blue-100 rounded-lg">
                     <Target className="h-5 w-5 text-blue-600" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
-                  {formatCurrency(clientData.stats.totalSpend)}
+                  {(() => {
+                    console.log('💰 DASHBOARD: Rendering Spend:', {
+                      provider: activeAdsProvider,
+                      spend: clientData.stats.totalSpend,
+                      formatted: formatCurrency(clientData.stats.totalSpend)
+                    });
+                    return formatCurrency(clientData.stats.totalSpend);
+                  })()}
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
                   Bieżący miesiąc
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="impressions-metric">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="impressions-metric" key={`impressions-${renderKey}-${activeAdsProvider}`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="impressions-metric">
-                    Wyświetlenia
+                    Wyświetlenia {activeAdsProvider === 'google' && <span className="text-xs">(Google)</span>}
                   </div>
                   <div className="p-2 bg-green-100 rounded-lg">
                     <ArrowUpRight className="h-5 w-5 text-green-600" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
-                  {formatNumber(clientData.stats.totalImpressions)}
+                  {(() => {
+                    console.log('👁️ DASHBOARD: Rendering Impressions:', {
+                      provider: activeAdsProvider,
+                      impressions: clientData.stats.totalImpressions,
+                      formatted: formatNumber(clientData.stats.totalImpressions)
+                    });
+                    return formatNumber(clientData.stats.totalImpressions);
+                  })()}
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
-                  {clientData.stats.totalImpressions > 0 ? '6 wrz' : 'Brak danych'}
+                  Bieżący miesiąc
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="clicks-metric">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="clicks-metric" key={`clicks-${renderKey}-${activeAdsProvider}`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="clicks-metric">
-                    Kliknięcia
+                    Kliknięcia {activeAdsProvider === 'google' && <span className="text-xs">(Google)</span>}
                   </div>
                   <div className="p-2 bg-purple-100 rounded-lg">
                     <Target className="h-5 w-5 text-purple-600" />
                   </div>
                 </div>
                 <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums">
-                  {formatNumber(clientData.stats.totalClicks)}
+                  {(() => {
+                    console.log('🖱️ DASHBOARD: Rendering Clicks:', {
+                      provider: activeAdsProvider,
+                      clicks: clientData.stats.totalClicks,
+                      formatted: formatNumber(clientData.stats.totalClicks)
+                    });
+                    return formatNumber(clientData.stats.totalClicks);
+                  })()}
                 </div>
                 <div className="text-xs text-slate-500 mt-2">
                   Bieżący miesiąc
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="conversions-metric">
+              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="conversions-metric" key={`conversions-card-${renderKey}-${activeAdsProvider}`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="conversions-metric">
-                    Konwersje
+                    Konwersje {activeAdsProvider === 'google' && <span className="text-xs">(Google)</span>}
                   </div>
                   <div className="p-2 bg-orange-100 rounded-lg">
                     <Target className="h-5 w-5 text-orange-600" />
                   </div>
                 </div>
-                <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums" key={`conversions-${renderKey}`}>
+                <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums" key={`conversions-value-${renderKey}-${activeAdsProvider}`}>
                   {(() => {
                     const allBookingSteps = 
                       (clientData.conversionMetrics.click_to_call || 0) + 
@@ -1207,10 +1545,12 @@ export default function DashboardPage() {
                       (clientData.conversionMetrics.reservations || 0);
                     
                     console.log('🎯 DASHBOARD DISPLAY: Rendering conversions:', {
+                      provider: activeAdsProvider,
                       allBookingSteps,
                       formatted: formatNumber(allBookingSteps),
                       renderKey,
-                      timestamp: Date.now()
+                      timestamp: Date.now(),
+                      conversionMetrics: clientData.conversionMetrics
                     });
                     
                     return formatNumber(allBookingSteps);
@@ -1219,6 +1559,7 @@ export default function DashboardPage() {
                 <div className="text-xs text-slate-500 mt-2">
                   Bieżący miesiąc
                 </div>
+              </div>
               </div>
             </div>
 
@@ -1296,18 +1637,27 @@ export default function DashboardPage() {
             <AnimatedMetricsCharts
               leads={{
                 current: clientData.conversionMetrics.booking_step_1,
-                previous: 0,
-                change: 0
+                previous: previousMonthConversionMetrics.booking_step_1,
+                change: calculateMonthOverMonthChange(
+                  clientData.conversionMetrics.booking_step_1,
+                  previousMonthConversionMetrics.booking_step_1
+                )
               }}
               reservations={{
                 current: clientData.conversionMetrics.reservations,
-                previous: 0,
-                change: 0
+                previous: previousMonthConversionMetrics.reservations,
+                change: calculateMonthOverMonthChange(
+                  clientData.conversionMetrics.reservations,
+                  previousMonthConversionMetrics.reservations
+                )
               }}
               reservationValue={{
                 current: clientData.conversionMetrics.reservation_value,
-                previous: 0,
-                change: 0
+                previous: previousMonthConversionMetrics.reservation_value,
+                change: calculateMonthOverMonthChange(
+                  clientData.conversionMetrics.reservation_value,
+                  previousMonthConversionMetrics.reservation_value
+                )
               }}
               isLoading={loading}
             />

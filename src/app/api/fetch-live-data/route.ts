@@ -47,13 +47,23 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
     bothInCurrentMonth: startYear === currentYear && startMonth === currentMonth && endYear === currentYear && endMonth === currentMonth
   });
   
-  // Check if the range covers the current month
+  // 🔒 STRICT: Must be exact current month AND include today
+  const today = now.toISOString().split('T')[0];
+  const includesCurrentDay = endDate >= today;
+  
   const result = startYear === currentYear && 
          startMonth === currentMonth &&
          endYear === currentYear && 
-         endMonth === currentMonth;
+         endMonth === currentMonth &&
+         includesCurrentDay; // ← STRICT: Must include today
          
-  logger.info('🎯 IS CURRENT MONTH RESULT:', result);
+  logger.info('🔒 STRICT CURRENT MONTH CHECK:', {
+    result,
+    today,
+    endDate,
+    includesCurrentDay,
+    note: result ? 'CURRENT MONTH (use cache)' : 'PAST MONTH (use database)'
+  });
   return result;
 }
 
@@ -108,7 +118,9 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   const currentWeekStart = new Date(currentWeekInfo.startDate);
   const currentWeekEnd = new Date(currentWeekInfo.endDate);
   
-  // Check if request dates match current week dates exactly
+  // 🔒 STRICT: Must match current week exactly AND include today
+  const today = now.toISOString().split('T')[0];
+  const includesCurrentDay = endDate >= today;
   const startMatches = startDate === currentWeekInfo.startDate;
   const endMatches = endDate === currentWeekInfo.endDate;
   
@@ -117,16 +129,19 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   const isMondayStart = requestStart.getDay() === 1;
   const isExactWeek = daysDiff === 7 && isMondayStart;
   
-  const result = startMatches && endMatches && isExactWeek;
+  const result = startMatches && endMatches && isExactWeek && includesCurrentDay;
   
-  logger.debug('🔍 Strict week comparison result:', {
+  logger.debug('🔒 STRICT WEEK CHECK:', {
     startDateMatches: startMatches,
     endDateMatches: endMatches,
     isExactWeek: isExactWeek,
+    includesCurrentDay: includesCurrentDay,
     daysDiff: daysDiff,
     isMondayStart: isMondayStart,
     result: result,
-    reasoning: result ? 'Exact current week match' : 'Not current week'
+    today: today,
+    endDate: endDate,
+    reasoning: result ? 'CURRENT WEEK (use cache)' : 'PAST WEEK (use database)'
   });
   
   return result;
@@ -144,18 +159,45 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   
   console.log(`📊 Detected ${summaryType} request (${daysDiff} days) for ${platform} platform`);
   
-  // 🎯 DATE-BASED SEPARATION RULES:
-  // - Weekly data: Always from campaign_summaries table
-  // - Monthly data: From campaign_summaries table (for now, will migrate to monthly_summaries later)
-  // - Current periods: Use smart caching (3-hour refresh)
-  // - Historical periods: Use stored database records
+  // 🎯 STRICT SEPARATION RULES (DATABASE-FIRST FOR ALL PAST PERIODS):
+  // - Any past month (even last month) → ALWAYS use campaign_summaries database
+  // - Current month only → Use smart caching (3-hour refresh)
+  // - Current week only → Use smart caching
   
   const now = new Date();
-  const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01';
-  const isCurrentMonth = summaryType === 'monthly' && startDate === currentMonth;
-  const isCurrentWeek = summaryType === 'weekly' && start <= now && end >= now;
+  const today = now.toISOString().split('T')[0];
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  const currentMonthStart = currentYear + '-' + String(currentMonth).padStart(2, '0') + '-01';
   
-  console.log(`🎯 Period classification: ${isCurrentMonth ? 'CURRENT MONTH' : isCurrentWeek ? 'CURRENT WEEK' : 'HISTORICAL PERIOD'}`);
+  // 🔒 STRICT: Only exact current month gets cache (must match year AND month AND end date >= today)
+  const requestYear = parseInt(startDate.split('-')[0]);
+  const requestMonth = parseInt(startDate.split('-')[1]);
+  const isExactCurrentMonth = (
+    summaryType === 'monthly' && 
+    requestYear === currentYear && 
+    requestMonth === currentMonth &&
+    endDate >= today
+  );
+  
+  // 🔒 STRICT: Week must include today
+  const isCurrentWeek = summaryType === 'weekly' && start <= now && end >= now && endDate >= today;
+  
+  const isPastPeriod = !isExactCurrentMonth && !isCurrentWeek;
+  
+  console.log(`🔒 STRICT PERIOD CLASSIFICATION:`, {
+    today,
+    startDate,
+    endDate,
+    currentYear,
+    currentMonth,
+    requestYear,
+    requestMonth,
+    isExactCurrentMonth,
+    isCurrentWeek,
+    isPastPeriod,
+    decision: isPastPeriod ? '💾 DATABASE (past period)' : '🔄 CACHE (current period)'
+  });
   
   let storedSummary, error;
   

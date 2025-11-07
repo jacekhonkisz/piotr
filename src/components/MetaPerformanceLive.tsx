@@ -1,12 +1,8 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import KPICarousel, { KPI } from './KPICarousel';
 import { RefreshCw, Clock, Database } from 'lucide-react';
-import { DailyMetricsCache } from '../lib/daily-metrics-cache';
-import { DataSourceIndicator } from './DataSourceIndicator';
 
 interface MetaPerformanceLiveProps {
   clientId: string;
@@ -75,37 +71,16 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
   const [dataSource, setDataSource] = useState<string>('');
   const [cacheAge, setCacheAge] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [clicksBars, setClicksBars] = useState<number[]>([]);
-  const [spendBars, setSpendBars] = useState<number[]>([]);
-  const [conversionsBars, setConversionsBars] = useState<number[]>([]);
-  const [ctrBars, setCtrBars] = useState<number[]>([]);
-  
-  // Daily metrics cache state
-  const [dailyMetricsSource, setDailyMetricsSource] = useState<{
-    source: string;
-    completeness?: number;
-    cacheAge?: number;
-    fromCache: boolean;
-  } | null>(null);
-  
   // Add request deduplication
   const requestInProgress = useRef(false);
   const [isRequesting, setIsRequesting] = useState(false);
-
-  const dateRange = useMemo(() => {
-    // Calculate the last 7 days (excluding today) for daily chart data
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    
-    const sevenDaysAgo = new Date(yesterday);
-    sevenDaysAgo.setDate(yesterday.getDate() - 6); // 7 days total including yesterday
-    
-    return {
-      start: sevenDaysAgo.toISOString().split('T')[0],
-      end: yesterday.toISOString().split('T')[0] // Exclude today
-    };
-  }, []);
+  
+  // Month-over-month comparison state
+  const [previousMonthStats, setPreviousMonthStats] = useState<{
+    totalSpend: number;
+    totalClicks: number;
+    totalConversions: number;
+  } | null>(null);
 
   const formatCurrency = (amount: number) => {
     if (currency === 'PLN') {
@@ -342,15 +317,8 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       setDataSource(json.debug?.source || json.source || 'smart-cache');
       setCacheAge(json.debug?.cacheAge || null);
 
-          // Store daily data and fetch ONLY real historical points
-          storeDailyData(s, cm, campaigns, json.debug?.source || 'api');
-          // Try to fetch ONLY real daily data
-          fetchDailyDataPoints().then((hasRealData) => {
-            if (!hasRealData) {
-              console.log('ℹ️ No real daily data available from component cache - showing empty chart');
-              // Old setBars removed
-            }
-          });
+      // Fetch previous month data for comparison
+      fetchPreviousMonthComparison();
 
       console.log(`✅ MetaPerformanceLive: Data loaded from ${json.debug?.source || json.source} (cache age: ${json.debug?.cacheAge ? formatCacheAge(json.debug.cacheAge) : 'N/A'})`);
 
@@ -381,71 +349,36 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     return null; // Default return for async function
   }, [clientId]); // Add dependency array for useCallback
 
-  // Store daily data for current day
-  const storeDailyData = async (stats: Stats, conversionMetrics: ConversionMetrics, campaigns: any[], dataSource: string) => {
+  // Fetch previous month data for comparison
+  const fetchPreviousMonthComparison = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const previousMonthStr = previousMonth.toISOString().split('T')[0];
       
-      console.log('📊 Storing daily KPI data:', {
-        date: today,
-        totalClicks: stats.totalClicks,
-        totalSpend: stats.totalSpend,
-        campaignsCount: campaigns.length,
-        dataSource
-      });
+      console.log('📊 Fetching previous month data for comparison:', previousMonthStr);
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
-
-      // Try to break down monthly data into daily values for more accurate storage
-      const currentDate = new Date();
-      const daysInMonth = currentDate.getDate();
+      const { data, error } = await supabase
+        .from('campaign_summaries')
+        .select('total_spend, total_clicks, total_conversions')
+        .eq('client_id', clientId)
+        .eq('summary_type', 'monthly')
+        .eq('platform', 'meta')
+        .eq('summary_date', previousMonthStr)
+        .single();
       
-      // Calculate daily averages, but adjust for today specifically
-      const avgDailyClicks = Math.round(stats.totalClicks / daysInMonth);
-      const avgDailySpend = stats.totalSpend / daysInMonth;
-      const avgDailyImpressions = Math.round(stats.totalImpressions / daysInMonth);
-      const avgDailyConversions = Math.round(stats.totalConversions / daysInMonth);
-      
-      // For today, try to get more recent data (assume today represents 10-15% of monthly total)
-      const todayFactor = Math.min(0.15, 1 / daysInMonth * 1.2); // Today might be slightly higher
-      const estimatedTodayClicks = Math.round(stats.totalClicks * todayFactor);
-      const estimatedTodaySpend = stats.totalSpend * todayFactor;
-      
-      await fetch('/api/daily-kpi-data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          clientId,
-          date: today,
-          campaigns: campaigns,
-          conversionMetrics: {
-            ...conversionMetrics,
-            // Scale conversion metrics to daily level
-            click_to_call: Math.round((conversionMetrics.click_to_call || 0) * todayFactor),
-            email_contacts: Math.round((conversionMetrics.email_contacts || 0) * todayFactor),
-            reservations: Math.round((conversionMetrics.reservations || 0) * todayFactor),
-            reservation_value: (conversionMetrics.reservation_value || 0) * todayFactor,
-          },
-          dataSource,
-          estimatedDailyData: {
-            avgDailyClicks,
-            avgDailySpend,
-            avgDailyImpressions,
-            avgDailyConversions,
-            estimatedTodayClicks,
-            estimatedTodaySpend,
-            daysInMonth
-          }
-        })
-      });
-
-      console.log('📊 Daily KPI data stored successfully for:', today);
+      if (!error && data) {
+        setPreviousMonthStats({
+          totalSpend: data.total_spend || 0,
+          totalClicks: data.total_clicks || 0,
+          totalConversions: data.total_conversions || 0
+        });
+        console.log('✅ Previous month data loaded:', data);
+      } else {
+        console.log('ℹ️ No previous month data available for comparison');
+      }
     } catch (error) {
-      console.warn('⚠️ Failed to store daily KPI data:', error);
+      console.warn('⚠️ Failed to fetch previous month data:', error);
     }
   };
 
@@ -471,7 +404,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
       setStats(sharedData.stats);
       setMetrics(sharedData.conversionMetrics);
       setLastUpdated(sharedData.lastUpdated || new Date().toLocaleTimeString('pl-PL'));
-      setDataSource(sharedData.debug?.source || 'dashboard-shared');
+      setDataSource(sharedData.debug?.source || 'cache');  // 🔧 SIMPLIFIED: Consistent source naming
       setCacheAge(sharedData.debug?.cacheAge || null);
       setLoading(false);
       
@@ -481,14 +414,9 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         metricsSet: sharedData.conversionMetrics
       });
       
-      // DISABLED: Fetch daily data only once, not on every shared data change
-      // This prevents auto-refresh when switching between cards
-      if (clicksBars.length === 0) {
-        fetchDailyDataPoints().then((hasRealData) => {
-          if (!hasRealData) {
-            console.log('ℹ️ No real daily data available from shared data - showing empty chart');
-          }
-        });
+      // Fetch previous month comparison data
+      if (!previousMonthStats) {
+        fetchPreviousMonthComparison();
       }
       
     } else if (!isRequesting && !requestInProgress.current && clientId) {
@@ -512,111 +440,17 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     };
   }, [clientId]);
 
-  // 🔧 STANDARDIZED: Fetch daily data using smart cache (same pattern as reports)
-  const fetchDailyDataPoints = async () => {
-    try {
-      console.log('📊 Fetching daily data using smart cache for clientId:', clientId);
-      console.log('📅 Date range:', dateRange);
-      
-      // Ensure dateRange has valid values
-      if (!dateRange.start || !dateRange.end) {
-        console.error('❌ Invalid date range for daily metrics cache:', dateRange);
-        setClicksBars([]);
-        setSpendBars([]);
-        setConversionsBars([]);
-        setCtrBars([]);
-        return false;
-      }
-      
-      // Use new daily metrics cache (same pattern as reports)
-      const result = await DailyMetricsCache.getDailyMetrics(
-        clientId, 
-        { start: dateRange.start, end: dateRange.end }, 
-        'meta'
-      );
-      
-      // Update daily metrics source info
-      setDailyMetricsSource({
-        source: result.source,
-        completeness: result.completeness,
-        cacheAge: result.cacheAge,
-        fromCache: result.fromCache
-      });
-      
-      if (result.success && result.data.length > 0) {
-        console.log(`✅ Got ${result.data.length} daily data points from ${result.source} (${Math.round((result.completeness || 0) * 100)}% complete)`);
-        
-        // Same data processing as before
-        const clicksBarsData = result.data.map((day, index) => {
-          const clicks = day.total_clicks || 0;
-          const spend = day.total_spend || 0;
-          const conversions = day.total_conversions || 0;
-          const ctr = day.average_ctr || 0;
-          console.log(`📊 Day ${index + 1} (${day.date}): ${clicks} clicks, ${spend} spend, ${conversions} conversions, CTR: ${ctr}%`);
-          return clicks;
-        });
-        
-        const spendBarsData = result.data.map(day => day.total_spend || 0);
-        const conversionsBarsData = result.data.map(day => day.total_conversions || 0);
-        const ctrBarsData = result.data.map(day => day.average_ctr || 0);
-
-        console.log('📈 Using smart cache daily data:', {
-          totalDays: result.data.length,
-          source: result.source,
-          completeness: Math.round((result.completeness || 0) * 100) + '%',
-          clicksRange: clicksBarsData.length > 0 ? {
-            min: Math.min(...clicksBarsData),
-            max: Math.max(...clicksBarsData)
-          } : null,
-          spendRange: spendBarsData.length > 0 ? {
-            min: Math.min(...spendBarsData),
-            max: Math.max(...spendBarsData)
-          } : null,
-          totalClicks: clicksBarsData.reduce((a: number, b: number) => a + b, 0),
-          totalSpend: spendBarsData.reduce((a: number, b: number) => a + b, 0),
-          dates: result.data.map(d => d.date)
-        });
-
-        setClicksBars(clicksBarsData);
-        setSpendBars(spendBarsData);
-        setConversionsBars(conversionsBarsData);
-        setCtrBars(ctrBarsData);
-        
-        // Debug: Log what's being stored in each KPI array
-        console.log('🔍 DEBUG: Smart cache data being stored in KPI arrays:');
-        console.log('- clicksBars:', clicksBarsData);
-        console.log('- spendBars:', spendBarsData);
-        console.log('- conversionsBars:', conversionsBarsData);
-        console.log('- ctrBars:', ctrBarsData);
-        console.log('- dates:', result.data.map(d => d.date));
-
-        return true;
-      } else {
-        console.log('⚠️ No daily data available from smart cache');
-        // Set empty arrays (same as before)
-        setClicksBars([]);
-        setSpendBars([]);
-        setConversionsBars([]);
-        setCtrBars([]);
-        return false;
-      }
-    } catch (error) {
-      console.error('❌ Error fetching daily data from smart cache:', error);
-      // Set empty arrays on error (same as before)
-      setClicksBars([]);
-      setSpendBars([]);
-      setConversionsBars([]);
-      setCtrBars([]);
-      return false;
-    }
-  };
-
-  // Generate daily data points for the last 7 days + current month
-  // REMOVED: No more fallback data generation - only real database data
-
   const handleRefresh = () => {
     console.log('🔄 MetaPerformanceLive: Manual refresh requested');
     fetchSmartCacheData(true); // Force refresh
+    fetchPreviousMonthComparison(); // Also refresh comparison data
+  };
+  
+  // Calculate month-over-month change
+  const calculateChange = (current: number, previous: number): { value: number; isPositive: boolean } => {
+    if (previous === 0) return { value: 0, isPositive: true };
+    const change = ((current - previous) / previous) * 100;
+    return { value: Math.abs(change), isPositive: change >= 0 };
   };
 
   return (
@@ -674,98 +508,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         </div>
       </div>
 
-      {(() => {
-        // 🔍 CRITICAL DEBUG: Log what we're about to render
-        console.log('🎨 CRITICAL DEBUG - MetaPerformanceLive render:', {
-          hasStats: !!stats,
-          stats: stats,
-          willRenderKPI: !!stats,
-          clicksValue: stats ? stats.totalClicks.toLocaleString('pl-PL') : 'no stats',
-          spendValue: stats ? formatCurrency(stats.totalSpend) : 'no stats',
-          conversionsValue: stats ? safeConversion(stats.totalConversions).toLocaleString('pl-PL') : 'no stats'
-        });
-        
-        if (!stats) {
-          console.log('❌ CRITICAL DEBUG - No stats available, not rendering KPICarousel');
-          return <div className="text-center text-muted py-8">Brak danych do wyświetlenia</div>;
-        }
-        
-        return (
-          <div>
-            {/* Enhanced Daily Metrics Data Source Indicator (Week 3) */}
-            {dailyMetricsSource && (
-              <div className="mb-4">
-                <div className="text-sm text-gray-600 mb-2">Daily Metrics:</div>
-                <DataSourceIndicator 
-                  debug={{
-                    source: dailyMetricsSource.source,
-                    responseTime: dailyMetricsSource.cacheAge
-                  }}
-                  showCacheAge={true}
-                  cacheAge={dailyMetricsSource.cacheAge}
-                  completeness={dailyMetricsSource.completeness}
-                  onRefresh={() => {
-                    console.log('🔄 Manual refresh requested for Meta daily metrics');
-                    fetchDailyDataPoints();
-                  }}
-                  isRefreshing={loading}
-                />
-              </div>
-            )}
-            
-            <KPICarousel
-              items={[
-                {
-                  id: 'clicks',
-                  label: 'Kliknięcia',
-                  value: stats.totalClicks.toLocaleString('pl-PL'),
-                  sublabel: 'Bieżący miesiąc',
-                  bars: clicksBars,
-                  dateForMarker: new Date().toISOString()
-                },
-                {
-                  id: 'spend',
-                  label: 'Wydatki',
-                  value: formatCurrency(stats.totalSpend),
-                  sublabel: 'Bieżący miesiąc',
-                  bars: spendBars,
-                  dateForMarker: new Date().toISOString()
-                },
-                {
-                  id: 'conversions',
-                  label: 'Konwersje',
-                  value: (() => {
-                    const allBookingSteps = 
-                      (metrics?.click_to_call || 0) + 
-                      (metrics?.email_contacts || 0) + 
-                      (metrics?.booking_step_1 || 0) + 
-                      (metrics?.booking_step_2 || 0) + 
-                      (metrics?.booking_step_3 || 0) + 
-                      (metrics?.reservations || 0);
-                    
-                    console.log('🎯 MetaPerformanceLive: All booking steps calculation:', {
-                      click_to_call: metrics?.click_to_call || 0,
-                      email_contacts: metrics?.email_contacts || 0,
-                      booking_step_1: metrics?.booking_step_1 || 0,
-                      booking_step_2: metrics?.booking_step_2 || 0,
-                      booking_step_3: metrics?.booking_step_3 || 0,
-                      reservations: metrics?.reservations || 0,
-                      total: allBookingSteps,
-                      statsTotalConversions: stats?.totalConversions || 0
-                    });
-                    
-                    return allBookingSteps.toLocaleString('pl-PL');
-                  })(),
-                  sublabel: 'Bieżący miesiąc',
-                  bars: conversionsBars,
-                  dateForMarker: new Date().toISOString()
-                }
-              ] as KPI[]}
-              variant="light"
-            />
-          </div>
-        );
-      })()}
+      {      null}
     </div>
   );
 } 

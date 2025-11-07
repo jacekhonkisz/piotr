@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getCurrentMonthLabel } from '../lib/date-utils';
 
 interface AnimatedMetricsChartsProps {
   leads: {
@@ -35,6 +36,9 @@ export default function AnimatedMetricsCharts({
 
   const [hairlineVisible, setHairlineVisible] = useState(false);
   const [ticksVisible, setTicksVisible] = useState(false);
+
+  // Get current month label dynamically (e.g., "listopad '25")
+  const currentMonthLabel = useMemo(() => getCurrentMonthLabel(), []);
 
   // Animate values on mount and when data changes
   useEffect(() => {
@@ -158,7 +162,7 @@ export default function AnimatedMetricsCharts({
           <h3 className="text-sm font-medium text-muted">
             Pozyskane leady
           </h3>
-          <span className="text-xs text-muted opacity-60">sierpień &apos;25</span>
+          <span className="text-xs text-muted opacity-60">{currentMonthLabel}</span>
         </div>
         
         {/* Hairline */}
@@ -194,7 +198,7 @@ export default function AnimatedMetricsCharts({
           <h3 className="text-sm font-medium text-muted">
             Rezerwacje
           </h3>
-          <span className="text-xs text-muted opacity-60">sierpień &apos;25</span>
+          <span className="text-xs text-muted opacity-60">{currentMonthLabel}</span>
         </div>
         
         {/* Hairline */}
@@ -230,7 +234,7 @@ export default function AnimatedMetricsCharts({
           <h3 className="text-sm font-medium text-muted">
             Wartość rezerwacji
           </h3>
-          <span className="text-xs text-muted opacity-60">sierpień &apos;25</span>
+          <span className="text-xs text-muted opacity-60">{currentMonthLabel}</span>
         </div>
         
         {/* Hairline */}

@@ -1,15 +1,20 @@
 /**
  * GOOGLE ADS STANDARDIZED DATA FETCHER
  * 
+ * ✅ FIXED: Now matches Meta system architecture
  * Separate system for Google Ads data fetching that mirrors the Meta system
  * but is completely independent. Uses the same smart caching and historical
  * data approach as Meta but with Google Ads specific infrastructure.
  * 
- * PRIORITY ORDER (ALWAYS):
- * 1. daily_kpi_data (most accurate, real-time collected)
- * 2. Google Ads smart cache (3-hour refresh for current periods)
- * 3. Database summaries (historical data)
- * 4. Live Google Ads API call (fallback)
+ * PRIORITY ORDER (MATCHES META):
+ * 
+ * FOR CURRENT PERIOD:
+ * 1. Google Ads smart cache (3-hour refresh, instant < 500ms)
+ * 2. Live Google Ads API call (fallback)
+ * 
+ * FOR HISTORICAL PERIOD:
+ * 1. campaign_summaries (platform='google', instant < 50ms)
+ * 2. Live Google Ads API call (fallback, can fetch historical)
  */
 
 import { supabase } from './supabase';
@@ -107,43 +112,9 @@ export class GoogleAdsStandardizedDataFetcher {
     const dataSources: string[] = [];
 
     try {
-      // Priority 1: Try daily_kpi_data first (most accurate)
-      console.log('1️⃣ Checking daily_kpi_data for Google Ads...');
-      dataSources.push('daily_kpi_data');
-      
-      const dailyResult = await this.fetchFromDailyKpiData(clientId, dateRange);
-      if (dailyResult.success) {
-        const responseTime = Date.now() - startTime;
-        
-        console.log(`✅ SUCCESS: daily_kpi_data returned Google Ads data in ${responseTime}ms`);
-        console.log('🔍 GOOGLE DAILY DATA DEBUG:', {
-          totalSpend: dailyResult.data?.stats?.totalSpend,
-          totalReservations: dailyResult.data?.conversionMetrics?.reservations,
-          totalReservationValue: dailyResult.data?.conversionMetrics?.reservation_value
-        });
-        
-        return {
-          success: true,
-          data: dailyResult.data!,
-          debug: {
-            source: 'daily-kpi-data',
-            cachePolicy: needsLiveData ? 'database-first-current' : 'database-first-historical',
-            responseTime,
-            reason,
-            dataSourcePriority: dataSources,
-            periodType: isCurrentPeriod ? 'current' : 'historical'
-          },
-          validation: {
-            actualSource: 'daily_kpi_data',
-            expectedSource: 'daily_kpi_data',
-            isConsistent: true
-          }
-        };
-      }
-
-      // Priority 2: Try Google Ads smart cache (for current periods)
+      // ✅ FIXED Priority 1: Smart cache for CURRENT periods (matches Meta system)
       if (needsLiveData) {
-        console.log('2️⃣ Trying Google Ads smart cache for current period...');
+        console.log('1️⃣ CURRENT PERIOD: Checking Google Ads smart cache...');
         dataSources.push('google_ads_smart_cache');
         
         const cacheResult = await this.fetchFromGoogleAdsSmartCache(clientId);
@@ -151,6 +122,10 @@ export class GoogleAdsStandardizedDataFetcher {
           const responseTime = Date.now() - startTime;
           
           console.log(`✅ SUCCESS: Google Ads smart cache returned data in ${responseTime}ms`);
+          console.log('📊 Smart cache data:', {
+            totalSpend: cacheResult.data?.stats?.totalSpend,
+            campaigns: cacheResult.data?.campaigns?.length || 0
+          });
           
           return {
             success: true,
@@ -165,60 +140,65 @@ export class GoogleAdsStandardizedDataFetcher {
             },
             validation: {
               actualSource: 'google_ads_smart_cache',
-              expectedSource: 'daily_kpi_data',
-              isConsistent: false
+              expectedSource: 'google_ads_smart_cache',
+              isConsistent: true
             }
           };
+        } else {
+          console.log('⚠️ Smart cache failed for current period, falling back to live API...');
         }
       }
 
-      // Priority 3: Try database summaries (for historical periods)
+      // ✅ FIXED Priority 2: Database summaries for HISTORICAL periods (matches Meta system)
       if (!needsLiveData) {
-        console.log('3️⃣ Trying Google Ads database summaries for historical period...');
-        dataSources.push('google_ads_database_summaries');
+        console.log('2️⃣ HISTORICAL PERIOD: Checking campaign_summaries (platform=google)...');
+        dataSources.push('campaign_summaries_google');
         
         const dbResult = await this.fetchFromDatabaseSummaries(clientId, dateRange);
         if (dbResult.success) {
-          // 🔧 FIX: Check if conversion metrics are complete
-          // If reservations and reservation_value are both 0, data might be incomplete
-          const hasConversionData = dbResult.data!.conversionMetrics && 
-            (dbResult.data!.conversionMetrics.reservations > 0 || 
-             dbResult.data!.conversionMetrics.reservation_value > 0 ||
-             dbResult.data!.conversionMetrics.email_contacts > 0 ||
-             dbResult.data!.conversionMetrics.click_to_call > 0);
+          // ✅ Check if we have any meaningful data
+          const hasAnyData = dbResult.data!.stats && 
+            (dbResult.data!.stats.totalSpend > 0 || 
+             dbResult.data!.stats.totalImpressions > 0 ||
+             dbResult.data!.stats.totalClicks > 0 ||
+             (dbResult.data!.campaigns && dbResult.data!.campaigns.length > 0));
           
-          if (hasConversionData) {
+          if (hasAnyData) {
             const responseTime = Date.now() - startTime;
             
-            console.log(`✅ SUCCESS: Google Ads database summaries returned COMPLETE data in ${responseTime}ms`);
+            console.log(`✅ SUCCESS: campaign_summaries returned Google Ads data in ${responseTime}ms`);
+            console.log('📊 Historical data:', {
+              totalSpend: dbResult.data!.stats.totalSpend,
+              campaigns: dbResult.data!.campaigns?.length || 0
+            });
             
             return {
               success: true,
               data: dbResult.data!,
               debug: {
-                source: 'google-ads-database-summaries',
-                cachePolicy: 'database-historical',
+                source: 'campaign-summaries-database',
+                cachePolicy: 'database-first-historical',
                 responseTime,
                 reason,
                 dataSourcePriority: dataSources,
                 periodType: 'historical'
               },
               validation: {
-                actualSource: 'google_ads_database_summaries',
-                expectedSource: 'google_ads_database_summaries',
+                actualSource: 'campaign_summaries',
+                expectedSource: 'campaign_summaries',
                 isConsistent: true
               }
             };
           } else {
-            console.log('⚠️ Google Ads database summaries have incomplete conversion metrics, trying live API...');
-            console.log(`   Reservations: ${dbResult.data!.conversionMetrics?.reservations || 0}`);
-            console.log(`   Reservation Value: ${dbResult.data!.conversionMetrics?.reservation_value || 0}`);
+            console.log('⚠️ campaign_summaries has no data, trying live API...');
           }
+        } else {
+          console.log('⚠️ No database summaries found for historical period, trying live API...');
         }
       }
 
-      // Priority 4: Live Google Ads API call (fallback)
-      console.log('4️⃣ Trying live Google Ads API as final fallback...');
+      // ✅ Priority 3: Live Google Ads API call (fallback for both current and historical)
+      console.log('3️⃣ Trying live Google Ads API as fallback...');
       dataSources.push('google_ads_live_api');
       
       const liveResult = await this.fetchFromLiveGoogleAdsAPI(clientId, dateRange, sessionToken);
@@ -226,6 +206,10 @@ export class GoogleAdsStandardizedDataFetcher {
         const responseTime = Date.now() - startTime;
         
         console.log(`✅ SUCCESS: Live Google Ads API returned data in ${responseTime}ms`);
+        console.log('📊 Live API data:', {
+          totalSpend: liveResult.data?.stats?.totalSpend,
+          campaigns: liveResult.data?.campaigns?.length || 0
+        });
         
         return {
           success: true,
@@ -240,7 +224,7 @@ export class GoogleAdsStandardizedDataFetcher {
           },
           validation: {
             actualSource: 'google_ads_live_api',
-            expectedSource: 'daily_kpi_data',
+            expectedSource: needsLiveData ? 'google_ads_smart_cache' : 'campaign_summaries',
             isConsistent: false
           }
         };
@@ -260,108 +244,23 @@ export class GoogleAdsStandardizedDataFetcher {
           cachePolicy: 'none',
           responseTime: Date.now() - startTime,
           reason,
-          dataSourcePriority: dataSources
+          dataSourcePriority: dataSources,
+          periodType: isCurrentPeriod ? 'current' : 'historical'
         },
         validation: {
           actualSource: 'error',
-          expectedSource: 'daily_kpi_data',
+          expectedSource: needsLiveData ? 'google_ads_smart_cache' : 'campaign_summaries',
           isConsistent: false
         }
       };
     }
   }
   
-  /**
-   * PRIORITY 1: Fetch from daily_kpi_data (most accurate)
-   */
-  private static async fetchFromDailyKpiData(
-    clientId: string, 
-    dateRange: { start: string; end: string }
-  ): Promise<Partial<GoogleAdsStandardizedDataResult>> {
-    
-    const { data: dailyRecords, error } = await supabase
-      .from('daily_kpi_data')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('data_source', 'google_ads_api')
-      .gte('date', dateRange.start)
-      .lte('date', dateRange.end)
-      .order('date', { ascending: true });
-      
-    if (error || !dailyRecords || dailyRecords.length === 0) {
-      console.log('⚠️ No daily_kpi_data available for Google Ads');
-      return { success: false };
-    }
-    
-    console.log(`✅ Found ${dailyRecords.length} Google Ads daily records, aggregating...`);
-    console.log(`🔍 DEBUG: Data sources in Google records:`, dailyRecords.map(r => r.data_source));
-    console.log(`🔍 DEBUG: Sample Google reservation values:`, dailyRecords.slice(0, 3).map(r => ({ date: r.date, reservation_value: r.reservation_value, data_source: r.data_source })));
-    
-    // Aggregate daily records
-    const aggregated = dailyRecords.reduce((acc, record) => {
-      acc.totalSpend += record.total_spend || 0;
-      acc.totalImpressions += record.total_impressions || 0;
-      acc.totalClicks += record.total_clicks || 0;
-      acc.totalConversions += record.total_conversions || 0;
-      acc.click_to_call += record.click_to_call || 0;
-      acc.email_contacts += record.email_contacts || 0;
-      acc.booking_step_1 += record.booking_step_1 || 0;
-      acc.booking_step_2 += record.booking_step_2 || 0;
-      acc.booking_step_3 += (record as any).booking_step_3 || 0;
-      acc.reservations += (record as any).reservations || 0;
-      acc.reservation_value += (record as any).reservation_value || 0;
-      acc.reach += (record as any).reach || 0;
-      return acc;
-    }, {
-      totalSpend: 0,
-      totalImpressions: 0,
-      totalClicks: 0,
-      totalConversions: 0,
-      click_to_call: 0,
-      email_contacts: 0,
-      booking_step_1: 0,
-      booking_step_2: 0,
-      booking_step_3: 0,
-      reservations: 0,
-      reservation_value: 0,
-      reach: 0
-    });
-
-    const averageCtr = aggregated.totalImpressions > 0 ? (aggregated.totalClicks / aggregated.totalImpressions) * 100 : 0;
-    const averageCpc = aggregated.totalClicks > 0 ? aggregated.totalSpend / aggregated.totalClicks : 0;
-    const roas = aggregated.totalSpend > 0 ? (aggregated.reservation_value / aggregated.totalSpend) * 100 : 0;
-    const cost_per_reservation = aggregated.reservations > 0 ? aggregated.totalSpend / aggregated.reservations : 0;
-
-    return {
-      success: true,
-      data: {
-        stats: {
-          totalSpend: aggregated.totalSpend,
-          totalImpressions: aggregated.totalImpressions,
-          totalClicks: aggregated.totalClicks,
-          totalConversions: aggregated.totalConversions,
-          averageCtr,
-          averageCpc
-        },
-        conversionMetrics: {
-          click_to_call: aggregated.click_to_call,
-          email_contacts: aggregated.email_contacts,
-          booking_step_1: aggregated.booking_step_1,
-          booking_step_2: aggregated.booking_step_2,
-          booking_step_3: aggregated.booking_step_3,
-          reservations: aggregated.reservations,
-          reservation_value: aggregated.reservation_value,
-          roas,
-          cost_per_reservation,
-          reach: aggregated.reach
-        },
-        campaigns: [] // Daily KPI data doesn't include campaign details
-      }
-    };
-  }
+  // ✅ REMOVED: daily_kpi_data is NOT used for Google Ads
+  // Google Ads uses smart cache (current) or campaign_summaries (historical)
 
   /**
-   * PRIORITY 2: Fetch from Google Ads smart cache
+   * Fetch from Google Ads smart cache (current periods)
    */
   private static async fetchFromGoogleAdsSmartCache(
     clientId: string
@@ -430,7 +329,7 @@ export class GoogleAdsStandardizedDataFetcher {
   }
 
   /**
-   * PRIORITY 3: Fetch from database summaries (historical data)
+   * Fetch from campaign_summaries (historical periods, platform='google')
    */
   private static async fetchFromDatabaseSummaries(
     clientId: string,
@@ -515,7 +414,7 @@ export class GoogleAdsStandardizedDataFetcher {
   }
 
   /**
-   * PRIORITY 4: Fetch from live Google Ads API (fallback)
+   * Fetch from live Google Ads API (fallback for both current and historical)
    */
   private static async fetchFromLiveGoogleAdsAPI(
     clientId: string,

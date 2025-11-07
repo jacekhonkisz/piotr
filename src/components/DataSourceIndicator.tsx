@@ -118,14 +118,33 @@ export const DataSourceIndicator: React.FC<DataSourceIndicatorProps> = ({
   };
 
   const getSourceLabel = (source: string) => {
-    // Handle fresh cache sources
-    if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
-      return 'Fresh Cache';
+    // 🔧 SIMPLIFIED: Handle new simplified source names first (exact matches)
+    switch (source) {
+      case 'meta-cache':
+        return 'Meta Cache';
+      case 'google-cache':
+        return 'Google Cache';
+      case 'cache':
+        return 'Cache';
+      case 'database':
+        return 'Database';
+      case 'meta-live':
+        return 'Meta Live API';
+      case 'google-live':
+        return 'Google Live API';
+      case 'live-api':
+        return 'Live API';
     }
     
+    // Legacy handling for old source names (fallback)
     // Handle stale cache sources
     if (source.includes('stale') || source.includes('cache-miss')) {
       return 'Stale Cache';
+    }
+    
+    // Handle fresh cache sources (legacy)
+    if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
+      return 'Cache';  // Simplified from "Fresh Cache"
     }
     
     // Handle database sources
@@ -138,19 +157,8 @@ export const DataSourceIndicator: React.FC<DataSourceIndicatorProps> = ({
       return 'Live API';
     }
     
-    // Specific cases
-    switch (source) {
-      case 'smart-cache-fresh': case 'weekly-cache': case 'monthly-cache':
-        return 'Fresh Cache';
-      case 'smart-cache-stale': case 'stale-weekly-cache': case 'stale-monthly-cache':
-        return 'Stale Cache';
-      case 'database': case 'database-historical':
-        return 'Database';
-      case 'live-api': case 'force-weekly-refresh': case 'force-monthly-refresh':
-        return 'Live API';
-      default:
-        return source || 'Unknown';
-    }
+    // Default: return as-is
+    return source || 'Unknown';
   };
 
   const source = debug?.source || validation?.actualSource || 'unknown';

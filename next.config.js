@@ -8,7 +8,29 @@ const nextConfig = {
   
   // Enable experimental features for better error handling
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+    serverComponentsExternalPackages: [
+      '@supabase/supabase-js',
+      'google-ads-api',
+      '@grpc/grpc-js',
+      'google-gax'
+    ],
+  },
+  
+  // Webpack configuration to exclude Google Ads from client bundle
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Mark Google Ads and gRPC as external for client-side
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+        stream: false,
+        http2: false,
+      };
+    }
+    return config;
   },
 
   // Production optimizations
