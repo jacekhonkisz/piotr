@@ -37,32 +37,52 @@ export class BackgroundDataCollector {
    * Collect and store monthly summaries for all active clients
    */
   async collectMonthlySummaries(): Promise<void> {
+    console.log('🔵 [DEBUG] ENTERING collectMonthlySummaries');
+    console.log('🔵 [DEBUG] isRunning flag:', this.isRunning);
+    
     if (this.isRunning) {
+      console.log('🔴 [DEBUG] EARLY RETURN: isRunning is true');
       logger.info('⚠️ Background data collection already running');
       return;
     }
 
     this.isRunning = true;
+    console.log('🟢 [DEBUG] Set isRunning = true');
     logger.info('📅 Starting monthly data collection...');
 
     try {
+      console.log('🔵 [DEBUG] Calling getAllActiveClients...');
       const clients = await this.getAllActiveClients();
+      console.log('🟢 [DEBUG] Found clients:', clients.length);
+      console.log('🟢 [DEBUG] Client names:', clients.map(c => c.name).join(', '));
       logger.info(`📊 Found ${clients.length} active clients for monthly collection`);
 
+      if (clients.length === 0) {
+        console.log('🔴 [DEBUG] NO CLIENTS FOUND! Exiting early.');
+        return;
+      }
+
+      console.log('🔵 [DEBUG] Starting client loop...');
       for (const client of clients) {
+        console.log(`🔵 [DEBUG] Processing client: ${client.name} (${client.id})`);
         try {
           await this.collectMonthlySummaryForClient(client);
+          console.log(`✅ [DEBUG] Completed client: ${client.name}`);
           // Add delay between clients to avoid rate limiting
           await this.delay(2000);
         } catch (error) {
+          console.error(`❌ [DEBUG] Failed client: ${client.name}`, error);
           logger.error(`❌ Failed to collect monthly summary for ${client.name}:`, error);
         }
       }
 
+      console.log('✅ [DEBUG] COMPLETED ALL CLIENTS');
       logger.info('✅ Monthly data collection completed');
     } catch (error) {
+      console.error('🔴 [DEBUG] ERROR IN COLLECTION:', error);
       logger.error('❌ Error in monthly data collection:', error);
     } finally {
+      console.log('🟡 [DEBUG] FINALLY: Setting isRunning = false');
       this.isRunning = false;
     }
   }
@@ -102,32 +122,52 @@ export class BackgroundDataCollector {
    * Collect and store weekly summaries for all active clients
    */
   async collectWeeklySummaries(): Promise<void> {
+    console.log('🔵 [DEBUG] ENTERING collectWeeklySummaries');
+    console.log('🔵 [DEBUG] isRunning flag:', this.isRunning);
+    
     if (this.isRunning) {
+      console.log('🔴 [DEBUG] EARLY RETURN: isRunning is true');
       logger.info('⚠️ Background data collection already running');
       return;
     }
 
     this.isRunning = true;
+    console.log('🟢 [DEBUG] Set isRunning = true');
     logger.info('📅 Starting weekly data collection...');
 
     try {
+      console.log('🔵 [DEBUG] Calling getAllActiveClients...');
       const clients = await this.getAllActiveClients();
+      console.log('🟢 [DEBUG] Found clients:', clients.length);
+      console.log('🟢 [DEBUG] Client names:', clients.map(c => c.name).join(', '));
       logger.info(`📊 Found ${clients.length} active clients for weekly collection`);
 
+      if (clients.length === 0) {
+        console.log('🔴 [DEBUG] NO CLIENTS FOUND! Exiting early.');
+        return;
+      }
+
+      console.log('🔵 [DEBUG] Starting client loop...');
       for (const client of clients) {
+        console.log(`🔵 [DEBUG] Processing client: ${client.name} (${client.id})`);
         try {
           await this.collectWeeklySummaryForClient(client);
+          console.log(`✅ [DEBUG] Completed client: ${client.name}`);
           // Add delay between clients to avoid rate limiting
           await this.delay(2000);
         } catch (error) {
+          console.error(`❌ [DEBUG] Failed client: ${client.name}`, error);
           logger.error(`❌ Failed to collect weekly summary for ${client.name}:`, error);
         }
       }
 
+      console.log('✅ [DEBUG] COMPLETED ALL CLIENTS');
       logger.info('✅ Weekly data collection completed');
     } catch (error) {
+      console.error('🔴 [DEBUG] ERROR IN COLLECTION:', error);
       logger.error('❌ Error in weekly data collection:', error);
     } finally {
+      console.log('🟡 [DEBUG] FINALLY: Setting isRunning = false');
       this.isRunning = false;
     }
   }
@@ -169,11 +209,12 @@ export class BackgroundDataCollector {
   private async collectMonthlySummaryForClient(client: Client): Promise<void> {
     logger.info(`📊 Collecting monthly summary for ${client.name}...`);
 
-    // Get the last 12 months using standardized utilities
+    // Get the last 12 COMPLETE months (excluding current incomplete month)
+    // Current month is handled by smart cache system
     const currentDate = new Date();
     const monthsToCollect = [];
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 1; i <= 12; i++) {  // ✅ FIXED: Start at i=1 to skip current month
       const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
       const year = date.getFullYear();
       const month = date.getMonth() + 1;
@@ -672,9 +713,9 @@ export class BackgroundDataCollector {
             totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
             totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
 
-            // Fetch Google Ads tables (skip for current week)
+            // Fetch Google Ads tables (only for recent 4 weeks to avoid rate limiting)
             let googleAdsTables = null;
-            if (!weekData.isCurrent) {
+            if (!weekData.isCurrent && weekData.weekNumber <= 4) {
               try {
                 googleAdsTables = await googleAdsService.getGoogleAdsTables(
                   weekData.startDate,
@@ -684,6 +725,8 @@ export class BackgroundDataCollector {
               } catch (error) {
                 logger.warn(`⚠️ Failed to fetch Google Ads tables for week ${weekData.weekNumber}:`, error);
               }
+            } else if (!weekData.isCurrent) {
+              logger.info(`⏭️ Skipping Google Ads tables for week ${weekData.weekNumber} (historical) to avoid rate limits`);
             } else {
               logger.info(`⏭️ Skipping Google Ads tables for current week to reduce API calls`);
             }
@@ -707,8 +750,15 @@ export class BackgroundDataCollector {
 
             logger.info(`✅ Stored ${weekType} Google Ads weekly summary for ${client.name} week ${weekData.weekNumber}`);
 
-            // Add delay to avoid rate limiting
-            await this.delay(weekData.isCurrent ? 500 : 1000);
+            // Add delay to avoid Google Ads API rate limiting
+            // Longer delay for historical weeks (more API calls), shorter for recent weeks
+            if (weekData.weekNumber > 12) {
+              await this.delay(5000); // 5 seconds for older weeks to avoid rate limits
+            } else if (weekData.weekNumber > 4) {
+              await this.delay(3000); // 3 seconds for mid-range weeks
+            } else {
+              await this.delay(weekData.isCurrent ? 500 : 1000); // Shorter for recent weeks
+            }
 
           } catch (error) {
             logger.error(`❌ Failed to collect Google Ads week ${weekData.weekNumber} for ${client.name}:`, error);
