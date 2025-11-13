@@ -1,24 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/automated/refresh-3hour-cache",
+      "path": "/api/automated/refresh-all-caches",
       "schedule": "0 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-current-month-cache",
-      "schedule": "5 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-current-week-cache",
-      "schedule": "10 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-google-ads-current-month-cache",
-      "schedule": "15 */3 * * *"
-    },
-    {
-      "path": "/api/automated/refresh-google-ads-current-week-cache",
-      "schedule": "20 */3 * * *"
     },
     {
       "path": "/api/automated/refresh-social-media-cache",
