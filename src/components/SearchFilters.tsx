@@ -28,6 +28,7 @@ export default function SearchFilters({
 }: SearchFiltersProps) {
   const [searchValue, setSearchValue] = useState(currentSearch);
   const [showFilters, setShowFilters] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(true);
 
   // Debounced search
   useEffect(() => {
@@ -60,20 +61,37 @@ export default function SearchFilters({
   return (
     <div className="space-y-6">
       {/* Enhanced Search Bar */}
-      <div className="flex items-center space-x-4">
-        <div className="flex-1 relative">
-          <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-gray-400" />
+      <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+        <div className="flex items-center space-x-4">
+          <div className="flex-1 relative">
+            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <input
+              type="search"
+              placeholder="Szukaj klientów po nazwie, e-mailu lub firmie..."
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onFocus={() => setIsReadOnly(false)}
+              readOnly={isReadOnly}
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck="false"
+              name="client-search-filter-input"
+              id="client-search-filter-input"
+              data-form-type="search"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              role="search"
+              aria-label="Search clients"
+              style={{
+                WebkitBoxShadow: '0 0 0 1000px white inset',
+                WebkitTextFillColor: 'inherit'
+              }}
+              className="w-full pl-14 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 shadow-sm hover:shadow-md transition-all duration-200 text-lg"
+            />
           </div>
-          <input
-            type="text"
-            placeholder="Szukaj klientów po nazwie, e-mailu lub firmie..."
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            autoComplete="off"
-            className="w-full pl-14 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/90 shadow-sm hover:shadow-md transition-all duration-200 text-lg"
-          />
-        </div>
         
         <button
           onClick={() => setShowFilters(!showFilters)}
@@ -98,10 +116,11 @@ export default function SearchFilters({
             className="group relative px-5 py-4 text-lg text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-2xl transition-all duration-200 flex items-center space-x-3 border border-gray-200 hover:border-gray-300"
           >
             <X className="h-5 w-5" />
-            <span className="font-medium">Wyczyść wszystko</span>
+            <span className="font-medium">            Wyczyść wszystko</span>
           </button>
         )}
-      </div>
+        </div>
+      </form>
 
       {/* Enhanced Filters Panel */}
       {showFilters && (

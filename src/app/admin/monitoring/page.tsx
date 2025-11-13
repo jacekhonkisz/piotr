@@ -20,6 +20,7 @@ import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import { AdminLoading } from '../../../components/LoadingSpinner';
 import CacheMonitoring from '../../../components/CacheMonitoring';
+import AdminNavbar from '../../../components/AdminNavbar';
 
 interface GoogleAdsConfig {
   google_ads_developer_token: string;
@@ -230,44 +231,8 @@ export default function AdminMonitoringPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Enhanced Header */}
-      <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-gray-200/50 sticky top-0 z-40">
-        <div className="max-w-7xl xl:max-w-8xl 2xl:max-w-9xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <div className="bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 p-3 rounded-2xl shadow-lg">
-                <Activity className="h-8 w-8 text-white" />
-              </div>
-              <div className="ml-4">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Monitoring systemu
-                </h1>
-                <p className="text-sm text-gray-600">Metryki zdrowia systemu, tokeny API i cache</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-          <button
-                onClick={() => router.push('/admin/settings')}
-                className="group nav-premium-button hover:border-indigo-300"
-          >
-                <div className="flex items-center">
-                  <Settings className="h-4 w-4 mr-2 text-gray-600 group-hover:text-indigo-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-700">Ustawienia</span>
-                </div>
-          </button>
-          <button
-                onClick={() => router.push('/admin')}
-                className="group nav-premium-button hover:border-blue-300"
-              >
-                <div className="flex items-center">
-                  <ArrowLeft className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Powrót do Admina</span>
-                </div>
-          </button>
-        </div>
-      </div>
-        </div>
-      </header>
+      {/* Admin Navbar */}
+      <AdminNavbar />
 
       <main className="max-w-6xl xl:max-w-7xl 2xl:max-w-8xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
         {/* System Metrics Section */}

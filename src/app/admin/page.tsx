@@ -38,7 +38,8 @@ import EditClientModal from '../../components/EditClientModal';
 import SearchFilters from '../../components/SearchFilters';
 import BulkActions from '../../components/BulkActions';
 import GenerateReportModal from '../../components/GenerateReportModal';
-import GoogleAdsTokenModal from '../../components/GoogleAdsTokenModal';
+import PlatformTokensModal from '../../components/PlatformTokensModal';
+import AdminNavbar from '../../components/AdminNavbar';
 
 
 
@@ -871,14 +872,24 @@ export default function AdminPage() {
   const { user, profile, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      router.push('/auth/login');
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
+  // Listen for navbar events
+  useEffect(() => {
+    const handleAddClick = () => {
+      setShowAddModal(true);
+    };
+
+    const handleTokensClick = () => {
+      setShowGoogleAdsTokenModal(true);
+    };
+
+    window.addEventListener('navbar-add-click', handleAddClick);
+    window.addEventListener('navbar-tokens-click', handleTokensClick);
+
+    return () => {
+      window.removeEventListener('navbar-add-click', handleAddClick);
+      window.removeEventListener('navbar-tokens-click', handleTokensClick);
+    };
+  }, []);
 
   // Track initial load to prevent duplicate calls
   const initialLoadDone = React.useRef(false);
@@ -1374,161 +1385,10 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#F7F9FC] to-[#EEF2F7]">
-      {/* Enhanced Header with Premium Styling */}
-      <header className={`bg-white border-b border-[#E9EEF5] shadow-[0_6px_16px_rgba(16,24,40,0.06)] sticky top-0 z-40 transition-all duration-120 ease-out md:bg-white/70 md:backdrop-blur-[12px] md:border-[rgba(16,24,40,0.06)] ${
-        isHeaderCondensed ? 'h-16 md:h-16 lg:h-20' : 'h-20 md:h-16 lg:h-20'
-      }`}>
-        <div className="max-w-[1320px] mx-auto px-6 lg:px-8 h-full">
-          <div className="flex items-center justify-between h-full">
-            
-            {/* Left - Brand cluster */}
-            <div className="flex items-center">
-              <div className="bg-[#F4F6FB] p-2.5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] cursor-pointer">
-                {/* Analytics Spark Icon */}
-                <svg className="w-6 h-6 text-[#1F3D8A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1" ry="1"/>
-                  <rect x="14" y="3" width="7" height="7" rx="1" ry="1"/>
-                  <rect x="14" y="14" width="7" height="7" rx="1" ry="1"/>
-                  <rect x="3" y="14" width="7" height="7" rx="1" ry="1"/>
-                  <circle cx="8.5" cy="8.5" r="0.5" fill="#7EA5FF"/>
-                </svg>
-              </div>
-              <div className="ml-3">
-                <div className="flex items-center space-x-2">
-                  <h1 className={`font-bold text-[#101828] transition-all duration-120 ${
-                    isHeaderCondensed ? 'text-lg md:text-lg lg:text-xl' : 'text-xl md:text-lg lg:text-2xl'
-                  }`}>
-                    Reports
-                  </h1>
-                  {/* DEV badge - remove in production */}
-                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full border border-red-200">
-                    DEV
-                  </span>
-                </div>
-                <p className={`text-[#667085] transition-all duration-120 ${
-                  isHeaderCondensed ? 'text-xs opacity-0' : 'text-sm'
-                }`}>
-                  Google Ads and Meta Ads reports
-                </p>
-              </div>
-            </div>
+      {/* Admin Navbar */}
+      <AdminNavbar isCondensed={isHeaderCondensed} />
 
-            {/* Center - Meta strony */}
-            <div className="hidden lg:flex flex-col items-center text-center">
-              <h2 className={`font-bold text-[#101828] transition-all duration-120 ${
-                isHeaderCondensed ? 'text-base' : 'text-lg'
-              }`}>
-                Zarządzanie klientami
-              </h2>
-              <p className={`text-[#667085] transition-all duration-120 ${
-                isHeaderCondensed ? 'text-xs opacity-0' : 'text-sm'
-              }`}>
-                Panel › Klienci
-              </p>
-            </div>
-
-            {/* Right - Actions */}
-            <div className="flex items-center space-x-2">
-
-              {/* Primary CTAs */}
-              <button
-                onClick={() => router.push('/admin/reports')}
-                className="h-10 px-4 bg-[#1F3D8A] text-white rounded-[9999px] hover:bg-[#1A2F6B] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <FileText className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Raporty</span>
-              </button>
-              
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="h-10 px-4 bg-[#7EA5FF] text-white rounded-[9999px] hover:bg-[#6B8FE6] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <Plus className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Dodaj</span>
-              </button>
-
-              {/* Utilities */}
-              <button
-                onClick={() => router.push('/admin/calendar')}
-                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#1F3D8A] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <Calendar className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Kalendarz</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowGoogleAdsTokenModal(true);
-                }}
-                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#FF6B35] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(255,107,53,0.12)] focus:outline-none focus:ring-2 focus:ring-[#FFB89A] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <Target className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Google Ads Token</span>
-              </button>
-
-              <button
-                onClick={() => router.push('/admin/monitoring')}
-                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#10B981] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(16,185,129,0.12)] focus:outline-none focus:ring-2 focus:ring-[#A7F3D0] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <Shield className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Monitoring</span>
-              </button>
-
-              <button
-                onClick={() => router.push('/admin/settings')}
-                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#1F3D8A] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <Settings className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Ustawienia</span>
-              </button>
-
-              <button
-                onClick={handleLogout}
-                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#D92D20] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
-              >
-                <LogOut className="h-5 w-5" />
-                <span className="text-sm font-medium hidden lg:inline">Wyloguj</span>
-              </button>
-
-              {/* Mobile overflow menu */}
-              <div className="lg:hidden">
-                <button className="h-10 w-10 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] transition-all duration-120 hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center justify-center">
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Sticky Sub-navigation */}
-      <div className={`bg-white/90 backdrop-blur-sm border-b border-[#E9EEF5] sticky z-30 transition-all duration-120 ease-out ${
-        isHeaderCondensed ? 'top-16 md:top-16 lg:top-20' : 'top-20 md:top-16 lg:top-20'
-      }`}>
-        <div className="max-w-[1320px] mx-auto px-6 lg:px-8">
-          <div className={`flex items-center space-x-6 transition-all duration-120 ${
-            isHeaderCondensed ? 'py-2' : 'py-3'
-          }`}>
-            <div className="flex items-center text-sm text-gray-600">
-              <Home className="h-4 w-4 mr-2" />
-              <span>Panel</span>
-              <ChevronRight className="h-4 w-4 mx-2 text-gray-400" />
-              <Users className="h-4 w-4 mr-2" />
-              <span className="font-medium text-gray-900">Zarządzanie klientami</span>
-            </div>
-            <div className="text-sm text-gray-500">
-              {clients.length} klient{clients.length !== 1 ? 'ów' : ''} • {selectedClients.length} wybranych
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <main className="max-w-6xl mx-auto px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-6 lg:px-8 py-8 mt-6">
         {/* Enhanced Search and Filters Section */}
         <div className="bg-white rounded-[18px] shadow-[0_8px_30px_rgba(16,24,40,0.06)] border border-[#E9EEF5] p-8 mb-8 md:bg-white/78 md:backdrop-blur-[10px] md:shadow-[0_8px_30px_rgba(16,24,40,0.10)] md:border-[rgba(255,255,255,0.38)]">
           <SearchFilters
@@ -1949,15 +1809,15 @@ export default function AdminPage() {
         />
       )}
 
-      {/* Google Ads Token Modal */}
-      <GoogleAdsTokenModal
+      {/* Platform Tokens Modal (Google & Meta) */}
+      <PlatformTokensModal
         isOpen={showGoogleAdsTokenModal}
         onClose={() => setShowGoogleAdsTokenModal(false)}
         onSuccess={(tokenData) => {
           setShowGoogleAdsTokenModal(false);
           // Optionally refresh client data or show success message
           if (tokenData) {
-            console.log(`${tokenData.type} token saved successfully`);
+            console.log(`${tokenData.platform} token saved successfully`);
           }
         }}
       />

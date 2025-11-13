@@ -38,6 +38,7 @@ import {
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import { AdminLoading } from '../../../components/LoadingSpinner';
+import AdminNavbar from '../../../components/AdminNavbar';
 
 
 
@@ -494,33 +495,8 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Enhanced Header with Premium Styling */}
-      <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-gray-200/50 sticky top-0 z-40">
-        <div className="max-w-7xl xl:max-w-8xl 2xl:max-w-9xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <div className="bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-3 rounded-2xl shadow-lg">
-                <Settings className="h-8 w-8 text-white" />
-              </div>
-              <div className="ml-4">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                  Ustawienia administratora
-                </h1>
-                <p className="text-sm text-gray-600">Zarządzaj konfiguracją systemu, ustawieniami email i preferencjami raportów</p>
-              </div>
-            </div>
-            <button
-              onClick={() => router.push('/admin')}
-              className="group nav-premium-button hover:border-blue-300"
-            >
-              <div className="flex items-center">
-                <ArrowLeft className="h-4 w-4 mr-2 text-gray-600 group-hover:text-blue-600 transition-colors" />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">Powrót do Admina</span>
-              </div>
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Admin Navbar */}
+      <AdminNavbar />
 
       <main className="max-w-6xl xl:max-w-7xl 2xl:max-w-8xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
