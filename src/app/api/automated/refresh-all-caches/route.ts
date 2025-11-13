@@ -29,9 +29,12 @@ export async function POST() {
       timestamp: new Date().toISOString()
     });
 
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '')
-      : 'http://localhost:3000';
+    // Get the correct base URL for API calls
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}`
+      : (process.env.NODE_ENV === 'production' 
+        ? 'https://piotr-33s37fogt-jachonkisz-gmailcoms-projects.vercel.app'
+        : 'http://localhost:3000');
 
     // Refresh all caches sequentially with delays to avoid overwhelming the system
     const cacheEndpoints = [
