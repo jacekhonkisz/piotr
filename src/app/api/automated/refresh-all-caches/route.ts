@@ -5,7 +5,7 @@ import logger from '../../../../lib/logger';
  * Unified cache refresh endpoint - refreshes all cache types in one job
  * This solves the Vercel Hobby plan limitation of 1 cron job
  * 
- * Schedule: Every 3 hours (0 */3 * * *)
+ * Schedule: Every 3 hours
  * Replaces: Individual cache refresh cron jobs
  */
 
