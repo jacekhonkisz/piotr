@@ -194,3 +194,4 @@ Added detailed logging to track cache-first performance:
   - `daily_kpi_data` (real-time data)
   - `current_month_cache` (smart cache storage)
 
+

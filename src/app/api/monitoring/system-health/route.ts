@@ -46,7 +46,44 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    logger.info('🏥 System health check requested');
+    // Apply rate limiting - SECURITY FIX
+    const { rateLimit, rateLimitConfigs, createRateLimitHeaders } = await import('../../../../lib/rate-limit');
+    const rateLimitResult = await rateLimit(request, rateLimitConfigs.monitoring);
+    
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded',
+          retryAfter: rateLimitResult.retryAfter
+        },
+        { 
+          status: 429,
+          headers: createRateLimitHeaders(rateLimitResult)
+        }
+      );
+    }
+    
+    // Authenticate the request - SECURITY FIX
+    const { authenticateRequest } = await import('../../../../lib/auth-middleware');
+    const authResult = await authenticateRequest(request);
+    
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ 
+        error: 'Authentication required' 
+      }, { status: 401 });
+    }
+    
+    // Only allow admin users to access system health
+    if (authResult.user.role !== 'admin') {
+      return NextResponse.json({ 
+        error: 'Admin access required' 
+      }, { status: 403 });
+    }
+    
+    logger.info('🏥 System health check requested', {
+      userId: authResult.user.id,
+      userEmail: authResult.user.email
+    });
     
     const healthMetrics: SystemHealthMetrics = await collectSystemHealthMetrics();
     

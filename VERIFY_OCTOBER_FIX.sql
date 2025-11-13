@@ -1,52 +1,97 @@
--- Verify October 2025 data is now in database for fast loading
+-- Verify October 2025 monthly data is properly stored for Belmonte
+-- Run this in Supabase SQL Editor
 
--- 1. Check if October 2025 monthly data now exists
+-- 1. Check the NEW monthly record we just created
 SELECT 
-  '✅ OCTOBER DATA IN DATABASE' as status,
+  '✅ NEW MONTHLY RECORD' as check_type,
+  summary_type,
   summary_date,
   platform,
-  summary_type,
-  total_spend as spend,
-  total_impressions as impressions,
-  total_clicks as clicks,
-  reservations,
-  TO_CHAR(last_updated, 'YYYY-MM-DD HH24:MI:SS') as last_updated
+  total_spend,
+  total_impressions,
+  total_clicks,
+  total_conversions,
+  total_campaigns,
+  last_updated
 FROM campaign_summaries
-WHERE client_id = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa'
-  AND platform = 'google'
+WHERE client_id = (SELECT id FROM clients WHERE email = 'belmonte@hotel.com')
   AND summary_type = 'monthly'
-  AND summary_date >= '2025-10-01'
-  AND summary_date <= '2025-10-31'
-ORDER BY summary_date DESC;
+  AND summary_date = '2025-10-01'
+  AND platform = 'google';
 
--- 2. Check data quality
+-- Expected result: 4,530.78 PLN, 1477 impressions, 144 clicks, 92 conversions
+
+-- 2. Check weekly records (should still exist, separate system)
 SELECT 
-  'DATA QUALITY CHECK' as check_type,
-  CASE 
-    WHEN total_spend > 0 THEN '✅ Has spend data'
-    ELSE '❌ No spend data'
-  END as spend_check,
-  CASE 
-    WHEN total_impressions > 0 THEN '✅ Has impressions'
-    ELSE '❌ No impressions'
-  END as impressions_check,
-  CASE
-    WHEN total_clicks > 0 THEN '✅ Has clicks'
-    ELSE '❌ No clicks'  
-  END as clicks_check,
+  '📅 WEEKLY RECORDS (Separate)' as check_type,
+  summary_date,
   total_spend,
   total_impressions,
   total_clicks
 FROM campaign_summaries
-WHERE client_id = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa'
-  AND platform = 'google'
-  AND summary_type = 'monthly'
+WHERE client_id = (SELECT id FROM clients WHERE email = 'belmonte@hotel.com')
+  AND summary_type = 'weekly'
   AND summary_date >= '2025-10-01'
-  AND summary_date <= '2025-10-31';
+  AND summary_date < '2025-11-01'
+  AND platform = 'google'
+ORDER BY summary_date;
 
--- 3. Performance expectation
+-- Expected: 2 weekly records (1014.16 and 572.25 PLN)
+
+-- 3. Comparison: Before vs After
 SELECT 
-  'PERFORMANCE EXPECTATION' as info,
-  'October should now load in <50ms instead of ~9 seconds' as expectation,
-  '180x faster!' as improvement;
+  '📊 BEFORE vs AFTER' as comparison,
+  'Before (1 week shown)' as status,
+  572.25 as spend_pln,
+  'Dashboard was showing only 1 weekly record' as note
+UNION ALL
+SELECT 
+  '📊 BEFORE vs AFTER',
+  'Before (2 weeks in DB)',
+  1586.40,
+  'Database had 2 weekly records'
+UNION ALL
+SELECT 
+  '📊 BEFORE vs AFTER',
+  'After (Monthly proper)',
+  total_spend,
+  'NOW: Proper monthly record collected'
+FROM campaign_summaries
+WHERE client_id = (SELECT id FROM clients WHERE email = 'belmonte@hotel.com')
+  AND summary_type = 'monthly'
+  AND summary_date = '2025-10-01'
+  AND platform = 'google';
 
+-- 4. Verify the fix: Monthly and Weekly are separate
+SELECT 
+  '🔍 SYSTEM SEPARATION CHECK' as check_type,
+  summary_type,
+  COUNT(*) as record_count,
+  SUM(total_spend) as total_spend,
+  STRING_AGG(summary_date::text, ', ' ORDER BY summary_date) as dates
+FROM campaign_summaries
+WHERE client_id = (SELECT id FROM clients WHERE email = 'belmonte@hotel.com')
+  AND platform = 'google'
+  AND summary_date >= '2025-10-01'
+  AND summary_date < '2025-11-01'
+GROUP BY summary_type
+ORDER BY summary_type;
+
+-- Expected:
+-- monthly: 1 record, 4530.78 PLN, date: 2025-10-01
+-- weekly: 2 records, 1586.40 PLN, dates: 2025-10-13, 2025-10-27
+
+-- 5. Final Status
+SELECT 
+  '🎉 FIX STATUS' as status,
+  CASE 
+    WHEN EXISTS (
+      SELECT 1 FROM campaign_summaries 
+      WHERE client_id = (SELECT id FROM clients WHERE email = 'belmonte@hotel.com')
+        AND summary_type = 'monthly'
+        AND summary_date = '2025-10-01'
+        AND platform = 'google'
+        AND total_spend > 4000
+    ) THEN '✅ FIXED - Monthly record exists with correct data'
+    ELSE '❌ ISSUE - Monthly record missing or incorrect'
+  END as result;

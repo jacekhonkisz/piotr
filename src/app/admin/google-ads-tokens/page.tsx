@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import GoogleAdsTokenModal from '../../../components/GoogleAdsTokenModal';
+import { AdminLoading } from '../../../components/LoadingSpinner';
 
 interface TokenHealth {
   status: 'healthy' | 'warning' | 'error' | 'unknown';
@@ -179,14 +180,7 @@ export default function GoogleAdsTokensPage() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Ładowanie ustawień Google Ads...</p>
-        </div>
-      </div>
-    );
+    return <AdminLoading text="Ładowanie ustawień Google Ads..." />;
   }
 
   return (

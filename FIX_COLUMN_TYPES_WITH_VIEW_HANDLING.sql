@@ -61,3 +61,4 @@ ORDER BY column_name;
 -- Check if there's a migration file or view definition in your codebase.
 -- The view can be recreated after this fix is applied.
 
+

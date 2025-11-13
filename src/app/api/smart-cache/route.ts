@@ -7,13 +7,23 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Authenticate the request
-    const authResult = await authenticateRequest(request);
-    if (!authResult.success || !authResult.user) {
-      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    // ✅ FIX: Allow service role token for automated cron jobs
+    const authHeader = request.headers.get('authorization');
+    const isServiceRole = authHeader?.includes(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+    
+    let user = null;
+    
+    if (!isServiceRole) {
+      // Authenticate regular user requests
+      const authResult = await authenticateRequest(request);
+      if (!authResult.success || !authResult.user) {
+        return createErrorResponse(authResult.error || 'Authentication failed', 401);
+      }
+      user = authResult.user;
+      logger.info('🔐 Smart cache request authenticated for user:', user.email);
+    } else {
+      logger.info('🤖 Smart cache request from automated service (cron job)');
     }
-    const user = authResult.user;
-    logger.info('🔐 Smart cache request authenticated for user:', user.email);
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -28,7 +38,7 @@ export async function POST(request: NextRequest) {
       platform,
       forceRefresh,
       dateRange,
-      authenticatedUser: user.email
+      authenticatedUser: user?.email || 'automated-service'
     });
     
     // 🔧 FIX: Handle dateRange parameter for specific period requests
@@ -58,7 +68,7 @@ export async function POST(request: NextRequest) {
         source: result.source,
         responseTime,
         cacheAge: result.data.cacheAge,
-        authenticatedUser: user.email
+        authenticatedUser: user?.email || 'automated-service'
       }
     });
     

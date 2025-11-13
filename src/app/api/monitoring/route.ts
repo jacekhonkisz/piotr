@@ -145,7 +145,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { action, data } = body;
+    
+    // SECURITY FIX: Validate input with Zod
+    const { safeValidateRequest, monitoringActionSchema, formatValidationErrors } = 
+      await import('../../../lib/validation-schemas');
+    
+    const validation = safeValidateRequest(body, monitoringActionSchema);
+    
+    if (!validation.success) {
+      return NextResponse.json({
+        error: 'Invalid request data',
+        details: formatValidationErrors(validation.errors)
+      }, { status: 400 });
+    }
+    
+    const { action, data } = validation.data;
 
     let responseData;
 

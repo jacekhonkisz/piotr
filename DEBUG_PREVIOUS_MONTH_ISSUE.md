@@ -207,3 +207,4 @@ ORDER BY period DESC, summary_date DESC;
 
 The enhanced logging will tell us exactly what the issue is!
 
+

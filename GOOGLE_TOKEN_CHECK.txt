@@ -1,0 +1,90 @@
+[dotenv@17.2.2] injecting env (11) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+🔍 CHECKING GOOGLE ADS TOKEN CONFIGURATION
+
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣  SYSTEM SETTINGS (Manager-level credentials):
+
+   google_ads_client_id:
+      Value: 77508981337-7kkho8u7mkfs3b2huojbmjt2mi236fps.apps.googleusercontent.com
+      Updated: 11/3/2025, 9:09:02 AM
+
+   google_ads_client_secret:
+      Value: GOCSPX-0dZOBXgqQlcFH...9K_7O0QEFH (35 chars)
+      Updated: 11/3/2025, 9:09:02 AM
+
+   google_ads_developer_token:
+      Value: WCX04VxQqB0fsV0YDX0w...sV0YDX0w1g (22 chars)
+      Updated: 10/31/2025, 11:44:37 AM
+
+   google_ads_enabled:
+      Value: true
+      Updated: 10/31/2025, 11:44:38 AM
+
+   google_ads_manager_customer_id:
+      Value: 293-100-0497
+      Updated: 10/31/2025, 11:44:38 AM
+
+   google_ads_manager_refresh_token:
+      Value: 1//047cfIBy6vBy9CgYI...9jbPQGPvwM (103 chars)
+      Updated: 11/4/2025, 12:10:33 PM
+      ✅ Token format looks clean
+
+   google_ads_system_user_enabled:
+      Value: true
+      Updated: 9/17/2025, 5:50:47 PM
+
+   google_ads_system_user_token:
+      Value: 
+      Updated: 9/17/2025, 5:50:47 PM
+
+   google_ads_token_preference:
+      Value: system_user...ystem_user (11 chars)
+      Updated: 9/17/2025, 5:50:47 PM
+
+
+2️⃣  CLIENT SETTINGS (Belmonte Hotel):
+
+   Client: Belmonte Hotel
+   ID: ab0b4c7e-2bf0-46bc-b455-b18ef6942baa
+   Google Ads Enabled: true
+   Customer ID: 789-260-9395
+   Client Refresh Token: ❌ NOT SET (uses manager token)
+
+3️⃣  TOKEN PRIORITY LOGIC:
+
+   ✅ Manager token exists: 103 chars
+      Last updated: 11/4/2025, 12:10:33 PM
+   ❌ Client token: NOT SET
+
+   📋 Priority (as per code):
+      1. Manager token (google_ads_manager_refresh_token) ✅
+      2. Client token (clients.google_ads_refresh_token) ❌
+
+   🎯 Token being used: MANAGER TOKEN
+
+4️⃣  RECENT CACHE ACTIVITY:
+
+   Recent cache updates for Belmonte Hotel:
+      2025-11: 11/11/2025, 10:15:54 AM (27.9h ago)
+      2025-09: 9/11/2025, 8:15:29 AM (1494.9h ago)
+
+5️⃣  TOKEN VALIDATION:
+
+   Token length: 103 characters
+   Starts with: 1//047cfIB...
+   Ends with: ...9jbPQGPvwM
+
+   ✅ Token format appears valid
+
+   📅 Token age: 8 days
+      ⚠️  Token is 8 days old
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Refresh token is configured
+⚠️  Token might be old - consider refreshing
+
+

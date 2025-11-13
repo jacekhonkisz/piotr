@@ -1,0 +1,50 @@
+[dotenv@17.2.2] injecting env (11) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+🔍 TESTING GOOGLE ADS REFRESH TOKEN
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Credentials loaded
+
+📋 Configuration:
+   Client ID: 77508981337-7kkho8u7...
+   Client Secret: GOCSPX-0dZ...
+   Developer Token: WCX04VxQqB...
+   Refresh Token: 1//047cfIBy6vBy9CgYI...
+   Customer ID: 789-260-9395
+
+1️⃣  INITIALIZING GOOGLE ADS SERVICE...
+
+[INFO] 🔧 Creating Google Ads customer instance: {
+  customerId: '789-260-9395',
+  hasRefreshToken: true,
+  hasManagerId: false
+}
+   ✅ Service initialized
+
+2️⃣  VALIDATING CREDENTIALS WITH GOOGLE...
+
+[INFO] 🔍 Validating Google Ads credentials
+[INFO] 🔄 Testing Google Ads token refresh
+[INFO] 🔄 Refreshing access token
+[ERROR] ❌ Token refresh failed: 400 {
+  "error": "invalid_grant",
+  "error_description": "Token has been expired or revoked."
+}
+[ERROR] ❌ Error refreshing access token: Error: Token refresh failed: 400
+    at GoogleAdsAPIService.getAccessToken (/Users/macbook/piotr/src/lib/google-ads-api.ts:371:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async GoogleAdsAPIService.testTokenRefresh (/Users/macbook/piotr/src/lib/google-ads-api.ts:405:7)
+    at async GoogleAdsAPIService.validateCredentials (/Users/macbook/piotr/src/lib/google-ads-api.ts:436:25)
+    at async testGoogleToken (/Users/macbook/piotr/scripts/test-google-token-live.ts:79:24)
+[ERROR] ❌ Token refresh failed: Error: Token refresh failed: 400
+    at GoogleAdsAPIService.getAccessToken (/Users/macbook/piotr/src/lib/google-ads-api.ts:371:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async GoogleAdsAPIService.testTokenRefresh (/Users/macbook/piotr/src/lib/google-ads-api.ts:405:7)
+    at async GoogleAdsAPIService.validateCredentials (/Users/macbook/piotr/src/lib/google-ads-api.ts:436:25)
+    at async testGoogleToken (/Users/macbook/piotr/scripts/test-google-token-live.ts:79:24)
+   ❌ TOKEN IS INVALID!
+
+   📊 Error details:
+      - Valid: false
+      - Error: Token refresh failed: Token refresh failed: 400
+

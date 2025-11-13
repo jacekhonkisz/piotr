@@ -1,0 +1,307 @@
+[dotenv@17.2.2] injecting env (11) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+🔍 AUDITING SMART CACHE GOOGLE ADS SPEND SYSTEM
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Client: Belmonte Hotel
+   ID: ab0b4c7e-2bf0-46bc-b455-b18ef6942baa
+   Google Ads Customer ID: 789-260-9395
+
+1️⃣  CHECKING: Smart cache table exists and has data
+
+✅ PASS: Monthly cache found
+   Period ID: 2025-11
+   Last Updated: 2025-11-11T09:15:54.001+00:00
+   Cache Age: 1664 minutes (27.74 hours)
+   Is Fresh (< 3h): ⚠️  NO
+
+2️⃣  CHECKING: Cached data structure and spend
+
+✅ PASS: Cache data structure valid
+   Total Spend: 489.66 PLN
+   Impressions: 201
+   Clicks: 28
+   Conversions: 72.973622
+   Campaigns: 16
+
+3️⃣  CHECKING: Cached spend vs Live Google Ads API
+
+[INFO] 🔧 Creating Google Ads customer instance: {
+  customerId: '789-260-9395',
+  hasRefreshToken: true,
+  hasManagerId: false
+}
+   Fetching live data for: 2025-10-31 to 2025-11-29...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-10-31 to 2025-11-29
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[ERROR] ❌ Error executing Google Ads query: GaxiosError: invalid_grant
+    at Gaxios._request (/Users/macbook/piotr/node_modules/gaxios/src/gaxios.ts:146:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async OAuth2Client.refreshTokenNoCache (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:212:19)
+    at async OAuth2Client.refreshAccessTokenAsync (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:247:19)
+    at async OAuth2Client.getAccessTokenAsync (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:276:23)
+    at async Customer.getAccessToken (/Users/macbook/piotr/node_modules/google-ads-api/build/src/service.js:76:27)
+    at async Customer.useStreamToImitateRegularSearch (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:194:29)
+    at async Customer.paginatedSearch (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:157:34)
+    at async Customer.querier (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:268:53)
+    at async Customer.query (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:26:30) {
+  config: {
+    retry: true,
+    retryConfig: {
+      httpMethodsToRetry: [Array],
+      currentRetryAttempt: 0,
+      retry: 3,
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1762952433723,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    },
+    method: 'POST',
+    url: 'https://oauth2.googleapis.com/token',
+    data: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'google-api-nodejs-client/9.15.1',
+      'x-goog-api-client': 'gl-node/20.18.0'
+    },
+    paramsSerializer: [Function: paramsSerializer],
+    body: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+    validateStatus: [Function: validateStatus],
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor]
+  },
+  response: {
+    config: {
+      retry: true,
+      retryConfig: [Object],
+      method: 'POST',
+      url: 'https://oauth2.googleapis.com/token',
+      data: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      headers: [Object],
+      paramsSerializer: [Function: paramsSerializer],
+      body: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      validateStatus: [Function: validateStatus],
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor]
+    },
+    data: {
+      error: 'invalid_grant',
+      error_description: 'Token has been expired or revoked.'
+    },
+    headers: {
+      'alt-svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000',
+      'cache-control': 'no-cache, no-store, max-age=0, must-revalidate',
+      'content-encoding': 'gzip',
+      'content-type': 'application/json; charset=utf-8',
+      date: 'Wed, 12 Nov 2025 13:00:33 GMT',
+      expires: 'Mon, 01 Jan 1990 00:00:00 GMT',
+      pragma: 'no-cache',
+      server: 'scaffolding on HTTPServer2',
+      'transfer-encoding': 'chunked',
+      vary: 'Origin, X-Origin, Referer',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'SAMEORIGIN',
+      'x-xss-protection': '0'
+    },
+    status: 400,
+    statusText: 'Bad Request',
+    request: { responseURL: 'https://oauth2.googleapis.com/token' }
+  },
+  error: undefined,
+  status: 400,
+  [Symbol(gaxios-gaxios-error)]: '6.7.1'
+}
+[ERROR] ❌ Error fetching Google Ads campaign data: GaxiosError: invalid_grant
+    at Gaxios._request (/Users/macbook/piotr/node_modules/gaxios/src/gaxios.ts:146:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async OAuth2Client.refreshTokenNoCache (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:212:19)
+    at async OAuth2Client.refreshAccessTokenAsync (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:247:19)
+    at async OAuth2Client.getAccessTokenAsync (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:276:23)
+    at async Customer.getAccessToken (/Users/macbook/piotr/node_modules/google-ads-api/build/src/service.js:76:27)
+    at async Customer.useStreamToImitateRegularSearch (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:194:29)
+    at async Customer.paginatedSearch (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:157:34)
+    at async Customer.querier (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:268:53)
+    at async Customer.query (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:26:30) {
+  config: {
+    retry: true,
+    retryConfig: {
+      httpMethodsToRetry: [Array],
+      currentRetryAttempt: 0,
+      retry: 3,
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1762952433723,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    },
+    method: 'POST',
+    url: 'https://oauth2.googleapis.com/token',
+    data: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'google-api-nodejs-client/9.15.1',
+      'x-goog-api-client': 'gl-node/20.18.0'
+    },
+    paramsSerializer: [Function: paramsSerializer],
+    body: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+    validateStatus: [Function: validateStatus],
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor]
+  },
+  response: {
+    config: {
+      retry: true,
+      retryConfig: [Object],
+      method: 'POST',
+      url: 'https://oauth2.googleapis.com/token',
+      data: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      headers: [Object],
+      paramsSerializer: [Function: paramsSerializer],
+      body: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      validateStatus: [Function: validateStatus],
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor]
+    },
+    data: {
+      error: 'invalid_grant',
+      error_description: 'Token has been expired or revoked.'
+    },
+    headers: {
+      'alt-svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000',
+      'cache-control': 'no-cache, no-store, max-age=0, must-revalidate',
+      'content-encoding': 'gzip',
+      'content-type': 'application/json; charset=utf-8',
+      date: 'Wed, 12 Nov 2025 13:00:33 GMT',
+      expires: 'Mon, 01 Jan 1990 00:00:00 GMT',
+      pragma: 'no-cache',
+      server: 'scaffolding on HTTPServer2',
+      'transfer-encoding': 'chunked',
+      vary: 'Origin, X-Origin, Referer',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'SAMEORIGIN',
+      'x-xss-protection': '0'
+    },
+    status: 400,
+    statusText: 'Bad Request',
+    request: { responseURL: 'https://oauth2.googleapis.com/token' }
+  },
+  error: undefined,
+  status: 400,
+  [Symbol(gaxios-gaxios-error)]: '6.7.1'
+}
+❌ FAIL: Could not fetch live API data for comparison
+
+GaxiosError: invalid_grant
+    at Gaxios._request (/Users/macbook/piotr/node_modules/gaxios/src/gaxios.ts:146:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async OAuth2Client.refreshTokenNoCache (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:212:19)
+    at async OAuth2Client.refreshAccessTokenAsync (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:247:19)
+    at async OAuth2Client.getAccessTokenAsync (/Users/macbook/piotr/node_modules/google-auth-library/build/src/auth/oauth2client.js:276:23)
+    at async Customer.getAccessToken (/Users/macbook/piotr/node_modules/google-ads-api/build/src/service.js:76:27)
+    at async Customer.useStreamToImitateRegularSearch (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:194:29)
+    at async Customer.paginatedSearch (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:157:34)
+    at async Customer.querier (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:268:53)
+    at async Customer.query (/Users/macbook/piotr/node_modules/google-ads-api/build/src/customer.js:26:30) {
+  config: {
+    retry: true,
+    retryConfig: {
+      httpMethodsToRetry: [Array],
+      currentRetryAttempt: 0,
+      retry: 3,
+      noResponseRetries: 2,
+      retryDelayMultiplier: 2,
+      timeOfFirstRequest: 1762952433723,
+      totalTimeout: 9007199254740991,
+      maxRetryDelay: 9007199254740991,
+      statusCodesToRetry: [Array]
+    },
+    method: 'POST',
+    url: 'https://oauth2.googleapis.com/token',
+    data: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': 'google-api-nodejs-client/9.15.1',
+      'x-goog-api-client': 'gl-node/20.18.0'
+    },
+    paramsSerializer: [Function: paramsSerializer],
+    body: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+    validateStatus: [Function: validateStatus],
+    responseType: 'unknown',
+    errorRedactor: [Function: defaultErrorRedactor]
+  },
+  response: {
+    config: {
+      retry: true,
+      retryConfig: [Object],
+      method: 'POST',
+      url: 'https://oauth2.googleapis.com/token',
+      data: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      headers: [Object],
+      paramsSerializer: [Function: paramsSerializer],
+      body: '<<REDACTED> - See `errorRedactor` option in `gaxios` for configuration>.',
+      validateStatus: [Function: validateStatus],
+      responseType: 'unknown',
+      errorRedactor: [Function: defaultErrorRedactor]
+    },
+    data: {
+      error: 'invalid_grant',
+      error_description: 'Token has been expired or revoked.'
+    },
+    headers: {
+      'alt-svc': 'h3=":443"; ma=2592000,h3-29=":443"; ma=2592000',
+      'cache-control': 'no-cache, no-store, max-age=0, must-revalidate',
+      'content-encoding': 'gzip',
+      'content-type': 'application/json; charset=utf-8',
+      date: 'Wed, 12 Nov 2025 13:00:33 GMT',
+      expires: 'Mon, 01 Jan 1990 00:00:00 GMT',
+      pragma: 'no-cache',
+      server: 'scaffolding on HTTPServer2',
+      'transfer-encoding': 'chunked',
+      vary: 'Origin, X-Origin, Referer',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'SAMEORIGIN',
+      'x-xss-protection': '0'
+    },
+    status: 400,
+    statusText: 'Bad Request',
+    request: { responseURL: 'https://oauth2.googleapis.com/token' }
+  },
+  error: undefined,
+  status: 400,
+  [Symbol(gaxios-gaxios-error)]: '6.7.1'
+}
+4️⃣  CHECKING: Data fetcher uses smart cache for current period
+
+✅ PASS: Data fetcher has correct priority order
+
+   Priority for CURRENT periods:
+   1️⃣  Google Ads smart cache (< 3 hours)
+   2️⃣  Live Google Ads API (fallback)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 AUDIT SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Monthly Smart Cache Exists
+   Cache found for 2025-11, age: 1664min (27.74h)
+
+✅ Cache Data Structure
+   Cached spend: 489.66 PLN, 16 campaigns
+
+❌ Cache vs Live API Accuracy
+   Failed to fetch live API data: Error: invalid_grant
+
+✅ Data Fetcher Priority Logic
+   Google Ads standardized data fetcher correctly prioritizes smart cache for current periods
+
+═══════════════════════════════════════════════════════════════════════════════
+RESULTS: 3 PASS | 0 WARN | 1 FAIL
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ AUDIT FAILED
+
+Smart cache system has issues that need to be fixed.
+

@@ -392,6 +392,70 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Get campaign insights with performance metrics
+   */
+  async getCampaignInsights(adAccountId: string, dateStart: string, dateEnd: string, timeIncrement?: number): Promise<any[]> {
+    const endpoint = `act_${adAccountId}/insights`;
+    const timeIncrementParam = timeIncrement ? `&time_increment=${timeIncrement}` : '';
+    const params = `level=campaign&since=${dateStart}&until=${dateEnd}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
+    const cacheKey = this.getCacheKey(endpoint, params);
+
+    // Check cache first
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for campaign insights');
+      return cached;
+    }
+
+    logger.info('Meta API: Fetching campaign insights from API');
+    
+    const url = `${this.baseUrl}/${endpoint}?${params}&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.error('Meta API: Campaign insights fetch failed:', response.error);
+      return [];
+    }
+
+    const insights = response.data || [];
+    this.setCachedResponse(cacheKey, insights);
+    
+    logger.info(`Meta API: Fetched ${insights.length} campaign insights`);
+    return insights;
+  }
+
+  /**
+   * Get account information
+   */
+  async getAccountInfo(adAccountId: string): Promise<any> {
+    const endpoint = `act_${adAccountId}`;
+    const params = 'fields=id,name,account_status,currency,timezone_name,spend_cap';
+    const cacheKey = this.getCacheKey(endpoint, params);
+
+    // Check cache first
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for account info');
+      return cached;
+    }
+
+    logger.info('Meta API: Fetching account info from API');
+    
+    const url = `${this.baseUrl}/${endpoint}?${params}&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.error('Meta API: Account info fetch failed:', response.error);
+      return null;
+    }
+
+    this.setCachedResponse(cacheKey, response);
+    
+    logger.info('Meta API: Fetched account info');
+    return response;
+  }
+
+  /**
    * Get placement performance data
    */
   async getPlacementPerformance(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {

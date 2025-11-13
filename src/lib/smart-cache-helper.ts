@@ -80,9 +80,13 @@ export async function fetchFreshCurrentMonthData(client: any) {
     throw new Error('Client object is required');
   }
 
-  if (!client.meta_access_token) {
-    logger.error(`❌ Client ${client.name || client.id} has no Meta access token`);
-    throw new Error('Meta access token is required');
+  // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+  const metaToken = client.system_user_token || client.meta_access_token;
+  const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+  
+  if (!metaToken) {
+    logger.error(`❌ Client ${client.name || client.id} has no Meta token (neither system_user_token nor meta_access_token)`);
+    throw new Error('Meta token is required');
   }
 
   if (!client.ad_account_id) {
@@ -90,8 +94,10 @@ export async function fetchFreshCurrentMonthData(client: any) {
     throw new Error('Ad account ID is required');
   }
   
+  logger.info(`🔑 Using ${tokenType} for ${client.name || client.id}`);
+  
   const currentMonth = getCurrentMonthInfo();
-  const metaService = new MetaAPIServiceOptimized(client.meta_access_token);
+  const metaService = new MetaAPIServiceOptimized(metaToken);
   
   // 🔧 DIAGNOSTIC: Clear Meta API service cache to ensure fresh data
   logger.info('🔄 Clearing Meta API service cache to ensure fresh data fetch...');
@@ -1074,7 +1080,7 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
   });
   
   const currentWeek = weekToFetch;
-  const metaService = new MetaAPIService(client.meta_access_token);
+  const metaService = new MetaAPIServiceOptimized(client.meta_access_token);
   
   const adAccountId = client.ad_account_id.startsWith('act_') 
     ? client.ad_account_id.substring(4)

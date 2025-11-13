@@ -49,3 +49,4 @@ SELECT
   '✅ SCHEMA CACHE REFRESHED' as status,
   'Decimal values accepted' as result;
 
+

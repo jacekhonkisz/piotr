@@ -148,3 +148,4 @@ GoogleAdsPerformanceLive shows charts/details (no modal)
 1. `/Users/macbook/piotr/src/components/GoogleAdsPerformanceLive.tsx` - Disabled modal
 2. `/Users/macbook/piotr/src/app/dashboard/page.tsx` - Enhanced re-rendering and logging
 
+

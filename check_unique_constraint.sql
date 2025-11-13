@@ -12,3 +12,4 @@ WHERE conrelid = 'campaign_summaries'::regclass
 
 
 
+

@@ -160,3 +160,4 @@ vs 180 poprzedni miesiąc +▲
 - Add visual indicators for significant changes (e.g., >50% increase)
 - Display the actual previous month name/date for clarity
 
+

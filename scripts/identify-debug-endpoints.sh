@@ -46,3 +46,4 @@ echo "⚠️  WARNING: Review the list above before removing any endpoints."
 echo "   Some endpoints may be needed for monitoring or health checks."
 
 
+

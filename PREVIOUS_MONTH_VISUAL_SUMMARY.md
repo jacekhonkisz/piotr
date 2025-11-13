@@ -264,3 +264,4 @@ Users now see **accurate month-over-month comparisons** with:
 - ✅ Platform-specific data (Meta vs Google Ads)
 - ✅ Automatic updates on client/tab changes
 
+

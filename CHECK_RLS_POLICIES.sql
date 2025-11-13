@@ -62,3 +62,4 @@ WHERE tablename = 'campaign_summaries'
   AND cmd = 'SELECT'
 ORDER BY policyname;
 
+

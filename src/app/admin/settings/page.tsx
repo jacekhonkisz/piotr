@@ -37,8 +37,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
-import LoadingSpinner from '../../../components/LoadingSpinner';
-import CacheMonitoring from '../../../components/CacheMonitoring';
+import { AdminLoading } from '../../../components/LoadingSpinner';
 
 
 
@@ -156,24 +155,6 @@ export default function AdminSettingsPage() {
   const [emailTestMessage, setEmailTestMessage] = useState('');
   const [lastBulkSend, setLastBulkSend] = useState<BulkEmailLog | null>(null);
   const [bulkSendLogs, setBulkSendLogs] = useState<BulkEmailLog[]>([]);
-  
-  // Token health state
-  const [tokenHealthData, setTokenHealthData] = useState<any[]>([]);
-  const [loadingTokenHealth, setLoadingTokenHealth] = useState(false);
-  
-  // Email logs state
-  const [emailLogs, setEmailLogs] = useState<any[]>([]);
-  const [loadingEmailLogs, setLoadingEmailLogs] = useState(false);
-  const [emailLogSearch, setEmailLogSearch] = useState('');
-  
-  // Cache management state (Week 3 enhancement)
-  const [cacheStats, setCacheStats] = useState<any>(null);
-  const [loadingCacheStats, setLoadingCacheStats] = useState(false);
-  const [clearingCache, setClearingCache] = useState(false);
-  
-  // Monitoring state
-  const [systemMetrics, setSystemMetrics] = useState<any>(null);
-  const [loadingMetrics, setLoadingMetrics] = useState(false);
 
   // FIXED: Prevent production auto-refresh issues
   useEffect(() => {
@@ -281,12 +262,6 @@ export default function AdminSettingsPage() {
       // Load bulk email logs
       await loadBulkEmailLogs();
       
-      // Load additional data for new sections
-      loadTokenHealthData();
-      loadEmailLogs();
-      loadSystemMetrics();
-      loadCacheStats(); // Week 3 enhancement
-      
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -311,99 +286,6 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const loadTokenHealthData = async () => {
-    try {
-      setLoadingTokenHealth(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
-
-      const response = await fetch('/api/clients', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setTokenHealthData(result.clients || []);
-      }
-    } catch (error) {
-      console.error('Error loading token health data:', error);
-    } finally {
-      setLoadingTokenHealth(false);
-    }
-  };
-
-  const loadEmailLogs = async () => {
-    try {
-      setLoadingEmailLogs(true);
-      const { data: logs, error } = await supabase
-        .from('email_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      
-      if (error) throw error;
-      setEmailLogs(logs || []);
-    } catch (error) {
-      console.error('Error loading email logs:', error);
-    } finally {
-      setLoadingEmailLogs(false);
-    }
-  };
-
-  // Cache management functions (Week 3 enhancement)
-  const loadCacheStats = async () => {
-    try {
-      setLoadingCacheStats(true);
-      const response = await fetch('/api/admin/daily-metrics-cache-stats');
-      if (response.ok) {
-        const stats = await response.json();
-        setCacheStats(stats);
-      }
-    } catch (error) {
-      console.error('Error loading cache stats:', error);
-    } finally {
-      setLoadingCacheStats(false);
-    }
-  };
-
-  const clearDailyMetricsCache = async (clientId?: string) => {
-    try {
-      setClearingCache(true);
-      const url = clientId 
-        ? `/api/admin/clear-daily-metrics-cache?clientId=${clientId}`
-        : '/api/admin/clear-daily-metrics-cache';
-      
-      const response = await fetch(url, { method: 'POST' });
-      if (response.ok) {
-        await loadCacheStats(); // Refresh stats
-        alert(clientId ? `Cache cleared for client ${clientId}` : 'All daily metrics cache cleared');
-      } else {
-        throw new Error('Failed to clear cache');
-      }
-    } catch (error) {
-      console.error('Error clearing cache:', error);
-      alert('Error clearing cache');
-    } finally {
-      setClearingCache(false);
-    }
-  };
-
-  const loadSystemMetrics = async () => {
-    try {
-      setLoadingMetrics(true);
-      const response = await fetch('/api/health');
-      if (response.ok) {
-        const metrics = await response.json();
-        setSystemMetrics(metrics);
-      }
-    } catch (error) {
-      console.error('Error loading system metrics:', error);
-    } finally {
-      setLoadingMetrics(false);
-    }
-  };
 
   const saveSettings = async (section: string) => {
     try {
@@ -607,11 +489,7 @@ export default function AdminSettingsPage() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    );
+    return <AdminLoading text="Ładowanie ustawień..." />;
   }
 
   return (
@@ -1397,375 +1275,26 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* Token Health Section */}
-        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-2xl shadow-lg">
-                <Shield className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Stan tokenów</h2>
-                <p className="text-sm text-gray-600">Monitoruj stan tokenów wszystkich klientów</p>
-              </div>
-            </div>
-            <button
-              onClick={loadTokenHealthData}
-              disabled={loadingTokenHealth}
-              className="group nav-premium-button hover:border-blue-300 flex items-center gap-2 px-4 py-2"
-            >
-              <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-blue-600 transition-colors ${loadingTokenHealth ? 'animate-spin' : ''}`} />
-              <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">
-                {loadingTokenHealth ? 'Ładowanie...' : 'Odśwież'}
-              </span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-            {tokenHealthData.map((client) => (
-              <div key={client.id} className="bg-white/50 rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900">{client.name}</h3>
-                  <div className={`w-3 h-3 rounded-full ${
-                    client.token_health_status === 'valid' ? 'bg-green-500' :
-                    client.token_health_status === 'expiring_soon' ? 'bg-orange-500' :
-                    'bg-red-500'
-                  }`}></div>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Status:</span>
-                    <span className={`font-medium ${
-                      client.token_health_status === 'valid' ? 'text-green-600' :
-                      client.token_health_status === 'expiring_soon' ? 'text-orange-600' :
-                      'text-red-600'
-                    }`}>
-                      {client.token_health_status === 'valid' ? 'Zdrowy' :
-                       client.token_health_status === 'expiring_soon' ? 'Wkrótce wygaśnie' :
-                       client.token_health_status === 'expired' ? 'Wygasł' : 'Nieprawidłowy'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">API Status:</span>
-                    <span className={`font-medium ${
-                      client.api_status === 'valid' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {client.api_status === 'valid' ? 'Połączony' : 'Rozłączony'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {tokenHealthData.length === 0 && !loadingTokenHealth && (
-            <div className="text-center py-12">
-              <Shield className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">No token data available</p>
-            </div>
-          )}
-        </div>
-
-        {/* Cache Management Section (Week 3 Enhancement) */}
-        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-3 rounded-2xl shadow-lg">
-                <Database className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Zarządzanie cache</h2>
-                <p className="text-sm text-gray-600">Monitoruj i zarządzaj wydajnością cache dziennych metryk</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={loadCacheStats}
-                disabled={loadingCacheStats}
-                className="group nav-premium-button hover:border-emerald-300 flex items-center gap-2 px-4 py-2"
-              >
-                <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-emerald-600 transition-colors ${loadingCacheStats ? 'animate-spin' : ''}`} />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-emerald-700">
-                  {loadingCacheStats ? 'Ładowanie...' : 'Odśwież'}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {cacheStats ? (
-            <div className="space-y-6">
-              {/* Cache Statistics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-2xl border border-emerald-100">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="bg-emerald-500 p-2 rounded-lg">
-                      <Database className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-2xl font-bold text-emerald-600">{cacheStats.size || 0}</span>
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Wpisy cache</h3>
-                  <p className="text-sm text-gray-600">Aktywne wpisy cache</p>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-100">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="bg-blue-500 p-2 rounded-lg">
-                      <Clock className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-2xl font-bold text-blue-600">3h</span>
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">TTL cache</h3>
-                  <p className="text-sm text-gray-600">Czas życia</p>
-                </div>
-
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-2xl border border-purple-100">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="bg-purple-500 p-2 rounded-lg">
-                      <Zap className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-2xl font-bold text-purple-600">Szybko</span>
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">Wydajność</h3>
-                  <p className="text-sm text-gray-600">Współczynnik trafień cache</p>
-                </div>
-              </div>
-
-              {/* Cache Keys */}
-              {cacheStats.keys && cacheStats.keys.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Aktywne klucze cache</h3>
-                  <div className="bg-gray-50 rounded-xl p-4 max-h-64 overflow-y-auto">
-                    <div className="space-y-2">
-                      {cacheStats.keys.map((key: string, index: number) => (
-                        <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
-                          <code className="text-sm text-gray-700 font-mono">{key}</code>
-                          <button
-                            onClick={() => {
-                              const clientId = key.split('_')[2]; // Extract client ID from cache key
-                              if (clientId) clearDailyMetricsCache(clientId);
-                            }}
-                            disabled={clearingCache}
-                            className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded transition-colors"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Cache Actions */}
-              <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                <div>
-                  <h3 className="font-semibold text-gray-900">Akcje cache</h3>
-                  <p className="text-sm text-gray-600">Zarządzaj danymi cache i wydajnością</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => clearDailyMetricsCache()}
-                    disabled={clearingCache}
-                    className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    <Database className="w-4 h-4" />
-                    {clearingCache ? 'Czyszczenie...' : 'Wyczyść cały cache'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              {loadingCacheStats ? (
-                <div className="flex items-center justify-center">
-                  <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
-                  <span className="ml-3 text-gray-600">Ładowanie statystyk cache...</span>
-                </div>
-              ) : (
-                <>
-                  <Database className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">No cache data available</p>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Email Logs Section */}
-        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-br from-purple-500 to-pink-600 p-3 rounded-2xl shadow-lg">
-                <Mail className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Logi e-mail</h2>
-                <p className="text-sm text-gray-600">Śledź dostarczanie emailów i wydajność</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Szukaj logów..."
-                  value={emailLogSearch}
-                  onChange={(e) => setEmailLogSearch(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white/50"
-                />
-              </div>
-              <button
-                onClick={loadEmailLogs}
-                disabled={loadingEmailLogs}
-                className="group nav-premium-button hover:border-purple-300 flex items-center gap-2 px-4 py-2"
-              >
-                <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-purple-600 transition-colors ${loadingEmailLogs ? 'animate-spin' : ''}`} />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-purple-700">
-                  {loadingEmailLogs ? 'Ładowanie...' : 'Odśwież'}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Znacznik czasu
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Odbiorca
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Temat
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Typ
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white/50 divide-y divide-gray-200">
-                {emailLogs
-                  .filter(log => 
-                    !emailLogSearch || 
-                    log.recipient?.toLowerCase().includes(emailLogSearch.toLowerCase()) ||
-                    log.subject?.toLowerCase().includes(emailLogSearch.toLowerCase())
-                  )
-                  .slice(0, 20)
-                  .map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(log.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {log.recipient}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
-                        {log.subject}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          log.status === 'sent' ? 'bg-green-100 text-green-800' :
-                          log.status === 'failed' ? 'bg-red-100 text-red-800' :
-                          'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {log.status === 'completed' ? 'Zakończone' : log.status === 'failed' ? 'Nieudane' : log.status === 'running' ? 'W trakcie' : log.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {log.email_type || 'report'}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-
-          {emailLogs.length === 0 && !loadingEmailLogs && (
-            <div className="text-center py-12">
-              <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Nie znaleziono logów email</p>
-            </div>
-          )}
-        </div>
-
-        {/* System Monitoring Section */}
-        <div className="mt-8 bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl ring-1 ring-black/5 p-8">
-          <div className="flex items-center justify-between mb-8">
+        {/* Monitoring Link Section */}
+        <div className="mt-8 bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl shadow-xl ring-1 ring-green-200/50 p-8 hover:shadow-2xl transition-all duration-300">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="bg-gradient-to-br from-green-500 to-emerald-600 p-3 rounded-2xl shadow-lg">
                 <Activity className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Monitorowanie</h2>
-                <p className="text-sm text-gray-600">Metryki zdrowia systemu i wydajności</p>
+                <h2 className="text-xl font-bold text-gray-900">Monitoring systemu</h2>
+                <p className="text-sm text-gray-600">Przejdź do monitoringu, aby zobaczyć metryki systemu, zdrowie tokenów i statystyki cache</p>
               </div>
             </div>
             <button
-              onClick={loadSystemMetrics}
-              disabled={loadingMetrics}
-              className="group nav-premium-button hover:border-green-300 flex items-center gap-2 px-4 py-2"
+              onClick={() => router.push('/admin/monitoring')}
+              className="group nav-premium-button hover:border-green-300 flex items-center gap-2 px-6 py-3"
             >
-              <RefreshCw className={`w-4 h-4 text-gray-600 group-hover:text-green-600 transition-colors ${loadingMetrics ? 'animate-spin' : ''}`} />
-              <span className="text-sm font-medium text-gray-700 group-hover:text-green-700">
-                {loadingMetrics ? 'Ładowanie...' : 'Odśwież'}
-              </span>
+              <Activity className="w-5 h-5 text-gray-600 group-hover:text-green-600 transition-colors" />
+              <span className="text-sm font-medium text-gray-700 group-hover:text-green-700">Otwórz monitoring</span>
             </button>
           </div>
-
-          {systemMetrics ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
-              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-2">
-                  <Heart className="w-5 h-5 text-green-500" />
-                  <span className="text-sm font-medium text-gray-700">Status systemu</span>
-                </div>
-                <div className="text-2xl font-bold text-green-600">Zdrowy</div>
-                <div className="text-xs text-gray-500">Wszystkie systemy działają</div>
-              </div>
-
-              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-2">
-                  <Users className="w-5 h-5 text-blue-500" />
-                  <span className="text-sm font-medium text-gray-700">Aktywni klienci</span>
-                </div>
-                <div className="text-2xl font-bold text-blue-600">{systemMetrics.activeClients || '0'}</div>
-                <div className="text-xs text-gray-500">Aktualnie połączeni</div>
-              </div>
-
-              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-2">
-                  <TrendingUp className="w-5 h-5 text-purple-500" />
-                  <span className="text-sm font-medium text-gray-700">Raporty dzisiaj</span>
-                </div>
-                <div className="text-2xl font-bold text-purple-600">{systemMetrics.reportsToday || '0'}</div>
-                <div className="text-xs text-gray-500">Wygenerowane dzisiaj</div>
-              </div>
-
-              <div className="bg-white/50 rounded-xl p-6 border border-gray-200">
-                <div className="flex items-center gap-3 mb-2">
-                  <AlertTriangle className="w-5 h-5 text-orange-500" />
-                  <span className="text-sm font-medium text-gray-700">Błędy API</span>
-                </div>
-                <div className="text-2xl font-bold text-orange-600">{systemMetrics.apiErrors || '0'}</div>
-                <div className="text-xs text-gray-500">Ostatnie 24 godziny</div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Monitor className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Loading system metrics...</p>
-            </div>
-          )}
-        </div>
-
-        {/* Cache Monitoring Section */}
-        <div className="mt-8">
-          <CacheMonitoring />
         </div>
       </main>
     </div>

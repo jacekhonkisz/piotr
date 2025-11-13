@@ -182,3 +182,4 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 4. Test with fresh page load
 5. Verify console shows no duplicates
 
+

@@ -169,3 +169,4 @@ The authentication is required by design:
 - [ ] Verify numbers display immediately after tab switch
 - [ ] Check terminal logs don't show "/api/fetch-google-ads-live-data" during tab switches
 
+

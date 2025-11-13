@@ -62,3 +62,4 @@ Instead of calling `/api/google-ads-smart-cache` directly, the dashboard should:
 - Dashboard will show correct values instead of 0s
 
 
+

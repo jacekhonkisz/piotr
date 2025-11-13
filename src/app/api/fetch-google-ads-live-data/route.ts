@@ -145,21 +145,14 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         monthlyResults = monthlyQuery.data;
         console.log(`✅ Found monthly Google Ads summary`);
       } else {
-        // Fallback to weekly summaries within the month range
-        const weeklyQuery = await supabase
-          .from('campaign_summaries')
-          .select('*')
-          .eq('client_id', clientId)
-          .eq('summary_type', 'weekly')
-          .eq('platform', 'google')
-          .gte('summary_date', startDate)
-          .lte('summary_date', endDate)
-          .order('summary_date', { ascending: false })
-          .limit(1);
-        
-        monthlyResults = weeklyQuery.data;
-        monthlyError = weeklyQuery.error;
-        console.log(`📅 Fallback to weekly summaries: ${weeklyQuery.data?.length || 0} found`);
+        // ❌ NO FALLBACK TO WEEKLY SUMMARIES FOR MONTHLY REQUESTS
+        // Monthly and weekly are COMPLETELY SEPARATE systems
+        // If no monthly summary exists, return null (will trigger live API call)
+        console.log(`❌ No monthly summary found - monthly and weekly systems are separate`);
+        console.log(`   → Monthly should collect data from ${startDate} to ${endDate} as ONE record`);
+        console.log(`   → Weekly is a different system and should NOT be aggregated for monthly`);
+        monthlyResults = null;
+        monthlyError = { message: 'No monthly summary found - monthly summaries must be collected separately from weekly' };
       }
       
       if (monthlyResults && monthlyResults.length > 0) {

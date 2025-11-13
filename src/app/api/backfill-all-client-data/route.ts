@@ -193,6 +193,7 @@ export async function POST(request: NextRequest) {
               .from('campaign_summaries')
               .upsert({
                 client_id: client.id,
+                platform: 'meta',
                 summary_type: 'monthly',
                 summary_date: startDate,
                 total_spend: totals.spend,
@@ -208,7 +209,7 @@ export async function POST(request: NextRequest) {
                 data_source: 'meta_api',
                 last_updated: new Date().toISOString()
               }, {
-                onConflict: 'client_id,summary_type,summary_date'
+                onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ CRITICAL FIX: Added platform
               });
 
             if (insertError) {

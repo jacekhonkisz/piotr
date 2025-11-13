@@ -21,3 +21,4 @@ ORDER BY column_name;
 -- google_ads_tables | jsonb | YES
 -- meta_tables       | jsonb | YES
 
+

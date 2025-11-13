@@ -47,3 +47,4 @@ ORDER BY column_name;
 
 -- Expected result: All 7 columns should show data_type = 'numeric'
 
+

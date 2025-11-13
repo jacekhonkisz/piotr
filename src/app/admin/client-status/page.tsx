@@ -14,6 +14,7 @@ import {
   Clock
 } from 'lucide-react';
 import DataFreshnessIndicator from '../../../components/DataFreshnessIndicator';
+import { AdminLoading } from '../../../components/LoadingSpinner';
 
 interface ClientStatus {
   id: string;
@@ -169,14 +170,7 @@ export default function ClientStatusDashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-          <span className="text-lg text-gray-600">Loading client statuses...</span>
-        </div>
-      </div>
-    );
+    return <AdminLoading text="Ładowanie statusu klientów..." />;
   }
 
   return (

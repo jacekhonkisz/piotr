@@ -28,3 +28,4 @@ FROM information_schema.columns
 WHERE table_name = 'campaign_summaries'
   AND column_name = 'active_campaign_count';
 
+

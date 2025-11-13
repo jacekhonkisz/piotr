@@ -189,7 +189,7 @@ export async function POST(request: NextRequest) {
               summary_type: 'weekly',
               summary_date: targetDate || new Date().toISOString().split('T')[0]
             } as any, {
-              onConflict: 'client_id,summary_type,summary_date'
+              onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ CRITICAL FIX: Added platform
             });
 
           // Also store as monthly summary (using first day of month as date)
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
               summary_type: 'monthly',
               summary_date: monthlyDate
             } as any, {
-              onConflict: 'client_id,summary_type,summary_date'
+              onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ CRITICAL FIX: Added platform
             });
 
           const insertError = weeklyInsert.error || monthlyInsert.error;

@@ -7,13 +7,23 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Authenticate the request
-    const authResult = await authenticateRequest(request);
-    if (!authResult.success || !authResult.user) {
-      return createErrorResponse(authResult.error || 'Authentication failed', 401);
+    // ✅ FIX: Allow service role token for automated cron jobs
+    const authHeader = request.headers.get('authorization');
+    const isServiceRole = authHeader?.includes(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+    
+    let user = null;
+    
+    if (!isServiceRole) {
+      // Authenticate regular user requests
+      const authResult = await authenticateRequest(request);
+      if (!authResult.success || !authResult.user) {
+        return createErrorResponse(authResult.error || 'Authentication failed', 401);
+      }
+      user = authResult.user;
+      logger.info('🔐 Weekly smart cache request authenticated for user:', user.email);
+    } else {
+      logger.info('🤖 Weekly smart cache request from automated service (cron job)');
     }
-    const user = authResult.user;
-    logger.info('🔐 Weekly smart cache request authenticated for user:', user.email);
     
     // Parse request body
     const body = await request.json().catch(() => ({}));
@@ -26,7 +36,7 @@ export async function POST(request: NextRequest) {
     logger.info('Data processing', {
       clientId,
       forceRefresh,
-      authenticatedUser: user.email
+      authenticatedUser: user?.email || 'automated-service'
     });
     
     // Use the shared weekly smart cache helper
@@ -47,7 +57,7 @@ export async function POST(request: NextRequest) {
       debug: {
         source: result.source,
         responseTime,
-        authenticatedUser: user.email,
+        authenticatedUser: user?.email || 'automated-service',
         currency: 'PLN',
         period: 'current-week'
       }

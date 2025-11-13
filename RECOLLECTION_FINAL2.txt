@@ -1,0 +1,675 @@
+[dotenv@17.2.2] injecting env (11) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+🔄 RE-COLLECTING ALL MONTHS WITH FIXED CONVERSION TRACKING
+═══════════════════════════════════════════════════════════
+
+✅ FIX APPLIED: Using click-through conversions ONLY
+❌ EXCLUDED: View-through conversions, engaged-view, cross-device
+
+✅ Client: Belmonte Hotel
+
+[INFO] 🔧 Creating Google Ads customer instance: {
+  customerId: '789-260-9395',
+  hasRefreshToken: true,
+  hasManagerId: false
+}
+📋 Re-collecting 5 months...
+
+
+======================================================================
+📅 November 2025: 2025-11-01 to 2025-11-30
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-11-01 to 2025-11-30
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 1 }
+[INFO] 📊 Fetching Google Ads conversion breakdown
+[INFO] 🔍 Fetching all conversion actions from account...
+⏳ Minimum delay not met, waiting 1276ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 2, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 2 }
+[INFO] 📋 Found 15 conversion actions in account:
+[INFO]    - "Engaged User" (Category: 2, Type: 8)
+[INFO]    - "Form_submit" (Category: 13, Type: 8)
+[INFO]    - "Kliknięcia linków na podstronie biznesowej" (Category: 2, Type: 8)
+[INFO]    - "Kliknięcia w adres e-mail" (Category: 17, Type: 6)
+[INFO]    - "Kliknięcie e-mail" (Category: 18, Type: 37)
+[INFO]    - "Kontakt - kliknięcie e-mail poprawne" (Category: 18, Type: 8)
+[INFO]    - "Micro-marco conwersje" (Category: 2, Type: 8)
+[INFO]    - "Pobranie oferty MICE" (Category: 2, Type: 8)
+[INFO]    - "Rezerwacja" (Category: 4, Type: 8)
+[INFO]    - "Telefon click" (Category: 18, Type: 8)
+[INFO]    - "[MICE] - Wejście na Stronę biznesową" (Category: 3, Type: 8)
+[INFO]    - "test" (Category: 13, Type: 29)
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) micro_conversion" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) phone_click" (Category: 14, Type: 40)
+⏳ Minimum delay not met, waiting 1570ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 3, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 3 }
+[INFO] 📊 Conversion query returned 10 rows
+[INFO] 🔍 Sample conversion row: {
+  "campaign": {
+    "resource_name": "customers/7892609395/campaigns/22868916239",
+    "name": "[PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa",
+    "id": 22868916239
+  },
+  "metrics": {
+    "conversions_value": 1,
+    "conversions": 1
+  },
+  "segments": {
+    "date": "2025-11-01",
+    "conversion_action_name": "Kliknięcie e-mail"
+  }
+}
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (5 conversions, 0.000005 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (5 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (5 conversions, 0.000005 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (5 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] ✅ Processed conversion breakdown for 3 campaigns
+[INFO] 🔍 DEBUG: Found 1 unique conversion action names:
+[INFO]    - "Kliknięcie e-mail"
+[WARN] ⚠️  UNMAPPED ACTIONS (1):
+[WARN]    - "Kliknięcie e-mail"
+[INFO] ⚠️  Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa: Capping conversions from 13 to 11 (interactions)
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa:
+[INFO]    Clicks: 11 → Click to Call: 3, Email: 4, Booking Step 1: 11
+[INFO]    Conversions: 11 → Reservations: 11, Step 2: 7, Step 3: 3
+[INFO]    Spend: 192.06 PLN → Reservation Value: 576 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa: {"click_to_call":3,"email_contacts":4,"booking_step_1":11,"booking_step_2":7,"booking_step_3":3,"reservations":11,"reservation_value":576.194109}
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Konferencje w górach with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Konferencje w górach:
+[INFO]    Clicks: 8 → Click to Call: 2, Email: 3, Booking Step 1: 8
+[INFO]    Conversions: 6 → Reservations: 6, Step 2: 4, Step 3: 2
+[INFO]    Spend: 165.15 PLN → Reservation Value: 495 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach: {"click_to_call":2,"email_contacts":3,"booking_step_1":8,"booking_step_2":4,"booking_step_3":2,"reservations":6,"reservation_value":495.45000000000005}
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Wigilie Firmowe w górach with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Wigilie Firmowe w górach:
+[INFO]    Clicks: 2 → Click to Call: 1, Email: 1, Booking Step 1: 2
+[INFO]    Conversions: 2 → Reservations: 2, Step 2: 1, Step 3: 1
+[INFO]    Spend: 33.40 PLN → Reservation Value: 100 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Wigilie Firmowe w górach: {"click_to_call":1,"email_contacts":1,"booking_step_1":2,"booking_step_2":1,"booking_step_3":1,"reservations":2,"reservation_value":100.19999999999999}
+[INFO] 📊 Using conversion data for campaign Campaign #1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign Display-1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [Mice]: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] REM - MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Wydarzenia korporacyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Imprezy integracyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Gale i Bankiety: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Remarketing&Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Rem+Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign PMAX/Biznes/Grupy_Zorgnizowane: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] ✅ Fetched 16 Google Ads campaigns with conversion breakdown
+[INFO] 🔍 Conversion mapping debug: 1 total actions, 1 unmapped
+
+📊 CORRECTED METRICS:
+   Spend: 390.61 PLN
+   Impressions: 170
+   Clicks: 21
+   Conversions: 56 (CLICK-ONLY)
+   Conv Rate: 266.54% ❌ STILL WRONG!
+   CTR: 12.35%
+   CPC: 18.60 PLN
+
+❌ ERROR: Still have more conversions (55.973622) than clicks (21)!
+   The fix may not be working properly.
+
+======================================================================
+📅 October 2025: 2025-10-01 to 2025-10-31
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-10-01 to 2025-10-31
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 4, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 4 }
+[INFO] 📊 Fetching Google Ads conversion breakdown
+[INFO] 🔍 Fetching all conversion actions from account...
+⏳ Minimum delay not met, waiting 1420ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 5, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 5 }
+[INFO] 📋 Found 15 conversion actions in account:
+[INFO]    - "Engaged User" (Category: 2, Type: 8)
+[INFO]    - "Form_submit" (Category: 13, Type: 8)
+[INFO]    - "Kliknięcia linków na podstronie biznesowej" (Category: 2, Type: 8)
+[INFO]    - "Kliknięcia w adres e-mail" (Category: 17, Type: 6)
+[INFO]    - "Kliknięcie e-mail" (Category: 18, Type: 37)
+[INFO]    - "Kontakt - kliknięcie e-mail poprawne" (Category: 18, Type: 8)
+[INFO]    - "Micro-marco conwersje" (Category: 2, Type: 8)
+[INFO]    - "Pobranie oferty MICE" (Category: 2, Type: 8)
+[INFO]    - "Rezerwacja" (Category: 4, Type: 8)
+[INFO]    - "Telefon click" (Category: 18, Type: 8)
+[INFO]    - "[MICE] - Wejście na Stronę biznesową" (Category: 3, Type: 8)
+[INFO]    - "test" (Category: 13, Type: 29)
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) micro_conversion" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) phone_click" (Category: 14, Type: 40)
+⏳ Minimum delay not met, waiting 1549ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 6, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 6 }
+[INFO] 📊 Conversion query returned 48 rows
+[INFO] 🔍 Sample conversion row: {
+  "campaign": {
+    "resource_name": "customers/7892609395/campaigns/22868916239",
+    "name": "[PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa",
+    "id": 22868916239
+  },
+  "metrics": {
+    "conversions_value": 4,
+    "conversions": 4
+  },
+  "segments": {
+    "date": "2025-10-11",
+    "conversion_action_name": "Kliknięcie e-mail"
+  }
+}
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (4 conversions, 0.000004 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (4 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (5 conversions, 0.000005 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (5 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (3 conversions, 0.000003 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (3 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (3 conversions, 0.000003 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (3 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (4 conversions, 0.000004 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (4 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (3 conversions, 0.000003 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (3 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (6 conversions, 0.000006 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (6 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (10 conversions, 0.00001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (10 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (3 conversions, 0.000003 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (3 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Form_submit" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Form_submit" → email_contacts (1 conversions)
+[INFO] ✅ Mapped "Form_submit" → booking_step_2 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (3 conversions, 0.000003 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (3 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (2 conversions, 0.000002 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (2 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Kliknięcie e-mail" (1 conversions, 0.000001 value)
+[WARN] ⚠️  UNMAPPED CONVERSION: "Kliknięcie e-mail" (1 conversions) - need to add to mapping
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "www.belmonte.com.pl (web) form_submit_success" (1 conversions, 0.0000036700585710000004 value)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) form_submit_success" → email_contacts (1 conversions)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) form_submit_success" → booking_step_2 (1 conversions)
+[INFO] ✅ Processed conversion breakdown for 3 campaigns
+[INFO] 🔍 DEBUG: Found 4 unique conversion action names:
+[INFO]    - "Kliknięcie e-mail"
+[INFO]    - "Micro-marco conwersje"
+[INFO]    - "Form_submit"
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success"
+[WARN] ⚠️  UNMAPPED ACTIONS (1):
+[WARN]    - "Kliknięcie e-mail"
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Wigilie Firmowe w górach: {"click_to_call":0,"email_contacts":2,"booking_step_1":0,"booking_step_2":2,"booking_step_3":2,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":1,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Konferencje w górach with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Konferencje w górach:
+[INFO]    Clicks: 45 → Click to Call: 14, Email: 18, Booking Step 1: 45
+[INFO]    Conversions: 30 → Reservations: 30, Step 2: 18, Step 3: 9
+[INFO]    Spend: 1429.69 PLN → Reservation Value: 4289 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach: {"click_to_call":14,"email_contacts":18,"booking_step_1":45,"booking_step_2":18,"booking_step_3":9,"reservations":30,"reservation_value":4289.070123}
+[INFO] 📊 Using conversion data for campaign Campaign #1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign Display-1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [Mice]: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] REM - MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Wydarzenia korporacyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Imprezy integracyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Gale i Bankiety: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Remarketing&Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Rem+Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign PMAX/Biznes/Grupy_Zorgnizowane: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] ✅ Fetched 16 Google Ads campaigns with conversion breakdown
+[INFO] 🔍 Conversion mapping debug: 4 total actions, 1 unmapped
+
+📊 CORRECTED METRICS:
+   Spend: 4530.78 PLN
+   Impressions: 1,477
+   Clicks: 144
+   Conversions: 271 (CLICK-ONLY)
+   Conv Rate: 188.20% ❌ STILL WRONG!
+   CTR: 9.75%
+   CPC: 31.46 PLN
+
+❌ ERROR: Still have more conversions (271.012959) than clicks (144)!
+   The fix may not be working properly.
+
+======================================================================
+📅 September 2025: 2025-09-01 to 2025-09-30
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-09-01 to 2025-09-30
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 7, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 7 }
+[INFO] 📊 Fetching Google Ads conversion breakdown
+[INFO] 🔍 Fetching all conversion actions from account...
+⏳ Minimum delay not met, waiting 1371ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 8, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 8 }
+[INFO] 📋 Found 15 conversion actions in account:
+[INFO]    - "Engaged User" (Category: 2, Type: 8)
+[INFO]    - "Form_submit" (Category: 13, Type: 8)
+[INFO]    - "Kliknięcia linków na podstronie biznesowej" (Category: 2, Type: 8)
+[INFO]    - "Kliknięcia w adres e-mail" (Category: 17, Type: 6)
+[INFO]    - "Kliknięcie e-mail" (Category: 18, Type: 37)
+[INFO]    - "Kontakt - kliknięcie e-mail poprawne" (Category: 18, Type: 8)
+[INFO]    - "Micro-marco conwersje" (Category: 2, Type: 8)
+[INFO]    - "Pobranie oferty MICE" (Category: 2, Type: 8)
+[INFO]    - "Rezerwacja" (Category: 4, Type: 8)
+[INFO]    - "Telefon click" (Category: 18, Type: 8)
+[INFO]    - "[MICE] - Wejście na Stronę biznesową" (Category: 3, Type: 8)
+[INFO]    - "test" (Category: 13, Type: 29)
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) micro_conversion" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) phone_click" (Category: 14, Type: 40)
+⏳ Minimum delay not met, waiting 1531ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 9, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 9 }
+[INFO] 📊 Conversion query returned 13 rows
+[INFO] 🔍 Sample conversion row: {
+  "campaign": {
+    "resource_name": "customers/7892609395/campaigns/22868916239",
+    "name": "[PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa",
+    "id": 22868916239
+  },
+  "metrics": {
+    "conversions_value": 0,
+    "conversions": 2
+  },
+  "segments": {
+    "date": "2025-09-02",
+    "conversion_action_name": "Micro-marco conwersje"
+  }
+}
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Micro-marco conwersje" (2 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (2 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Micro-marco conwersje" (2 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (2 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Konferencje w górach (22872054865) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Form_submit" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Form_submit" → email_contacts (1 conversions)
+[INFO] ✅ Mapped "Form_submit" → booking_step_2 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Form_submit" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Form_submit" → email_contacts (1 conversions)
+[INFO] ✅ Mapped "Form_submit" → booking_step_2 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Form_submit" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Form_submit" → email_contacts (1 conversions)
+[INFO] ✅ Mapped "Form_submit" → booking_step_2 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Wigilie Firmowe w górach (22923727379) - Action: "www.belmonte.com.pl (web) form_submit_success" (1 conversions, 0.0000036468107910000003 value)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) form_submit_success" → email_contacts (1 conversions)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) form_submit_success" → booking_step_2 (1 conversions)
+[INFO] ✅ Processed conversion breakdown for 3 campaigns
+[INFO] 🔍 DEBUG: Found 3 unique conversion action names:
+[INFO]    - "Micro-marco conwersje"
+[INFO]    - "Form_submit"
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success"
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":6,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":2,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Wigilie Firmowe w górach: {"click_to_call":0,"email_contacts":4,"booking_step_1":0,"booking_step_2":4,"booking_step_3":3,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign Campaign #1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign Display-1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [Mice]: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] REM - MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Wydarzenia korporacyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Imprezy integracyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Gale i Bankiety: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Remarketing&Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Rem+Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign PMAX/Biznes/Grupy_Zorgnizowane: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] ✅ Fetched 16 Google Ads campaigns with conversion breakdown
+[INFO] 🔍 Conversion mapping debug: 3 total actions, 0 unmapped
+
+📊 CORRECTED METRICS:
+   Spend: 5493.92 PLN
+   Impressions: 1,427
+   Clicks: 137
+   Conversions: 217 (CLICK-ONLY)
+   Conv Rate: 158.40% ❌ STILL WRONG!
+   CTR: 9.60%
+   CPC: 40.10 PLN
+
+❌ ERROR: Still have more conversions (217.013419) than clicks (137)!
+   The fix may not be working properly.
+
+======================================================================
+📅 August 2025: 2025-08-01 to 2025-08-31
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-08-01 to 2025-08-31
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 10, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 10 }
+[INFO] 📊 Fetching Google Ads conversion breakdown
+[INFO] 🔍 Fetching all conversion actions from account...
+⏳ Minimum delay not met, waiting 1443ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 11, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 11 }
+[INFO] 📋 Found 15 conversion actions in account:
+[INFO]    - "Engaged User" (Category: 2, Type: 8)
+[INFO]    - "Form_submit" (Category: 13, Type: 8)
+[INFO]    - "Kliknięcia linków na podstronie biznesowej" (Category: 2, Type: 8)
+[INFO]    - "Kliknięcia w adres e-mail" (Category: 17, Type: 6)
+[INFO]    - "Kliknięcie e-mail" (Category: 18, Type: 37)
+[INFO]    - "Kontakt - kliknięcie e-mail poprawne" (Category: 18, Type: 8)
+[INFO]    - "Micro-marco conwersje" (Category: 2, Type: 8)
+[INFO]    - "Pobranie oferty MICE" (Category: 2, Type: 8)
+[INFO]    - "Rezerwacja" (Category: 4, Type: 8)
+[INFO]    - "Telefon click" (Category: 18, Type: 8)
+[INFO]    - "[MICE] - Wejście na Stronę biznesową" (Category: 3, Type: 8)
+[INFO]    - "test" (Category: 13, Type: 29)
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) micro_conversion" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) phone_click" (Category: 14, Type: 40)
+⏳ Minimum delay not met, waiting 1593ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 12, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 12 }
+[INFO] 📊 Conversion query returned 1 rows
+[INFO] 🔍 Sample conversion row: {
+  "campaign": {
+    "resource_name": "customers/7892609395/campaigns/22868916239",
+    "name": "[PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa",
+    "id": 22868916239
+  },
+  "metrics": {
+    "conversions_value": 0,
+    "conversions": 1
+  },
+  "segments": {
+    "date": "2025-08-11",
+    "conversion_action_name": "Micro-marco conwersje"
+  }
+}
+[INFO] 🔍 DEBUG: Campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa (22868916239) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] ✅ Processed conversion breakdown for 1 campaigns
+[INFO] 🔍 DEBUG: Found 1 unique conversion action names:
+[INFO]    - "Micro-marco conwersje"
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL:
+[INFO]    Clicks: 27 → Click to Call: 8, Email: 11, Booking Step 1: 27
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 1021.22 PLN → Reservation Value: 3064 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL: {"click_to_call":8,"email_contacts":11,"booking_step_1":27,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":3063.673932}
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL:
+[INFO]    Clicks: 21 → Click to Call: 6, Email: 8, Booking Step 1: 21
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 610.23 PLN → Reservation Value: 1831 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL: {"click_to_call":6,"email_contacts":8,"booking_step_1":21,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":1830.70203}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":1,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Konferencje w górach with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Konferencje w górach:
+[INFO]    Clicks: 9 → Click to Call: 3, Email: 4, Booking Step 1: 9
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 422.59 PLN → Reservation Value: 1268 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach: {"click_to_call":3,"email_contacts":4,"booking_step_1":9,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":1267.784643}
+[INFO] 📊 Using dynamic tracking for campaign [PBM] GSN | Wigilie Firmowe w górach with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for [PBM] GSN | Wigilie Firmowe w górach:
+[INFO]    Clicks: 2 → Click to Call: 1, Email: 1, Booking Step 1: 2
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 117.89 PLN → Reservation Value: 354 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Wigilie Firmowe w górach: {"click_to_call":1,"email_contacts":1,"booking_step_1":2,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":353.67}
+[INFO] 📊 Using conversion data for campaign Campaign #1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign Display-1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [Mice]: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] REM - MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Wydarzenia korporacyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Imprezy integracyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign SEM/Gale i Bankiety: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Remarketing&Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Rem+Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign PMAX/Biznes/Grupy_Zorgnizowane: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] ✅ Fetched 16 Google Ads campaigns with conversion breakdown
+[INFO] 🔍 Conversion mapping debug: 1 total actions, 0 unmapped
+
+📊 CORRECTED METRICS:
+   Spend: 2668.21 PLN
+   Impressions: 624
+   Clicks: 71
+   Conversions: 96 (CLICK-ONLY)
+   Conv Rate: 135.21% ❌ STILL WRONG!
+   CTR: 11.38%
+   CPC: 37.58 PLN
+
+❌ ERROR: Still have more conversions (96) than clicks (71)!
+   The fix may not be working properly.
+
+======================================================================
+📅 June 2025: 2025-06-01 to 2025-06-30
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-06-01 to 2025-06-30
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 13, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 13 }
+[INFO] 📊 Fetching Google Ads conversion breakdown
+[INFO] 🔍 Fetching all conversion actions from account...
+⏳ Minimum delay not met, waiting 1454ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 14, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 14 }
+[INFO] 📋 Found 15 conversion actions in account:
+[INFO]    - "Engaged User" (Category: 2, Type: 8)
+[INFO]    - "Form_submit" (Category: 13, Type: 8)
+[INFO]    - "Kliknięcia linków na podstronie biznesowej" (Category: 2, Type: 8)
+[INFO]    - "Kliknięcia w adres e-mail" (Category: 17, Type: 6)
+[INFO]    - "Kliknięcie e-mail" (Category: 18, Type: 37)
+[INFO]    - "Kontakt - kliknięcie e-mail poprawne" (Category: 18, Type: 8)
+[INFO]    - "Micro-marco conwersje" (Category: 2, Type: 8)
+[INFO]    - "Pobranie oferty MICE" (Category: 2, Type: 8)
+[INFO]    - "Rezerwacja" (Category: 4, Type: 8)
+[INFO]    - "Telefon click" (Category: 18, Type: 8)
+[INFO]    - "[MICE] - Wejście na Stronę biznesową" (Category: 3, Type: 8)
+[INFO]    - "test" (Category: 13, Type: 29)
+[INFO]    - "www.belmonte.com.pl (web) form_submit_success" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) micro_conversion" (Category: 14, Type: 40)
+[INFO]    - "www.belmonte.com.pl (web) phone_click" (Category: 14, Type: 40)
+⏳ Minimum delay not met, waiting 1611ms...
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 15, retriesLeft: 3 }
+[INFO] ✅ Google Ads query executed successfully { dailyCallCount: 15 }
+[INFO] 📊 Conversion query returned 7 rows
+[INFO] 🔍 Sample conversion row: {
+  "campaign": {
+    "resource_name": "customers/7892609395/campaigns/22666360286",
+    "name": "SEM/Wydarzenia korporacyjne",
+    "id": 22666360286
+  },
+  "metrics": {
+    "conversions_value": 0,
+    "conversions": 1
+  },
+  "segments": {
+    "date": "2025-06-23",
+    "conversion_action_name": "Micro-marco conwersje"
+  }
+}
+[INFO] 🔍 DEBUG: Campaign SEM/Wydarzenia korporacyjne (22666360286) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign SEM/Wydarzenia korporacyjne (22666360286) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign SEM/Wydarzenia korporacyjne (22666360286) - Action: "Micro-marco conwersje" (1 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (1 conversions)
+[INFO] 🔍 DEBUG: Campaign PMAX/Biznes/Grupy_Zorgnizowane (22710393502) - Action: "Micro-marco conwersje" (2.5 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (2.5 conversions)
+[INFO] 🔍 DEBUG: Campaign PMAX/Biznes/Grupy_Zorgnizowane (22710393502) - Action: "Micro-marco conwersje" (0.25 conversions, 0 value)
+[INFO] ✅ Mapped "Micro-marco conwersje" → booking_step_3 (0.25 conversions)
+[INFO] 🔍 DEBUG: Campaign PMAX/Biznes/Grupy_Zorgnizowane (22710393502) - Action: "www.belmonte.com.pl (web) micro_conversion" (0.75 conversions, 0.000002776260803 value)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) micro_conversion" → booking_step_3 (0.75 conversions)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) micro_conversion" → reservations (0.75 conversions)
+[INFO] 🔍 DEBUG: Campaign PMAX/Biznes/Grupy_Zorgnizowane (22710393502) - Action: "www.belmonte.com.pl (web) micro_conversion" (0.25 conversions, 9.25420268e-7 value)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) micro_conversion" → booking_step_3 (0.25 conversions)
+[INFO] ✅ Mapped "www.belmonte.com.pl (web) micro_conversion" → reservations (0.25 conversions)
+[INFO] ✅ Processed conversion breakdown for 2 campaigns
+[INFO] 🔍 DEBUG: Found 2 unique conversion action names:
+[INFO]    - "Micro-marco conwersje"
+[INFO]    - "www.belmonte.com.pl (web) micro_conversion"
+[INFO] 📊 Using conversion data for campaign SEM/Wydarzenia korporacyjne: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":3,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using dynamic tracking for campaign SEM/Imprezy integracyjne with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for SEM/Imprezy integracyjne:
+[INFO]    Clicks: 46 → Click to Call: 14, Email: 18, Booking Step 1: 46
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 715.01 PLN → Reservation Value: 2145 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign SEM/Imprezy integracyjne: {"click_to_call":14,"email_contacts":18,"booking_step_1":46,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":2145.033657}
+[INFO] 📊 Using dynamic tracking for campaign GDN/Rem+Brand with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for GDN/Rem+Brand:
+[INFO]    Clicks: 1315 → Click to Call: 395, Email: 526, Booking Step 1: 1315
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 294.70 PLN → Reservation Value: 884 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign GDN/Rem+Brand: {"click_to_call":395,"email_contacts":526,"booking_step_1":1315,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":884.101989}
+[INFO] 📊 Using conversion data for campaign PMAX/Biznes/Grupy_Zorgnizowane: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":3.75,"reservations":1,"reservation_value":0.0000037016810709999997}
+[INFO] 📊 Using dynamic tracking for campaign SEM/Gale i Bankiety with real Google Ads data
+[INFO] ✅ Dynamic tracking mapped for SEM/Gale i Bankiety:
+[INFO]    Clicks: 25 → Click to Call: 8, Email: 10, Booking Step 1: 25
+[INFO]    Conversions: 0 → Reservations: 0, Step 2: 0, Step 3: 0
+[INFO]    Spend: 58.43 PLN → Reservation Value: 175 PLN (3x ROAS)
+[INFO] 📊 Using conversion data for campaign SEM/Gale i Bankiety: {"click_to_call":8,"email_contacts":10,"booking_step_1":25,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":175.304349}
+[INFO] 📊 Using conversion data for campaign Campaign #1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign Display-1: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [Mice]: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [GDN] REM - MICE: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign GDN/Remarketing&Brand: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Imprezy integracyjne - wybrane wojewódźtwa [PBM] GSN | Imprezy integracyjne - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach [PBM] GSN | Konferencje w górach - cała PL: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Konferencje w górach: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] 📊 Using conversion data for campaign [PBM] GSN | Wigilie Firmowe w górach: {"click_to_call":0,"email_contacts":0,"booking_step_1":0,"booking_step_2":0,"booking_step_3":0,"reservations":0,"reservation_value":0}
+[INFO] ✅ Fetched 16 Google Ads campaigns with conversion breakdown
+[INFO] 🔍 Conversion mapping debug: 2 total actions, 0 unmapped
+
+📊 CORRECTED METRICS:
+   Spend: 2130.91 PLN
+   Impressions: 155,340
+   Clicks: 2,293
+   Conversions: 1861 (CLICK-ONLY)
+   Conv Rate: 81.16% ✅ CORRECT
+   CTR: 1.48%
+   CPC: 0.93 PLN
+
+✅ VALIDATION PASSED: Conversions (1861) ≤ Clicks (2293)
+✅ Stored in database with corrected conversions
+
+
+
+═══════════════════════════════════════════════════════════
+📊 RE-COLLECTION SUMMARY
+═══════════════════════════════════════════════════════════
+
+✅ Successfully re-collected: 1/5
+❌ Failed: 4
+
+✅ CORRECTED MONTHS:
+   June 2025: 1861 conversions from 2293 clicks (81.2%) ✅
+
+❌ FAILED MONTHS:
+   November 2025: Conversion > Clicks still occurring
+   October 2025: Conversion > Clicks still occurring
+   September 2025: Conversion > Clicks still occurring
+   August 2025: Conversion > Clicks still occurring
+
+═══════════════════════════════════════════════════════════
+⚠️  SOME ISSUES REMAIN - REVIEW ABOVE
+

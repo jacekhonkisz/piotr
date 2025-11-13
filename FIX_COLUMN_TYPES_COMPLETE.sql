@@ -173,3 +173,4 @@ WHERE matviewname = 'mv_yoy_comparisons';
 -- 3. Wait 60 minutes for collection to complete
 -- 4. Verify 1,950 total records (100% coverage)
 
+

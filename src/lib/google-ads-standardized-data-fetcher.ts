@@ -96,17 +96,16 @@ export class GoogleAdsStandardizedDataFetcher {
     const isCurrentPeriod = startYear === currentYear && startMonth === currentMonth;
     const includesCurrentDay = dateRange.end >= today;
     
-    // Force live data for recent periods (same as Meta)
-    const thirtyDaysAgo = new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000));
-    const isRecentPeriod = startDate >= thirtyDaysAgo;
-    const needsLiveData = isCurrentPeriod || isRecentPeriod;
+    // ✅ CRITICAL FIX: Match Meta logic - only current period uses cache
+    // Removed isRecentPeriod check to prevent using stale cache for past months
+    const needsLiveData = isCurrentPeriod;
     
     console.log('🎯 GOOGLE ADS PERIOD CLASSIFICATION:', {
       isCurrentPeriod,
-      isRecentPeriod,
       needsLiveData,
       dateRange,
-      reason
+      reason,
+      note: 'Now matches Meta logic - only current period uses cache'
     });
 
     const dataSources: string[] = [];

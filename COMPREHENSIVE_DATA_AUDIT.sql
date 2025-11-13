@@ -17,7 +17,7 @@ GROUP BY summary_type, platform
 ORDER BY summary_type, platform;
 
 -- 2. MONTHLY COVERAGE: Check which months have both platforms
-SELECT 
+  SELECT 
   '2️⃣ MONTHLY - PLATFORM COVERAGE' as audit_check,
   TO_CHAR(summary_date, 'YYYY-MM') as month,
   ARRAY_AGG(DISTINCT platform ORDER BY platform) as platforms,
@@ -130,6 +130,6 @@ SELECT
   ROUND(SUM(total_spend)::numeric, 2) as total_spend_all_time,
   SUM(CASE WHEN platform = 'google' THEN 1 ELSE 0 END) as google_records,
   SUM(CASE WHEN platform = 'meta' THEN 1 ELSE 0 END) as meta_records
-FROM campaign_summaries
+  FROM campaign_summaries 
 WHERE client_id = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa'
   AND summary_date >= CURRENT_DATE - INTERVAL '12 months';

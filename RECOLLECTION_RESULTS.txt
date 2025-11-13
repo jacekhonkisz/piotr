@@ -1,0 +1,220 @@
+[dotenv@17.2.2] injecting env (11) from .env -- tip: ⚙️  override existing env vars with { override: true }
+🔄 RE-COLLECTING ALL MONTHS WITH FIXED CONVERSION TRACKING
+═══════════════════════════════════════════════════════════
+
+✅ FIX APPLIED: Using click-through conversions ONLY
+❌ EXCLUDED: View-through conversions, engaged-view, cross-device
+
+✅ Client: Belmonte Hotel
+
+[INFO] 🔧 Creating Google Ads customer instance: {
+  customerId: '789-260-9395',
+  hasRefreshToken: true,
+  hasManagerId: false
+}
+📋 Re-collecting 5 months...
+
+
+======================================================================
+📅 November 2025: 2025-11-01 to 2025-11-30
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-11-01 to 2025-11-30
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[ERROR] ❌ Error executing Google Ads query: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: '3cB58OwIaGC1I18V3Y1vPg'
+}
+[ERROR] ❌ Error fetching Google Ads campaign data: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: '3cB58OwIaGC1I18V3Y1vPg'
+}
+❌ Error: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: '3cB58OwIaGC1I18V3Y1vPg'
+}
+
+======================================================================
+📅 October 2025: 2025-10-01 to 2025-10-31
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-10-01 to 2025-10-31
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[ERROR] ❌ Error executing Google Ads query: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: '2ZzCWTSMUTmJHSKu5nYPOA'
+}
+[ERROR] ❌ Error fetching Google Ads campaign data: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: '2ZzCWTSMUTmJHSKu5nYPOA'
+}
+❌ Error: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: '2ZzCWTSMUTmJHSKu5nYPOA'
+}
+
+======================================================================
+📅 September 2025: 2025-09-01 to 2025-09-30
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-09-01 to 2025-09-30
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[ERROR] ❌ Error executing Google Ads query: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'A-eVu_DGPg_40sZ7VtDWYA'
+}
+[ERROR] ❌ Error fetching Google Ads campaign data: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'A-eVu_DGPg_40sZ7VtDWYA'
+}
+❌ Error: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'A-eVu_DGPg_40sZ7VtDWYA'
+}
+
+======================================================================
+📅 August 2025: 2025-08-01 to 2025-08-31
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-08-01 to 2025-08-31
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[ERROR] ❌ Error executing Google Ads query: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'UEm6LsjSwY1SZbEzoku1ag'
+}
+[ERROR] ❌ Error fetching Google Ads campaign data: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'UEm6LsjSwY1SZbEzoku1ag'
+}
+❌ Error: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'UEm6LsjSwY1SZbEzoku1ag'
+}
+
+======================================================================
+📅 June 2025: 2025-06-01 to 2025-06-30
+======================================================================
+🔄 Fetching with CORRECTED conversion tracking (click-only)...
+[INFO] 📊 Fetching Google Ads campaign data from 2025-06-01 to 2025-06-30
+[INFO] 📊 Executing Google Ads query { dailyCallCount: 1, retriesLeft: 3 }
+[ERROR] ❌ Error executing Google Ads query: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'mxCWN4xj63-dnFexx-LfcA'
+}
+[ERROR] ❌ Error fetching Google Ads campaign data: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'mxCWN4xj63-dnFexx-LfcA'
+}
+❌ Error: Yg {
+  errors: [
+    {
+      error_code: [Object],
+      message: "Cannot select or filter on the following metrics: 'conversions_from_interactions_value_per_interaction'(could not support requested resources: 'CAMPAIGN'), since metric is incompatible with the resource in the FROM clause or other selected segmenting resources."
+    }
+  ],
+  '@type': 'type.googleapis.com/google.ads.googleads.v21.errors.GoogleAdsFailure',
+  request_id: 'mxCWN4xj63-dnFexx-LfcA'
+}
+
+
+═══════════════════════════════════════════════════════════
+📊 RE-COLLECTION SUMMARY
+═══════════════════════════════════════════════════════════
+
+✅ Successfully re-collected: 0/5
+❌ Failed: 5
+
+❌ FAILED MONTHS:
+   November 2025: [object Object]
+   October 2025: [object Object]
+   September 2025: [object Object]
+   August 2025: [object Object]
+   June 2025: [object Object]
+
+═══════════════════════════════════════════════════════════
+⚠️  SOME ISSUES REMAIN - REVIEW ABOVE
+

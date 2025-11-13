@@ -231,3 +231,4 @@ SELECT
 -- 4. Expected final result:
 --    1,950 / 1,950 records (100% coverage)
 
+

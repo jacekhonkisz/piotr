@@ -53,3 +53,4 @@ WHERE client_id = (
 GROUP BY EXTRACT(DAY FROM summary_date)
 ORDER BY EXTRACT(DAY FROM summary_date);
 
+

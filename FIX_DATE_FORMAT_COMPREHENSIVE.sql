@@ -281,3 +281,4 @@ WHERE client_id = (SELECT id FROM clients WHERE email = 'belmonte@hotel.com' LIM
   AND summary_date >= '2024-01-01'
 ORDER BY summary_date DESC;
 
+

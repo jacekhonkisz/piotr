@@ -1470,6 +1470,14 @@ export default function AdminPage() {
               </button>
 
               <button
+                onClick={() => router.push('/admin/monitoring')}
+                className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#10B981] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(16,185,129,0.12)] focus:outline-none focus:ring-2 focus:ring-[#A7F3D0] focus:ring-offset-2 flex items-center space-x-2"
+              >
+                <Shield className="h-5 w-5" />
+                <span className="text-sm font-medium hidden lg:inline">Monitoring</span>
+              </button>
+
+              <button
                 onClick={() => router.push('/admin/settings')}
                 className="h-10 px-4 bg-white border border-[#E9EEF5] text-[#344054] rounded-[9999px] hover:bg-[#F8FAFC] hover:border-[#D0D7DE] hover:text-[#1F3D8A] transition-all duration-120 hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(31,61,138,0.12)] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:ring-offset-2 flex items-center space-x-2"
               >

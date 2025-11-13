@@ -199,3 +199,4 @@ See `DATA_SOURCE_AUDIT.md` for:
 **Sources Simplified:** 15 → 6  
 **User Experience:** Much clearer! 🎉
 
+

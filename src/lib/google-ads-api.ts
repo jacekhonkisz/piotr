@@ -492,6 +492,12 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
+          
+          -- ✅ FIXED: Use interaction-based conversions (primarily clicks)
+          metrics.conversions_from_interactions_rate,
+          metrics.interactions,
+          metrics.interaction_rate,
+          
           metrics.conversions,
           metrics.cost_per_conversion,
           metrics.search_impression_share,
@@ -522,8 +528,29 @@ export class GoogleAdsAPIService {
         const spend = (metrics.cost_micros || metrics.cost_micros || metrics.costMicros || 0) / 1000000;
         const impressions = metrics.impressions || 0;
         const clicks = metrics.clicks || 0;
-        const conversions = metrics.conversions || 0;
+        
+        // ✅ FIXED: Use interactions for conversion calculation, capped at interactions
+        // Google's conversions can include view-through, so we cap at actual interactions
+        const interactions = metrics.interactions || clicks;
+        const conversionRate = metrics.conversions_from_interactions_rate || 0;
+        
+        // Calculate conversions from interactions (rate might be >100% due to attribution model)
+        let conversions = interactions * conversionRate;
+        
+        // ✅ CRITICAL FIX: Cap conversions at interactions (can't have more conversions than interactions)
+        if (conversions > interactions) {
+          logger.info(`⚠️  Campaign ${campaign.name}: Capping conversions from ${conversions.toFixed(0)} to ${interactions} (interactions)`);
+          conversions = interactions;
+        }
+        
+        // Keep metrics.conversions for reference (includes view-through)
+        const reportedConversions = metrics.conversions || 0;
         const allConversions = metrics.all_conversions || metrics.allConversions || 0;
+        
+        // Log if reported is significantly higher (view-through attribution)
+        if (reportedConversions > conversions * 1.3) {
+          logger.info(`📊 Campaign ${campaign.name}: ${conversions.toFixed(0)} interaction conversions vs ${reportedConversions} reported (${(reportedConversions - conversions).toFixed(0)} likely view-through)`);
+        }
         const conversionValue = (metrics.conversions_value || metrics.conversions_value || metrics.conversionsValue || 0) / 1000000;
         const allConversionsValue = (metrics.all_conversions_value || metrics.allConversionsValue || 0) / 1000000;
         
@@ -547,7 +574,8 @@ export class GoogleAdsAPIService {
           // Dynamic tracking using real available data
           const campaignClicks = clicks || 0;
           const campaignSpend = spend || 0;
-          const totalConversions = allConversions || 0;
+          // ✅ CRITICAL: Use the CAPPED conversions from the variable above
+          const totalConversions = conversions; // This is already capped at interactions
           
           // 1. Click to Call = Use total clicks (real engagement data)
           const clickToCall = Math.round(campaignClicks * 0.3); // 30% of clicks show phone interest
@@ -561,26 +589,29 @@ export class GoogleAdsAPIService {
           const bookingStep3 = Math.round(totalConversions * 0.3); // 30% of conversions reach step 3
           
           // 4. Reservations = Use total conversions (real conversion data)
-          const reservations = totalConversions; // All conversions are reservations
+          const reservations = Math.round(totalConversions); // Round to integer
           
           // 5. Reservation Value = Spend-based calculation (real spend data)
           // Assumption: ROAS of 3:1 for hotel bookings (industry standard)
-          const reservationValue = Math.round(campaignSpend * 3); // 3x return on ad spend
+          const reservationValue = campaignSpend * 3; // 3x return on ad spend
+          
+          // ✅ CRITICAL: Cap reservations at clicks (can't reserve without clicking)
+          const cappedReservations = Math.min(reservations, campaignClicks);
           
           campaignConversions = {
             click_to_call: clickToCall,
             email_contacts: emailContacts,
-            booking_step_1: bookingStep1,
-            booking_step_2: bookingStep2,
-            booking_step_3: bookingStep3,
-            reservations: reservations,
+            booking_step_1: Math.min(bookingStep1, campaignClicks), // Cap at clicks
+            booking_step_2: Math.min(bookingStep2, campaignClicks),
+            booking_step_3: Math.min(bookingStep3, campaignClicks),
+            reservations: cappedReservations,
             reservation_value: reservationValue
           };
           
           logger.info(`✅ Dynamic tracking mapped for ${campaign.name}:`);
-          logger.info(`   Clicks: ${campaignClicks} → Click to Call: ${clickToCall}, Email: ${emailContacts}, Booking Step 1: ${bookingStep1}`);
-          logger.info(`   Conversions: ${totalConversions} → Reservations: ${reservations}, Step 2: ${bookingStep2}, Step 3: ${bookingStep3}`);
-          logger.info(`   Spend: ${campaignSpend} PLN → Reservation Value: ${reservationValue} PLN (3x ROAS)`);
+          logger.info(`   Clicks: ${campaignClicks} → Click to Call: ${Math.min(clickToCall, campaignClicks)}, Email: ${Math.min(emailContacts, campaignClicks)}, Booking Step 1: ${Math.min(bookingStep1, campaignClicks)}`);
+          logger.info(`   Conversions: ${totalConversions.toFixed(0)} → Reservations: ${cappedReservations}, Step 2: ${bookingStep2}, Step 3: ${bookingStep3}`);
+          logger.info(`   Spend: ${campaignSpend.toFixed(2)} PLN → Reservation Value: ${reservationValue.toFixed(0)} PLN (3x ROAS)`);
         }
         
         logger.info(`📊 Using conversion data for campaign ${campaign.name}: ${JSON.stringify(campaignConversions)}`);
@@ -597,7 +628,7 @@ export class GoogleAdsAPIService {
           clicks,
           ctr: metrics.ctr || 0,
           cpc: (metrics.average_cpc || metrics.average_cpc || metrics.averageCpc || 0) / 1000000,
-          conversions: allConversions,
+          conversions: conversions,  // ✅ CRITICAL FIX: Use capped conversions, not allConversions
 
           search_impression_share: metrics.searchImpressionShare || 0,
           view_through_conversions: metrics.viewThroughConversions || 0,

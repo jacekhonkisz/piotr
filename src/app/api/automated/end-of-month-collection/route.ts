@@ -188,55 +188,26 @@ export async function POST(request: NextRequest) {
             const averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
 
             // STEP 3: Save to database
-            // First, try to update existing record if it exists
-            const { data: existing } = await supabaseAdmin
+            // ✅ IMPROVED: Use upsert pattern for consistency with other collection jobs
+            const { error: saveError } = await supabaseAdmin
               .from('campaign_summaries')
-              .select('id')
-              .eq('client_id', client.id)
-              .eq('summary_type', 'monthly')
-              .eq('summary_date', startDate)
-              .maybeSingle();
-
-            let saveError;
-            if (existing) {
-              // Update existing record
-              const { error } = await supabaseAdmin
-                .from('campaign_summaries')
-                .update({
-                  platform: 'meta',
-                  total_spend: totals.spend,
-                  total_impressions: totals.impressions,
-                  total_clicks: totals.clicks,
-                  total_conversions: totals.conversions,
-                  average_ctr: averageCtr,
-                  average_cpc: averageCpc,
-                  campaign_data: campaigns,
-                  data_source: 'meta_api',
-                  last_updated: new Date().toISOString()
-                })
-                .eq('id', existing.id);
-              saveError = error;
-            } else {
-              // Insert new record
-              const { error } = await supabaseAdmin
-                .from('campaign_summaries')
-                .insert({
-                  client_id: client.id,
-                  summary_type: 'monthly',
-                  summary_date: startDate,
-                  platform: 'meta',
-                  total_spend: totals.spend,
-                  total_impressions: totals.impressions,
-                  total_clicks: totals.clicks,
-                  total_conversions: totals.conversions,
-                  average_ctr: averageCtr,
-                  average_cpc: averageCpc,
-                  campaign_data: campaigns,
-                  data_source: 'meta_api',
-                  last_updated: new Date().toISOString()
-                });
-              saveError = error;
-            }
+              .upsert({
+                client_id: client.id,
+                platform: 'meta',
+                summary_type: 'monthly',
+                summary_date: startDate,
+                total_spend: totals.spend,
+                total_impressions: totals.impressions,
+                total_clicks: totals.clicks,
+                total_conversions: totals.conversions,
+                average_ctr: averageCtr,
+                average_cpc: averageCpc,
+                campaign_data: campaigns,
+                data_source: 'meta_api',
+                last_updated: new Date().toISOString()
+              }, {
+                onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ CRITICAL: Includes platform
+              });
 
             if (saveError) {
               logger.error(`❌ Failed to save Meta data:`, saveError);
