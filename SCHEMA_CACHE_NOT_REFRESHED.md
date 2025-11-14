@@ -95,3 +95,4 @@ tail -50 /tmp/next-server.log | grep -E "bigint|BIGINT|Failed"
 **Recommendation:** Try Option 1 first (quickest). If that doesn't work after 5 minutes, do Option 2 (longer pause).
 
 
+

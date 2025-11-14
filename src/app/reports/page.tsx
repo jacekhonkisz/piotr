@@ -47,114 +47,59 @@ const formatDateRange = (start: string, end: string): string => {
   return `${startDate.toLocaleDateString('pl-PL')} - ${endDate.toLocaleDateString('pl-PL')}`;
 };
 
-// 🔧 DATA SOURCE INDICATOR: Component to show which data source is being used
+// 🔧 COMPACT DATA SOURCE INFO BAR: Lightweight inline indicator
 const DataSourceIndicator = ({ validation, debug }: { 
   validation?: any; 
   debug?: any; 
 }) => {
   if (!validation && !debug) return null;
 
-  const getSourceColor = (source: string) => {
-    // Handle fresh cache sources (monthly and weekly)
+  const getStatusInfo = (source: string) => {
+    // Handle fresh cache sources
     if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
-      return 'bg-green-100 text-green-800'; // Fresh cache
+      return { label: 'Dane na żywo', color: 'text-green-700', bgColor: 'bg-green-50', dotColor: 'bg-green-500' };
     }
     
-    // Handle stale cache sources (monthly and weekly)  
+    // Handle stale cache sources  
     if (source.includes('stale') || source.includes('cache-miss')) {
-      return 'bg-yellow-100 text-yellow-800'; // Stale cache
+      return { label: 'Cache nieaktualny', color: 'text-yellow-700', bgColor: 'bg-yellow-50', dotColor: 'bg-yellow-500' };
     }
     
     // Handle database sources
     if (source.includes('database') || source.includes('historical')) {
-      return 'bg-blue-100 text-blue-800'; // Database
+      return { label: 'Z bazy danych', color: 'text-blue-700', bgColor: 'bg-blue-50', dotColor: 'bg-blue-500' };
     }
     
-    // Handle live API sources (but not if it contains 'cache' which indicates cached live data)
+    // Handle live API sources
     if ((source.includes('live') || source.includes('api') || source.includes('refresh')) && !source.includes('cache')) {
-      return 'bg-red-100 text-red-800'; // Live API
+      return { label: 'Live API', color: 'text-red-700', bgColor: 'bg-red-50', dotColor: 'bg-red-500' };
     }
     
-    // Specific cases
-    switch (source) {
-      case 'smart-cache-fresh': case 'weekly-cache': case 'monthly-cache': 
-        return 'bg-green-100 text-green-800';
-      case 'smart-cache-stale': case 'stale-weekly-cache': case 'stale-monthly-cache':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'database': case 'database-historical': 
-        return 'bg-blue-100 text-blue-800';
-      case 'live-api': case 'force-weekly-refresh': case 'force-monthly-refresh':
-        return 'bg-red-100 text-red-800';
-      default: 
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getSourceIcon = (source: string) => {
-    // Handle fresh cache sources (monthly and weekly)
-    if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
-      return '🟢'; // Fresh cache
-    }
-    
-    // Handle stale cache sources (monthly and weekly)
-    if (source.includes('stale') || source.includes('cache-miss')) {
-      return '🟡'; // Stale cache
-    }
-    
-    // Handle database sources
-    if (source.includes('database') || source.includes('historical')) {
-      return '🔵'; // Database
-    }
-    
-    // Handle live API sources (but not if it contains 'cache' which indicates cached live data)
-    if ((source.includes('live') || source.includes('api') || source.includes('refresh')) && !source.includes('cache')) {
-      return '🔴'; // Live API
-    }
-    
-    // Specific cases
-    switch (source) {
-      case 'smart-cache-fresh': case 'weekly-cache': case 'monthly-cache':
-        return '🟢';
-      case 'smart-cache-stale': case 'stale-weekly-cache': case 'stale-monthly-cache':
-        return '🟡';
-      case 'database': case 'database-historical':
-        return '🔵';
-      case 'live-api': case 'force-weekly-refresh': case 'force-monthly-refresh':
-        return '🔴';
-      default:
-        return '⚪';
-    }
+    // Default
+    return { label: 'Źródło nieznane', color: 'text-gray-700', bgColor: 'bg-gray-50', dotColor: 'bg-gray-500' };
   };
 
   const source = debug?.source || validation?.actualSource || 'unknown';
   const cachePolicy = debug?.cachePolicy || 'unknown';
-  const potentialBypass = validation?.potentialCacheBypassed;
+  const statusInfo = getStatusInfo(source);
 
   return (
-    <div className="mb-4 p-3 rounded-lg border bg-gray-50">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-700">Źródło danych:</span>
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSourceColor(source)}`}>
-            {getSourceIcon(source)} {source}
-          </span>
-          {potentialBypass && (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-              ⚠️ Potencjalne ominięcie cache
-            </span>
-          )}
-        </div>
-        <div className="text-xs text-gray-500">
-          Polityka: {cachePolicy}
-        </div>
+    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg ${statusInfo.bgColor} border border-opacity-20 mb-4`}>
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 ${statusInfo.dotColor} rounded-full animate-pulse`}></div>
+        <span className={`text-xs font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
       </div>
-      {validation && (
-        <div className="mt-2 text-xs text-gray-600">
-          Oczekiwane: {validation.expectedSource} | Rzeczywiste: {validation.actualSource}
-          {validation.cacheFirstEnforced && ' | Cache-first: włączone'}
-          {source.includes('weekly') && ' | Typ: Tygodniowy'}
-          {source.includes('monthly') && ' | Typ: Miesięczny'}
-        </div>
+      <div className="h-3 w-px bg-gray-300"></div>
+      <span className="text-xs text-gray-600">
+        Źródło: <span className="font-mono">{source}</span>
+          </span>
+      {cachePolicy && cachePolicy !== 'unknown' && (
+        <>
+          <div className="h-3 w-px bg-gray-300"></div>
+          <span className="text-xs text-gray-600">
+            Polityka: <span className="font-mono">{cachePolicy}</span>
+            </span>
+        </>
       )}
     </div>
   );
@@ -3089,87 +3034,103 @@ function ReportsPageContent() {
       )}
 
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-8">
-                {/* Header */}
-        <div className="border-b border-gray-200 pb-4 sm:pb-6 mb-6 sm:mb-8">
-          <div className="flex flex-col space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+        {/* Unified Page Header - Three-zone centered layout */}
+        <div className="border-b border-gray-200 pb-8 sm:pb-10 mb-6 sm:mb-8">
+          {/* Three-zone grid layout: [LEFT] [CENTER] [RIGHT] */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-8 items-start">
+            
+            {/* LEFT ZONE: Client Selector + DEV MODE */}
+            <div className="flex flex-col gap-2.5 lg:justify-start order-2 lg:order-1">
+              {/* Client Selector for Admin Users */}
+              {profile?.role === 'admin' && (
+                <div>
+                  <ClientSelector
+                    currentClient={selectedClient}
+                    onClientChange={handleClientChange}
+                    userRole={profile.role}
+                  />
+                </div>
+              )}
+              
+              {/* DEV MODE Badge */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-200 text-xs font-medium w-fit">
+                  <Code className="w-3 h-3" />
+                  <span>DEV MODE</span>
+                </div>
+              )}
+            </div>
+            
+            {/* CENTER ZONE: Logo + Title + Meta (Visual Anchor) */}
+            <div className="flex flex-col items-center text-center order-1 lg:order-2">
+              {/* Logo + Title Block */}
+              <div className="flex items-center gap-4 mb-3">
               {/* Client Logo */}
               {selectedClient?.logo_url && (
                 <div className="flex-shrink-0">
                   <img 
                     src={selectedClient.logo_url} 
                     alt={`${selectedClient?.name} logo`}
-                    className="h-10 w-10 sm:h-12 sm:w-12 object-contain rounded-lg border border-gray-200 bg-white p-1"
+                      className="h-14 w-14 sm:h-16 sm:w-16 lg:h-20 lg:w-20 object-contain rounded-lg border border-gray-200 bg-white p-2"
                   />
                 </div>
               )}
-              <div className="min-w-0 flex-1">
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-gray-900 mb-1 truncate">
-                  Raporty {
+                
+                {/* Main Title - Dominant typography */}
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 leading-tight tracking-tight">
+                  Raporty
+                </h1>
+              </div>
+              
+              {/* Meta Line - Centered under title */}
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span className="font-medium">
+                  {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+                </span>
+                <span className="text-gray-400">•</span>
+                <span>
+                  {
                     viewType === 'monthly' ? 'Miesięczne' :
                     viewType === 'weekly' ? 'Tygodniowe' :
-                    viewType === 'all-time' ? 'Całego Okresu' :
-                    'Własnego Zakresu'
+                    viewType === 'all-time' ? 'Cały Okres' :
+                    'Własny Zakres'
                   }
-                </h1>
-                <div className="text-sm text-gray-600 truncate">
-                  {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+                </span>
                 </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm text-gray-600 mt-2">
-                    <span className="truncate">{selectedClient?.name}</span>
-                    <div className="flex items-center space-x-1">
-                      <Clock className="w-3 h-3 flex-shrink-0" />
-                      <span className="text-xs">Aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
-                    </div>
-                    {process.env.NODE_ENV === 'development' && (
-                      <div className="flex items-center space-x-1 bg-orange-100 text-orange-800 px-2 py-1 rounded-md border border-orange-200 w-fit">
-                        <Code className="w-3 h-3" />
-                        <span className="text-xs font-medium">DEV MODE</span>
-                      </div>
-                    )}
                   </div>
                   
-                  {/* Client Selector for Admin Users */}
-                  {profile?.role === 'admin' && (
-                    <div className="mt-2">
-                      <ClientSelector
-                        currentClient={selectedClient}
-                        onClientChange={handleClientChange}
-                        userRole={profile.role}
-                      />
-                    </div>
-                  )}
-                </div>
+            {/* RIGHT ZONE: Last Update + Back Button (Balanced with left) */}
+            <div className="flex flex-col gap-2.5 items-start lg:items-end lg:justify-start order-3">
+              {/* Last Update Info */}
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
             </div>
             
-            <div className="flex items-center space-x-3">
+              {/* Back Button - Stronger styling for balance */}
               <button
                 onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
-                className="text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2 rounded-lg transition-all duration-200 hover:shadow-sm bg-blue-800 hover:bg-blue-900 text-white min-h-[40px] sm:min-h-[44px]"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium shadow-sm hover:shadow"
               >
-                <span className="hidden sm:inline">{profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}</span>
-                <span className="sm:hidden">Powrót</span>
+                <ChevronLeft className="w-4 h-4" />
+                <span>{profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Premium Unified Toolbar - No Container */}
-        <div className="mb-8">
-          
-          {/* Desktop Layout (≥1280px) - Two Rows */}
-          <div className="hidden xl:block">
-            {/* First Row: Left and Right Controls */}
-            <div className="grid grid-cols-[1fr_auto_1fr] gap-6 items-center mb-6">
-              
-              {/* Left: View Type Selector */}
-              <div className="flex items-center space-x-2">
+        {/* Unified Filter / Action Toolbar - Works for ALL report types */}
+        <div className="mb-6">
+          {/* Main Toolbar Row */}
+          <div className="flex flex-col lg:flex-row gap-4 mb-4">
+            {/* Left Group: Time Range Filters */}
+            <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => handleViewTypeChange('monthly')}
-                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 viewType === 'monthly'
                       ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -3178,10 +3139,10 @@ function ReportsPageContent() {
 
             <button
               onClick={() => handleViewTypeChange('weekly')}
-                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 viewType === 'weekly'
                       ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
               }`}
             >
               <CalendarDays className="w-4 h-4" />
@@ -3190,28 +3151,28 @@ function ReportsPageContent() {
 
             <button
               onClick={() => handleViewTypeChange('all-time')}
-                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                disabled={isGeneratingAllTimeReport}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 viewType === 'all-time'
                       ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-              } ${isGeneratingAllTimeReport ? 'opacity-75 cursor-not-allowed' : ''}`}
-              title="Pokaż dane z ostatnich 37 miesięcy (ograniczenie Meta API)"
-              disabled={isGeneratingAllTimeReport}
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                } ${isGeneratingAllTimeReport ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title="Pokaż dane z ostatnich 37 miesięcy"
             >
               {isGeneratingAllTimeReport ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
               ) : (
                 <BarChart3 className="w-4 h-4" />
               )}
-              <span>{isGeneratingAllTimeReport ? 'Pobieranie...' : 'Cały Okres'}</span>
+                <span>{isGeneratingAllTimeReport ? 'Ładowanie...' : 'Cały Okres'}</span>
             </button>
 
             <button
               onClick={() => handleViewTypeChange('custom')}
-                  className={`flex items-center space-x-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 viewType === 'custom'
                       ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -3219,18 +3180,12 @@ function ReportsPageContent() {
             </button>
           </div>
 
-
-
-              {/* Center: Empty for spacing */}
-              <div></div>
-
-              {/* Right: Actions - Aligned with View Type Buttons */}
-              <div className="flex flex-col items-end space-y-4">
-              <div className="flex items-center space-x-3">
+            {/* Right Group: Actions - All buttons same size/hierarchy */}
+            <div className="flex items-center gap-2 lg:ml-auto">
                   <button
                     onClick={handleRefresh}
                     disabled={loadingPeriod !== null}
-                    className="flex items-center space-x-2 px-4 py-3 bg-white text-slate-900 border border-slate-200 rounded-xl hover:bg-slate-50 hover:border-slate-700 transition-all duration-200 disabled:opacity-50 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#BFD2FF]"
+                className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-50 text-sm font-medium"
                   >
                     <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
                     <span>Odśwież</span>
@@ -3241,7 +3196,7 @@ function ReportsPageContent() {
                       clientId={client?.id || ''}
                       dateStart={selectedReport?.date_range_start || ''}
                       dateEnd={selectedReport?.date_range_end || ''}
-                      className="px-6 py-3 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all duration-200 text-sm font-medium shadow-sm"
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white border border-slate-800 rounded-lg hover:bg-slate-900 transition-all text-sm font-medium"
                       campaigns={selectedReport?.campaigns || []}
                       totals={getSelectedPeriodTotals()}
                       client={client}
@@ -3249,17 +3204,11 @@ function ReportsPageContent() {
                     />
                   )}
               </div>
-
-
-              </div>
               </div>
 
-            {/* Second Row: Period Picker and Ads Source Toggle - Centered */}
-            <div className="flex justify-center">
-              <div className="flex flex-col items-center space-y-4">
-                {(viewType === 'monthly' || viewType === 'weekly') ? (
-                  <div className="flex items-center space-x-4">
-                    {/* Previous Button */}
+          {/* Period Selector Row - Only for Monthly/Weekly */}
+          {(viewType === 'monthly' || viewType === 'weekly') && (
+            <div className="flex justify-center items-center gap-3 mb-4">
                 <button
                   onClick={() => {
                         if (selectedPeriod) {
@@ -3276,20 +3225,18 @@ function ReportsPageContent() {
                         }
                       }}
                       disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                      className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
-                      aria-label="Poprzedni miesiąc"
+                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Poprzedni okres"
                     >
-                      <ChevronLeft className="w-6 h-6 text-slate-700 group-hover:text-slate-900" />
+                <ChevronLeft className="w-5 h-5 text-slate-700" />
                 </button>
 
-                    {/* Period Display - Much Bigger */}
-                    <div className="relative">
+              <div className="relative min-w-[280px]">
                       <select
                         value={selectedPeriod || ''}
                         onChange={handlePeriodChange}
                         disabled={loadingPeriod !== null}
-                        className="min-w-[280px] h-16 border-2 border-slate-200 rounded-2xl px-6 text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm"
-                        role="group"
+                  className="w-full h-12 border-2 border-slate-200 rounded-lg px-4 text-lg font-bold text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 disabled:opacity-50 cursor-pointer appearance-none bg-white"
                         aria-label="Wybierz okres"
                       >
                         {availablePeriods.map((periodId) => {
@@ -3299,7 +3246,7 @@ function ReportsPageContent() {
                               const date = new Date(year, month - 1, 1);
                               const displayText = formatDate(date.toISOString());
                               return (
-                                <option key={periodId} value={periodId} className="text-[#0B1220] bg-white text-lg">
+                          <option key={periodId} value={periodId}>
                                   {displayText}
                                 </option>
                               );
@@ -3309,7 +3256,7 @@ function ReportsPageContent() {
                             const week = parseInt(weekStr || '1');
                             const displayText = getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week);
                             return (
-                              <option key={periodId} value={periodId} className="text-[#0B1220] bg-white text-lg">
+                        <option key={periodId} value={periodId}>
                                 {displayText}
                               </option>
                             );
@@ -3318,18 +3265,17 @@ function ReportsPageContent() {
                         })}
                       </select>
                       
-                      <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
                         <ChevronDown className="w-5 h-5 text-slate-700" />
             </div>
 
                       {loadingPeriod && (
-                        <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#BFD2FF] border-t-[#1F3D8A]"></div>
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-900 border-t-transparent"></div>
               </div>
             )}
                     </div>
 
-                    {/* Next Button */}
                     <button
                       onClick={() => {
                         if (selectedPeriod) {
@@ -3346,560 +3292,53 @@ function ReportsPageContent() {
                         }
                       }}
                       disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                      className="w-12 h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 hover:border-gray-300 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed group"
-                      aria-label="Następny miesiąc"
+                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                aria-label="Następny okres"
                     >
-                      <ChevronRight className="w-6 h-6 text-slate-700 group-hover:text-slate-900" />
+                <ChevronRight className="w-5 h-5 text-slate-700" />
                     </button>
-                  </div>
-                ) : (
-                  <div className="h-16 flex items-center text-slate-700 text-lg font-medium">
-                    {viewType === 'all-time' ? 'Wszystkie dostępne dane' : 'Wybierz zakres dat poniżej'}
           </div>
         )}
 
-                                {/* Ads Source Toggle - Below Period Picker */}
+          {/* Channel Selector - Only show when data is available */}
                 {selectedReport && (() => {
-                  // Check which platforms are configured for this client
                   const hasMetaAds = selectedClient?.meta_access_token && selectedClient?.ad_account_id;
                   const hasGoogleAds = selectedClient?.google_ads_enabled && selectedClient?.google_ads_customer_id;
-                  const showToggle = hasMetaAds && hasGoogleAds; // Only show toggle if client has both platforms
+            const showToggle = hasMetaAds && hasGoogleAds;
                   
-                  // If only one platform, show indicator instead of toggle
-                  if (!showToggle) {
-                    const singlePlatform = hasMetaAds ? 'meta' : 'google';
+            if (showToggle) {
                     return (
-                      <div className="flex justify-center mb-4">
-                        <div className="flex items-center space-x-2 px-4 py-2 bg-slate-100 rounded-lg">
-                          {hasMetaAds && (
-                            <>
-                              <BarChart3 className="w-4 h-4 text-blue-600" />
-                              <span className="text-sm font-medium text-slate-700">Meta Ads</span>
-                            </>
-                          )}
-                          {hasGoogleAds && (
-                            <>
-                              <Target className="w-4 h-4 text-green-600" />
-                              <span className="text-sm font-medium text-slate-700">Google Ads</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
-                  
-                  // Show toggle for dual-platform clients
-                  return (
-                    <div className="flex items-center space-x-2">
+                <div className="flex justify-center">
+                  <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
                       <button
                         onClick={() => setActiveAdsProvider('meta')}
-                        className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                      className={`relative flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                           activeAdsProvider === 'meta'
-                            ? 'text-white shadow-sm'
-                            : 'text-slate-700 hover:text-slate-900'
-                        }`}
-                      >
-                        {activeAdsProvider === 'meta' && (
-                          <motion.div
-                            layoutId="activeAdsTab"
-                            className="absolute inset-0 bg-slate-900 rounded-xl"
-                            initial={false}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          />
-                        )}
-                        <span className="relative flex items-center space-x-2">
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
                           <BarChart3 className="w-4 h-4" />
                           <span>Meta Ads</span>
-                        </span>
                       </button>
 
                       <button
                         onClick={() => setActiveAdsProvider('google')}
-                        className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
+                      className={`relative flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                           activeAdsProvider === 'google'
-                            ? 'text-white shadow-sm'
-                            : 'text-slate-700 hover:text-slate-900'
-                        }`}
-                      >
-                        {activeAdsProvider === 'google' && (
-                          <motion.div
-                            layoutId="activeAdsTab"
-                            className="absolute inset-0 bg-slate-900 rounded-xl"
-                            initial={false}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          />
-                        )}
-                        <span className="relative flex items-center space-x-2">
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
                           <Target className="w-4 h-4" />
                           <span>Google Ads</span>
-                        </span>
                       </button>
                     </div>
-                  );
-                })()}
               </div>
-              </div>
-            </div>
-            
-          {/* Tablet Layout (992-1279px) - Two Rows */}
-          <div className="hidden lg:block xl:hidden">
-            {/* First Row: Filters + Actions */}
-            <div className="flex items-center justify-between mb-4">
-              {/* Left: View Type Selector */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleViewTypeChange('monthly')}
-                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    viewType === 'monthly'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Miesięczny</span>
-                </button>
-
-                <button
-                  onClick={() => handleViewTypeChange('weekly')}
-                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    viewType === 'weekly'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <CalendarDays className="w-4 h-4" />
-                  <span>Tygodniowy</span>
-                </button>
-              
-              <button
-                  onClick={() => handleViewTypeChange('all-time')}
-                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    viewType === 'all-time'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                  } ${isGeneratingAllTimeReport ? 'opacity-75 cursor-not-allowed' : ''}`}
-                  disabled={isGeneratingAllTimeReport}
-                >
-                  {isGeneratingAllTimeReport ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <BarChart3 className="w-4 h-4" />
-                  )}
-                  <span>{isGeneratingAllTimeReport ? 'Pobieranie...' : 'Cały Okres'}</span>
-              </button>
-              
-                <button
-                  onClick={() => handleViewTypeChange('custom')}
-                  className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    viewType === 'custom'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  <span>Własny Zakres</span>
-                </button>
-              </div>
-            
-              {/* Right: Actions - Aligned with View Type Buttons */}
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={handleRefresh}
-                  disabled={loadingPeriod !== null}
-                  className="flex items-center space-x-2 px-3 py-3 bg-white text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-700 transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
-                  <span>Odśwież</span>
-                </button>
-              
-              {selectedReport && selectedReport.campaigns.length > 0 && (
-                  <InteractivePDFButton
-                    clientId={client?.id || ''}
-                    dateStart={selectedReport?.date_range_start || ''}
-                    dateEnd={selectedReport?.date_range_end || ''}
-                      className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-all duration-200 text-sm font-medium shadow-sm"
-                    campaigns={selectedReport?.campaigns || []}
-                    totals={getSelectedPeriodTotals()}
-                    client={client}
-                    metaTables={metaTablesData}
-                  />
-              )}
-            </div>
-          </div>
-
-            {/* Second Row: Period Picker and Ads Source Toggle - Centered */}
-            <div className="flex flex-col items-center space-y-4">
-              {(viewType === 'monthly' || viewType === 'weekly') ? (
-                <div className="flex items-center space-x-3">
-            <button
-              onClick={() => {
-                if (selectedPeriod) {
-                  const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                  if (currentIndex < availablePeriods.length - 1) {
-                    const nextPeriod = availablePeriods[currentIndex + 1];
-                    if (nextPeriod) {
-                      setSelectedPeriod(nextPeriod);
-                      if (!reports[nextPeriod]) {
-                        loadPeriodData(nextPeriod);
-                      }
-                    }
-                  }
-                }
-              }}
-              disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                    className="w-9 h-11 flex items-center justify-center bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-                    <ChevronLeft className="w-5 h-5 text-slate-700" />
-            </button>
-
-              <div className="relative">
-                <select
-                  value={selectedPeriod || ''}
-                  onChange={handlePeriodChange}
-                  disabled={loadingPeriod !== null}
-                      className="min-w-[200px] h-11 border border-slate-200 rounded-xl px-4 text-base font-semibold text-center text-[#0B1220] focus:outline-none focus:ring-2 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white"
-                >
-                  {availablePeriods.map((periodId) => {
-                    if (viewType === 'monthly') {
-                      const [year, month] = periodId.split('-').map(Number);
-                      if (year && month) {
-                        const date = new Date(year, month - 1, 1);
-                        return (
-                              <option key={periodId} value={periodId}>
-                            {formatDate(date.toISOString())}
-                          </option>
-                        );
-                      }
-                    } else {
-                      const [year, weekStr] = periodId.split('-W');
-                      const week = parseInt(weekStr || '1');
-                      return (
-                            <option key={periodId} value={periodId}>
-                          {getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week)}
-                        </option>
                       );
                     }
                     return null;
-                  })}
-                </select>
-                
-                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                      <ChevronDown className="w-4 h-4 text-slate-700" />
-                          </div>
-                        </div>
-
-                  <button
-                    onClick={() => {
-                      if (selectedPeriod) {
-                        const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                        if (currentIndex > 0) {
-                          const prevPeriod = availablePeriods[currentIndex - 1];
-                          if (prevPeriod) {
-                            setSelectedPeriod(prevPeriod);
-                            if (!reports[prevPeriod]) {
-                              loadPeriodData(prevPeriod);
-                            }
-                          }
-                        }
-                      }
-                    }}
-                    disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                    className="w-9 h-11 flex items-center justify-center bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <ChevronRight className="w-5 h-5 text-slate-700" />
-                  </button>
-                </div>
-              ) : (
-                <div className="h-11 flex items-center text-slate-700 text-sm font-medium">
-                  {viewType === 'all-time' ? 'Wszystkie dostępne dane' : 'Wybierz zakres dat poniżej'}
-                </div>
-              )}
-
-              {/* Ads Source Toggle - Below Period Picker */}
-              {selectedReport && (
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setActiveAdsProvider('meta')}
-                    className={`relative flex items-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
-                      activeAdsProvider === 'meta'
-                        ? 'text-white shadow-sm'
-                        : 'text-slate-700 hover:text-slate-900'
-                    }`}
-                  >
-                    {activeAdsProvider === 'meta' && (
-                      <motion.div
-                        layoutId="activeAdsTabTablet"
-                        className="absolute inset-0 bg-slate-900 rounded-lg"
-                        initial={false}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative flex items-center space-x-2">
-                      <BarChart3 className="w-4 h-4" />
-                      <span>Meta Ads</span>
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveAdsProvider('google')}
-                    className={`relative flex items-center space-x-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-300 ${
-                      activeAdsProvider === 'google'
-                        ? 'text-white shadow-sm'
-                        : 'text-slate-700 hover:text-slate-900'
-                    }`}
-                  >
-                    {activeAdsProvider === 'google' && (
-                      <motion.div
-                        layoutId="activeAdsTabTablet"
-                        className="absolute inset-0 bg-slate-900 rounded-lg"
-                        initial={false}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative flex items-center space-x-2">
-                      <Target className="w-4 h-4" />
-                      <span>Google Ads</span>
-                    </span>
-                  </button>
-                  </div>
-                )}
-            </div>
-              </div>
-              
-          {/* Mobile Layout (<768px) */}
-          <div className="block lg:hidden space-y-4">
-                        {/* Period Picker First - Much Bigger and Most Important */}
-            {(viewType === 'monthly' || viewType === 'weekly') && (
-              <div className="flex flex-col items-center space-y-4">
-                <div className="flex items-center space-x-4">
-                  <button
-                    onClick={() => {
-                      if (selectedPeriod) {
-                        const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                        if (currentIndex < availablePeriods.length - 1) {
-                          const nextPeriod = availablePeriods[currentIndex + 1];
-                          if (nextPeriod) {
-                            setSelectedPeriod(nextPeriod);
-                            if (!reports[nextPeriod]) {
-                              loadPeriodData(nextPeriod);
-                            }
-                          }
-                        }
-                      }
-                    }}
-                    disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                    className="w-12 h-12 sm:h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px]"
-                  >
-                    <ChevronLeft className="w-6 h-6 text-slate-700" />
-                  </button>
-
-                  <div className="relative">
-                    <select
-                      value={selectedPeriod || ''}
-                      onChange={handlePeriodChange}
-                      disabled={loadingPeriod !== null}
-                      className="min-w-[200px] sm:min-w-[240px] h-12 sm:h-16 border-2 border-slate-200 rounded-2xl px-4 sm:px-6 text-lg sm:text-xl font-bold text-center text-[#0B1220] focus:outline-none focus:ring-4 focus:ring-[#BFD2FF] focus:border-slate-700 disabled:opacity-50 cursor-pointer appearance-none bg-white shadow-sm min-h-[44px]"
-                    >
-                      {availablePeriods.map((periodId) => {
-              if (viewType === 'monthly') {
-                const [year, month] = periodId.split('-').map(Number);
-                if (year && month) {
-                  const date = new Date(year, month - 1, 1);
-                            return (
-                              <option key={periodId} value={periodId}>
-                                {formatDate(date.toISOString())}
-                              </option>
-                            );
-                }
-              } else {
-                const [year, weekStr] = periodId.split('-W');
-                const week = parseInt(weekStr || '1');
-              return (
-                            <option key={periodId} value={periodId}>
-                              {getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week)}
-                            </option>
-                          );
-                        }
-                        return null;
-                      })}
-                    </select>
-                    
-                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                      <ChevronDown className="w-5 h-5 text-slate-700" />
-            </div>
-          </div>
-
-                  <button
-                    onClick={() => {
-                      if (selectedPeriod) {
-                        const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                        if (currentIndex > 0) {
-                          const prevPeriod = availablePeriods[currentIndex - 1];
-                          if (prevPeriod) {
-                            setSelectedPeriod(prevPeriod);
-                            if (!reports[prevPeriod]) {
-                              loadPeriodData(prevPeriod);
-                            }
-                          }
-                        }
-                      }
-                    }}
-                    disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                    className="w-12 h-12 sm:h-16 flex items-center justify-center bg-white border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed min-h-[44px]"
-                  >
-                    <ChevronRight className="w-6 h-6 text-slate-700" />
-                  </button>
-        </div>
-
-                {/* Ads Source Toggle - Below Period Picker */}
-        {selectedReport && (
-                  <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setActiveAdsProvider('meta')}
-                      className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
-                    activeAdsProvider === 'meta'
-                      ? 'text-white shadow-sm'
-                          : 'text-slate-700 hover:text-slate-900'
-                  }`}
-                >
-                  {activeAdsProvider === 'meta' && (
-                    <motion.div
-                          layoutId="activeAdsTabMobile"
-                          className="absolute inset-0 bg-slate-900 rounded-xl"
-                      initial={false}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative flex items-center space-x-2">
-                    <BarChart3 className="w-4 h-4" />
-                    <span>Meta Ads</span>
-                  </span>
-                </button>
-
-                <button
-                  onClick={() => setActiveAdsProvider('google')}
-                      className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
-                    activeAdsProvider === 'google'
-                      ? 'text-white shadow-sm'
-                          : 'text-slate-700 hover:text-slate-900'
-                  }`}
-                >
-                  {activeAdsProvider === 'google' && (
-                    <motion.div
-                          layoutId="activeAdsTabMobile"
-                          className="absolute inset-0 bg-slate-900 rounded-xl"
-                      initial={false}
-                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative flex items-center space-x-2">
-                    <Target className="w-4 h-4" />
-                    <span>Google Ads</span>
-                  </span>
-                </button>
-              </div>
-                )}
-          </div>
-        )}
-
-            {/* View Type Segments - Higher Positioned */}
-            <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-                onClick={() => handleViewTypeChange('monthly')}
-                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                  viewType === 'monthly'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Miesięczny</span>
-            </button>
-
-            <button
-                onClick={() => handleViewTypeChange('weekly')}
-                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                  viewType === 'weekly'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <CalendarDays className="w-4 h-4" />
-                <span>Tygodniowy</span>
-              </button>
-
-              <button
-                onClick={() => handleViewTypeChange('all-time')}
-                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                  viewType === 'all-time'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                } ${isGeneratingAllTimeReport ? 'opacity-75 cursor-not-allowed' : ''}`}
-                disabled={isGeneratingAllTimeReport}
-              >
-                {isGeneratingAllTimeReport ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <BarChart3 className="w-4 h-4" />
-                )}
-                <span>{isGeneratingAllTimeReport ? 'Pobieranie...' : 'Cały Okres'}</span>
-              </button>
-
-              <button
-                onClick={() => handleViewTypeChange('custom')}
-                className={`flex items-center space-x-2 px-3 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                  viewType === 'custom'
-                    ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Własny Zakres</span>
-            </button>
-          </div>
-
-
-
-            {/* Actions */}
-            <div className="flex flex-col items-center space-y-3">
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={handleRefresh}
-                  disabled={loadingPeriod !== null}
-                  className="flex items-center space-x-2 px-3 py-3 bg-white text-slate-900 border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-700 transition-all duration-200 disabled:opacity-50 text-sm font-semibold"
-                >
-                  <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
-                  <span>Odśwież</span>
-                </button>
-
-                {selectedReport && selectedReport.campaigns.length > 0 && (
-                  <InteractivePDFButton
-                    clientId={client?.id || ''}
-                    dateStart={selectedReport?.date_range_start || ''}
-                    dateEnd={selectedReport?.date_range_end || ''}
-                    className="px-4 py-3 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-all duration-200 text-sm font-medium shadow-sm"
-                    campaigns={selectedReport?.campaigns || []}
-                    totals={getSelectedPeriodTotals()}
-                    client={client}
-                    metaTables={metaTablesData}
-                  />
-                )}
-              </div>
-
-              {/* Dev Button - Below other actions */}
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={generateDevReport}
-                  disabled={loadingPeriod !== null || apiCallInProgress}
-                  className="flex items-center space-x-2 h-10 px-4 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition-all duration-200 disabled:opacity-50 text-sm font-medium border-2 border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  title="Generate fresh report and PDF bypassing cache (Dev only)"
-                >
-                  <Code className={`w-4 h-4 ${isGeneratingDevReport ? 'animate-spin' : ''}`} />
-                  <span>{isGeneratingDevReport ? 'Generating...' : 'DEV: Fresh Report + PDF'}</span>
-                </button>
-              )}
-            </div>
-          </div>
+                })()}
           </div>
 
         {/* Live Data Status Strip - Only visible in development mode */}
@@ -3985,8 +3424,7 @@ function ReportsPageContent() {
                     type="date"
                     value={customDateRange.start}
                     onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    max={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
               </div>
 
@@ -3996,56 +3434,35 @@ function ReportsPageContent() {
                     type="date"
                     value={customDateRange.end}
                     onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    max={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
               </div>
 
-              <div className="flex-shrink-0 space-x-3 flex">
+              <div className="flex-shrink-0 md:mt-6">
                 <button
-                  onClick={() => {
-                    if (customDateRange.start && customDateRange.end) {
-                      if (new Date(customDateRange.start) >= new Date(customDateRange.end)) {
-                        setError('Data początkowa musi być wcześniejsza niż data końcowa');
-                        return;
-                      }
-                      loadCustomDateData(customDateRange.start, customDateRange.end);
-                    } else {
-                      setError('Proszę wybrać datę początkową i końcową');
-                    }
-                  }}
-                  disabled={!customDateRange.start || !customDateRange.end || isGeneratingCustomReport}
-                  className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  onClick={generateCustomReport}
+                  disabled={!customDateRange.start || !customDateRange.end || loadingPeriod !== null}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
-                  {isGeneratingCustomReport ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  {loadingPeriod === 'custom' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 inline mr-2 animate-spin" />
+                      Generowanie...
+                    </>
                   ) : (
-                    <BarChart3 className="w-4 h-4" />
+                    'Generuj Raport'
                   )}
-                  <span>{isGeneratingCustomReport ? 'Generowanie...' : 'Generuj Raport'}</span>
                 </button>
-
               </div>
             </div>
-
-            {customDateRange.start && customDateRange.end && (
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                <p className="text-sm text-blue-700">
-                  <strong>Wybrany zakres:</strong> {new Date(customDateRange.start).toLocaleDateString('pl-PL')} - {new Date(customDateRange.end).toLocaleDateString('pl-PL')}
-                </p>
-              </div>
-            )}
           </div>
         )}
 
-
-
-        {/* Report Content */}
         {loadingPeriod && (
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 mb-6 border border-white/20">
-            <div className="flex items-center justify-center space-x-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-200 border-t-blue-600"></div>
-              <p className="text-lg text-gray-600">
+          <div className="flex justify-center items-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">
                 Ładowanie danych {
                   viewType === 'monthly' ? 'miesięcznych' :
                   viewType === 'weekly' ? 'tygodniowych' :

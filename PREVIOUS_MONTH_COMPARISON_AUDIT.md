@@ -84,3 +84,4 @@ vs 180 poprzedni miesiąc +▲
 - `src/app/dashboard/page.tsx` - Add state, fetch function, and update AnimatedMetricsCharts props
 
 
+

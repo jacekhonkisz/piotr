@@ -5,6 +5,7 @@ import { Calendar, Clock, ChevronDown, ChevronUp, Download, Eye, EyeOff, BarChar
 import { supabase } from '../lib/supabase';
 import { useYearOverYearComparison } from '@/lib/hooks/useYearOverYearComparison';
 import ConversionFunnel from './ConversionFunnel';
+import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 
 
 
@@ -170,7 +171,7 @@ const Tooltip = ({ children, content }: { children: React.ReactNode; content: st
   );
 };
 
-// Metric Card Component - Premium minimalist design
+// Metric Card Component - Clean analytics product design
 const MetricCard = ({ 
   title, 
   value, 
@@ -196,74 +197,34 @@ const MetricCard = ({
 
   const card = (
     <div 
-      className="relative bg-white border border-slate-200 rounded-2xl p-6 transition-all duration-200 shadow-sm hover:shadow-md"
+      className="relative bg-white border border-slate-200 rounded-lg p-5 transition-all duration-150 hover:border-slate-300"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Icon and Title */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-3">
-          {icon && (
-            <div className="p-2 bg-slate-100 rounded-lg">
-              {icon}
-            </div>
-          )}
-          <span className="text-sm font-medium text-slate-600">{title}</span>
-        </div>
+      {/* Title - uppercase, subtle */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{title}</span>
         {tooltip && (
           <Tooltip content={tooltip}>
-            <HelpCircle className="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
+            <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 transition-colors" />
           </Tooltip>
         )}
       </div>
       
-      {/* Main Value */}
-      <div className="mb-4">
-        <p className="text-3xl font-semibold text-slate-900 tabular-nums tracking-tight">
+      {/* Main Value - large, bold, clean */}
+      <div className="mb-1">
+        <p className="text-2xl font-semibold text-slate-900 tabular-nums">
           {value}
         </p>
-        {subtitle && (
-          <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
-        )}
       </div>
 
-      {/* Mini Spark Chart */}
-      {miniSpark && miniSpark.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-end space-x-1 h-8">
-            {miniSpark.map((val, idx) => {
-              const maxVal = Math.max(...miniSpark);
-              const height = maxVal > 0 ? (val / maxVal) * 32 : 2;
-              return (
-                <div
-                  key={idx}
-                  className="bg-slate-900 rounded-sm flex-1 transition-all duration-200"
-                  style={{ height: `${height}px`, minHeight: '2px' }}
-                />
-              );
-            })}
-          </div>
-          <div className="flex justify-between text-xs text-slate-400 mt-1">
-            <span>0</span>
-            <span>cel</span>
-          </div>
-        </div>
-      )}
-
-      {/* Change Indicator */}
+      {/* Change Indicator - minimal, inline */}
       {change && (
-        <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium ${
-          change.type === 'increase' 
-            ? 'bg-slate-900/8 text-slate-900' 
-            : 'bg-orange-500/10 text-orange-700'
-        }`}>
-          <span className="mr-1">vs {change.period}</span>
-          <span className={`${change.type === 'increase' ? 'text-slate-900' : 'text-orange-600'}`}>
+        <div className="text-xs font-medium tabular-nums">
+          <span className={change.type === 'increase' ? 'text-green-600' : 'text-red-600'}>
             {change.type === 'increase' ? '+' : '−'}{Math.abs(change.value).toFixed(1)}%
           </span>
-          <span className="ml-1">
-            {change.type === 'increase' ? '▲' : '▼'}
-          </span>
+          <span className="text-slate-400 ml-1">vs {change.period}</span>
         </div>
       )}
     </div>
@@ -834,42 +795,55 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
 
             {/* Main Metrics Section */}
-            <section className="mb-12">
-              <div className="mb-8">
-                <h2 className="text-3xl font-bold text-slate-900 mb-3 tracking-tight">Podstawowe metryki</h2>
-                <p className="text-lg text-slate-600">Wydatki i podstawowe wskaźniki wydajności</p>
+            <section className="mb-10">
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-slate-900 mb-1">Podstawowe Metryki</h2>
+                <p className="text-sm text-slate-600">Kluczowe wskaźniki efektywności kampanii</p>
               </div>
               
-              {/* Main Metrics Cards */}
+              {/* Basic Metrics Grid - Clean 2x3 Layout */}
               <div className="mb-8">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <MetricCard
-                    title="Wydana kwota"
+                    title="Wydatki"
                     value={formatCurrency(campaignTotals.spend)}
-                    subtitle="Suma wydatków na reklamy"
                     tooltip="Łączna kwota wydana na reklamy"
-                    icon={<BarChart3 className="w-5 h-5 text-slate-600" />}
                     change={formatComparisonChange(yoyData?.changes?.spend || 0)}
                   />
                   
                   <MetricCard
                     title="Wyświetlenia"
                     value={formatNumber(campaignTotals.impressions)}
-                    subtitle="Liczba wyświetleń reklam"
                     tooltip="Całkowita liczba wyświetleń reklam"
-                    icon={<Eye className="w-5 h-5 text-slate-600" />}
                     change={formatComparisonChange(yoyData?.changes?.impressions || 0)}
                   />
                   
                   <MetricCard
-                    title="Kliknięcia linku"
+                    title="Kliknięcia"
                     value={formatNumber(campaignTotals.clicks)}
-                    subtitle="Liczba kliknięć w reklamy"
-                    tooltip="Całkowita liczba kliknięć w reklamy"
-                    icon={<MousePointer className="w-5 h-5 text-slate-600" />}
+                    tooltip="Całkowita liczba kliknięć w linki"
                     change={formatComparisonChange(yoyData?.changes?.clicks || 0)}
                   />
-                                  </div>
+                  
+                  <MetricCard
+                    title="CTR"
+                    value={`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}
+                    tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń"
+                  />
+                  
+                  <MetricCard
+                    title="CPC"
+                    value={formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}
+                    tooltip="Cost Per Click: średni koszt kliknięcia"
+                  />
+                  
+                  <MetricCard
+                    title="Konwersje"
+                    value={(report.conversionMetrics?.reservations || campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)).toString()}
+                    tooltip="Liczba zakończonych konwersji"
+                    change={formatComparisonChange(yoyData?.changes?.reservations || 0)}
+                  />
+                </div>
               </div>
 
               {/* Conversion Funnel - Second Section */}
@@ -972,73 +946,88 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
             </section>
 
-            {/* Campaign Performance Section - Consolidated */}
-            <section>
-              <div className="mb-8">
-                <h2 className="text-2xl font-semibold text-slate-700 mb-3 tracking-tight">Wydajność kampanii</h2>
-                <p className="text-base text-slate-500">Dodatkowe metryki reklamowe i konwersji</p>
+            {/* Contact & Conversions Section */}
+            <section className="mb-10">
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-slate-900 mb-1">Kontakt & Konwersje</h2>
+                <p className="text-sm text-slate-600">Metryki kontaktu i zakończonych konwersji</p>
               </div>
               
-              {/* Contact Metrics - Moved to top */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+              {/* Contact & Conversion Metrics Grid - 2x2 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <MetricCard
-                  title="Kliknięcia w adres e-mail"
+                  title="E-mail"
                   value={(report.conversionMetrics?.email_contacts || campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0)).toString()}
-                  subtitle="Kontakt przez e-mail"
                   tooltip="Liczba kliknięć w adres e-mail"
-                  icon={<Mail className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy for contact metrics
                 />
                 
                 <MetricCard
-                  title="Kliknięcia w numer telefonu"
+                  title="Telefon"
                   value={(report.conversionMetrics?.click_to_call || campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0)).toString()}
-                  subtitle="Kontakt przez telefon"
                   tooltip="Liczba kliknięć w numer telefonu"
-                  icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy for contact metrics
+                />
+                
+                <MetricCard
+                  title="Rezerwacje"
+                  value={(report.conversionMetrics?.reservations || campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)).toString()}
+                  tooltip="Liczba zakończonych rezerwacji"
+                  change={formatComparisonChange(yoyData?.changes?.reservations || 0)}
+                />
+                
+                <MetricCard
+                  title="Wartość rezerwacji"
+                  value={formatCurrency(report.conversionMetrics?.reservation_value || campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0))}
+                  tooltip="Łączna wartość rezerwacji"
                 />
               </div>
 
-              {/* Calculated Offline Potential Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                <MetricCard
-                  title="Potencjalna ilość rezerwacji offline"
-                  value={(() => {
-                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                    return potentialOfflineReservations.toString();
-                  })()}
-                  subtitle="20% z łącznej liczby e-mail i telefonów"
-                  tooltip="Szacowana liczba rezerwacji offline na podstawie kontaktów"
-                  icon={<PhoneCall className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy
-                />
-                
-                <MetricCard
-                  title="Potencjalna łączna wartość rezerwacji offline"
-                  value={(() => {
-                    // Calculate offline reservations
-                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                    
-                    // Calculate average reservation value
-                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                    
-                    // Calculate total potential offline value: (wartość rezerwacji/ilość rezerwacji) * potencjalna ilość rezerwacji offline
-                    const totalPotentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-                    
-                    return formatCurrency(totalPotentialOfflineValue);
-                  })()}
-                  subtitle="(wartość rezerwacji/ilość rezerwacji) × potencjalna ilość rezerwacji offline"
-                  tooltip="Łączna szacowana wartość rezerwacji offline"
-                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy
-                />
+              {/* Potential Offline Metrics - Summary Box */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 mb-8">
+                <h3 className="text-sm font-medium text-slate-900 mb-4">Potencjalne Metryki Offline</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Rezerwacje offline</div>
+                    <div className="text-lg font-semibold text-slate-900 tabular-nums">
+                      {(() => {
+                        const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                        const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                        const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                        return potentialOfflineReservations;
+                      })()}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Wartość offline</div>
+                    <div className="text-lg font-semibold text-slate-900 tabular-nums">
+                      {(() => {
+                        const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                        const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                        const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                        const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                        const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                        const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                        const totalPotentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+                        return formatCurrency(totalPotentialOfflineValue);
+                      })()}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Łączna wartość</div>
+                    <div className="text-lg font-semibold text-slate-900 tabular-nums">
+                      {(() => {
+                        const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+                        const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                        const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+                        const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                        const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                        const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+                        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+                        const onlineReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                        return formatCurrency(potentialOfflineValue + onlineReservationValue);
+                      })()}
+                    </div>
+                  </div>
+                </div>
               </div>
               
               {/* Cost Acquisition Metric - Moved to lower position */}

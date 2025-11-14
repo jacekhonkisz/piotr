@@ -294,3 +294,4 @@ Show exact date range: "01.11 - 30.11.2025"
 The dashboard now correctly displays **"listopad '25"** for November 2025, and will automatically update to **"grudzień '25"** on December 1st without any code changes! 🎉
 
 
+

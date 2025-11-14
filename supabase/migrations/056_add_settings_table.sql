@@ -108,3 +108,4 @@ COMMENT ON COLUMN settings.key IS 'Unique setting key identifier';
 COMMENT ON COLUMN settings.value IS 'Setting value (plain text, tokens are stored encrypted at rest by Supabase)';
 COMMENT ON COLUMN settings.description IS 'Human-readable description of the setting';
 
+

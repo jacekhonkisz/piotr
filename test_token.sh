@@ -119,3 +119,4 @@ else
   echo -e "${GREEN}🎉 Perfect! All accounts have proper permissions!${NC}"
 fi
 
+

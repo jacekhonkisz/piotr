@@ -8,3 +8,4 @@ WHERE name IN ('Hotel Lambert Ustronie Morskie', 'Apartamenty Lambert', 'jacek')
 ORDER BY name
 LIMIT 3;
 
+

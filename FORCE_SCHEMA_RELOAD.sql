@@ -50,3 +50,4 @@ SELECT
   'Decimal values accepted' as result;
 
 
+

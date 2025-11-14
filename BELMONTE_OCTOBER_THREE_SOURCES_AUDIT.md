@@ -267,3 +267,4 @@ WHERE segments.date BETWEEN '2025-10-01' AND '2025-10-31'
 **Status**: ✅ **FIX APPLIED - AWAITING VERIFICATION**
 
 
+

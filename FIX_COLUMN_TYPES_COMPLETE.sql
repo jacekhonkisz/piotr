@@ -174,3 +174,4 @@ WHERE matviewname = 'mv_yoy_comparisons';
 -- 4. Verify 1,950 total records (100% coverage)
 
 
+

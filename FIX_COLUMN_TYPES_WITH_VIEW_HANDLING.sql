@@ -62,3 +62,4 @@ ORDER BY column_name;
 -- The view can be recreated after this fix is applied.
 
 
+

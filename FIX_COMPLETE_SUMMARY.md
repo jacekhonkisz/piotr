@@ -185,3 +185,4 @@ const calculateSystemHealth = (metrics: any) => {
 
 🎉 **The hardcoded "Zdrowy" is now FIXED and showing real system health!** 🎉
 
+

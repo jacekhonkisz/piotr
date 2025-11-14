@@ -130,3 +130,4 @@ Example: 00:15, 03:15, 06:15, 09:15, 12:15, 15:15, 18:15, 21:15
 
 🎉 **Your weekly caches will now update automatically every 3 hours!**
 
+

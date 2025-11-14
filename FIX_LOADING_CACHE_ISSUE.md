@@ -88,3 +88,4 @@ killall node && cd /Users/macbook/piotr && rm -rf .next && npm run dev
 
 Then hard refresh your browser (Cmd + Shift + R).
 
+

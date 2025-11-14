@@ -392,3 +392,4 @@ The last 7 days data feature is **broken by design** because:
 To fix it requires significant time and ongoing maintenance. **It's not worth it.** Drop the feature and focus on monthly/weekly summaries that already work perfectly.
 
 
+

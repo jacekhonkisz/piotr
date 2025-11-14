@@ -170,3 +170,4 @@ The authentication is required by design:
 - [ ] Check terminal logs don't show "/api/fetch-google-ads-live-data" during tab switches
 
 
+

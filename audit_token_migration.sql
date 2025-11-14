@@ -158,3 +158,4 @@ SELECT
   (SELECT COUNT(*) FROM clients WHERE system_user_token IS NULL AND meta_access_token IS NULL AND ad_account_id IS NOT NULL) as clients_with_no_token,
   (SELECT COUNT(DISTINCT system_user_token) FROM clients WHERE system_user_token IS NOT NULL) as unique_system_tokens;
 
+

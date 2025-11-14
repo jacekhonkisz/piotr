@@ -48,3 +48,4 @@ Google Ads credentials are stored in database, NOT environment variables:
 
 
 
+

@@ -199,7 +199,7 @@ const generateTitleSection = (reportData: ReportData) => {
 };
 
 
-// Generate Section 2: Production Comparison (Month-over-Month or Year-over-Year)
+// Generate Section 2: Production Comparison (Month-over-Month or Year-over-Year) - CHART VERSION
 const generateYoYSection = (reportData: ReportData) => {
   logger.info('🔍 COMPARISON SECTION: Starting generation', {
     hasYoyComparison: !!reportData.yoyComparison
@@ -221,8 +221,6 @@ const generateYoYSection = (reportData: ReportData) => {
     return '';
   }
   
-  
-  
   logger.info('🔍 COMPARISON SECTION: Generating content with production data', {
     hasMetaData,
     hasGoogleData,
@@ -230,341 +228,274 @@ const generateYoYSection = (reportData: ReportData) => {
     metaPreviousSpend: meta.previous.spend
   });
   
+  // Build metrics array for chart
+  const metrics = [
+    {
+      label: 'Wydatki',
+      metaCurrent: meta.current.spend,
+      metaPrevious: meta.previous.spend,
+      metaChange: meta.changes.spend,
+      googleCurrent: google.current.spend,
+      googlePrevious: google.previous.spend,
+      googleChange: google.changes.spend,
+      format: (v: number) => formatCurrency(v)
+    },
+    {
+      label: 'Wartość rezerwacji',
+      metaCurrent: meta.current.reservationValue,
+      metaPrevious: meta.previous.reservationValue,
+      metaChange: meta.changes.reservationValue,
+      googleCurrent: google.current.reservationValue,
+      googlePrevious: google.previous.reservationValue,
+      googleChange: google.changes.reservationValue,
+      format: (v: number) => formatCurrency(v)
+    }
+  ];
+  
+  // MUI X Charts inspired dimensions
+  const width = 800;
+  const height = 680;
+  const padding = { top: 40, right: 140, bottom: 80, left: 200 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  const barHeight = 36;
+  const barGap = 12;
+  const platformGap = 80;
+  const metricSectionGap = 100;
+  
+  // Extract years from date range
+  const currentYear = new Date(reportData.dateRange.end).getFullYear();
+  const previousYear = currentYear - 1;
+  
   return `
     <div class="section-container">
       <div class="page-content">
         <h2 class="section-title">Porównanie Okresów</h2>
+        <p style="font-size: 12px; color: #6B7280; margin-bottom: 24px; margin-top: -8px;">${currentYear} vs ${previousYear}</p>
         
-        <table class="comparison-table">
-          <thead>
-            <tr>
-              <th>Metryka</th>
-              <th>Bieżący Okres</th>
-              <th>Poprzedni Okres</th>
-              <th>Zmiana</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="platform-section-header">
-              <td colspan="4" class="platform-header meta-header">Meta Ads</td>
-            </tr>
-            <tr>
-              <td class="metric-name">Wydatki</td>
-              <td class="current-value">${formatCurrency(meta.current.spend)}</td>
-              <td class="previous-value">${meta.previous.spend > 0 ? formatCurrency(meta.previous.spend) : '<span class="no-data">Brak danych</span>'}</td>
-              <td class="change-cell">
-                ${meta.previous.spend > 0 && meta.changes.spend !== -999 ? `
-                  <span class="change-indicator ${meta.changes.spend >= 0 ? 'positive' : 'negative'}">
-                    ${meta.changes.spend >= 0 ? '↗' : '↘'} ${Math.abs(meta.changes.spend).toFixed(1).replace('.', ',')}%
-                  </span>
-                ` : '<span class="no-data">—</span>'}
-              </td>
-            </tr>
-            <tr>
-              <td class="metric-name">Wartość rezerwacji</td>
-              <td class="current-value">${formatCurrency(meta.current.reservationValue)}</td>
-              <td class="previous-value">${meta.previous.reservationValue > 0 ? formatCurrency(meta.previous.reservationValue) : '<span class="no-data">Brak danych</span>'}</td>
-              <td class="change-cell">
-                ${meta.previous.reservationValue > 0 && meta.changes.reservationValue !== -999 ? `
-                  <span class="change-indicator ${meta.changes.reservationValue >= 0 ? 'positive' : 'negative'}">
-                    ${meta.changes.reservationValue >= 0 ? '↗' : '↘'} ${Math.abs(meta.changes.reservationValue).toFixed(1).replace('.', ',')}%
-                  </span>
-                ` : '<span class="no-data">—</span>'}
-              </td>
-            </tr>
-            <tr class="platform-section-header">
-              <td colspan="4" class="platform-header google-header">Google Ads</td>
-            </tr>
-            <tr>
-              <td class="metric-name">Wydatki</td>
-              <td class="current-value">${google.current.spend > 0 ? formatCurrency(google.current.spend) : '—'}</td>
-              <td class="previous-value">${google.previous.spend > 0 ? formatCurrency(google.previous.spend) : '<span class="no-data">Brak danych</span>'}</td>
-              <td class="change-cell">
-                ${google.previous.spend > 0 && google.changes.spend !== -999 ? `
-                  <span class="change-indicator ${google.changes.spend >= 0 ? 'positive' : 'negative'}">
-                    ${google.changes.spend >= 0 ? '↗' : '↘'} ${Math.abs(google.changes.spend).toFixed(1).replace('.', ',')}%
-                  </span>
-                ` : '<span class="no-data">—</span>'}
-              </td>
-            </tr>
-            <tr>
-              <td class="metric-name">Wartość rezerwacji</td>
-              <td class="current-value">${google.current.reservationValue > 0 ? formatCurrency(google.current.reservationValue) : '—'}</td>
-              <td class="previous-value">${google.previous.reservationValue > 0 ? formatCurrency(google.previous.reservationValue) : '<span class="no-data">Brak danych</span>'}</td>
-              <td class="change-cell">
-                ${google.previous.reservationValue > 0 && google.changes.reservationValue !== -999 ? `
-                  <span class="change-indicator ${google.changes.reservationValue >= 0 ? 'positive' : 'negative'}">
-                    ${google.changes.reservationValue >= 0 ? '↗' : '↘'} ${Math.abs(google.changes.reservationValue).toFixed(1).replace('.', ',')}%
-                  </span>
-                ` : '<span class="no-data">—</span>'}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <svg width="${width}" height="${height}" style="background: #FAFAFA; border-radius: 6px;">
+          <!-- Define gradients for depth (MUI X style) -->
+          <defs>
+            <linearGradient id="metaGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#2563EB;stop-opacity:0.9" />
+              <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+            </linearGradient>
+            <linearGradient id="metaLightGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#93C5FD;stop-opacity:0.7" />
+              <stop offset="100%" style="stop-color:#BFDBFE;stop-opacity:0.9" />
+            </linearGradient>
+            <linearGradient id="googleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#F97316;stop-opacity:0.9" />
+              <stop offset="100%" style="stop-color:#FB923C;stop-opacity:1" />
+            </linearGradient>
+            <linearGradient id="googleLightGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" style="stop-color:#FDBA74;stop-opacity:0.7" />
+              <stop offset="100%" style="stop-color:#FED7AA;stop-opacity:0.9" />
+            </linearGradient>
+          </defs>
+          
+          ${metrics.map((metric, metricIndex) => {
+            // Calculate positions for each metric section
+            const singlePlatformHeight = (barHeight * 2) + barGap;
+            const sectionHeight = (singlePlatformHeight * 2) + platformGap + metricSectionGap;
+            const yStart = padding.top + (metricIndex * sectionHeight);
+            
+            // Find max value across ALL data for consistent scaling
+            const allValues = [
+              metric.metaCurrent, metric.metaPrevious,
+              metric.googleCurrent, metric.googlePrevious
+            ].filter(v => v > 0);
+            const maxValue = Math.max(...allValues);
+            
+            // Calculate bar widths
+            const metaCurrentWidth = maxValue > 0 ? (metric.metaCurrent / maxValue) * (chartWidth * 0.85) : 0;
+            const metaPreviousWidth = maxValue > 0 ? (metric.metaPrevious / maxValue) * (chartWidth * 0.85) : 0;
+            const googleCurrentWidth = maxValue > 0 ? (metric.googleCurrent / maxValue) * (chartWidth * 0.85) : 0;
+            const googlePreviousWidth = maxValue > 0 ? (metric.googlePrevious / maxValue) * (chartWidth * 0.85) : 0;
+            
+            const metaY1 = yStart;
+            const metaY2 = metaY1 + barHeight + barGap;
+            const googleY1 = metaY2 + barHeight + platformGap;
+            const googleY2 = googleY1 + barHeight + barGap;
+            
+            return `
+              <!-- Section: ${metric.label} -->
+              
+              <!-- Metric Title -->
+              <text x="${padding.left - 15}" y="${yStart - 8}" text-anchor="end" font-size="14" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.label}</text>
+              
+              <!-- Y-axis line -->
+              <line x1="${padding.left - 8}" y1="${metaY1 - 5}" x2="${padding.left - 8}" y2="${googleY2 + barHeight + 5}" stroke="#E5E7EB" stroke-width="2"/>
+              
+              <!-- META ADS -->
+              <text x="${padding.left - 15}" y="${metaY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#2563EB" font-family="Roboto, Arial, sans-serif">Meta Ads</text>
+              
+              <!-- Current Period Bar (Meta) -->
+              <rect x="${padding.left}" y="${metaY1}" width="${metaCurrentWidth}" height="${barHeight}" fill="url(#metaGradient)" rx="3"/>
+              <text x="${padding.left + metaCurrentWidth + 8}" y="${metaY1 + 23}" font-size="13" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.format(metric.metaCurrent)}</text>
+              <text x="${padding.left + metaCurrentWidth + 8}" y="${metaY1 + 11}" font-size="9" font-weight="500" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${currentYear}</text>
+              
+              <!-- Previous Period Bar (Meta) -->
+              <rect x="${padding.left}" y="${metaY2}" width="${metaPreviousWidth}" height="${barHeight}" fill="url(#metaLightGradient)" rx="3"/>
+              <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 23}" font-size="12" font-weight="600" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${metric.format(metric.metaPrevious)}</text>
+              <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
+              
+              <!-- Change Indicator (Meta) -->
+              ${metric.metaPrevious > 0 && metric.metaChange !== -999 ? `
+                <text x="${width - padding.right + 10}" y="${metaY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.metaChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
+                  ${metric.metaChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.metaChange).toFixed(1)}%
+                </text>
+              ` : ''}
+              
+              <!-- GOOGLE ADS -->
+              <text x="${padding.left - 15}" y="${googleY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#F97316" font-family="Roboto, Arial, sans-serif">Google Ads</text>
+              
+              <!-- Current Period Bar (Google) -->
+              <rect x="${padding.left}" y="${googleY1}" width="${googleCurrentWidth}" height="${barHeight}" fill="url(#googleGradient)" rx="3"/>
+              <text x="${padding.left + googleCurrentWidth + 8}" y="${googleY1 + 23}" font-size="13" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.format(metric.googleCurrent)}</text>
+              <text x="${padding.left + googleCurrentWidth + 8}" y="${googleY1 + 11}" font-size="9" font-weight="500" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${currentYear}</text>
+              
+              <!-- Previous Period Bar (Google) -->
+              <rect x="${padding.left}" y="${googleY2}" width="${googlePreviousWidth}" height="${barHeight}" fill="url(#googleLightGradient)" rx="3"/>
+              <text x="${padding.left + googlePreviousWidth + 8}" y="${googleY2 + 23}" font-size="12" font-weight="600" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${metric.format(metric.googlePrevious)}</text>
+              <text x="${padding.left + googlePreviousWidth + 8}" y="${googleY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
+              
+              <!-- Change Indicator (Google) -->
+              ${metric.googlePrevious > 0 && metric.googleChange !== -999 ? `
+                <text x="${width - padding.right + 10}" y="${googleY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.googleChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
+                  ${metric.googleChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.googleChange).toFixed(1)}%
+                </text>
+              ` : ''}
+            `;
+          }).join('')}
+          
+          <!-- Legend (MUI X style) -->
+          <g transform="translate(${padding.left}, ${height - 35})">
+            <rect x="0" y="0" width="12" height="12" fill="#2563EB" rx="2" opacity="0.9"/>
+            <text x="18" y="10" font-size="11" fill="#4B5563" font-weight="500" font-family="Roboto, Arial, sans-serif">${currentYear}</text>
+            
+            <rect x="100" y="0" width="12" height="12" fill="#93C5FD" rx="2" opacity="0.8"/>
+            <text x="118" y="10" font-size="11" fill="#6B7280" font-weight="500" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
+          </g>
+        </svg>
       </div>
     </div>
   `;
 };
 
-// Generate Section 3: Meta Ads Comprehensive Metrics
+// Generate Section 3: Meta Ads Comprehensive Metrics - Clean KPI Card Style
 const generateMetaMetricsSection = (reportData: ReportData) => {
   if (!reportData.metaData) return '';
   
   const { metrics } = reportData.metaData;
+  const metaYoYData = reportData.yoyComparison?.meta;
   
   // Helper function to check if a metric has meaningful data
   const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
   
-  // Core metrics that should always be shown if they have data
-  const coreMetrics = [
-    { key: 'totalSpend', label: 'Wydatki (zł)', value: metrics.totalSpend, formatter: formatCurrency },
-    { key: 'totalImpressions', label: 'Wyświetlenia', value: metrics.totalImpressions, formatter: formatNumber },
-    { key: 'totalClicks', label: 'Kliknięcia', value: metrics.totalClicks, formatter: formatNumber },
-    { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
-  ].filter(metric => hasData(metric.value));
+  // Helper to get change delta for a metric
+  const getMetricChange = (metricKey: string) => {
+    if (!metaYoYData || !metaYoYData.changes) return null;
+    
+    const changeMap: { [key: string]: number } = {
+      'totalSpend': metaYoYData.changes?.spend || 0,
+      'totalImpressions': metaYoYData.changes?.impressions || 0,
+      'totalClicks': metaYoYData.changes?.clicks || 0,
+      'totalConversions': metaYoYData.changes?.reservations || 0,
+      'totalReservations': metaYoYData.changes?.reservations || 0,
+    };
+    
+    return changeMap[metricKey] || null;
+  };
   
-  // Meta-specific metrics (legacy metrics removed)
-  const metaSpecificMetrics = [
-    { key: 'relevanceScore', label: 'Ocena trafności', value: metrics.relevanceScore, formatter: (val: number) => `${val.toFixed(1)}/10` },
-    { key: 'landingPageViews', label: 'Wyświetlenia strony docelowej', value: metrics.landingPageViews, formatter: formatNumber }
-  ].filter(metric => hasData(metric.value));
+  // Helper to render a clean metric card
+  const renderMetricCard = (label: string, value: string, change: number | null = null) => {
+    let changeHTML = '';
+    if (change !== null && Math.abs(change) >= 0.01) {
+      const isPositive = change >= 0;
+      changeHTML = `
+        <div class="kpi-delta ${isPositive ? 'positive' : 'negative'}">
+          ${isPositive ? '+' : '−'}${Math.abs(change).toFixed(1)}% <span style="color: #94A3B8; font-weight: 400;">vs poprzedni</span>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="kpi-card">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-value">${value}</div>
+        ${changeHTML}
+      </div>
+    `;
+  };
   
-  // Contact & conversion metrics
-  const contactMetrics = [
-    { key: 'emailContacts', label: 'Kliknięcia w adres e-mail', value: metrics.emailContacts, formatter: formatNumber },
-    { key: 'phoneContacts', label: 'Kliknięcia w numer telefonu', value: metrics.phoneContacts, formatter: formatNumber },
-    { key: 'totalReservations', label: 'Rezerwacje', value: metrics.totalReservations, formatter: formatNumber },
-    { key: 'totalReservationValue', label: 'Wartość rezerwacji (zł)', value: metrics.totalReservationValue, formatter: formatCurrency },
-    { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
-  ].filter(metric => hasData(metric.value));
+  // Calculate CTR and CPC
+  const ctr = metrics.totalImpressions > 0 ? (metrics.totalClicks / metrics.totalImpressions) * 100 : 0;
+  const cpc = metrics.totalClicks > 0 ? metrics.totalSpend / metrics.totalClicks : 0;
   
-  // Calculated offline potential metrics
-  const offlineMetrics = [
-    { 
-      key: 'potentialOfflineReservations', 
-      label: 'Potencjalna ilość rezerwacji offline', 
-      value: Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2), 
-      formatter: formatNumber 
-    },
-    { 
-      key: 'potentialOfflineValue', 
-      label: 'Potencjalna łączna wartość rezerwacji offline', 
-      value: (() => {
-        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-        return averageReservationValue * potentialOfflineReservations;
-      })(), 
-      formatter: formatCurrency 
-    },
-    { 
-      key: 'costPerReservation', 
-      label: 'Koszt pozyskania rezerwacji', 
-      value: (() => {
+  // Calculate offline potential
         const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
         const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
         const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
         const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
-        return totalPotentialValue > 0 ? (metrics.totalSpend / totalPotentialValue) * 100 : 0;
-      })(), 
-      formatter: (val: number) => `${val.toFixed(1)}%` 
-    },
-    { 
-      key: 'totalPotentialValue', 
-      label: 'Łączna wartość potencjalnych rezerwacji online + offline', 
-      value: (() => {
-        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-        return potentialOfflineValue + metrics.totalReservationValue;
-      })(), 
-      formatter: formatCurrency 
-    }
-  ].filter(metric => hasData(metric.value));
   
-  // Generate table rows for each section with YoY comparison
-  const generateTableRows = (metrics: any[], yoyData?: any) => {
-    return metrics.map(metric => {
-      
-      // Get YoY comparison for this metric - dynamic mapping
-      let yoyIndicator = '';
-      if (yoyData && yoyData.changes) {
-        let change = 0;
-        
-        // Map metric keys to YoY data fields
-        switch (metric.key) {
-          case 'totalSpend':
-            change = yoyData.changes?.spend || 0;
-            break;
-          case 'totalImpressions':
-            change = yoyData.changes?.impressions || 0;
-            break;
-          case 'totalClicks':
-            change = yoyData.changes?.clicks || 0;
-            break;
-          case 'totalConversions':
-            change = yoyData.changes?.reservations || 0;
-            break;
-          case 'totalReservationValue':
-            // YoY API doesn't include reservation_value, so we'll calculate it manually
-            if (yoyData.current && yoyData.previous) {
-              const currentValue = yoyData.current.reservations || 0;
-              const previousValue = yoyData.previous.reservations || 0;
-              if (previousValue > 0) {
-                change = ((currentValue - previousValue) / previousValue) * 100;
-              } else {
-                change = -999; // No previous data
-              }
-            } else {
-              change = -999;
-            }
-            break;
-          case 'totalReservations':
-            change = yoyData.changes?.reservations || 0;
-            break;
-          case 'bookingStep1':
-            change = yoyData.changes?.booking_step_1 || 0;
-            break;
-          case 'bookingStep2':
-            change = yoyData.changes?.booking_step_2 || 0;
-            break;
-          case 'bookingStep3':
-            change = yoyData.changes?.booking_step_3 || 0;
-            break;
-          default:
-            change = 0;
-        }
-        
-        
-        // Only show indicator if we have meaningful change and valid historical data
-        if (change !== -999 && change !== 0 && Math.abs(change) >= 0.01) {
-          const isPositive = change >= 0;
-          yoyIndicator = `
-            <span class="change-indicator ${isPositive ? 'positive' : 'negative'}">
-              ${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1).replace('.', ',')}%
-            </span>
-          `;
-        } else if (change === -999) {
-          // Show "N/A" for no historical data
-          yoyIndicator = `
-            <span class="change-indicator no-data">
-              N/A
-            </span>
-          `;
-        }
-      }
-      
-      return `
-        <tr>
-          <td class="metric-name">${metric.label}</td>
-          <td class="metric-value">${metric.formatter(metric.value)}</td>
-          <td class="change-cell">${yoyIndicator || '—'}</td>
-        </tr>
-      `;
-    }).join('');
-  };
-  
-  // Get YoY data for Meta
-  const metaYoYData = reportData.yoyComparison?.meta;
-  
-  // Debug YoY data
-  logger.info('🔍 META YOY DATA DEBUG:', {
-    hasYoYData: !!metaYoYData,
-    changes: metaYoYData?.changes,
-    current: metaYoYData?.current,
-    previous: metaYoYData?.previous
-  });
-  
-  let sectionsHTML = '';
-  
-  // Core Metrics Section
-  if (coreMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Podstawowe Metryki</h3>
-        <table class="metrics-table">
-          <thead>
-            <tr>
-              <th>Metryka</th>
-              <th>Wartość</th>
-              <th>vs rok do roku</th>
-            </tr>
-          </thead>
-          <tbody>
-          ${generateTableRows(coreMetrics, metaYoYData)}
-        </tbody>
-      </table>
-    `;
-  }
-  
-  // Meta-Specific Metrics Section
-  if (metaSpecificMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Metryki Meta-Specific</h3>
-      <table class="metrics-table">
-        <thead>
-          <tr>
-            <th>Metryka</th>
-            <th>Wartość</th>
-            <th>vs rok do roku</th>
-            </tr>
-        </thead>
-        <tbody>
-          ${generateTableRows(metaSpecificMetrics, metaYoYData)}
-        </tbody>
-      </table>
-    `;
-  }
-  
-  // Contact & Conversion Metrics Section
-  if (contactMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Kontakt i Konwersje</h3>
-      <table class="metrics-table">
-        <thead>
-          <tr>
-            <th>Metryka</th>
-            <th>Wartość</th>
-            <th>vs rok do roku</th>
-            </tr>
-        </thead>
-        <tbody>
-          ${generateTableRows(contactMetrics, metaYoYData)}
-          </tbody>
-        </table>
-    `;
-  }
-  
-  // Offline Potential Metrics Section
-  if (offlineMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Potencjalne Metryki Offline</h3>
-      <table class="metrics-table">
-        <thead>
-          <tr>
-            <th>Metryka</th>
-            <th>Wartość</th>
-            <th>vs rok do roku</th>
-            </tr>
-        </thead>
-        <tbody>
-          ${generateTableRows(offlineMetrics, metaYoYData)}
-          </tbody>
-        </table>
-    `;
-  }
-  
-  // Only return the section if there are metrics to display
-  if (sectionsHTML) {
     return `
       <div class="section-container">
         <div class="page-content">
-          <h2 class="section-title">Meta Ads - Kompletne Metryki</h2>
-          ${sectionsHTML}
+        <h2 class="section-title">Meta Ads</h2>
+        <p style="font-size: 13px; color: #64748B; margin-bottom: 24px; margin-top: -4px;">Kluczowe wskaźniki efektywności kampanii</p>
+        
+        <!-- Basic Metrics Grid (2x3) -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
+          ${renderMetricCard('Wydatki', formatCurrency(metrics.totalSpend), getMetricChange('totalSpend'))}
+          ${renderMetricCard('Wyświetlenia', formatNumber(metrics.totalImpressions), getMetricChange('totalImpressions'))}
+          ${renderMetricCard('Kliknięcia', formatNumber(metrics.totalClicks), getMetricChange('totalClicks'))}
+          ${renderMetricCard('CTR', `${ctr.toFixed(2)}%`, null)}
+          ${renderMetricCard('CPC', formatCurrency(cpc), null)}
+          ${renderMetricCard('Konwersje', formatNumber(metrics.totalConversions), getMetricChange('totalConversions'))}
+      </div>
+        
+        <!-- Contact & Conversions Section -->
+        <h3 style="font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 4px; margin-top: 32px;">Kontakt & Konwersje</h3>
+        <p style="font-size: 12px; color: #64748B; margin-bottom: 16px;">Metryki kontaktu i zakończonych konwersji</p>
+        
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+          ${renderMetricCard('E-mail', formatNumber(metrics.emailContacts), null)}
+          ${renderMetricCard('Telefon', formatNumber(metrics.phoneContacts), null)}
+          ${renderMetricCard('Rezerwacje', formatNumber(metrics.totalReservations), getMetricChange('totalReservations'))}
+          ${renderMetricCard('Wartość rezerwacji', formatCurrency(metrics.totalReservationValue), null)}
+    </div>
+        
+        ${metrics.roas && metrics.roas > 0 ? `
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+            ${renderMetricCard('ROAS', `${metrics.roas.toFixed(2)}x`, null)}
+          </div>
+        ` : ''}
+        
+        <!-- Potential Offline Metrics - Summary Box -->
+        ${(metrics.emailContacts > 0 || metrics.phoneContacts > 0) && potentialOfflineReservations > 0 ? `
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 20px; margin-bottom: 32px;">
+            <h3 style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 16px;">Potencjalne Metryki Offline</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12px;">
+              <div>
+                <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Rezerwacje offline</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatNumber(potentialOfflineReservations)}</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Wartość offline</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(potentialOfflineValue)}</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Łączna wartość</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(totalPotentialValue)}</div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
       </div>
     </div>
   `;
-  }
-  
-  return '';
 };
 
 // Generate Conversion Funnel HTML - EXACT copy from ConversionFunnel.tsx
@@ -584,44 +515,44 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
     return `polygon(${leftOffset}px 0%, ${rightOffset}px 0%, ${nextRightOffset}px 100%, ${nextLeftOffset}px 100%)`;
   };
 
-  // Professional navy blue color scheme for funnel steps
+  // Clean, flat navy/blue-grey color scheme - subtle progression
   const funnelSteps = [
     {
       label: "Krok 1 w BE",
       value: booking_step_1,
       percentage: 100,
-      bgColor: "background: linear-gradient(135deg, #0B1F3B 0%, #1e293b 100%)"
+      bgColor: "background: #1E293B" // Darkest - top of funnel
     },
     {
       label: "Krok 2 w BE", 
       value: booking_step_2,
       percentage: booking_step_1 > 0 ? Math.round((booking_step_2 / booking_step_1) * 100) : 0,
-      bgColor: "background: linear-gradient(135deg, #1e293b 0%, #334155 100%)"
+      bgColor: "background: #334155" // Dark mid-tone
     },
     {
       label: "Krok 3 w BE",
       value: booking_step_3,
       percentage: booking_step_1 > 0 ? Math.round((booking_step_3 / booking_step_1) * 100) : 0,
-      bgColor: "background: linear-gradient(135deg, #334155 0%, #475569 100%)"
+      bgColor: "background: #475569" // Light mid-tone
     },
     {
       label: "Ilość rezerwacji",
       value: reservations,
       percentage: booking_step_1 > 0 ? Math.round((reservations / booking_step_1) * 100) : 0,
-      bgColor: "background: linear-gradient(135deg, #475569 0%, #64748b 100%)"
+      bgColor: "background: #64748B" // Lightest - bottom of funnel
     }
   ];
 
   const bottomCards = [
     {
-      label: "Wartość rezerwacji (zł)",
+      label: "Wartość rezerwacji",
       value: reservation_value,
-      bgColor: "background: linear-gradient(135deg, #0B1F3B 0%, #1e40af 100%)"
+      isROAS: false
     },
     {
       label: "ROAS",
       value: roas,
-      bgColor: "background: linear-gradient(135deg, #1e40af 0%, #0B1F3B 100%)"
+      isROAS: true
     }
   ];
 
@@ -630,7 +561,6 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
       position: relative;
       ${step.bgColor};
       text-align: center;
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
       clip-path: ${createFunnelPath(index)};
       width: 600px;
       height: 90px;
@@ -640,10 +570,10 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
     ">
       <div style="display: flex; align-items: center; justify-content: center; padding: 0 32px;">
         <div style="text-align: center; position: relative; min-width: 0; flex: 1;">
-          <div style="font-size: 20px; font-weight: 700; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <div style="font-size: 24px; font-weight: 600; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;">
             ${formatNumber(step.value)}
         </div>
-          <div style="font-size: 12px; color: white; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          <div style="font-size: 11px; color: rgba(255, 255, 255, 0.8); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
             ${step.label}
                 </div>
               </div>
@@ -653,34 +583,31 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
 
   const bottomCardsHTML = bottomCards.map(card => `
     <div style="
-      ${card.bgColor};
-      border-radius: 12px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 6px;
       padding: 20px;
       text-align: center;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.05);
-      color: white;
     ">
-      <div style="margin-bottom: 8px;">
-        <div style="font-size: 18px; font-weight: 700;">
-          ${card.label === 'ROAS' ? `${card.value.toFixed(2)}x` : formatCurrency(card.value)}
-                </div>
-              </div>
-      <div style="font-size: 12px; opacity: 0.9;">
+      <div style="font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: #64748B; margin-bottom: 12px;">
         ${card.label}
-            </div>
+      </div>
+      <div style="font-size: 24px; font-weight: 600; color: #0F172A; font-variant-numeric: tabular-nums;">
+        ${card.isROAS ? `${card.value.toFixed(2)}x` : formatCurrency(card.value)}
+      </div>
     </div>
   `).join('');
           
           return `
-      <div style="text-align: center; margin-bottom: 32px;">
-        <h3 style="color: #1e293b; font-size: 24px; font-weight: 700; margin: 0 0 8px 0;">Ścieżka Konwersji ${platform}</h3>
-        <p style="color: #64748b; font-size: 16px; margin: 0;">System rezerwacji online</p>
+      <div style="text-align: center; margin-bottom: 40px;">
+        <h3 style="color: #0F172A; font-size: 20px; font-weight: 600; margin: 0 0 4px 0;">Ścieżka Konwersji ${platform}</h3>
+        <p style="color: #64748B; font-size: 13px; margin: 0;">System rezerwacji online</p>
                 </div>
       
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 0 40px;">
         ${funnelStepsHTML}
         
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 32px; width: 100%; max-width: 512px;">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 40px; width: 100%; max-width: 480px;">
           ${bottomCardsHTML}
         </div>
             </div>
@@ -720,7 +647,7 @@ const generateMetaFunnelSection = (reportData: ReportData) => {
   `;
 };
 
-// Generate Section 5: Google Ads Comprehensive Metrics
+// Generate Section 5: Google Ads Comprehensive Metrics - Clean KPI Card Style
 const generateGoogleMetricsSection = (reportData: ReportData) => {
   logger.info('🔍 GENERATE GOOGLE METRICS SECTION CALLED:', {
     hasGoogleData: !!reportData.googleData,
@@ -734,270 +661,113 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
   }
   
   const { metrics } = reportData.googleData;
+  const googleYoYData = reportData.yoyComparison?.google;
 
   // Helper function to check if a metric has meaningful data
   const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
   
-  // Debug Google Ads metrics
-  logger.info('🔍 GOOGLE ADS METRICS DEBUG:', {
-    totalSpend: metrics.totalSpend,
-    totalImpressions: metrics.totalImpressions,
-    totalClicks: metrics.totalClicks,
-    totalConversions: metrics.totalConversions,
-    averageCtr: metrics.averageCtr,
-    averageCpc: metrics.averageCpc,
-    metricsKeys: Object.keys(metrics)
-  });
-  
-  // Core metrics that should always be shown if they have data
-  const coreMetrics = [
-    { key: 'totalSpend', label: 'Wydatki (zł)', value: metrics.totalSpend, formatter: formatCurrency },
-    { key: 'totalImpressions', label: 'Wyświetlenia', value: metrics.totalImpressions, formatter: formatNumber },
-    { key: 'totalClicks', label: 'Kliknięcia', value: metrics.totalClicks, formatter: formatNumber },
-    { key: 'totalConversions', label: 'Konwersje', value: metrics.totalConversions, formatter: formatNumber },
-  ];
-  
-  // Debug filtered metrics
-  const filteredCoreMetrics = coreMetrics.filter(metric => hasData(metric.value));
-  logger.info('🔍 GOOGLE ADS FILTERED CORE METRICS:', {
-    originalCount: coreMetrics.length,
-    filteredCount: filteredCoreMetrics.length,
-    filteredMetrics: filteredCoreMetrics.map(m => ({ key: m.key, value: m.value }))
-  });
-  
-  // Google-specific metrics
-  const googleSpecificMetrics = [
-    { key: 'searchImpressionShare', label: 'Udział w wyświetleniach wyszukiwania (%)', value: metrics.searchImpressionShare, formatter: formatPercentage },
-    { key: 'qualityScore', label: 'Ocena jakości', value: metrics.qualityScore, formatter: (val: number) => `${val.toFixed(1)}/10` },
-    { key: 'viewThroughConversions', label: 'Konwersje view-through', value: metrics.viewThroughConversions, formatter: formatNumber },
-    { key: 'searchBudgetLostImpressionShare', label: 'Utracone wyświetlenia (budżet) (%)', value: metrics.searchBudgetLostImpressionShare, formatter: formatPercentage }
-  ].filter(metric => hasData(metric.value));
-  
-  // Contact & conversion metrics
-  const contactMetrics = [
-    { key: 'emailContacts', label: 'Kliknięcia w adres e-mail', value: metrics.emailContacts, formatter: formatNumber },
-    { key: 'phoneContacts', label: 'Kliknięcia w numer telefonu', value: metrics.phoneContacts, formatter: formatNumber },
-    { key: 'totalReservations', label: 'Rezerwacje', value: metrics.totalReservations, formatter: formatNumber },
-    { key: 'totalReservationValue', label: 'Wartość rezerwacji (zł)', value: metrics.totalReservationValue, formatter: formatCurrency },
-    { key: 'roas', label: 'ROAS', value: metrics.roas, formatter: (val: number) => `${val.toFixed(2)}x` }
-  ].filter(metric => hasData(metric.value));
-  
-  // Calculated offline potential metrics
-  const offlineMetrics = [
-    { 
-      key: 'potentialOfflineReservations', 
-      label: 'Potencjalna ilość rezerwacji offline', 
-      value: Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2), 
-      formatter: formatNumber 
-    },
-    { 
-      key: 'potentialOfflineValue', 
-      label: 'Potencjalna łączna wartość rezerwacji offline', 
-      value: (() => {
-        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-        return averageReservationValue * potentialOfflineReservations;
-      })(), 
-      formatter: formatCurrency 
-    },
-    { 
-      key: 'costPerReservation', 
-      label: 'Koszt pozyskania rezerwacji', 
-      value: (() => {
-        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-        const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
-        return totalPotentialValue > 0 ? (metrics.totalSpend / totalPotentialValue) * 100 : 0;
-      })(), 
-      formatter: (val: number) => `${val.toFixed(1)}%` 
-    },
-    { 
-      key: 'totalPotentialValue', 
-      label: 'Łączna wartość potencjalnych rezerwacji online + offline', 
-      value: (() => {
-        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-        return potentialOfflineValue + metrics.totalReservationValue;
-      })(), 
-      formatter: formatCurrency 
-    }
-  ].filter(metric => hasData(metric.value));
-  
-  // Generate table rows for each section with YoY comparison
-  const generateTableRows = (metrics: any[], yoyData?: any) => {
-    return metrics.map(metric => {
-      // Get YoY comparison for this metric - dynamic mapping
-      let yoyIndicator = '';
-      if (yoyData && yoyData.changes) {
-        let change = 0;
-        
-        // Map metric keys to YoY data fields
-        switch (metric.key) {
-          case 'totalSpend':
-            change = yoyData.changes?.spend || 0;
-            break;
-          case 'totalImpressions':
-            change = yoyData.changes?.impressions || 0;
-            break;
-          case 'totalClicks':
-            change = yoyData.changes?.clicks || 0;
-            break;
-          case 'totalConversions':
-            change = yoyData.changes?.reservations || 0;
-            break;
-          case 'totalReservationValue':
-            // YoY API doesn't include reservation_value, so we'll calculate it manually
-            if (yoyData.current && yoyData.previous) {
-              const currentValue = yoyData.current.reservations || 0;
-              const previousValue = yoyData.previous.reservations || 0;
-              if (previousValue > 0) {
-                change = ((currentValue - previousValue) / previousValue) * 100;
-              } else {
-                change = -999; // No previous data
-              }
-            } else {
-              change = -999;
-            }
-            break;
-          case 'totalReservations':
-            change = yoyData.changes?.reservations || 0;
-            break;
-          case 'bookingStep1':
-            change = yoyData.changes?.booking_step_1 || 0;
-            break;
-          case 'bookingStep2':
-            change = yoyData.changes?.booking_step_2 || 0;
-            break;
-          case 'bookingStep3':
-            change = yoyData.changes?.booking_step_3 || 0;
-            break;
-          default:
-            change = 0;
-        }
-        
-        // Only show indicator if we have meaningful change and valid historical data
-        if (change === -999) {
-          // Show "Brak danych" for no historical data (same as reports page)
-          yoyIndicator = `
-            <span class="change-indicator no-data">
-              Brak danych
-            </span>
-          `;
-        } else if (change !== 0 && Math.abs(change) >= 0.01 && Math.abs(change) < 999) {
-          // Only show percentage if it's a reasonable value (not 999% which indicates calculation error)
-          const isPositive = change >= 0;
-          yoyIndicator = `
-            <span class="change-indicator ${isPositive ? 'positive' : 'negative'}">
-              ${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1).replace('.', ',')}%
-            </span>
-          `;
-        } else if (Math.abs(change) >= 999) {
-          // Show "Brak danych" for unreasonable percentages (likely calculation errors)
-          yoyIndicator = `
-            <span class="change-indicator no-data">
-              Brak danych
-            </span>
-          `;
-        }
-      }
-      
-      return `
-        <tr>
-          <td class="metric-name">${metric.label}</td>
-          <td class="metric-value">${metric.formatter(metric.value)}</td>
-          <td class="change-cell">${yoyIndicator || '—'}</td>
-        </tr>
-      `;
-    }).join('');
+  // Helper to get change delta for a metric
+  const getMetricChange = (metricKey: string) => {
+    if (!googleYoYData || !googleYoYData.changes) return null;
+    
+    const changeMap: { [key: string]: number } = {
+      'totalSpend': googleYoYData.changes?.spend || 0,
+      'totalImpressions': googleYoYData.changes?.impressions || 0,
+      'totalClicks': googleYoYData.changes?.clicks || 0,
+      'totalConversions': googleYoYData.changes?.reservations || 0,
+      'totalReservations': googleYoYData.changes?.reservations || 0,
+    };
+    
+    return changeMap[metricKey] || null;
   };
   
-  // Get YoY data for Google Ads
-  const googleYoYData = reportData.yoyComparison?.google;
-  
-  // Debug YoY data
-  logger.info('🔍 GOOGLE YOY DATA DEBUG:', {
-    hasYoYData: !!googleYoYData,
-    changes: googleYoYData?.changes,
-    current: googleYoYData?.current,
-    previous: googleYoYData?.previous
-  });
-  
-  let sectionsHTML = '';
-  
-  // Core Metrics Section
-  if (filteredCoreMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Podstawowe Metryki</h3>
-        <table class="metrics-table">
-          <thead>
-            <tr>
-              <th>Metryka</th>
-              <th>Wartość</th>
-              <th>vs rok do roku</th>
-            </tr>
-          </thead>
-          <tbody>
-          ${generateTableRows(filteredCoreMetrics, googleYoYData)}
-        </tbody>
-      </table>
-    `;
-  } else {
-    logger.warn('⚠️ No Google Ads core metrics to display');
-  }
-  
-  // Google-Specific Metrics Section
-  if (googleSpecificMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Metryki Google-Specific</h3>
-      <table class="metrics-table">
-        <thead>
-          <tr>
-            <th>Metryka</th>
-            <th>Wartość</th>
-            <th>vs rok do roku</th>
-            </tr>
-        </thead>
-        <tbody>
-          ${generateTableRows(googleSpecificMetrics, googleYoYData)}
-        </tbody>
-      </table>
-    `;
-  }
-  
-  // Contact & Conversion Metrics Section
-  if (contactMetrics.length > 0) {
-    sectionsHTML += `
-      <h3 class="table-title">Kontakt i Konwersje</h3>
-      <table class="metrics-table">
-        <thead>
-          <tr>
-            <th>Metryka</th>
-            <th>Wartość</th>
-            <th>vs rok do roku</th>
-            </tr>
-        </thead>
-        <tbody>
-          ${generateTableRows(contactMetrics, googleYoYData)}
-          </tbody>
-        </table>
-    `;
-  }
-  
-  // Only return the section if there are metrics to display
-  if (sectionsHTML) {
-    return `
-      <div class="section-container">
-        <div class="page-content">
-          <h2 class="section-title">Google Ads - Kompletne Metryki</h2>
-          ${sectionsHTML}
+  // Helper to render a clean metric card
+  const renderMetricCard = (label: string, value: string, change: number | null = null) => {
+    let changeHTML = '';
+    if (change !== null && Math.abs(change) >= 0.01) {
+      const isPositive = change >= 0;
+      changeHTML = `
+        <div class="kpi-delta ${isPositive ? 'positive' : 'negative'}">
+          ${isPositive ? '+' : '−'}${Math.abs(change).toFixed(1)}% <span style="color: #94A3B8; font-weight: 400;">vs poprzedni</span>
         </div>
+      `;
+    }
+    
+    return `
+      <div class="kpi-card">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-value">${value}</div>
+        ${changeHTML}
       </div>
     `;
-  }
+  };
   
-  return '';
+  // Calculate CTR and CPC
+  const ctr = metrics.totalImpressions > 0 ? (metrics.totalClicks / metrics.totalImpressions) * 100 : 0;
+  const cpc = metrics.totalClicks > 0 ? metrics.totalSpend / metrics.totalClicks : 0;
+  
+  // Calculate offline potential
+  const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
+  const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
+  const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+  const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
+  
+  return `
+    <div class="section-container">
+      <div class="page-content">
+        <h2 class="section-title">Google Ads</h2>
+        <p style="font-size: 13px; color: #64748B; margin-bottom: 24px; margin-top: -4px;">Kluczowe wskaźniki efektywności kampanii</p>
+        
+        <!-- Basic Metrics Grid (2x3) -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
+          ${renderMetricCard('Wydatki', formatCurrency(metrics.totalSpend), getMetricChange('totalSpend'))}
+          ${renderMetricCard('Wyświetlenia', formatNumber(metrics.totalImpressions), getMetricChange('totalImpressions'))}
+          ${renderMetricCard('Kliknięcia', formatNumber(metrics.totalClicks), getMetricChange('totalClicks'))}
+          ${renderMetricCard('CTR', `${ctr.toFixed(2)}%`, null)}
+          ${renderMetricCard('CPC', formatCurrency(cpc), null)}
+          ${renderMetricCard('Konwersje', formatNumber(metrics.totalConversions), getMetricChange('totalConversions'))}
+        </div>
+        
+        <!-- Contact & Conversions Section -->
+        <h3 style="font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 4px; margin-top: 32px;">Kontakt & Konwersje</h3>
+        <p style="font-size: 12px; color: #64748B; margin-bottom: 16px;">Metryki kontaktu i zakończonych konwersji</p>
+        
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+          ${renderMetricCard('E-mail', formatNumber(metrics.emailContacts), null)}
+          ${renderMetricCard('Telefon', formatNumber(metrics.phoneContacts), null)}
+          ${renderMetricCard('Rezerwacje', formatNumber(metrics.totalReservations), getMetricChange('totalReservations'))}
+          ${renderMetricCard('Wartość rezerwacji', formatCurrency(metrics.totalReservationValue), null)}
+        </div>
+        
+        ${metrics.roas && metrics.roas > 0 ? `
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+            ${renderMetricCard('ROAS', `${metrics.roas.toFixed(2)}x`, null)}
+          </div>
+        ` : ''}
+        
+        <!-- Potential Offline Metrics - Summary Box -->
+        ${(metrics.emailContacts > 0 || metrics.phoneContacts > 0) && potentialOfflineReservations > 0 ? `
+          <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 20px; margin-bottom: 32px;">
+            <h3 style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 16px;">Potencjalne Metryki Offline</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12px;">
+              <div>
+                <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Rezerwacje offline</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatNumber(potentialOfflineReservations)}</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Wartość offline</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(potentialOfflineValue)}</div>
+              </div>
+              <div>
+                <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Łączna wartość</div>
+                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(totalPotentialValue)}</div>
+              </div>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
 };
 
 // Generate Section 6: Google Ads Funnel
@@ -1222,19 +992,33 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
   if (!reportData.metaData) return '';
   
   const { campaigns, tables } = reportData.metaData;
-  // Show ALL campaigns with spend data, exactly like /reports page
+  // Show campaigns with spend data
   const campaignsWithSpend = campaigns.filter(campaign => (campaign.spend || 0) > 0);
   
   // Don't generate section if no campaigns with spend
   if (campaignsWithSpend.length === 0) return '';
   
+  // Sort by spend (descending) and take top 5 for premium display
+  const sortedCampaigns = [...campaignsWithSpend].sort((a, b) => (b.spend || 0) - (a.spend || 0));
+  const topCampaigns = sortedCampaigns.slice(0, 5);
+  const remainingCount = sortedCampaigns.length - 5;
+  
+  // Calculate totals for remaining campaigns
+  const remainingTotals = remainingCount > 0 ? sortedCampaigns.slice(5).reduce((acc, campaign) => ({
+    spend: acc.spend + (campaign.spend || 0),
+    impressions: acc.impressions + (campaign.impressions || 0),
+    clicks: acc.clicks + (campaign.clicks || 0),
+    reservations: acc.reservations + (campaign.reservations || 0),
+    reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+  }), { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 }) : null;
+  
   return `
     <div class="campaign-details-section" style="padding: 0 2mm;">
       <h2 class="section-title">Meta Ads - Szczegóły Kampanii</h2>
         
-        <!-- All Campaigns Table - Matching /reports page exactly -->
+        <!-- Top 5 Campaigns Table (Premium Agency Style) -->
         <div class="campaigns-table">
-          <h3 class="table-title">Aktywne Kampanie</h3>
+          <h3 class="table-title">Top 5 Kampanii wg Wydatków ${remainingCount > 0 ? `<span style="font-size: 11px; font-weight: 400; color: #6B7280;">(+${remainingCount} więcej)</span>` : ''}</h3>
           <table class="data-table">
             <thead>
               <tr>
@@ -1248,7 +1032,7 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
               </tr>
             </thead>
             <tbody>
-              ${campaignsWithSpend.map(campaign => `
+              ${topCampaigns.map(campaign => `
                 <tr>
                   <td class="campaign-name">${campaign.campaign_name || 'Nieznana kampania'}</td>
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
@@ -1259,6 +1043,17 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                   <td class="number">${(campaign.roas || 0).toFixed(2)}x</td>
                 </tr>
               `).join('')}
+              ${remainingTotals ? `
+                <tr style="background: #F9FAFB; border-top: 2px solid #E5E7EB;">
+                  <td class="campaign-name" style="font-style: italic; color: #6B7280;">Pozostałe ${remainingCount} kampanii</td>
+                  <td class="number" style="font-weight: 600;">${formatCurrency(remainingTotals.spend)}</td>
+                  <td class="number">${formatNumber(remainingTotals.impressions)}</td>
+                  <td class="number">${formatNumber(remainingTotals.clicks)}</td>
+                  <td class="number">${formatNumber(remainingTotals.reservations)}</td>
+                  <td class="number">${formatCurrency(remainingTotals.reservation_value)}</td>
+                  <td class="number">${remainingTotals.spend > 0 ? (remainingTotals.reservation_value / remainingTotals.spend).toFixed(2) : '0.00'}x</td>
+                </tr>
+              ` : ''}
             </tbody>
           </table>
         </div>
@@ -1347,19 +1142,33 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
   if (!reportData.googleData) return '';
   
   const { campaigns, tables } = reportData.googleData;
-  // Show ALL campaigns with spend data, exactly like /reports page
+  // Show campaigns with spend data
   const campaignsWithSpend = campaigns.filter(campaign => (campaign.spend || 0) > 0);
   
   // Don't generate section if no campaigns with spend
   if (campaignsWithSpend.length === 0) return '';
   
+  // Sort by spend (descending) and take top 5 for premium display
+  const sortedCampaigns = [...campaignsWithSpend].sort((a, b) => (b.spend || 0) - (a.spend || 0));
+  const topCampaigns = sortedCampaigns.slice(0, 5);
+  const remainingCount = sortedCampaigns.length - 5;
+  
+  // Calculate totals for remaining campaigns
+  const remainingTotals = remainingCount > 0 ? sortedCampaigns.slice(5).reduce((acc, campaign) => ({
+    spend: acc.spend + (campaign.spend || 0),
+    impressions: acc.impressions + (campaign.impressions || 0),
+    clicks: acc.clicks + (campaign.clicks || 0),
+    reservations: acc.reservations + (campaign.reservations || 0),
+    reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+  }), { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 }) : null;
+  
   return `
     <div class="campaign-details-section" style="padding: 0 2mm;">
       <h2 class="section-title">Google Ads - Szczegóły Kampanii</h2>
         
-        <!-- All Campaigns Table - Matching /reports page exactly -->
+        <!-- Top 5 Campaigns Table (Premium Agency Style) -->
         <div class="campaigns-table">
-          <h3 class="table-title">Aktywne Kampanie</h3>
+          <h3 class="table-title">Top 5 Kampanii wg Wydatków ${remainingCount > 0 ? `<span style="font-size: 11px; font-weight: 400; color: #6B7280;">(+${remainingCount} więcej)</span>` : ''}</h3>
           <table class="data-table">
             <thead>
               <tr>
@@ -1373,7 +1182,7 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
               </tr>
             </thead>
             <tbody>
-              ${campaignsWithSpend.map(campaign => `
+              ${topCampaigns.map(campaign => `
                 <tr>
                   <td class="campaign-name">${campaign.campaign_name || 'Nieznana kampania'}</td>
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
@@ -1384,6 +1193,17 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                   <td class="number">${(campaign.roas || 0).toFixed(2)}x</td>
                 </tr>
               `).join('')}
+              ${remainingTotals ? `
+                <tr style="background: #F9FAFB; border-top: 2px solid #E5E7EB;">
+                  <td class="campaign-name" style="font-style: italic; color: #6B7280;">Pozostałe ${remainingCount} kampanii</td>
+                  <td class="number" style="font-weight: 600;">${formatCurrency(remainingTotals.spend)}</td>
+                  <td class="number">${formatNumber(remainingTotals.impressions)}</td>
+                  <td class="number">${formatNumber(remainingTotals.clicks)}</td>
+                  <td class="number">${formatNumber(remainingTotals.reservations)}</td>
+                  <td class="number">${formatCurrency(remainingTotals.reservation_value)}</td>
+                  <td class="number">${remainingTotals.spend > 0 ? (remainingTotals.reservation_value / remainingTotals.spend).toFixed(2) : '0.00'}x</td>
+                </tr>
+              ` : ''}
             </tbody>
           </table>
         </div>
@@ -1449,6 +1269,312 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
   `;
 };
 
+// Generate SVG Line Chart for Trends (Premium Style)
+const generateTrendLineChart = (
+  data: { label: string; metaValue: number; googleValue: number }[],
+  title: string,
+  metric: string
+) => {
+  const width = 600;
+  const height = 250;
+  const padding = { top: 40, right: 120, bottom: 40, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  // Find max value for scaling
+  const allValues = data.flatMap(d => [d.metaValue, d.googleValue]);
+  const maxValue = Math.max(...allValues);
+  const yScale = (value: number) => chartHeight - (value / maxValue) * chartHeight;
+  const xScale = (index: number) => (index / (data.length - 1)) * chartWidth;
+  
+  // Generate path for Meta Ads
+  const metaPath = data.map((d, i) => {
+    const x = padding.left + xScale(i);
+    const y = padding.top + yScale(d.metaValue);
+    return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+  }).join(' ');
+  
+  // Generate path for Google Ads
+  const googlePath = data.map((d, i) => {
+    const x = padding.left + xScale(i);
+    const y = padding.top + yScale(d.googleValue);
+    return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+  }).join(' ');
+  
+  // Generate grid lines
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(ratio => {
+    const y = padding.top + chartHeight * (1 - ratio);
+    return `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="rgba(0,0,0,0.05)" stroke-width="1"/>`;
+  }).join('');
+  
+  return `
+    <div style="margin: 32px 0; page-break-inside: avoid;">
+      <h3 style="font-size: 18px; font-weight: 600; color: #1F2937; margin-bottom: 8px;">${title}</h3>
+      <p style="font-size: 12px; color: #6B7280; margin-bottom: 16px;">${metric} w okresie sprawozdawczym</p>
+      <svg width="${width}" height="${height}" style="background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08);">
+        ${gridLines}
+        
+        <!-- Meta Ads Line -->
+        <path d="${metaPath}" fill="none" stroke="#1877F2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <!-- Google Ads Line -->
+        <path d="${googlePath}" fill="none" stroke="#34A853" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        
+        <!-- Data points -->
+        ${data.map((d, i) => {
+          const x = padding.left + xScale(i);
+          const metaY = padding.top + yScale(d.metaValue);
+          const googleY = padding.top + yScale(d.googleValue);
+          return `
+            <circle cx="${x}" cy="${metaY}" r="4" fill="#1877F2" stroke="white" stroke-width="2"/>
+            <circle cx="${x}" cy="${googleY}" r="4" fill="#34A853" stroke="white" stroke-width="2"/>
+          `;
+        }).join('')}
+        
+        <!-- X-axis labels -->
+        ${data.map((d, i) => {
+          if (i % Math.ceil(data.length / 6) === 0) {
+            const x = padding.left + xScale(i);
+            return `<text x="${x}" y="${height - 15}" text-anchor="middle" font-size="11" fill="#6B7280">${d.label}</text>`;
+          }
+          return '';
+        }).join('')}
+        
+        <!-- Y-axis labels -->
+        ${[0, 0.5, 1].map(ratio => {
+          const y = padding.top + chartHeight * (1 - ratio);
+          const value = (maxValue * ratio).toFixed(0);
+          return `<text x="${padding.left - 10}" y="${y + 4}" text-anchor="end" font-size="11" fill="#6B7280">${formatNumber(parseInt(value))}</text>`;
+        }).join('')}
+        
+        <!-- Legend -->
+        <g transform="translate(${width - padding.right + 20}, ${padding.top})">
+          <rect x="0" y="0" width="12" height="12" fill="#1877F2" rx="2"/>
+          <text x="18" y="10" font-size="12" fill="#1F2937">Meta Ads</text>
+          
+          <rect x="0" y="25" width="12" height="12" fill="#34A853" rx="2"/>
+          <text x="18" y="35" font-size="12" fill="#1F2937">Google Ads</text>
+        </g>
+      </svg>
+    </div>
+  `;
+};
+
+// Generate SVG Bar Chart for Meta vs Google Comparison (Premium Style)
+const generateComparisonBarChart = (reportData: ReportData) => {
+  const metaData = reportData.metaData;
+  const googleData = reportData.googleData;
+  
+  if (!metaData && !googleData) return '';
+  
+  const metrics = [
+    {
+      label: 'Wydatki',
+      meta: metaData?.metrics?.totalSpend || 0,
+      google: googleData?.metrics?.totalSpend || 0,
+      format: (v: number) => `${formatNumber(v)} zł`
+    },
+    {
+      label: 'Kliknięcia',
+      meta: metaData?.metrics?.totalClicks || 0,
+      google: googleData?.metrics?.totalClicks || 0,
+      format: (v: number) => formatNumber(v)
+    },
+    {
+      label: 'Konwersje',
+      meta: metaData?.metrics?.totalConversions || 0,
+      google: googleData?.metrics?.totalConversions || 0,
+      format: (v: number) => formatNumber(v)
+    },
+    {
+      label: 'ROAS',
+      meta: metaData?.metrics?.roas || 0,
+      google: googleData?.metrics?.roas || 0,
+      format: (v: number) => v.toFixed(2)
+    }
+  ];
+  
+  const width = 600;
+  const height = 320;
+  const padding = { top: 40, right: 40, bottom: 60, left: 100 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  const barHeight = chartHeight / metrics.length / 2.5;
+  const groupGap = barHeight * 2.5;
+  
+  return `
+    <div style="margin: 32px 0; page-break-inside: avoid;">
+      <h3 style="font-size: 18px; font-weight: 600; color: #1F2937; margin-bottom: 8px;">Porównanie Wydajności Platform</h3>
+      <p style="font-size: 12px; color: #6B7280; margin-bottom: 16px;">Meta Ads vs Google Ads - kluczowe metryki</p>
+      <svg width="${width}" height="${height}" style="background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08);">
+        ${metrics.map((metric, i) => {
+          const maxValue = Math.max(metric.meta, metric.google);
+          const metaWidth = maxValue > 0 ? (metric.meta / maxValue) * chartWidth * 0.85 : 0;
+          const googleWidth = maxValue > 0 ? (metric.google / maxValue) * chartWidth * 0.85 : 0;
+          
+          const yBase = padding.top + i * groupGap;
+          
+          return `
+            <!-- Metric Label -->
+            <text x="${padding.left - 10}" y="${yBase + barHeight + 5}" text-anchor="end" font-size="13" font-weight="600" fill="#1F2937">${metric.label}</text>
+            
+            <!-- Meta Bar -->
+            <rect x="${padding.left}" y="${yBase}" width="${metaWidth}" height="${barHeight}" fill="#1877F2" rx="4"/>
+            <text x="${padding.left + metaWidth + 8}" y="${yBase + barHeight - 3}" font-size="11" font-weight="600" fill="#1F2937">${metric.format(metric.meta)}</text>
+            
+            <!-- Google Bar -->
+            <rect x="${padding.left}" y="${yBase + barHeight + 8}" width="${googleWidth}" height="${barHeight}" fill="#34A853" rx="4"/>
+            <text x="${padding.left + googleWidth + 8}" y="${yBase + barHeight * 2 + 5}" font-size="11" font-weight="600" fill="#1F2937">${metric.format(metric.google)}</text>
+          `;
+        }).join('')}
+        
+        <!-- Legend -->
+        <g transform="translate(${padding.left}, ${height - 35})">
+          <rect x="0" y="0" width="12" height="12" fill="#1877F2" rx="2"/>
+          <text x="18" y="10" font-size="12" fill="#1F2937">Meta Ads</text>
+          
+          <rect x="100" y="0" width="12" height="12" fill="#34A853" rx="2"/>
+          <text x="118" y="10" font-size="12" fill="#1F2937">Google Ads</text>
+        </g>
+      </svg>
+    </div>
+  `;
+};
+
+// Generate Premium KPI Scoreboard - Executive Summary
+const generateKPIScoreboard = (reportData: ReportData) => {
+  const metaData = reportData.metaData;
+  const googleData = reportData.googleData;
+  const yoyComparison = reportData.yoyComparison;
+  
+  // Calculate combined totals
+  const totalSpend = (metaData?.stats?.totalSpend || 0) + (googleData?.stats?.totalSpend || 0);
+  const totalConversions = (metaData?.stats?.totalConversions || 0) + (googleData?.stats?.totalConversions || 0);
+  const totalRevenue = (metaData?.conversionMetrics?.reservation_value || 0) + (googleData?.conversionMetrics?.reservation_value || 0);
+  const totalClicks = (metaData?.stats?.totalClicks || 0) + (googleData?.stats?.totalClicks || 0);
+  const totalImpressions = (metaData?.stats?.totalImpressions || 0) + (googleData?.stats?.totalImpressions || 0);
+  
+  const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  
+  // Calculate deltas from YoY comparison
+  const getDelta = (current: number, previous: number) => {
+    if (previous === 0) return null;
+    return ((current - previous) / previous) * 100;
+  };
+  
+  const spendDelta = yoyComparison ? getDelta(
+    (yoyComparison.meta?.current?.spend || 0) + (yoyComparison.google?.current?.spend || 0),
+    (yoyComparison.meta?.previous?.spend || 0) + (yoyComparison.google?.previous?.spend || 0)
+  ) : null;
+  
+  const conversionsDelta = yoyComparison ? getDelta(
+    (yoyComparison.meta?.current?.conversions || 0) + (yoyComparison.google?.current?.conversions || 0),
+    (yoyComparison.meta?.previous?.conversions || 0) + (yoyComparison.google?.previous?.conversions || 0)
+  ) : null;
+  
+  const renderKPICard = (label: string, value: string, delta: number | null) => {
+    let deltaHTML = '';
+    if (delta !== null && !isNaN(delta)) {
+      const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral';
+      const deltaSymbol = delta > 0 ? '↗' : delta < 0 ? '↘' : '→';
+      deltaHTML = `<div class="kpi-delta ${deltaClass}">${deltaSymbol} ${Math.abs(delta).toFixed(1)}%</div>`;
+    }
+    
+    return `
+      <div class="kpi-card">
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-value">${value}</div>
+        ${deltaHTML}
+      </div>
+    `;
+  };
+  
+  return `
+    <div class="section-container">
+      <div class="page-content">
+        <h2 class="section-title">Podsumowanie Wykonawcze</h2>
+        <div class="kpi-scoreboard">
+          ${renderKPICard('Wydatki', `${formatNumber(totalSpend)} zł`, spendDelta)}
+          ${renderKPICard('ROAS', roas.toFixed(2), null)}
+          ${renderKPICard('Konwersje', formatNumber(totalConversions), conversionsDelta)}
+          ${renderKPICard('CTR', `${ctr.toFixed(2)}%`, null)}
+          ${renderKPICard('CPC', `${cpc.toFixed(2)} zł`, null)}
+          ${renderKPICard('Przychód', `${formatNumber(totalRevenue)} zł`, null)}
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+// Generate Insights & Recommendations Section
+const generateInsightsSection = (reportData: ReportData) => {
+  const metaData = reportData.metaData;
+  const googleData = reportData.googleData;
+  
+  // Generate agency-style insights based on data
+  const insights = [];
+  
+  // Performance insights
+  if (metaData && googleData) {
+    const metaSpend = metaData.stats?.totalSpend || 0;
+    const googleSpend = googleData.stats?.totalSpend || 0;
+    const totalSpend = metaSpend + googleSpend;
+    
+    if (metaSpend > googleSpend * 1.5) {
+      insights.push('<strong>Dominacja Meta Ads:</strong> Meta Ads stanowi większość wydatków reklamowych. Rozważ dywersyfikację budżetu dla zrównoważonej strategii wielokanałowej.');
+    }
+  }
+  
+  // ROAS analysis
+  if (metaData) {
+    const metaRoas = metaData.conversionMetrics?.reservation_value && metaData.stats?.totalSpend 
+      ? metaData.conversionMetrics.reservation_value / metaData.stats.totalSpend 
+      : 0;
+    
+    if (metaRoas > 3) {
+      insights.push('<strong>Wysoki ROAS Meta Ads:</strong> Kampanie Meta Ads wykazują silny zwrot z inwestycji (ROAS > 3.0). Rozważ zwiększenie budżetu na najskuteczniejsze kampanie.');
+    } else if (metaRoas < 1.5) {
+      insights.push('<strong>Możliwość optymalizacji:</strong> ROAS Meta Ads poniżej 1.5. Zalecana analiza targetowania, kreacji reklamowych i stawek CPC.');
+    }
+  }
+  
+  // CTR insights
+  if (metaData && metaData.stats) {
+    const ctr = metaData.stats.totalImpressions > 0 
+      ? (metaData.stats.totalClicks / metaData.stats.totalImpressions) * 100 
+      : 0;
+    
+    if (ctr < 1) {
+      insights.push('<strong>Niska skuteczność kreacji:</strong> CTR poniżej 1% sugeruje potrzebę odświeżenia materiałów reklamowych i testów A/B różnych wariantów.');
+    }
+  }
+  
+  // Add general recommendations
+  insights.push('<strong>Rekomendacje na następny okres:</strong> Kontynuuj monitorowanie kluczowych metryk, przeprowadź testy A/B nowych kreacji oraz rozważ wdrożenie kampanii remarketingowych dla zwiększenia konwersji.');
+  
+  if (insights.length === 0) {
+    insights.push('Brak wystarczających danych do wygenerowania szczegółowych insightów. Kontynuuj zbieranie danych kampanii.');
+  }
+  
+  return `
+    <div class="section-container">
+      <div class="page-content">
+        <div class="insights-section">
+          <h2 class="insights-title">Kluczowe Wnioski i Rekomendacje</h2>
+          <div class="insights-content">
+            <ul class="insights-list">
+              ${insights.map(insight => `<li>${insight}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
 // Main PDF HTML generator with new 8-section structure
 function generatePDFHTML(reportData: ReportData): string {
   // Sanitize data to prevent HTML injection and ensure valid content
@@ -1478,29 +1604,50 @@ function generatePDFHTML(reportData: ReportData): string {
         <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; img-src 'self' data: https:;">
         <meta name="robots" content="noindex, nofollow">
         <style>
-            /* Design System Tokens */
+            /* Premium Agency-Grade Design System */
             :root {
-                --color-primary-navy: #0B1F3B;
-                --color-accent-orange: #FF6A00;
-                --gray-900: #111827;
-                --gray-700: #374151;
-                --gray-500: #6B7280;
-                --gray-200: #E5E7EB;
-                --gray-50: #F8FAFC;
+                /* Premium Color Palette */
+                --text-primary: #1F2937;
+                --text-secondary: #6B7280;
+                --text-tertiary: #9CA3AF;
+                --border-light: rgba(0,0,0,0.08);
+                --border-medium: rgba(0,0,0,0.12);
+                --bg-white: #FFFFFF;
+                --bg-subtle: #F9FAFB;
+                --bg-muted: #F4F6F8;
                 
-                /* Typography Scale */
-                --font-h1: 32px;
-                --font-h2: 20px;
-                --font-body: 12px;
-                --font-kpi: 28px;
-                --font-label: 11px;
+                /* KPI Colors - Subtle & Professional */
+                --kpi-up: #059669;
+                --kpi-down: #DC2626;
+                --kpi-neutral: #6B7280;
                 
-                /* Spacing System (8pt) */
+                /* Platform Colors */
+                --meta-blue: #1877F2;
+                --google-green: #34A853;
+                
+                /* Editorial Typography Scale */
+                --font-h1: 34px;
+                --font-h2: 26px;
+                --font-h3: 18px;
+                --font-body: 14px;
+                --font-body-large: 16px;
+                --font-small: 12px;
+                --font-tiny: 11px;
+                --font-kpi-value: 32px;
+                --font-kpi-label: 11px;
+                
+                /* Grid & Spacing System (8pt base) */
                 --space-xs: 4px;
                 --space-sm: 8px;
                 --space-md: 16px;
                 --space-lg: 24px;
                 --space-xl: 32px;
+                --space-xxl: 48px;
+                --space-xxxl: 64px;
+                
+                /* Consistent Margins */
+                --page-margin: 20mm;
+                --section-gap: 40px;
             }
             
             * {
@@ -1510,75 +1657,140 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             body {
-                font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-                line-height: 1.5;
-                color: var(--gray-900);
-                background: #ffffff;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica', sans-serif;
+                line-height: 1.6;
+                color: var(--text-primary);
+                background: var(--bg-white);
                 font-size: var(--font-body);
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
             }
             
-            /* A4 Page Layout */
+            /* A4 Page Layout - Strict Grid System */
             .title-page {
-                padding: 0;
+                padding: var(--page-margin);
                 max-width: 210mm;
+                min-height: 297mm;
             }
             
             .page-break-before {
                 page-break-before: always;
-                padding: 0;
+                padding: var(--page-margin);
                 max-width: 210mm;
                 min-height: 297mm;
                 margin: 0 auto;
             }
             
             .section-container {
-                padding: 0;
+                padding: var(--space-xl) 0;
                 max-width: 210mm;
                 margin: 0 auto;
-                margin-top: 40px;
             }
             
             .section-container:first-child {
-                margin-top: 0;
+                padding-top: 0;
             }
             
             .page-content {
                 max-width: 100%;
                 margin: 0 auto;
                 width: 100%;
-                padding: 0 5mm;
             }
             
-            /* Special styling for campaign details pages */
-            .campaign-details-section .page-content {
-                padding: 0 2mm;
-            }
-            
-            /* Typography Hierarchy */
+            /* Editorial Typography Hierarchy */
             .h1 {
                 font-size: var(--font-h1);
-                line-height: 36px;
-                font-weight: 600;
-                color: var(--color-primary-navy);
-                margin-bottom: var(--space-lg);
+                line-height: 1.2;
+                font-weight: 700;
+                color: var(--text-primary);
+                margin-bottom: var(--space-xl);
+                letter-spacing: -0.02em;
             }
             
             .h2, .section-title {
-                font-size: var(--font-h2);
-                line-height: 26px;
+                font-size: 20px;
+                line-height: 1.3;
                 font-weight: 600;
-                color: var(--color-primary-navy);
-                margin-bottom: var(--space-lg);
-                text-align: left;
-                border-bottom: 1px solid var(--gray-200);
-                padding-bottom: var(--space-sm);
+                color: #0F172A;
+                margin-bottom: 8px;
+                margin-top: 32px;
+            }
+            
+            .h3 {
+                font-size: var(--font-h3);
+                line-height: 1.4;
+                font-weight: 600;
+                color: var(--text-primary);
+                margin-bottom: var(--space-md);
+                margin-top: var(--space-lg);
             }
             
             .body-text {
                 font-size: var(--font-body);
-                line-height: 18px;
+                line-height: 1.6;
                 font-weight: 400;
-                color: var(--gray-700);
+                color: var(--text-secondary);
+            }
+            
+            .body-text-large {
+                font-size: var(--font-body-large);
+                line-height: 1.7;
+                font-weight: 400;
+                color: var(--text-secondary);
+            }
+            
+            /* Clean KPI Scoreboard - Analytics Product Style */
+            .kpi-scoreboard {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                margin: 24px 0 32px 0;
+                page-break-inside: avoid;
+            }
+            
+            .kpi-card {
+                background: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 6px;
+                padding: 20px;
+            }
+            
+            .kpi-label {
+                font-size: 10px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: #64748B;
+                margin-bottom: 12px;
+            }
+            
+            .kpi-value {
+                font-size: 24px;
+                font-weight: 600;
+                color: #0F172A;
+                margin-bottom: 4px;
+                font-variant-numeric: tabular-nums;
+            }
+            
+            .kpi-delta {
+                font-size: 11px;
+                font-weight: 500;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                font-variant-numeric: tabular-nums;
+            }
+            
+            .kpi-delta.positive {
+                color: #16A34A;
+            }
+            
+            .kpi-delta.negative {
+                color: #DC2626;
+            }
+            
+            .kpi-delta.neutral {
+                color: #94A3B8;
             }
             
             /* Clean Cover Page */
@@ -1589,11 +1801,18 @@ function generatePDFHTML(reportData: ReportData): string {
             
             .clean-logo-container {
                 margin-bottom: var(--space-xl);
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
             
             .clean-client-logo {
                 max-height: 80px;
                 max-width: 200px;
+                height: auto;
+                width: auto;
+                object-fit: contain;
+                display: block;
             }
             
             .clean-title-header {
@@ -1648,7 +1867,7 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             
-            /* YoY Section */
+            /* YoY Section - Premium Comparison Styling */
             .yoy-section {
                 padding: 0;
             }
@@ -1657,59 +1876,92 @@ function generatePDFHTML(reportData: ReportData): string {
                 margin-top: 40px;
             }
             
-            /* Clean Table Design */
+            .comparison-table thead th {
+                background: #F9FAFB;
+                color: #6B7280;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                padding: 12px 16px;
+            }
+            
+            /* Premium Table Design - Agency Grade */
             .data-table, .comparison-table, .metrics-table {
                 width: 100%;
                 border-collapse: collapse;
-                background: white;
+                background: var(--bg-white);
                 margin: var(--space-lg) 0;
+                border: 1px solid var(--border-light);
+                border-radius: 4px;
+                overflow: hidden;
             }
             
             .data-table th, .comparison-table th, .metrics-table th {
-                background: var(--gray-50);
-                color: var(--gray-900);
+                background: var(--bg-muted);
+                color: var(--text-primary);
                 padding: 12px var(--space-md);
                 text-align: left;
                 font-weight: 600;
-                font-size: var(--font-label);
+                font-size: var(--font-small);
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
-                border-bottom: 1px solid var(--gray-200);
+                border-bottom: 1px solid var(--border-light);
             }
             
             .data-table td, .comparison-table td, .metrics-table td {
-                padding: 10px var(--space-md);
+                padding: 14px var(--space-md);
                 font-size: var(--font-body);
+                border-bottom: 1px solid var(--border-light);
+                color: var(--text-secondary);
+            }
+            
+            .data-table tr:last-child td,
+            .comparison-table tr:last-child td,
+            .metrics-table tr:last-child td {
                 border-bottom: none;
             }
             
-            .data-table tr:nth-child(even), 
-            .comparison-table tr:nth-child(even), 
-            .metrics-table tr:nth-child(even) {
-                background: #FAFAFA;
+            .data-table tr:hover, 
+            .comparison-table tr:hover, 
+            .metrics-table tr:hover {
+                background: var(--bg-subtle);
+            }
+            
+            /* Table cell alignment by type */
+            .data-table th:first-child,
+            .data-table td:first-child {
+                text-align: left;
+                font-weight: 600;
+                color: var(--text-primary);
+            }
+            
+            .data-table th:not(:first-child),
+            .data-table td:not(:first-child) {
+                text-align: right;
+                font-variant-numeric: tabular-nums;
             }
             
             .platform-section-header {
-                border-top: 3px solid var(--gray-200);
+                border-top: 2px solid var(--border-light);
             }
             
             .platform-header {
-                background: var(--color-primary-navy);
-                color: white;
+                color: rgba(255,255,255,0.6) !important;
                 font-weight: 700;
-                font-size: 16px;
+                font-size: 11px;
                 text-align: center;
                 padding: 16px 20px;
                 text-transform: uppercase;
-                letter-spacing: 0.05em;
+                letter-spacing: 0.1em;
             }
             
             .meta-header {
-                background: #1e40af;
+                background: #2563EB !important;
             }
             
             .google-header {
-                background: #059669;
+                background: #10B981 !important;
             }
             
             .metric-name {
@@ -1730,19 +1982,19 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .change-indicator {
-                font-size: var(--font-label);
-                font-weight: 600;
+                font-size: var(--font-body);
+                font-weight: 700;
                 padding: var(--space-xs) var(--space-sm);
                 border-radius: 4px;
                 display: inline-block;
             }
             
             .positive {
-                color: var(--color-accent-orange);
+                color: #10B981;
             }
             
             .negative {
-                color: var(--gray-500);
+                color: #EF4444;
             }
             
             /* Polish Number Formatting */
@@ -1896,25 +2148,25 @@ function generatePDFHTML(reportData: ReportData): string {
                 padding-right: 6px !important;
             }
             
-            /* Demographics */
+            /* Demographics & Charts - Clean Professional Style */
             .demographics-section {
-                margin: 40px 0;
-                padding: 32px 0;
-                border-top: 1px solid #e2e8f0;
+                margin: var(--space-xxl) 0;
+                padding: var(--space-xl) 0;
+                border-top: 1px solid var(--border-light);
             }
             
             .demographics-title {
-                font-size: 20px;
+                font-size: var(--font-h2);
                 font-weight: 700;
-                color: #1e293b;
-                margin-bottom: 24px;
+                color: var(--text-primary);
+                margin-bottom: var(--space-lg);
                 text-align: center;
             }
             
             .metric-section {
-                margin-bottom: 40px;
-                padding: 20px 0;
-                border-bottom: 1px solid #e2e8f0;
+                margin-bottom: var(--space-xxl);
+                padding: var(--space-lg) 0;
+                border-bottom: 1px solid var(--border-light);
             }
             
             .metric-section:last-child {
@@ -1922,21 +2174,21 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .metric-title {
-                font-size: 18px;
+                font-size: var(--font-h3);
                 font-weight: 600;
-                color: #1e293b;
-                margin-bottom: 20px;
+                color: var(--text-primary);
+                margin-bottom: var(--space-lg);
                 text-align: center;
-                background: #f8fafc;
-                padding: 10px 20px;
-                border-radius: 8px;
-                border: 1px solid #e2e8f0;
+                background: var(--bg-subtle);
+                padding: var(--space-md) var(--space-lg);
+                border-radius: 4px;
+                border: 1px solid var(--border-light);
             }
             
             .demographics-grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 32px;
+                gap: var(--space-xl);
             }
             
             .demographic-chart {
@@ -1944,10 +2196,10 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .demographic-chart h5 {
-                font-size: 16px;
+                font-size: var(--font-body-large);
                 font-weight: 600;
-                color: #1e293b;
-                margin-bottom: 16px;
+                color: var(--text-primary);
+                margin-bottom: var(--space-md);
                 text-align: center;
             }
             
@@ -1955,7 +2207,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 16px;
+                gap: var(--space-md);
             }
             
             .pie-chart {
@@ -1971,15 +2223,15 @@ function generatePDFHTML(reportData: ReportData): string {
             .pie-legend {
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: var(--space-sm);
                 min-width: 200px;
             }
             
             .legend-item {
                 display: flex;
                 align-items: center;
-                gap: 8px;
-                padding: 4px 0;
+                gap: var(--space-sm);
+                padding: var(--space-xs) 0;
             }
             
             .legend-color {
@@ -1994,12 +2246,12 @@ function generatePDFHTML(reportData: ReportData): string {
                 justify-content: space-between;
                 align-items: center;
                 width: 100%;
-                font-size: 11px;
+                font-size: var(--font-tiny);
             }
             
             .legend-label {
                 font-weight: 600;
-                color: #1e293b;
+                color: var(--text-primary);
                 text-transform: capitalize;
             }
             
@@ -2012,28 +2264,75 @@ function generatePDFHTML(reportData: ReportData): string {
             
             .legend-value {
                 font-weight: 600;
-                color: #475569;
-                font-size: 10px;
+                color: var(--text-secondary);
+                font-size: var(--font-tiny);
             }
             
             .legend-percentage {
                 font-weight: 700;
-                color: #1e293b;
-                font-size: 11px;
+                color: var(--text-primary);
+                font-size: var(--font-tiny);
             }
             
             .no-data {
                 text-align: center;
-                color: #64748b;
+                color: var(--text-tertiary);
                 font-style: italic;
-                padding: 40px;
+                padding: var(--space-xl);
+                font-size: var(--font-body);
+            }
+            
+            /* Insights & Recommendations Section - Agency Analysis */
+            .insights-section {
+                margin-top: var(--space-xxxl);
+                padding: var(--space-xxl);
+                background: var(--bg-subtle);
+                border-left: 4px solid var(--text-primary);
+                border-radius: 4px;
+                page-break-inside: avoid;
+            }
+            
+            .insights-title {
+                font-size: var(--font-h2);
+                font-weight: 700;
+                color: var(--text-primary);
+                margin-bottom: var(--space-lg);
+            }
+            
+            .insights-content {
+                font-size: var(--font-body-large);
+                line-height: 1.7;
+                color: var(--text-secondary);
+            }
+            
+            .insights-list {
+                margin: var(--space-md) 0;
+                padding-left: var(--space-lg);
+            }
+            
+            .insights-list li {
+                margin-bottom: var(--space-md);
+                line-height: 1.7;
+            }
+            
+            .insights-list li strong {
+                color: var(--text-primary);
+                font-weight: 600;
+            }
+            
+            .insight-category {
+                font-size: var(--font-h3);
+                font-weight: 600;
+                color: var(--text-primary);
+                margin-top: var(--space-lg);
+                margin-bottom: var(--space-md);
             }
             
             /* Premium Footer */
             .footer-section {
-                margin-top: 40px;
-                padding: 0;
-                position: relative;
+                margin-top: var(--space-xxxl);
+                padding: var(--space-lg) 0;
+                border-top: 2px solid var(--border-light);
                 page-break-inside: avoid;
                 break-inside: avoid;
             }
@@ -2074,10 +2373,196 @@ function generatePDFHTML(reportData: ReportData): string {
         ${generateConditionalSection(generateGoogleFunnelSection(sanitizedData))}
         ${generateMetaCampaignDetailsSection(sanitizedData)}
         ${generateGoogleCampaignDetailsSection(sanitizedData)}
+        ${generateInsightsSection(sanitizedData)}
         ${generateFooter(sanitizedData)}
         </body>
     </html>
   `;
+}
+
+// Generate mock data for preview mode
+function generateMockReportData(clientId: string, dateRange: { start: string; end: string }): ReportData {
+  return {
+    clientId,
+    clientName: 'Belmonte Hotel',
+    clientLogo: 'https://placehold.co/200x80/667eea/white?text=BH',
+    dateRange,
+    aiSummary: `W analizowanym okresie kampanie reklamowe wykazały znaczący wzrost efektywności. ROAS osiągnął poziom 4.2, co oznacza, że każda złotówka zainwestowana w reklamy przyniosła 4.20 zł przychodu. 
+
+Kluczowe obserwacje:
+• Wydatki wzrosły o 15.3%, osiągając 12,450 zł
+• Liczba konwersji wzrosła o 22.1%, osiągając 145 rezerwacji
+• CTR uległ poprawie do 2.34%, co wskazuje na skuteczne targetowanie
+• CPC spadł o 8.2%, świadcząc o lepszej jakości kampanii
+
+Kampanie Meta Ads wygenerowały większość ruchu, z silnym ROAS na poziomie 4.5. Google Ads wspierał dotarcie do nowych użytkowników szukających hoteli w regionie.`,
+    metaData: {
+      metrics: {
+        totalSpend: 8500,
+        totalImpressions: 485000,
+        totalClicks: 11350,
+        totalConversions: 98,
+        averageCtr: 2.34,
+        averageCpc: 0.75,
+        averageCpa: 86.73,
+        averageCpm: 17.53,
+        reach: 245000,
+        relevanceScore: 7.5,
+        landingPageViews: 8920,
+        totalReservations: 98,
+        totalReservationValue: 38250,
+        roas: 4.5,
+        emailContacts: 45,
+        phoneContacts: 32,
+      },
+      funnel: {
+        booking_step_1: 156,
+        booking_step_2: 124,
+        booking_step_3: 108,
+        reservations: 98,
+        reservation_value: 38250,
+        roas: 4.5,
+      },
+      campaigns: [
+        {
+          name: 'Hotel Booking - Summer 2025',
+          spend: 3200,
+          impressions: 185000,
+          clicks: 4250,
+          conversions: 42,
+          ctr: 2.3,
+          cpc: 0.75,
+          cpm: 17.3,
+        },
+        {
+          name: 'Weekend Getaway Offers',
+          spend: 2800,
+          impressions: 165000,
+          clicks: 3850,
+          conversions: 35,
+          ctr: 2.33,
+          cpc: 0.73,
+          cpm: 16.97,
+        },
+        {
+          name: 'Business Travel Package',
+          spend: 2500,
+          impressions: 135000,
+          clicks: 3250,
+          conversions: 21,
+          ctr: 2.41,
+          cpc: 0.77,
+          cpm: 18.52,
+        },
+      ],
+      tables: {
+        placementPerformance: [
+          { placement: 'Facebook Feed', impressions: 245000, clicks: 5800, ctr: 2.37, cpc: 0.74 },
+          { placement: 'Instagram Feed', impressions: 185000, clicks: 4350, ctr: 2.35, cpc: 0.76 },
+          { placement: 'Facebook Stories', impressions: 55000, clicks: 1200, ctr: 2.18, cpc: 0.71 },
+        ],
+        demographicPerformance: [
+          { age: '25-34', gender: 'Female', impressions: 185000, conversions: 42 },
+          { age: '35-44', gender: 'Male', impressions: 155000, conversions: 31 },
+          { age: '45-54', gender: 'Female', impressions: 95000, conversions: 18 },
+        ],
+        adRelevanceResults: [],
+      },
+    },
+    googleData: {
+      metrics: {
+        totalSpend: 3950,
+        totalImpressions: 125000,
+        totalClicks: 2850,
+        totalConversions: 47,
+        averageCtr: 2.28,
+        averageCpc: 1.39,
+        averageCpa: 84.04,
+        averageCpm: 31.6,
+        searchImpressionShare: 68.5,
+        qualityScore: 7.8,
+        viewThroughConversions: 12,
+        searchBudgetLostImpressionShare: 15.2,
+        totalReservations: 47,
+        totalReservationValue: 14040,
+        roas: 3.55,
+        emailContacts: 28,
+        phoneContacts: 19,
+      },
+      funnel: {
+        booking_step_1: 78,
+        booking_step_2: 62,
+        booking_step_3: 52,
+        reservations: 47,
+        reservation_value: 14040,
+        roas: 3.55,
+      },
+      campaigns: [
+        {
+          name: 'Search - Hotel Bookings',
+          spend: 2100,
+          impressions: 45000,
+          clicks: 1520,
+          conversions: 28,
+          ctr: 3.38,
+          cpc: 1.38,
+          cpm: 46.67,
+        },
+        {
+          name: 'Display - Travel Intent',
+          spend: 1850,
+          impressions: 80000,
+          clicks: 1330,
+          conversions: 19,
+          ctr: 1.66,
+          cpc: 1.39,
+          cpm: 23.13,
+        },
+      ],
+      tables: {
+        networkPerformance: [
+          { network: 'Search Network', impressions: 65000, clicks: 1850, ctr: 2.85, cpc: 1.35 },
+          { network: 'Display Network', impressions: 60000, clicks: 1000, ctr: 1.67, cpc: 1.43 },
+        ],
+        devicePerformance: [
+          { device: 'Mobile', impressions: 75000, clicks: 1710, ctr: 2.28, conversions: 28 },
+          { device: 'Desktop', impressions: 35000, clicks: 875, ctr: 2.5, conversions: 14 },
+          { device: 'Tablet', impressions: 15000, clicks: 265, ctr: 1.77, conversions: 5 },
+        ],
+        keywordPerformance: [],
+      },
+    },
+    yoyComparison: {
+      meta: {
+        current: {
+          spend: 8500,
+          reservationValue: 38250,
+        },
+        previous: {
+          spend: 7370,
+          reservationValue: 29600,
+        },
+        changes: {
+          spend: 15.3,
+          reservationValue: 29.2,
+        },
+      },
+      google: {
+        current: {
+          spend: 3950,
+          reservationValue: 14040,
+        },
+        previous: {
+          spend: 4300,
+          reservationValue: 12180,
+        },
+        changes: {
+          spend: -8.1,
+          reservationValue: 15.3,
+        },
+      },
+    },
+  };
 }
 
 // Helper function to fetch data using EXACTLY same system as /reports page
@@ -2866,17 +3351,31 @@ export async function POST(request: NextRequest) {
 
     const { clientId, dateRange } = body;
     
-    // Authenticate the request
+    // Check if this is a preview request (development/design tool)
+    const isPreviewMode = request.headers.get('X-Preview-Mode') === 'true';
+    
+    // Authenticate the request (skip for preview mode in development)
+    let user: any = null;
+    if (!isPreviewMode) {
     const authResult = await authenticateRequest(request);
     if (!authResult.success || !authResult.user) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-    const user = authResult.user;
+      user = authResult.user;
     logger.info('🔐 PDF generation authenticated for user:', user.email);
+    } else {
+      logger.info('🎨 Preview mode - skipping authentication');
+    }
 
-    logger.info('🔄 Fetching report data from same sources as /reports page...');
     let reportData: ReportData;
     
+    // 🎨 PREVIEW MODE: Use mock data for UX/UI preview
+    if (isPreviewMode) {
+      logger.info('🎨 Preview mode - using mock data for design preview');
+      reportData = generateMockReportData(clientId, dateRange);
+      logger.info('✅ Mock report data generated for preview');
+    } else {
+      logger.info('🔄 Fetching report data from same sources as /reports page...');
     try {
       reportData = await fetchReportData(clientId, dateRange, request);
       logger.info('✅ Report data fetched successfully:', {
@@ -2894,6 +3393,7 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+      }
     }
 
     logger.info('📊 Generating PDF HTML content with new 8-section structure...');
@@ -2946,6 +3446,18 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // 🎨 PREVIEW MODE: Return HTML instead of PDF if preview header is set
+    if (isPreviewMode) {
+      logger.info('🎨 Preview mode detected - returning HTML instead of PDF');
+      return new NextResponse(html, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'X-Preview-Mode': 'true',
+        },
+      });
     }
 
     logger.info('🚀 Launching Puppeteer...');

@@ -6,3 +6,4 @@ FROM clients
 WHERE system_user_token IS NOT NULL 
 LIMIT 1;
 
+

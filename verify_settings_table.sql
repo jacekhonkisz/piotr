@@ -53,3 +53,4 @@ SELECT
   COUNT(CASE WHEN system_user_token != '' THEN 1 END) as clients_with_non_empty_token
 FROM clients;
 
+

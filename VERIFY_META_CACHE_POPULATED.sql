@@ -26,3 +26,4 @@ JOIN clients c ON c.id = cwc.client_id
 ORDER BY cwc.last_updated DESC
 LIMIT 10;
 
+
