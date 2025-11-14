@@ -1798,6 +1798,7 @@ export default function AdminPage() {
 
       {selectedClientForReport && (
         <GenerateReportModal
+          key={`report-modal-${selectedClientForReport.id}`}
           isOpen={showGenerateReportModal}
           onClose={() => {
             setShowGenerateReportModal(false);

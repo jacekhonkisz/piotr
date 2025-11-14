@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { MetaAPIServiceOptimized } from './meta-api-optimized';
 import logger from './logger';
 import { getCurrentWeekInfo, parseWeekPeriodId, isCurrentWeekPeriod } from './week-utils';
+import { enhanceCampaignsWithConversions, aggregateConversionMetrics } from './meta-actions-parser';
 
 // Create Supabase client - only used server-side
 const supabaseClient = (() => {
@@ -112,33 +113,56 @@ export async function fetchFreshCurrentMonthData(client: any) {
   let apiErrorMessage = '';
 
   try {
-    // Get basic campaign list with metrics using placement performance as aggregate
-    // Note: Optimized API service doesn't have getCampaignInsights, so we use aggregate data
+    // ✅ FIX: Use getCampaignInsights to get campaign-level data with actions array
     let campaignInsights: any[] = [];
     let campaigns: any[] = [];
 
     try {
-      campaignInsights = await metaService.getPlacementPerformance(
+      logger.info('🔄 Fetching campaign insights with actions array from Meta API...');
+      const rawCampaignInsights = await metaService.getCampaignInsights(
         adAccountId,
         currentMonth.startDate!,
-        currentMonth.endDate!
+        currentMonth.endDate!,
+        0 // timeIncrement: 0 for monthly aggregate data
       );
+      
+      // ✅ FIX: Parse actions array IMMEDIATELY after fetching
+      campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+      
+      logger.info(`✅ Fetched and parsed ${campaignInsights.length} campaigns with conversion data`);
+      
+      // 🔍 DIAGNOSTIC: Log sample parsed campaign
+      if (campaignInsights.length > 0) {
+        const sampleCampaign = campaignInsights[0];
+        logger.info('🔍 Sample parsed campaign:', {
+          campaign_name: sampleCampaign.campaign_name,
+          spend: sampleCampaign.spend,
+          impressions: sampleCampaign.impressions,
+          clicks: sampleCampaign.clicks,
+          booking_step_1: sampleCampaign.booking_step_1,
+          booking_step_2: sampleCampaign.booking_step_2,
+          booking_step_3: sampleCampaign.booking_step_3,
+          reservations: sampleCampaign.reservations,
+          hasActionsArray: !!(sampleCampaign.actions && sampleCampaign.actions.length > 0)
+        });
+      }
+      
     } catch (insightError) {
-      logger.error('❌ Error fetching placement performance:', insightError);
+      logger.error('❌ Error fetching campaign insights:', insightError);
       apiErrorOccurred = true;
       apiErrorMessage = insightError instanceof Error ? insightError.message : 'Unknown error';
       campaignInsights = [];
     }
 
+    // Also get basic campaign list (for campaign names and status)
     try {
       campaigns = await metaService.getCampaigns(
         adAccountId,
         { start: currentMonth.startDate!, end: currentMonth.endDate! }
       );
     } catch (campaignError) {
-      logger.error('❌ Error fetching campaigns:', campaignError);
-      apiErrorOccurred = true;
-      apiErrorMessage = campaignError instanceof Error ? campaignError.message : 'Unknown error';
+      logger.error('❌ Error fetching campaigns list:', campaignError);
+      // Not critical - we have campaign data from insights
       campaigns = [];
     }
 
@@ -153,28 +177,27 @@ export async function fetchFreshCurrentMonthData(client: any) {
       campaigns = [];
     }
 
-    // Get account info is not available in optimized service - skip it
-    const accountInfo = null;
-
-    logger.info(`✅ Fetched ${campaigns.length} campaigns and ${campaignInsights.length} insights for caching`);
+    logger.info(`✅ Data fetch complete: ${campaignInsights.length} insights, ${campaigns.length} campaigns`);
 
     // 🔍 DIAGNOSTIC: Log raw Meta API response
-    logger.info('🔍 DIAGNOSTIC: Raw Meta API data received:', {
-      campaignsCount: campaigns.length,
+    logger.info('🔍 DIAGNOSTIC: Parsed Meta API data:', {
       campaignInsightsCount: campaignInsights.length,
-      firstCampaign: campaigns[0] ? { id: campaigns[0].id, name: campaigns[0].name, status: campaigns[0].status } : null,
+      campaignsCount: campaigns.length,
       firstInsight: campaignInsights[0] ? { 
+        campaign_name: campaignInsights[0].campaign_name,
         spend: campaignInsights[0].spend, 
         impressions: campaignInsights[0].impressions,
-        clicks: campaignInsights[0].clicks 
+        clicks: campaignInsights[0].clicks,
+        booking_step_1: campaignInsights[0].booking_step_1,
+        reservations: campaignInsights[0].reservations
       } : null
     });
 
-    // Calculate stats from Meta API insights (aggregate from all placements)
+    // Calculate stats from Meta API insights (now with parsed conversion data)
     const totalSpend = campaignInsights.reduce((sum, insight) => sum + (parseFloat(insight.spend) || 0), 0);
     const totalImpressions = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.impressions) || 0), 0);
     const totalClicks = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.clicks) || 0), 0);
-    const metaTotalConversions = 0; // Insights don't have conversions directly
+    const metaTotalConversions = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.conversions) || 0), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -248,26 +271,11 @@ export async function fetchFreshCurrentMonthData(client: any) {
       logger.warn('⚠️ No daily_kpi_data found for current month, using Meta API estimates');
     }
 
-    // Extract conversion metrics from Meta API campaigns as fallback
-    const metaConversionMetrics = campaignInsights.reduce((acc, campaign) => {
-      return {
-        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-        booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
-        reservations: acc.reservations + (campaign.reservations || 0),
-        reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-      };
-    }, {
-      click_to_call: 0,
-      email_contacts: 0,
-      booking_step_1: 0,
-      booking_step_2: 0,
-      booking_step_3: 0,
-      reservations: 0,
-      reservation_value: 0,
-    });
+    // ✅ FIX: Extract conversion metrics from parsed Meta API campaigns
+    // Campaigns are now already enhanced with conversion metrics from actions array
+    const metaConversionMetrics = aggregateConversionMetrics(campaignInsights);
+    
+    logger.info('📊 Aggregated Meta conversion metrics from parsed campaigns:', metaConversionMetrics);
 
     // 🔧 PRIORITY: Use real daily_kpi_data if available, otherwise fall back to Meta API data
     const conversionMetrics = {
@@ -372,15 +380,18 @@ export async function fetchFreshCurrentMonthData(client: any) {
       }
     }
 
-    // 🔧 NEW: Fetch meta tables data for current month cache
+    // 🔧 NEW: Fetch meta tables data and account info for current month cache
     let metaTables = null;
+    let accountInfo = null;
+    
     try {
-      logger.info('📊 Fetching meta tables data for current month cache...');
+      logger.info('📊 Fetching meta tables data and account info for current month cache...');
       
-      const [placementData, demographicData, adRelevanceData] = await Promise.all([
+      const [placementData, demographicData, adRelevanceData, accountData] = await Promise.all([
         metaService.getPlacementPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
         metaService.getDemographicPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
-        metaService.getAdRelevanceResults(adAccountId, currentMonth.startDate!, currentMonth.endDate!)
+        metaService.getAdRelevanceResults(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
+        metaService.getAccountInfo(adAccountId).catch(() => null)
       ]);
       
       metaTables = {
@@ -389,59 +400,87 @@ export async function fetchFreshCurrentMonthData(client: any) {
         adRelevanceResults: adRelevanceData
       };
       
-      logger.info('✅ Meta tables data fetched for current month cache');
+      accountInfo = accountData;
+      
+      logger.info('✅ Meta tables data and account info fetched for current month cache:', {
+        placementCount: placementData?.length || 0,
+        demographicCount: demographicData?.length || 0,
+        adRelevanceCount: adRelevanceData?.length || 0,
+        hasAccountInfo: !!accountData
+      });
     } catch (metaError) {
       logger.warn('⚠️ Failed to fetch meta tables for current month cache:', metaError);
       metaTables = null; // Will fallback to live API calls
+      accountInfo = null;
     }
 
-    // 🔧 FIX: Use REAL campaign data from getCampaigns(), not placement insights!
-    // The placement insights are breakdowns by platform, NOT campaigns
-    // We need to map real campaigns with aggregated metrics
+    // ✅ CRITICAL FIX: Use the PARSED campaignInsights directly!
+    // campaignInsights already has per-campaign data with parsed conversion metrics
+    // DO NOT distribute - use actual per-campaign values!
     
     let campaignsForCache: any[] = [];
     
-    if (campaigns && campaigns.length > 0) {
-      // We have real campaigns - use them!
-      logger.info(`✅ Using ${campaigns.length} real campaigns from Meta API`);
+    if (campaignInsights && campaignInsights.length > 0) {
+      // ✅ Use the parsed campaign insights - they already have real per-campaign data!
+      logger.info(`✅ Using ${campaignInsights.length} REAL campaigns with parsed conversion data`);
       
-      // Map campaigns with distributed metrics from insights
-      campaignsForCache = campaigns.map(campaign => ({
-        campaign_id: campaign.id,
-        campaign_name: campaign.name || 'Unknown Campaign',
+      // campaignInsights already have:
+      // - spend, impressions, clicks (from Meta API)
+      // - booking_step_1, booking_step_2, booking_step_3 (parsed from actions array)
+      // - reservations, reservation_value (parsed from actions/action_values)
+      campaignsForCache = campaignInsights.map(campaign => ({
+        campaign_id: campaign.campaign_id || campaign.id,
+        campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
         status: campaign.status || 'ACTIVE',
         
-        // Distribute aggregated metrics equally across campaigns
-        // (More sophisticated attribution would require campaign-level insights call)
-        spend: totalSpend / campaigns.length,
-        impressions: Math.round(totalImpressions / campaigns.length),
-        clicks: Math.round(totalClicks / campaigns.length),
-        conversions: Math.round(actualTotalConversions / campaigns.length),
+        // ✅ Use REAL per-campaign metrics from Meta API
+        spend: parseFloat(campaign.spend) || 0,
+        impressions: parseInt(campaign.impressions) || 0,
+        clicks: parseInt(campaign.clicks) || 0,
+        conversions: parseInt(campaign.conversions) || 0,
         
-        // Use average metrics
-        ctr: averageCtr,
-        cpc: averageCpc,
-        cpp: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
-        frequency: 0, // Not available without campaign-level call
-        reach: 0, // Not available without campaign-level call
+        // ✅ Use calculated metrics from Meta API
+        ctr: parseFloat(campaign.ctr) || 0,
+        cpc: parseFloat(campaign.cpc) || 0,
+        cpp: parseFloat(campaign.cpp) || 0,
+        cpm: parseFloat(campaign.cpm) || 0,
+        frequency: parseFloat(campaign.frequency) || 0,
+        reach: parseInt(campaign.reach) || 0,
         
-        // ✅ FIX: Add conversion funnel metrics to each campaign
-        // These are distributed from the top-level conversion metrics
-        click_to_call: Math.round(conversionMetrics.click_to_call / campaigns.length),
-        email_contacts: Math.round(conversionMetrics.email_contacts / campaigns.length),
-        booking_step_1: Math.round(conversionMetrics.booking_step_1 / campaigns.length),
-        booking_step_2: Math.round(conversionMetrics.booking_step_2 / campaigns.length),
-        booking_step_3: Math.round(conversionMetrics.booking_step_3 / campaigns.length),
-        reservations: Math.round(conversionMetrics.reservations / campaigns.length),
-        reservation_value: conversionMetrics.reservation_value / campaigns.length,
-        roas: conversionMetrics.roas,
-        cost_per_reservation: conversionMetrics.cost_per_reservation,
+        // ✅ CRITICAL: Use PARSED conversion funnel metrics (real per-campaign data!)
+        click_to_call: campaign.click_to_call || 0,
+        email_contacts: campaign.email_contacts || 0,
+        booking_step_1: campaign.booking_step_1 || 0,
+        booking_step_2: campaign.booking_step_2 || 0,
+        booking_step_3: campaign.booking_step_3 || 0,
+        reservations: campaign.reservations || 0,
+        reservation_value: campaign.reservation_value || 0,
         
-        date_start: currentMonth.startDate!,
-        date_stop: currentMonth.endDate!
+        // Calculate ROAS per campaign
+        roas: (campaign.spend > 0 && campaign.reservation_value > 0) 
+          ? campaign.reservation_value / campaign.spend 
+          : 0,
+        cost_per_reservation: (campaign.reservations > 0 && campaign.spend > 0)
+          ? campaign.spend / campaign.reservations
+          : 0,
+        
+        date_start: campaign.date_start || currentMonth.startDate!,
+        date_stop: campaign.date_stop || currentMonth.endDate!
       }));
       
-      logger.info('✅ Mapped real campaigns with aggregated metrics');
+      logger.info('✅ Using REAL per-campaign data (NOT distributed averages)');
+      
+      // 🔍 DIAGNOSTIC: Log sample to verify real data
+      if (campaignsForCache.length > 0) {
+        const sample = campaignsForCache[0];
+        logger.info('🔍 Sample campaign verification:', {
+          campaign_name: sample.campaign_name,
+          spend: sample.spend,
+          booking_step_1: sample.booking_step_1,
+          reservations: sample.reservations,
+          is_distributed: sample.booking_step_1 === Math.round(conversionMetrics.booking_step_1 / campaignsForCache.length) ? '❌ YES (BAD)' : '✅ NO (GOOD)'
+        });
+      }
     } else if (totalSpend > 0 || totalImpressions > 0 || totalClicks > 0) {
       // No campaigns but we have data - create single aggregate entry
       logger.info('🔧 Creating synthetic campaign data from aggregated metrics...');
@@ -500,6 +539,18 @@ export async function fetchFreshCurrentMonthData(client: any) {
       fromCache: false,
       cacheAge: 0
     };
+    
+    logger.info('📦 Cache data assembled:', {
+      campaignsCount: campaignsForCache.length,
+      totalSpend,
+      totalConversions: actualTotalConversions,
+      hasMetaTables: !!metaTables,
+      metaTablesIncluded: metaTables ? {
+        placement: metaTables.placementPerformance?.length || 0,
+        demographics: metaTables.demographicPerformance?.length || 0,
+        adRelevance: metaTables.adRelevanceResults?.length || 0
+      } : null
+    });
 
     // 🔧 CRITICAL FIX: Save campaign data to campaigns table for permanent storage (like Google Ads does)
     // Only save if we have actual campaign data with IDs from the API
@@ -804,7 +855,14 @@ async function refreshCacheInBackground(clientId: string, periodId: string, plat
       freshData = await fetchFreshCurrentMonthData(clientData);
     }
     
-    logger.info('✅ Background cache refresh completed for:', { clientId, periodId });
+    logger.info('✅ Background cache refresh completed for:', { 
+      clientId, 
+      periodId,
+      campaignsCount: freshData?.campaigns?.length || 0,
+      metaTablesRefreshed: !!freshData?.metaTables,
+      demographicsRefreshed: freshData?.metaTables?.demographicPerformance?.length || 0,
+      placementRefreshed: freshData?.metaTables?.placementPerformance?.length || 0
+    });
     
   } catch (error) {
     logger.error('❌ Background cache refresh failed:', error);
@@ -859,8 +917,6 @@ export async function getSmartCacheData(clientId: string, forceRefresh: boolean 
     periodId: currentMonth.periodId,
     forceRefresh
   });
-  
-  console.log('🔍 SMART CACHE DEBUG: Platform received:', platform, 'Type:', typeof platform);
   
   // If same request is already in progress, return that promise (unless force refresh)
   if (!forceRefresh && globalRequestCache.has(cacheKey)) {
@@ -923,7 +979,6 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
     try {
       // Use different cache tables based on platform
       const cacheTable = platform === 'google' ? 'google_ads_current_month_cache' : 'current_month_cache';
-      console.log('🔍 SMART CACHE DEBUG: Using cache table:', cacheTable, 'for platform:', platform);
       
       const { data: cachedData, error: cacheError } = await supabase
         .from(cacheTable)
@@ -943,7 +998,10 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
             cacheAge: Date.now() - new Date(cachedData.last_updated).getTime(),
             stats: cachedData.cache_data?.stats,
             conversionMetrics: cachedData.cache_data?.conversionMetrics,
-            campaignsCount: cachedData.cache_data?.campaigns?.length || 0
+            campaignsCount: cachedData.cache_data?.campaigns?.length || 0,
+            hasMetaTables: !!cachedData.cache_data?.metaTables,
+            demographicCount: cachedData.cache_data?.metaTables?.demographicPerformance?.length || 0,
+            placementCount: cachedData.cache_data?.metaTables?.placementPerformance?.length || 0
           });
 
           // 🚨 WARNING: Check if cached data has zeros
@@ -1030,7 +1088,6 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
   let cacheTable;
   
   if (platform === 'google') {
-    console.log('🔍 SMART CACHE DEBUG: Fetching Google Ads data...');
     // Import Google Ads function dynamically to avoid circular dependencies (server-side only)
     if (typeof window === 'undefined') {
       const { fetchFreshGoogleAdsCurrentMonthData } = await import('./google-ads-smart-cache-helper');
@@ -1040,7 +1097,6 @@ async function executeSmartCacheRequest(clientId: string, currentMonth: any, for
       throw new Error('Google Ads not available on client-side');
     }
   } else {
-    console.log('🔍 SMART CACHE DEBUG: Fetching Meta data...');
     freshData = await fetchFreshCurrentMonthData(clientData);
     cacheTable = 'current_month_cache';
   }
@@ -1087,18 +1143,34 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     : client.ad_account_id;
 
   try {
-    // Use getCampaignInsights for weekly data
-    const campaignInsights = await metaService.getCampaignInsights(
+    // ✅ FIX: Use getCampaignInsights for weekly data with actions parsing
+    logger.info('🔄 Fetching weekly campaign insights with actions array...');
+    const rawCampaignInsights = await metaService.getCampaignInsights(
       adAccountId,
       currentWeek.startDate!,
       currentWeek.endDate!,
       0 // No time increment
     );
+    
+    // ✅ FIX: Parse actions array IMMEDIATELY after fetching
+    const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+    
+    logger.info(`✅ Fetched and parsed ${campaignInsights.length} campaigns for weekly caching`);
+    
+    // 🔍 DIAGNOSTIC: Log sample parsed campaign (weekly)
+    if (campaignInsights.length > 0) {
+      const sampleCampaign = campaignInsights[0];
+      logger.info('🔍 Sample weekly parsed campaign:', {
+        campaign_name: sampleCampaign.campaign_name,
+        booking_step_1: sampleCampaign.booking_step_1,
+        booking_step_2: sampleCampaign.booking_step_2,
+        booking_step_3: sampleCampaign.booking_step_3,
+        reservations: sampleCampaign.reservations
+      });
+    }
 
     // Get account info  
     const accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
-
-    logger.info(`✅ Fetched ${campaignInsights.length} campaigns for weekly caching`);
 
     // Calculate stats (same logic as monthly)
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
@@ -1147,38 +1219,20 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         
         logger.info(`✅ Using real weekly conversion metrics from daily_kpi_data:`, realConversionMetrics);
       } else {
-        logger.warn(`⚠️ No daily_kpi_data found for weekly period ${currentWeek.startDate}-${currentWeek.endDate}, falling back to Meta API data`);
+        logger.warn(`⚠️ No daily_kpi_data found for weekly period ${currentWeek.startDate}-${currentWeek.endDate}, falling back to parsed Meta API data`);
         
-        // Fallback: Extract from Meta API campaign data
-        realConversionMetrics = campaignInsights.reduce((acc, campaign) => {
-          return {
-            click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-            email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-            booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-            booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-            booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
-            reservations: acc.reservations + (campaign.reservations || 0),
-            reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-          };
-        }, realConversionMetrics);
+        // ✅ FIX: Use aggregated metrics from parsed campaigns
+        realConversionMetrics = aggregateConversionMetrics(campaignInsights);
         
-        logger.info(`📊 Using Meta API conversion metrics as fallback:`, realConversionMetrics);
+        logger.info(`📊 Using parsed Meta API conversion metrics as fallback:`, realConversionMetrics);
       }
     } catch (error) {
       logger.error('❌ Failed to fetch daily_kpi_data for weekly conversion metrics:', error);
       
-      // Final fallback: Extract from Meta API campaign data
-      realConversionMetrics = campaignInsights.reduce((acc, campaign) => {
-        return {
-          click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-          email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-          booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-          booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-          booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
-          reservations: acc.reservations + (campaign.reservations || 0),
-          reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-        };
-      }, realConversionMetrics);
+      // ✅ FIX: Final fallback - use aggregated metrics from parsed campaigns
+      realConversionMetrics = aggregateConversionMetrics(campaignInsights);
+      
+      logger.info(`📊 Using parsed Meta API conversion metrics (error fallback):`, realConversionMetrics);
     }
 
     // 🔧 FIX: Use real conversion metrics when available, only fall back to estimates if no real data

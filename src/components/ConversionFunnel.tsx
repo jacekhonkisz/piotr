@@ -218,10 +218,8 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                   transition={{ delay: index * 0.1 }}
                   className={`px-2 py-1 rounded-lg text-center min-w-[90px] text-xs font-medium shadow-md ${
                     isNoHistoricalData || isNeutral
-                      ? 'bg-slate-800 text-white border border-slate-900' 
-                      : isPositive 
-                        ? 'bg-orange-500 text-white border border-orange-600' 
-                        : 'bg-slate-900 text-white border border-slate-800'
+                      ? 'bg-slate-900 text-white border border-slate-800' 
+                      : 'bg-slate-900 text-white border border-slate-800'
                   }`}
                   style={{ height: '90px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >

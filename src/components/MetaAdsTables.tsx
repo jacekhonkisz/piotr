@@ -106,8 +106,9 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
+    console.log('📊 MetaAdsTables: Fetching data for client:', clientId, 'dates:', dateStart, 'to', dateEnd);
     fetchMetaTablesData();
-  }, [dateStart, dateEnd]);
+  }, [dateStart, dateEnd, clientId]); // 🔧 FIX: Add clientId to dependencies
 
   const fetchMetaTablesData = async () => {
     try {
@@ -142,44 +143,21 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
       const result = await response.json();
       
+      console.log('📊 MetaAdsTables API response:', {
+        success: result.success,
+        source: result.debug?.source,
+        demographicCount: result.data?.metaTables?.demographicPerformance?.length || 0,
+        placementCount: result.data?.metaTables?.placementPerformance?.length || 0
+      });
+      
       if (result.success) {
         // Set data source information for cache indicator
         setDataSource(result.debug?.source || 'unknown');
         setCacheAge(result.debug?.cacheAge || null);
-        
-        console.log('🔍 MetaAdsTables received data:', {
-          placementDataLength: result.data.metaTables?.placementPerformance?.length || 0,
-          demographicDataLength: result.data.metaTables?.demographicPerformance?.length || 0,
-          adRelevanceDataLength: result.data.metaTables?.adRelevanceResults?.length || 0,
-          sampleDemographicData: result.data.metaTables?.demographicPerformance?.slice(0, 2),
-          fullDemographicData: result.data.metaTables?.demographicPerformance,
-          source: result.debug?.source,
-          cacheAge: result.debug?.cacheAge
-        });
-        
-        console.log('🔍 MetaAdsTables FULL RESULT:', result);
-        console.log('🔍 MetaAdsTables result.data:', result.data);
-        console.log('🔍 MetaAdsTables result.data.metaTables:', result.data?.metaTables);
-        console.log('🔍 MetaAdsTables result.data keys:', Object.keys(result.data || {}));
-        console.log('🔍 MetaAdsTables placement data type:', typeof result.data.metaTables?.placementPerformance, Array.isArray(result.data.metaTables?.placementPerformance));
-        console.log('🔍 MetaAdsTables demographic data type:', typeof result.data.metaTables?.demographicPerformance, Array.isArray(result.data.metaTables?.demographicPerformance));
-        console.log('🔍 MetaAdsTables ad relevance data type:', typeof result.data.metaTables?.adRelevanceResults, Array.isArray(result.data.metaTables?.adRelevanceResults));
 
         const placementArray = result.data.metaTables?.placementPerformance || [];
         const rawDemographicArray = result.data.metaTables?.demographicPerformance || [];
         const adRelevanceArray = result.data.metaTables?.adRelevanceResults || [];
-        
-        // 🔧 DIAGNOSTIC: Log raw demographic data to see exact structure
-        console.log('🔍 RAW DEMOGRAPHIC DATA FROM API:', {
-          count: rawDemographicArray.length,
-          firstItem: rawDemographicArray[0],
-          allKeys: rawDemographicArray[0] ? Object.keys(rawDemographicArray[0]) : [],
-          hasSpend: rawDemographicArray[0]?.spend !== undefined,
-          hasImpressions: rawDemographicArray[0]?.impressions !== undefined,
-          hasClicks: rawDemographicArray[0]?.clicks !== undefined,
-          spendValue: rawDemographicArray[0]?.spend,
-          spendType: typeof rawDemographicArray[0]?.spend
-        });
         
         // Clean up demographic data to ensure Polish labels AND convert strings to numbers
         const demographicArray = rawDemographicArray.map((item: any) => ({
@@ -196,33 +174,9 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           ctr: typeof item.ctr === 'string' ? parseFloat(item.ctr) : (item.ctr || 0)
         }));
         
-        console.log('🔍 MetaAdsTables BEFORE setState:', {
-          placementArray: placementArray.length,
-          demographicArray: demographicArray.length, 
-          adRelevanceArray: adRelevanceArray.length,
-          placementSample: placementArray.slice(0, 2),
-          demographicSample: demographicArray.slice(0, 2),
-          adRelevanceSample: adRelevanceArray.slice(0, 2),
-          demographicHasSpend: demographicArray[0]?.spend !== undefined
-        });
-
-        // Debug gender data specifically
-        console.log('🔍 MetaAdsTables GENDER DEBUG:', {
-          rawGenders: rawDemographicArray.map((d: any) => d.gender).slice(0, 10),
-          processedGenders: demographicArray.map((d: DemographicPerformance) => d.gender).slice(0, 10),
-          uniqueGenders: [...new Set(demographicArray.map((d: DemographicPerformance) => d.gender))]
-        });
-        
         setPlacementData(placementArray);
         setDemographicData(demographicArray);
         setAdRelevanceData(adRelevanceArray);
-        
-        console.log('🔍 MetaAdsTables AFTER setState - checking for empty state condition');
-        
-        // Log if demographic data is missing
-        if (!result.data.metaTables?.demographicPerformance || result.data.metaTables.demographicPerformance.length === 0) {
-          console.log('⚠️ No demographic data received from Meta API');
-        }
         
         // Call the callback with the loaded data
         if (onDataLoaded) {
@@ -678,14 +632,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
               <div>
                 {/* Demographic Charts Section */}
                 <div className="p-6 border-b border-slate-100">
-                  {(() => {
-                    console.log('🔍 Rendering DemographicPieCharts with:', {
-                      dataLength: demographicData.length,
-                      metric: demographicMetric,
-                      sampleData: demographicData.slice(0, 2)
-                    });
-                    return null;
-                  })()}
                   <DemographicPieCharts data={demographicData} metric={demographicMetric} />
                 </div>
 

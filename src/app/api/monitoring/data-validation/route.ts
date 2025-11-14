@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { dataValidator, DataValidationReport } from '../../../../lib/data-validation';
+import DataValidator, { ValidationResult as DataValidationReport } from '../../../../lib/data-validation';
 import { authenticateRequest, createErrorResponse } from '../../../../lib/auth-middleware';
 import logger from '../../../../lib/logger';
 
@@ -9,6 +9,9 @@ import logger from '../../../../lib/logger';
  * GET - Run comprehensive data validation and return results
  * POST - Run specific validation checks
  */
+
+// Create validator instance
+const dataValidator = new DataValidator();
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();

@@ -80,55 +80,65 @@ export async function POST(request: NextRequest) {
       currentDate: now.toISOString().split('T')[0]
     });
     
-    // 🚀 OPTIMIZATION: Use smart cache for current month (unless force refresh)
+    // 🔧 CRITICAL FIX: Force smart cache for current month (bypass all fallbacks)
     if (isCurrentMonth && !forceRefresh) {
-      logger.info('📊 Current month detected - checking smart cache for meta tables...');
-      
+      logger.info('🔧 Attempting smart cache for current month');
       try {
         const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
-        const smartCacheResult = await getSmartCacheData(clientId, false, 'meta');
+        const cacheResult = await getSmartCacheData(clientId, false, 'meta');
         
-        if (smartCacheResult.success && smartCacheResult.data?.metaTables) {
-          const metaTables = smartCacheResult.data.metaTables;
-          const cacheAge = smartCacheResult.data.cacheAge || 0;
-          const responseTime = Date.now() - startTime;
+        logger.info('📊 Smart cache result:', {
+          success: cacheResult.success,
+          demographicCount: cacheResult.data?.metaTables?.demographicPerformance?.length || 0,
+          placementCount: cacheResult.data?.metaTables?.placementPerformance?.length || 0
+        });
+        
+        // If smart cache has data, return it immediately (even if metaTables is empty)
+        if (cacheResult.success && cacheResult.data) {
+          const metaTables = cacheResult.data.metaTables || {
+            demographicPerformance: [],
+            placementPerformance: [],
+            adRelevanceResults: []
+          };
           
-          logger.info('✅ Meta tables loaded from smart cache:', {
-            placementCount: metaTables.placementPerformance?.length || 0,
-            demographicCount: metaTables.demographicPerformance?.length || 0,
-            adRelevanceCount: metaTables.adRelevanceResults?.length || 0,
-            cacheAge: `${Math.round(cacheAge / 1000)}s`,
-            responseTime: `${responseTime}ms`
-          });
+          const demographicsCount = metaTables.demographicPerformance?.length || 0;
+          const placementCount = metaTables.placementPerformance?.length || 0;
           
-          return NextResponse.json({
-            success: true,
-            data: {
-              metaTables,
-              dateRange,
-              client: {
-                id: client.id,
-                name: client.name
+          // 🔧 CRITICAL FIX: If cache has empty arrays, fall back to live API
+          if (demographicsCount === 0 && placementCount === 0) {
+            logger.info('⚠️ Cache has empty metaTables - falling back to live API');
+            // Don't return here - let it fall through to live API section below
+          } else {
+            // Cache has data - return it
+            logger.info('✅ Returning from smart cache with data');
+            const responseTime = Date.now() - startTime;
+            
+            return NextResponse.json({
+              success: true,
+              data: {
+                metaTables,
+                dateRange,
+                client: { id: client.id, name: client.name }
+              },
+              debug: {
+                responseTime,
+                source: 'smart-cache-forced',
+                cacheAge: cacheResult.data.cacheAge || 0,
+                metaApiError: null,
+                hasMetaApiError: false,
+                authenticatedUser: user.email
               }
-            },
-            debug: {
-              responseTime,
-              source: 'smart-cache',
-              cacheAge,
-              metaApiError: null,
-              hasMetaApiError: false,
-              authenticatedUser: user.email
-            }
-          });
-        } else {
-          logger.info('⚠️ Smart cache miss or no meta tables in cache, falling back to live API');
+            });
+          }
         }
       } catch (cacheError) {
-        logger.warn('⚠️ Smart cache check failed, falling back to live API:', cacheError);
+        console.error('❌ FORCED smart cache failed:', cacheError);
+        logger.error('Smart cache error:', cacheError);
       }
-    } else {
-      logger.info('📡 Historical data or force refresh - fetching from live API');
     }
+    
+    // 🔧 REMOVED: Duplicate smart cache check that was returning empty arrays
+    // The forced check above now handles all smart cache logic with proper empty array validation
     
     // 🔴 FALLBACK: Fetch from live Meta API (historical data or cache miss)
     logger.info('📊 Fetching meta tables from live API...');

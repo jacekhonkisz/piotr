@@ -491,6 +491,7 @@ function ReportsPageContent() {
   const handleClientChange = async (newClient: Client) => {
     console.log('🔄 Client changed in reports:', newClient.name);
     setSelectedClient(newClient);
+    setClient(newClient); // 🔧 FIX: Also update client state for MetaAdsTables
     
     // Clear existing reports for the new client
     setReports({});
@@ -3193,6 +3194,7 @@ function ReportsPageContent() {
                   
                   {selectedReport && selectedReport.campaigns.length > 0 && (
                     <InteractivePDFButton
+                      key={`pdf-button-${client?.id}-${selectedReport?.date_range_start}-${selectedReport?.date_range_end}`}
                       clientId={client?.id || ''}
                       dateStart={selectedReport?.date_range_start || ''}
                       dateEnd={selectedReport?.date_range_end || ''}
@@ -3512,7 +3514,7 @@ function ReportsPageContent() {
               <div className="mt-8">
                 {activeAdsProvider === 'meta' ? (
                   <MetaAdsTables
-                    key={`meta-ads-${activeAdsProvider}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                    key={`meta-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
                     dateStart={selectedReport.date_range_start}
                     dateEnd={selectedReport.date_range_end}
                     clientId={client?.id || ''}
@@ -3524,7 +3526,7 @@ function ReportsPageContent() {
                 ) : (
                   <>
                     <GoogleAdsTables
-                      key={`google-ads-${activeAdsProvider}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                      key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
                       dateStart={selectedReport.date_range_start}
                       dateEnd={selectedReport.date_range_end}
                       clientId={client?.id || ''}

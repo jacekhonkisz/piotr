@@ -591,7 +591,7 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
     ">
       <div style="font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: #64748B; margin-bottom: 12px;">
         ${card.label}
-      </div>
+            </div>
       <div style="font-size: 24px; font-weight: 600; color: #0F172A; font-variant-numeric: tabular-nums;">
         ${card.isROAS ? `${card.value.toFixed(2)}x` : formatCurrency(card.value)}
       </div>
@@ -685,15 +685,15 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
   const renderMetricCard = (label: string, value: string, change: number | null = null) => {
     let changeHTML = '';
     if (change !== null && Math.abs(change) >= 0.01) {
-      const isPositive = change >= 0;
+          const isPositive = change >= 0;
       changeHTML = `
         <div class="kpi-delta ${isPositive ? 'positive' : 'negative'}">
           ${isPositive ? '+' : '−'}${Math.abs(change).toFixed(1)}% <span style="color: #94A3B8; font-weight: 400;">vs poprzedni</span>
         </div>
       `;
-    }
-    
-    return `
+      }
+      
+      return `
       <div class="kpi-card">
         <div class="kpi-label">${label}</div>
         <div class="kpi-value">${value}</div>
@@ -765,9 +765,9 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
             </div>
           </div>
         ` : ''}
+        </div>
       </div>
-    </div>
-  `;
+    `;
 };
 
 // Generate Section 6: Google Ads Funnel
@@ -790,11 +790,16 @@ const generateGoogleFunnelSection = (reportData: ReportData) => {
 
 // Generate demographic pie charts HTML - matching UI exactly
 const generateDemographicChartsHTML = (demographicData: any[]) => {
-  logger.info('🔍 DEMOGRAPHIC CHARTS GENERATION:', {
+  logger.info('🎨 PDF DEMOGRAPHIC CHARTS GENERATION:', {
     hasDemographicData: !!demographicData,
     demographicDataLength: demographicData?.length || 0,
     demographicDataType: typeof demographicData,
-    demographicDataSample: demographicData?.slice(0, 2) || []
+    demographicDataSample: demographicData?.slice(0, 1) || [],
+    hasAge: demographicData?.[0]?.age,
+    hasGender: demographicData?.[0]?.gender,
+    hasSpend: demographicData?.[0]?.spend,
+    spendType: typeof demographicData?.[0]?.spend,  // Will be 'string' from Meta API!
+    clicksType: typeof demographicData?.[0]?.clicks  // Will be 'string' from Meta API!
   });
   
   if (!demographicData || demographicData.length === 0) {
@@ -820,15 +825,22 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
   }
   
   // Add validation for data structure
-  const validData = demographicData.filter(item => 
-    item && 
-    typeof item === 'object' && 
-    (item.age || item.gender) && 
-    typeof item.spend === 'number' && 
-    item.spend > 0 &&
-    // 🔧 FIX: Ensure at least one displayable metric exists (spend, clicks, or conversion data)
-    (item.clicks > 0 || item.reservation_value > 0 || item.impressions > 0)
-  );
+  // 🔧 CRITICAL FIX: Meta API returns strings, not numbers - need to parse!
+  const validData = demographicData.filter(item => {
+    if (!item || typeof item !== 'object') return false;
+    if (!item.age && !item.gender) return false;
+    
+    // Parse spend (can be string or number)
+    const spend = typeof item.spend === 'string' ? parseFloat(item.spend) : (item.spend || 0);
+    if (spend <= 0) return false;
+    
+    // Check if at least one displayable metric exists
+    const clicks = typeof item.clicks === 'string' ? parseInt(item.clicks) : (item.clicks || 0);
+    const reservationValue = typeof item.reservation_value === 'string' ? parseFloat(item.reservation_value) : (item.reservation_value || 0);
+    const impressions = typeof item.impressions === 'string' ? parseInt(item.impressions) : (item.impressions || 0);
+    
+    return clicks > 0 || reservationValue > 0 || impressions > 0;
+  });
   
   logger.info('🔍 VALID DEMOGRAPHIC DATA:', {
     originalLength: demographicData.length,
@@ -860,20 +872,23 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     `;
   }
 
-  // Generate charts for both Reservation Value and Clicks metrics (matching MetaAdsTables.tsx)
-  const generateChartsForMetric = (metric: 'reservation_value' | 'clicks') => {
+  // Generate charts for both Spend and Clicks metrics (matching MetaAdsTables.tsx UI default)
+  const generateChartsForMetric = (metric: 'spend' | 'clicks') => {
     // Process gender data for the specific metric
   const genderMap = new Map();
     validData.forEach(item => {
     let gender = item.gender || 'Nieznane';
-    // Ensure gender labels are in Polish
-    if (gender.toLowerCase() === 'female') gender = 'Kobiety';
-    else if (gender.toLowerCase() === 'male') gender = 'Mężczyźni';
-    else if (gender.toLowerCase() === 'unknown') gender = 'Nieznane';
-      // 🔧 FIX: Safe access to conversion metrics with fallback
-      const value = metric === 'reservation_value' 
-        ? (parseFloat(item.reservation_value) || 0) 
-        : (parseInt(item.clicks) || 0);
+    // Ensure gender labels are in Polish (handle both English and Polish input)
+    if (gender.toLowerCase() === 'female' || gender.toLowerCase() === 'kobieta') gender = 'Kobiety';
+    else if (gender.toLowerCase() === 'male' || gender.toLowerCase() === 'mężczyzna') gender = 'Mężczyźni';
+    else if (gender.toLowerCase() === 'unknown' || gender.toLowerCase() === 'nieznane') gender = 'Nieznane';
+      
+      // 🔧 CRITICAL FIX: Parse strings to numbers (Meta API returns strings!)
+      const rawValue = item[metric];
+      const value = metric === 'spend' 
+        ? (typeof rawValue === 'string' ? parseFloat(rawValue) : (rawValue || 0)) 
+        : (typeof rawValue === 'string' ? parseInt(rawValue) : (rawValue || 0));
+      
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
   });
 
@@ -882,11 +897,14 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     validData.forEach(item => {
     let age = item.age || 'Nieznane';
     // Ensure age labels are in Polish
-    if (age.toLowerCase() === 'unknown') age = 'Nieznane';
-      // 🔧 FIX: Safe access to conversion metrics with fallback
-      const value = metric === 'reservation_value' 
-        ? (parseFloat(item.reservation_value) || 0) 
-        : (parseInt(item.clicks) || 0);
+    if (age.toLowerCase() === 'unknown' || age.toLowerCase() === 'nieznane') age = 'Nieznane';
+      
+      // 🔧 CRITICAL FIX: Parse strings to numbers (Meta API returns strings!)
+      const rawValue = item[metric];
+      const value = metric === 'spend' 
+        ? (typeof rawValue === 'string' ? parseFloat(rawValue) : (rawValue || 0)) 
+        : (typeof rawValue === 'string' ? parseInt(rawValue) : (rawValue || 0));
+      
       ageMap.set(age, (ageMap.get(age) || 0) + value);
   });
 
@@ -896,8 +914,8 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     const genderTotal = genderEntries.reduce((sum, [, value]) => sum + value, 0);
     const ageTotal = ageEntries.reduce((sum, [, value]) => sum + value, 0);
 
-    const metricLabel = metric === 'reservation_value' ? 'Wartość rezerwacji' : 'Kliknięcia';
-    const formatValue = metric === 'reservation_value' 
+    const metricLabel = metric === 'spend' ? 'Wydatki' : 'Kliknięcia';
+    const formatValue = metric === 'spend' 
       ? (val: number | null | undefined) => formatCurrency(val || 0)
       : (val: number | null | undefined) => formatNumber(val || 0);
 
@@ -977,11 +995,13 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
   const genderColors = ['#8B5CF6', '#3B82F6', '#6B7280']; // Purple, Blue, Gray
   const ageColors = ['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316']; // Orange, Green, Blue, Purple, Red, Gray, Orange
 
+  // 🔧 FIX: Use 'spend' instead of 'reservation_value' to match UI default
+  // UI component in MetaAdsTables.tsx defaults to 'spend' metric
   return `
     <div class="demographics-section">
       <h4 class="demographics-title">Analiza Demograficzna</h4>
       
-      ${generateChartsForMetric('reservation_value')}
+      ${generateChartsForMetric('spend')}
       ${generateChartsForMetric('clicks')}
     </div>
   `;
@@ -2373,7 +2393,6 @@ function generatePDFHTML(reportData: ReportData): string {
         ${generateConditionalSection(generateGoogleFunnelSection(sanitizedData))}
         ${generateMetaCampaignDetailsSection(sanitizedData)}
         ${generateGoogleCampaignDetailsSection(sanitizedData)}
-        ${generateInsightsSection(sanitizedData)}
         ${generateFooter(sanitizedData)}
         </body>
     </html>
@@ -3167,9 +3186,11 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
             adRelevanceResults: tablesData.data.metaTables?.adRelevanceResults || []
           };
           
-          logger.info('🔍 PDF DEMOGRAPHIC DATA ASSIGNED:', {
+          logger.info('✅ PDF META TABLES DATA ASSIGNED:', {
+            placementLength: reportData.metaData.tables.placementPerformance.length,
             demographicLength: reportData.metaData.tables.demographicPerformance.length,
-            demographicSample: reportData.metaData.tables.demographicPerformance.slice(0, 2)
+            adRelevanceLength: reportData.metaData.tables.adRelevanceResults.length,
+            demographicSample: reportData.metaData.tables.demographicPerformance.slice(0, 1)
           });
         }
       } else {

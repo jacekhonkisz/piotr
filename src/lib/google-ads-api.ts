@@ -1,6 +1,7 @@
 import { GoogleAdsApi } from 'google-ads-api';
 import logger from './logger';
 import { RateLimiter } from './rate-limiter';
+import { parseGoogleAdsConversions } from './google-ads-actions-parser';
 
 // Cache duration for API responses
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -799,6 +800,9 @@ export class GoogleAdsAPIService {
         ],
       };
       
+      // ✅ NEW: Group conversions by campaign for parser
+      const campaignConversionData: { [campaignId: string]: any[] } = {};
+      
       response?.forEach((row: any) => {
         // Add null safety checks for segments
         if (!row.segments) {
@@ -807,44 +811,46 @@ export class GoogleAdsAPIService {
         }
         
         const campaignId = row.campaign.id;
-        const actionName = (row.segments?.conversion_action_name || '').toLowerCase();
+        const campaignName = row.campaign.name;
+        const conversionName = row.segments?.conversion_action_name || '';
         const conversions = row.metrics.conversions || 0;
         const conversionValue = (row.metrics.conversions_value || 0) / 1000000;
         
-        // DEBUG: Log actual conversion action names to fix mapping
+        // DEBUG: Log actual conversion action names
         if (conversions > 0) {
-          logger.info(`🔍 DEBUG: Campaign ${row.campaign.name} (${campaignId}) - Action: "${row.segments?.conversion_action_name || 'NO_ACTION_NAME'}" (${conversions} conversions, ${conversionValue} value)`);
+          logger.info(`🔍 Campaign ${campaignName} (${campaignId}) - Action: "${conversionName}" (${conversions} conversions, ${conversionValue} value)`);
         }
         
-        if (!breakdown[campaignId]) {
-          breakdown[campaignId] = {
-            click_to_call: 0,
-            email_contacts: 0,
-            booking_step_1: 0,
-            booking_step_2: 0,
-            booking_step_3: 0,
-            reservations: 0,
-            reservation_value: 0
-          };
+        // Group conversions by campaign
+        if (!campaignConversionData[campaignId]) {
+          campaignConversionData[campaignId] = [];
         }
         
-        // Map Google conversion actions to Meta format using REAL action names
-        let mapped = false;
-        Object.entries(conversionMapping).forEach(([metaType, googleTypes]) => {
-          if (googleTypes.some(googleType => actionName.includes(googleType))) {
-            breakdown[campaignId][metaType] += conversions;
-            if (metaType === 'reservations') {
-              breakdown[campaignId].reservation_value += conversionValue;
-            }
-            mapped = true;
-            logger.info(`✅ Mapped "${row.segments?.conversion_action_name}" → ${metaType} (${conversions} conversions)`);
-          }
+        campaignConversionData[campaignId].push({
+          conversion_name: conversionName,
+          name: conversionName,
+          conversions: conversions,
+          value: conversions,
+          conversion_value: conversionValue
         });
+      });
+      
+      // ✅ NEW: Use the parser for each campaign
+      Object.entries(campaignConversionData).forEach(([campaignId, conversions]) => {
+        const campaignName = conversions[0]?.name || campaignId;
         
-        // Log unmapped conversions for debugging - DO NOT assign to any category
-        if (!mapped && conversions > 0) {
-          logger.warn(`⚠️  UNMAPPED CONVERSION: "${row.segments?.conversion_action_name}" (${conversions} conversions) - need to add to mapping`);
-        }
+        // Parse conversions using our new parser
+        const parsed = parseGoogleAdsConversions(conversions, campaignName);
+        
+        breakdown[campaignId] = parsed;
+        
+        logger.info(`✅ Parsed conversions for campaign ${campaignName}:`, {
+          booking_step_1: parsed.booking_step_1,
+          booking_step_2: parsed.booking_step_2,
+          booking_step_3: parsed.booking_step_3,
+          reservations: parsed.reservations,
+          reservation_value: parsed.reservation_value
+        });
       });
       
       logger.info(`✅ Processed conversion breakdown for ${Object.keys(breakdown).length} campaigns`);
