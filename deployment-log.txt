@@ -1,0 +1,678 @@
+Vercel CLI 48.6.7
+Retrieving project…
+Deploying jachonkisz-gmailcoms-projects/piotr
+Uploading [--------------------] (0.0B/20.1KB)
+Uploading [===============-----] (16.0KB/20.1KB)
+Uploading [================----] (16.1KB/20.1KB)
+Uploading [===================-] (19.9KB/20.1KB)
+Uploading [====================] (20.1KB/20.1KB)
+Inspect: https://vercel.com/jachonkisz-gmailcoms-projects/piotr/Go58RGQXomgezcrmBTBwbDgZvSZZ [6s]
+Production: https://piotr-kacg5rt7h-jachonkisz-gmailcoms-projects.vercel.app [6s]
+https://piotr-kacg5rt7h-jachonkisz-gmailcoms-projects.vercel.appQueued
+Building
+2025-11-17T18:57:44.352Z  Running build in Washington, D.C., USA (East) – iad1
+2025-11-17T18:57:44.353Z  Build machine configuration: 4 cores, 8 GB
+2025-11-17T18:57:44.534Z  Retrieving list of deployment files...
+2025-11-17T18:57:45.280Z  Downloading 2372 deployment files...
+2025-11-17T18:57:55.502Z  Restored build cache from previous deployment (7nuPdL4ggkU3vmqJrLq1uAUXTRiA)
+2025-11-17T18:57:56.648Z  Running "vercel build"
+2025-11-17T18:57:57.052Z  Vercel CLI 48.10.2
+2025-11-17T18:57:57.526Z  Installing dependencies...
+2025-11-17T18:58:02.020Z  
+2025-11-17T18:58:02.021Z  > meta-ads-reporting-saas@0.1.0 prepare
+2025-11-17T18:58:02.021Z  > husky install
+2025-11-17T18:58:02.021Z  
+2025-11-17T18:58:02.068Z  fatal: not a git repository (or any parent up to mount point /vercel)
+2025-11-17T18:58:02.069Z  Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+2025-11-17T18:58:02.070Z  husky - git command not found, skipping install
+2025-11-17T18:58:02.082Z  
+2025-11-17T18:58:02.082Z  added 39 packages, and changed 2 packages in 4s
+2025-11-17T18:58:02.082Z  
+2025-11-17T18:58:02.082Z  254 packages are looking for funding
+2025-11-17T18:58:02.082Z    run `npm fund` for details
+2025-11-17T18:58:02.129Z  Detected Next.js version: 14.2.32
+2025-11-17T18:58:02.138Z  Running "npm run build"
+2025-11-17T18:58:02.254Z  
+2025-11-17T18:58:02.254Z  > meta-ads-reporting-saas@0.1.0 build
+2025-11-17T18:58:02.254Z  > next build
+2025-11-17T18:58:02.254Z  
+2025-11-17T18:58:02.943Z    ▲ Next.js 14.2.32
+2025-11-17T18:58:02.943Z    - Environments: .env
+2025-11-17T18:58:02.944Z  
+2025-11-17T18:58:03.011Z     Creating an optimized production build ...
+2025-11-17T18:58:29.653Z   ⚠ Compiled with warnings
+2025-11-17T18:58:29.653Z  
+2025-11-17T18:58:29.653Z  ./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+2025-11-17T18:58:29.653Z  Critical dependency: the request of a dependency is an expression
+2025-11-17T18:58:29.653Z  
+2025-11-17T18:58:29.653Z  Import trace for requested module:
+2025-11-17T18:58:29.653Z  ./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+2025-11-17T18:58:29.653Z  ./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+2025-11-17T18:58:29.653Z  ./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+2025-11-17T18:58:29.653Z  ./node_modules/@prisma/instrumentation/node_modules/@opentelemetry/instrumentation/build/esm/index.js
+2025-11-17T18:58:29.653Z  ./node_modules/@prisma/instrumentation/dist/index.js
+2025-11-17T18:58:29.654Z  ./node_modules/@sentry/node/build/cjs/integrations/tracing/prisma.js
+2025-11-17T18:58:29.654Z  ./node_modules/@sentry/node/build/cjs/index.js
+2025-11-17T18:58:29.654Z  ./node_modules/@sentry/nextjs/build/cjs/index.server.js
+2025-11-17T18:58:29.654Z  ./src/app/global-error.tsx
+2025-11-17T18:58:29.654Z  
+2025-11-17T18:58:29.654Z  ./node_modules/require-in-the-middle/index.js
+2025-11-17T18:58:29.654Z  Critical dependency: require function is used in a way in which dependencies cannot be statically extracted
+2025-11-17T18:58:29.654Z  
+2025-11-17T18:58:29.654Z  Import trace for requested module:
+2025-11-17T18:58:29.654Z  ./node_modules/require-in-the-middle/index.js
+2025-11-17T18:58:29.654Z  ./node_modules/@opentelemetry/instrumentation/build/esm/platform/node/instrumentation.js
+2025-11-17T18:58:29.654Z  ./node_modules/@opentelemetry/instrumentation/build/esm/platform/node/index.js
+2025-11-17T18:58:29.655Z  ./node_modules/@opentelemetry/instrumentation/build/esm/platform/index.js
+2025-11-17T18:58:29.655Z  ./node_modules/@opentelemetry/instrumentation/build/esm/index.js
+2025-11-17T18:58:29.655Z  ./node_modules/@sentry/node/build/cjs/integrations/tracing/postgresjs.js
+2025-11-17T18:58:29.655Z  ./node_modules/@sentry/node/build/cjs/index.js
+2025-11-17T18:58:29.655Z  ./node_modules/@sentry/nextjs/build/cjs/index.server.js
+2025-11-17T18:58:29.655Z  ./src/app/global-error.tsx
+2025-11-17T18:58:29.655Z  
+2025-11-17T18:58:29.655Z     Skipping validation of types
+2025-11-17T18:58:29.655Z     Skipping linting
+2025-11-17T18:58:29.988Z     Collecting page data ...
+2025-11-17T18:58:32.128Z  🔍 DEBUG: Loading debug route file
+2025-11-17T18:58:32.129Z  🔍 DEBUG: Debug route file loaded completely
+2025-11-17T18:58:32.194Z  [INFO] 🏥 Health checks started { interval: 30000 }
+2025-11-17T18:58:32.236Z  🔍 Running startup validation checks...
+2025-11-17T18:58:32.237Z  ⏭️ Skipping strict validation during build phase
+2025-11-17T18:58:32.238Z  🔍 Running startup validation checks...
+2025-11-17T18:58:32.238Z  ⏭️ Skipping strict validation during build phase
+2025-11-17T18:58:33.923Z     Generating static pages (0/142) ...
+2025-11-17T18:58:34.627Z  [ERROR] Error in client-statuses GET API: B [Error]: Dynamic server usage: Route /api/admin/client-statuses couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:34.628Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:34.628Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:34.628Z      at u (/vercel/path0/.next/server/app/api/admin/client-statuses/route.js:1:709)
+2025-11-17T18:58:34.628Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:34.628Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:34.628Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:34.628Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:34.628Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:34.628Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+2025-11-17T18:58:34.628Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+2025-11-17T18:58:34.628Z    description: "Route /api/admin/client-statuses couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:34.629Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:34.629Z  }
+2025-11-17T18:58:34.957Z  📊 Admin: Getting daily metrics cache statistics
+2025-11-17T18:58:34.957Z  ✅ Cache stats retrieved: { size: 0, keys: [] }
+2025-11-17T18:58:34.989Z  [INFO] 🏥 Starting data health check...
+2025-11-17T18:58:35.058Z  📊 Starting data storage health check...
+2025-11-17T18:58:35.138Z  Error fetching email rate limit status: B [Error]: Dynamic server usage: Route /api/admin/email-rate-limit-status couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:35.139Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:35.139Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:35.139Z      at p (/vercel/path0/.next/server/app/api/admin/email-rate-limit-status/route.js:1:1268)
+2025-11-17T18:58:35.139Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:35.139Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:35.139Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:35.139Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:35.139Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:35.139Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+2025-11-17T18:58:35.140Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+2025-11-17T18:58:35.140Z    description: "Route /api/admin/email-rate-limit-status couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:35.140Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:35.140Z  }
+2025-11-17T18:58:35.274Z  [ERROR] Authentication error: B [Error]: Dynamic server usage: Route /api/admin/platform-separation-health couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:35.275Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:35.275Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:35.275Z      at l (/vercel/path0/.next/server/app/api/fetch-google-ads-live-data/route.js:1:22148)
+2025-11-17T18:58:35.275Z      at p (/vercel/path0/.next/server/app/api/admin/platform-separation-health/route.js:1:4769)
+2025-11-17T18:58:35.275Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:35.275Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:35.275Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:35.275Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:35.275Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:35.275Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24) {
+2025-11-17T18:58:35.275Z    description: "Route /api/admin/platform-separation-health couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:35.276Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:35.276Z  }
+2025-11-17T18:58:36.672Z     Generating static pages (35/142) 
+2025-11-17T18:58:36.997Z  🔍 Checking RLS policies for cache tables...
+2025-11-17T18:58:36.999Z  
+2025-11-17T18:58:37.694Z  [INFO] ✅ Data health check completed { status: 'warning', score: 75, issues: 2 }
+2025-11-17T18:58:37.737Z  [ERROR] Authentication error: B [Error]: Dynamic server usage: Route /api/data-lifecycle-status couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:37.738Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:37.738Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:37.738Z      at i (/vercel/path0/.next/server/app/api/client-full-data/route.js:1:3426)
+2025-11-17T18:58:37.738Z      at d (/vercel/path0/.next/server/app/api/data-lifecycle-status/route.js:1:661)
+2025-11-17T18:58:37.738Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:37.738Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:37.738Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:37.738Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:37.738Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:37.738Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24) {
+2025-11-17T18:58:37.738Z    description: "Route /api/data-lifecycle-status couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:37.738Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:37.738Z  }
+2025-11-17T18:58:37.739Z  🔍 Debugging authentication context...
+2025-11-17T18:58:37.739Z  
+2025-11-17T18:58:37.759Z  Error checking cache tables: B [Error]: Dynamic server usage: Route /api/debug-cache-tables couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:37.759Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:37.759Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:37.760Z      at u (/vercel/path0/.next/server/app/api/debug-cache-tables/route.js:1:715)
+2025-11-17T18:58:37.760Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:37.760Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:37.760Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:37.760Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:37.760Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:37.760Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+2025-11-17T18:58:37.760Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+2025-11-17T18:58:37.760Z    description: "Route /api/debug-cache-tables couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:37.760Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:37.760Z  }
+2025-11-17T18:58:37.760Z  🔍 Debug: Fetching calendar data...
+2025-11-17T18:58:37.911Z  1️⃣ Cache access test:
+2025-11-17T18:58:37.912Z  ❌ Cache access blocked: "failed to parse select parameter (count(*))" (line 1, column 6)
+2025-11-17T18:58:38.384Z  
+2025-11-17T18:58:38.384Z  2️⃣ Insert test:
+2025-11-17T18:58:38.384Z  ❌ Insert failed: insert or update on table "current_month_cache" violates foreign key constraint "current_month_cache_client_id_fkey"
+2025-11-17T18:58:38.385Z     Code: 23503
+2025-11-17T18:58:38.385Z     Details: "Key (client_id)=(00000000-0000-0000-0000-000000000001) is not present in table \"clients\"."
+2025-11-17T18:58:38.391Z  🔧 Disabling RLS for cache tables...
+2025-11-17T18:58:38.391Z  
+2025-11-17T18:58:38.391Z  1️⃣ Testing current access...
+2025-11-17T18:58:38.391Z  ❌ Current access blocked: "failed to parse select parameter (count(*))" (line 1, column 6)
+2025-11-17T18:58:38.392Z  ✅ Calendar debug data generated: { clientCount: 16, potentialReportsCount: 32, upcomingDatesCount: 2 }
+2025-11-17T18:58:38.392Z  Failed to fetch scheduled reports: relation "public.scheduled_reports" does not exist
+2025-11-17T18:58:38.401Z  🔍 DEBUG: Loading debug route file
+2025-11-17T18:58:38.401Z  🔍 DEBUG: Debug route file loaded completely
+2025-11-17T18:58:38.401Z  🔍 DEBUG: GET handler called
+2025-11-17T18:58:38.402Z  🔍 DEBUG: Creating response
+2025-11-17T18:58:38.402Z  🔍 DEBUG: Response created, returning
+2025-11-17T18:58:38.422Z  ❌ Error getting executive summaries cache stats: B [Error]: Dynamic server usage: Route /api/executive-summaries/stats couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:38.422Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:38.422Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:38.422Z      at m (/vercel/path0/.next/server/app/api/executive-summaries/stats/route.js:1:714)
+2025-11-17T18:58:38.422Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:38.422Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:38.422Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:38.422Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:38.422Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:38.422Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+2025-11-17T18:58:38.422Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+2025-11-17T18:58:38.422Z    description: "Route /api/executive-summaries/stats couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:38.422Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:38.422Z  }
+2025-11-17T18:58:38.431Z     Generating static pages (70/142) 
+2025-11-17T18:58:38.461Z  🧪 FINAL CACHE TEST - Comprehensive Analysis
+2025-11-17T18:58:38.462Z  
+2025-11-17T18:58:38.462Z  1️⃣ Testing Meta API directly...
+2025-11-17T18:58:38.462Z  ❌ Final cache test failed: TypeError: fetch failed
+2025-11-17T18:58:38.462Z      at node:internal/deps/undici/undici:14900:13
+2025-11-17T18:58:38.462Z      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+2025-11-17T18:58:38.463Z      at async c (/vercel/path0/.next/server/app/api/final-cache-test/route.js:1:824)
+2025-11-17T18:58:38.463Z      at async /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38411
+2025-11-17T18:58:38.463Z      at async e_.execute (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:27880)
+2025-11-17T18:58:38.463Z      at async e_.handle (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:39943)
+2025-11-17T18:58:38.463Z      at async exportAppRoute (/vercel/path0/node_modules/next/dist/export/routes/app-route.js:77:26)
+2025-11-17T18:58:38.464Z      at async exportPageImpl (/vercel/path0/node_modules/next/dist/export/worker.js:175:20)
+2025-11-17T18:58:38.464Z      at async Span.traceAsyncFn (/vercel/path0/node_modules/next/dist/trace/trace.js:154:20)
+2025-11-17T18:58:38.464Z      at async Object.exportPage (/vercel/path0/node_modules/next/dist/export/worker.js:237:20) {
+2025-11-17T18:58:38.464Z    [cause]: Error: connect ECONNREFUSED 127.0.0.1:3000
+2025-11-17T18:58:38.464Z        at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+2025-11-17T18:58:38.464Z        at TCPConnectWrap.callbackTrampoline (node:internal/async_hooks:130:17) {
+2025-11-17T18:58:38.464Z      errno: -111,
+2025-11-17T18:58:38.465Z      code: 'ECONNREFUSED',
+2025-11-17T18:58:38.465Z      syscall: 'connect',
+2025-11-17T18:58:38.465Z      address: '127.0.0.1',
+2025-11-17T18:58:38.465Z      port: 3000
+2025-11-17T18:58:38.465Z    }
+2025-11-17T18:58:38.465Z  }
+2025-11-17T18:58:38.474Z  Generated reports API error: B [Error]: Dynamic server usage: Route /api/generated-reports couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:38.474Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:38.474Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:38.474Z      at d (/vercel/path0/.next/server/app/api/generated-reports/route.js:1:714)
+2025-11-17T18:58:38.474Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:38.474Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:38.474Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:38.474Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:38.474Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:38.474Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+2025-11-17T18:58:38.474Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+2025-11-17T18:58:38.474Z    description: "Route /api/generated-reports couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:38.475Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:38.475Z  }
+2025-11-17T18:58:38.524Z  [INFO] Metrics request received
+2025-11-17T18:58:38.525Z  [INFO] Metrics retrieved successfully { metricCount: 0 }
+2025-11-17T18:58:38.590Z  [INFO] 🏥 Health checks started { interval: 30000 }
+2025-11-17T18:58:38.590Z  [ERROR] ❌ System health check failed {
+2025-11-17T18:58:38.591Z    error: "Dynamic server usage: Route /api/monitoring/system-health couldn't be rendered statically because it used `request.headers`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:38.591Z    responseTime: 1
+2025-11-17T18:58:38.591Z  }
+2025-11-17T18:58:39.407Z     Generating static pages (106/142) 
+2025-11-17T18:58:39.577Z  ❌ Cache storage test failed: B [Error]: Dynamic server usage: Route /api/test-cache-storage couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error
+2025-11-17T18:58:39.577Z      at V (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:21778)
+2025-11-17T18:58:39.578Z      at Object.get (/vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:29465)
+2025-11-17T18:58:39.578Z      at u (/vercel/path0/.next/server/app/api/test-cache-storage/route.js:1:715)
+2025-11-17T18:58:39.578Z      at /vercel/path0/node_modules/next/dist/compiled/next-server/app-route.runtime.prod.js:6:38417
+2025-11-17T18:58:39.578Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:140:36
+2025-11-17T18:58:39.578Z      at NoopContextManager.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/context/NoopContextManager.js:25:19)
+2025-11-17T18:58:39.578Z      at ContextAPI.with (/vercel/path0/node_modules/@opentelemetry/api/build/src/api/context.js:60:46)
+2025-11-17T18:58:39.578Z      at NoopTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/NoopTracer.js:65:31)
+2025-11-17T18:58:39.578Z      at ProxyTracer.startActiveSpan (/vercel/path0/node_modules/@opentelemetry/api/build/src/trace/ProxyTracer.js:36:24)
+2025-11-17T18:58:39.578Z      at /vercel/path0/node_modules/next/dist/server/lib/trace/tracer.js:122:103 {
+2025-11-17T18:58:39.578Z    description: "Route /api/test-cache-storage couldn't be rendered statically because it used `request.url`. See more info here: https://nextjs.org/docs/messages/dynamic-server-error",
+2025-11-17T18:58:39.579Z    digest: 'DYNAMIC_SERVER_USAGE'
+2025-11-17T18:58:39.579Z  }
+2025-11-17T18:58:39.615Z  🧪 Testing cache update mechanism...
+2025-11-17T18:58:39.616Z  
+2025-11-17T18:58:39.616Z  1️⃣ Checking current cache state...
+2025-11-17T18:58:39.654Z  🧪 Testing RLS fix and cache update...
+2025-11-17T18:58:39.654Z  
+2025-11-17T18:58:39.654Z  1️⃣ Testing cache table read access...
+2025-11-17T18:58:39.759Z  ❌ Cache query error: {
+2025-11-17T18:58:39.760Z    code: 'PGRST116',
+2025-11-17T18:58:39.760Z    details: 'The result contains 0 rows',
+2025-11-17T18:58:39.760Z    hint: null,
+2025-11-17T18:58:39.760Z    message: 'JSON object requested, multiple (or no) rows returned'
+2025-11-17T18:58:39.760Z  }
+2025-11-17T18:58:39.760Z  
+2025-11-17T18:58:39.760Z  2️⃣ Force refreshing cache...
+2025-11-17T18:58:39.760Z  [INFO] 📅 Smart cache request for current month: {
+2025-11-17T18:58:39.760Z    clientId: 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa',
+2025-11-17T18:58:39.760Z    platform: 'meta',
+2025-11-17T18:58:39.760Z    periodId: '2025-11',
+2025-11-17T18:58:39.760Z    forceRefresh: true
+2025-11-17T18:58:39.760Z  }
+2025-11-17T18:58:39.760Z  [INFO] 🔄 Force refresh requested, bypassing cache
+2025-11-17T18:58:39.781Z  🔍 Verifying send_day migration status...
+2025-11-17T18:58:39.790Z  ❌ Read error: {
+2025-11-17T18:58:39.790Z    code: 'PGRST116',
+2025-11-17T18:58:39.790Z    details: 'The result contains 0 rows',
+2025-11-17T18:58:39.790Z    hint: null,
+2025-11-17T18:58:39.790Z    message: 'JSON object requested, multiple (or no) rows returned'
+2025-11-17T18:58:39.790Z  }
+2025-11-17T18:58:39.878Z  🔍 AuthProvider state: {
+2025-11-17T18:58:39.878Z    loading: true,
+2025-11-17T18:58:39.878Z    initialized: false,
+2025-11-17T18:58:39.878Z    computedLoading: true,
+2025-11-17T18:58:39.878Z    hasUser: false,
+2025-11-17T18:58:39.879Z    hasProfile: false
+2025-11-17T18:58:39.879Z  }
+2025-11-17T18:58:39.953Z  🔍 AuthProvider state: {
+2025-11-17T18:58:39.953Z    loading: true,
+2025-11-17T18:58:39.953Z    initialized: false,
+2025-11-17T18:58:39.953Z    computedLoading: true,
+2025-11-17T18:58:39.953Z    hasUser: false,
+2025-11-17T18:58:39.953Z    hasProfile: false
+2025-11-17T18:58:39.953Z  }
+2025-11-17T18:58:40.052Z  🔍 AuthProvider state: {
+2025-11-17T18:58:40.053Z    loading: true,
+2025-11-17T18:58:40.053Z    initialized: false,
+2025-11-17T18:58:40.053Z    computedLoading: true,
+2025-11-17T18:58:40.053Z    hasUser: false,
+2025-11-17T18:58:40.053Z    hasProfile: false
+2025-11-17T18:58:40.053Z  }
+2025-11-17T18:58:40.115Z  🔍 AuthProvider state: {
+2025-11-17T18:58:40.116Z    loading: true,
+2025-11-17T18:58:40.116Z    initialized: false,
+2025-11-17T18:58:40.116Z    computedLoading: true,
+2025-11-17T18:58:40.116Z    hasUser: false,
+2025-11-17T18:58:40.116Z    hasProfile: false
+2025-11-17T18:58:40.116Z  }
+2025-11-17T18:58:44.214Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.215Z    loading: true,
+2025-11-17T18:58:44.215Z    initialized: false,
+2025-11-17T18:58:44.215Z    computedLoading: true,
+2025-11-17T18:58:44.215Z    hasUser: false,
+2025-11-17T18:58:44.215Z    hasProfile: false
+2025-11-17T18:58:44.215Z  }
+2025-11-17T18:58:44.216Z  [INFO] 🔄 Fetching fresh current month data from Meta API...
+2025-11-17T18:58:44.216Z  [INFO] 🔑 Using system_user (permanent) for Belmonte Hotel
+2025-11-17T18:58:44.216Z  [INFO] 🔄 Clearing Meta API service cache to ensure fresh data fetch...
+2025-11-17T18:58:44.216Z  [INFO] Meta API: Cleared 0 cache entries for current token
+2025-11-17T18:58:44.216Z  [INFO] 🔄 Fetching campaign insights with actions array from Meta API...
+2025-11-17T18:58:44.216Z  [INFO] Meta API: Fetching campaign insights from API
+2025-11-17T18:58:44.216Z  [INFO] Meta API: Fetched 17 campaign insights
+2025-11-17T18:58:44.216Z  [INFO] ✅ Fetched and parsed 17 campaigns with conversion data
+2025-11-17T18:58:44.216Z  [INFO] 🔍 Sample parsed campaign: {
+2025-11-17T18:58:44.216Z    campaign_name: '[PBM] HOT | Remarketing | www i SM',
+2025-11-17T18:58:44.216Z    spend: '2533.11',
+2025-11-17T18:58:44.216Z    impressions: '200184',
+2025-11-17T18:58:44.216Z    clicks: '1885',
+2025-11-17T18:58:44.216Z    booking_step_1: 3308,
+2025-11-17T18:58:44.216Z    booking_step_2: 1186,
+2025-11-17T18:58:44.216Z    booking_step_3: 329,
+2025-11-17T18:58:44.216Z    reservations: 80,
+2025-11-17T18:58:44.217Z    hasActionsArray: true
+2025-11-17T18:58:44.217Z  }
+2025-11-17T18:58:44.217Z  [INFO] Meta API: Fetching campaigns from API
+2025-11-17T18:58:44.217Z  [INFO] Meta API: Fetched 25 campaigns
+2025-11-17T18:58:44.217Z  [INFO] ✅ Data fetch complete: 17 insights, 25 campaigns
+2025-11-17T18:58:44.217Z  [INFO] 🔍 DIAGNOSTIC: Parsed Meta API data: {
+2025-11-17T18:58:44.217Z    campaignInsightsCount: 17,
+2025-11-17T18:58:44.217Z    campaignsCount: 25,
+2025-11-17T18:58:44.217Z    firstInsight: {
+2025-11-17T18:58:44.217Z      campaign_name: '[PBM] HOT | Remarketing | www i SM',
+2025-11-17T18:58:44.217Z      spend: '2533.11',
+2025-11-17T18:58:44.217Z      impressions: '200184',
+2025-11-17T18:58:44.217Z      clicks: '1885',
+2025-11-17T18:58:44.217Z      booking_step_1: 3308,
+2025-11-17T18:58:44.218Z      reservations: 80
+2025-11-17T18:58:44.218Z    }
+2025-11-17T18:58:44.218Z  }
+2025-11-17T18:58:44.218Z  [INFO] 🔍 DIAGNOSTIC: Aggregated metrics from Meta API: {
+2025-11-17T18:58:44.218Z    totalSpend: 24908.789999999997,
+2025-11-17T18:58:44.218Z    totalImpressions: 1992373,
+2025-11-17T18:58:44.218Z    totalClicks: 55255,
+2025-11-17T18:58:44.218Z    averageCtr: 2.773326079002275,
+2025-11-17T18:58:44.218Z    averageCpc: 0.45079703194281057,
+2025-11-17T18:58:44.218Z    metaTotalConversions: 0
+2025-11-17T18:58:44.219Z  }
+2025-11-17T18:58:44.219Z  [INFO] 📊 Fetching real conversion metrics from daily_kpi_data...
+2025-11-17T18:58:44.219Z  [INFO] 📊 Aggregated Meta conversion metrics from parsed campaigns: {
+2025-11-17T18:58:44.219Z    click_to_call: 7,
+2025-11-17T18:58:44.219Z    email_contacts: 0,
+2025-11-17T18:58:44.219Z    booking_step_1: 27732,
+2025-11-17T18:58:44.219Z    booking_step_2: 7888,
+2025-11-17T18:58:44.219Z    booking_step_3: 2294,
+2025-11-17T18:58:44.219Z    reservations: 412,
+2025-11-17T18:58:44.220Z    reservation_value: 1569700
+2025-11-17T18:58:44.220Z  }
+2025-11-17T18:58:44.220Z  [INFO] ✅ Final conversion metrics for cache: {
+2025-11-17T18:58:44.220Z    click_to_call: 7,
+2025-11-17T18:58:44.220Z    email_contacts: 0,
+2025-11-17T18:58:44.220Z    booking_step_1: 27732,
+2025-11-17T18:58:44.220Z    booking_step_2: 7888,
+2025-11-17T18:58:44.220Z    booking_step_3: 2294,
+2025-11-17T18:58:44.220Z    reservations: 412,
+2025-11-17T18:58:44.220Z    reservation_value: 1569700,
+2025-11-17T18:58:44.220Z    roas: 63.01791455947881,
+2025-11-17T18:58:44.220Z    cost_per_reservation: 60.458228155339796
+2025-11-17T18:58:44.220Z  }
+2025-11-17T18:58:44.220Z  [INFO] 📊 Fetching meta tables data and account info for current month cache...
+2025-11-17T18:58:44.220Z  [INFO] Meta API: Fetching placement performance from API
+2025-11-17T18:58:44.220Z  [INFO] Meta API: Fetching demographic performance from API (with conversion actions)
+2025-11-17T18:58:44.220Z  [INFO] Meta API: Fetching ad relevance results from API
+2025-11-17T18:58:44.220Z  [INFO] Meta API: Fetching account info from API
+2025-11-17T18:58:44.221Z  [INFO] Meta API: Fetched account info
+2025-11-17T18:58:44.221Z  [INFO] Meta API: Fetched 21 demographic records with conversion data
+2025-11-17T18:58:44.221Z  [INFO] Meta API: Fetched 23 placement records with conversion data
+2025-11-17T18:58:44.239Z  ✅ Migration verification complete: {
+2025-11-17T18:58:44.243Z    migrationApplied: true,
+2025-11-17T18:58:44.243Z    totalClients: 16,
+2025-11-17T18:58:44.243Z    nullSendDayCount: 0,
+2025-11-17T18:58:44.244Z    issuesFound: 0
+2025-11-17T18:58:44.244Z  }
+2025-11-17T18:58:44.245Z  [WARN] ⚠️ No daily_kpi_data found for current month, using Meta API estimates
+2025-11-17T18:58:44.257Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.257Z    loading: true,
+2025-11-17T18:58:44.257Z    initialized: false,
+2025-11-17T18:58:44.258Z    computedLoading: true,
+2025-11-17T18:58:44.258Z    hasUser: false,
+2025-11-17T18:58:44.258Z    hasProfile: false
+2025-11-17T18:58:44.258Z  }
+2025-11-17T18:58:44.287Z  🔍 Running startup validation checks...
+2025-11-17T18:58:44.287Z  ⏭️ Skipping strict validation during build phase
+2025-11-17T18:58:44.302Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.303Z    loading: true,
+2025-11-17T18:58:44.303Z    initialized: false,
+2025-11-17T18:58:44.303Z    computedLoading: true,
+2025-11-17T18:58:44.303Z    hasUser: false,
+2025-11-17T18:58:44.303Z    hasProfile: false
+2025-11-17T18:58:44.303Z  }
+2025-11-17T18:58:44.318Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.319Z    loading: true,
+2025-11-17T18:58:44.319Z    initialized: false,
+2025-11-17T18:58:44.319Z    computedLoading: true,
+2025-11-17T18:58:44.319Z    hasUser: false,
+2025-11-17T18:58:44.320Z    hasProfile: false
+2025-11-17T18:58:44.320Z  }
+2025-11-17T18:58:44.341Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.342Z    loading: true,
+2025-11-17T18:58:44.342Z    initialized: false,
+2025-11-17T18:58:44.342Z    computedLoading: true,
+2025-11-17T18:58:44.342Z    hasUser: false,
+2025-11-17T18:58:44.342Z    hasProfile: false
+2025-11-17T18:58:44.342Z  }
+2025-11-17T18:58:44.400Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.400Z    loading: true,
+2025-11-17T18:58:44.400Z    initialized: false,
+2025-11-17T18:58:44.400Z    computedLoading: true,
+2025-11-17T18:58:44.400Z    hasUser: false,
+2025-11-17T18:58:44.401Z    hasProfile: false
+2025-11-17T18:58:44.401Z  }
+2025-11-17T18:58:44.401Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.401Z    loading: true,
+2025-11-17T18:58:44.401Z    initialized: false,
+2025-11-17T18:58:44.401Z    computedLoading: true,
+2025-11-17T18:58:44.401Z    hasUser: false,
+2025-11-17T18:58:44.401Z    hasProfile: false
+2025-11-17T18:58:44.401Z  }
+2025-11-17T18:58:44.446Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.446Z    loading: true,
+2025-11-17T18:58:44.446Z    initialized: false,
+2025-11-17T18:58:44.446Z    computedLoading: true,
+2025-11-17T18:58:44.446Z    hasUser: false,
+2025-11-17T18:58:44.446Z    hasProfile: false
+2025-11-17T18:58:44.447Z  }
+2025-11-17T18:58:44.535Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.536Z    loading: true,
+2025-11-17T18:58:44.536Z    initialized: false,
+2025-11-17T18:58:44.536Z    computedLoading: true,
+2025-11-17T18:58:44.536Z    hasUser: false,
+2025-11-17T18:58:44.537Z    hasProfile: false
+2025-11-17T18:58:44.537Z  }
+2025-11-17T18:58:44.537Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.537Z    loading: true,
+2025-11-17T18:58:44.537Z    initialized: false,
+2025-11-17T18:58:44.537Z    computedLoading: true,
+2025-11-17T18:58:44.537Z    hasUser: false,
+2025-11-17T18:58:44.537Z    hasProfile: false
+2025-11-17T18:58:44.537Z  }
+2025-11-17T18:58:44.592Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.592Z    loading: true,
+2025-11-17T18:58:44.592Z    initialized: false,
+2025-11-17T18:58:44.592Z    computedLoading: true,
+2025-11-17T18:58:44.592Z    hasUser: false,
+2025-11-17T18:58:44.592Z    hasProfile: false
+2025-11-17T18:58:44.593Z  }
+2025-11-17T18:58:44.616Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.617Z    loading: true,
+2025-11-17T18:58:44.617Z    initialized: false,
+2025-11-17T18:58:44.617Z    computedLoading: true,
+2025-11-17T18:58:44.617Z    hasUser: false,
+2025-11-17T18:58:44.617Z    hasProfile: false
+2025-11-17T18:58:44.617Z  }
+2025-11-17T18:58:44.643Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.644Z    loading: true,
+2025-11-17T18:58:44.644Z    initialized: false,
+2025-11-17T18:58:44.644Z    computedLoading: true,
+2025-11-17T18:58:44.644Z    hasUser: false,
+2025-11-17T18:58:44.644Z    hasProfile: false
+2025-11-17T18:58:44.644Z  }
+2025-11-17T18:58:44.688Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.688Z    loading: true,
+2025-11-17T18:58:44.688Z    initialized: false,
+2025-11-17T18:58:44.688Z    computedLoading: true,
+2025-11-17T18:58:44.688Z    hasUser: false,
+2025-11-17T18:58:44.688Z    hasProfile: false
+2025-11-17T18:58:44.688Z  }
+2025-11-17T18:58:44.717Z  🔍 AuthProvider state: {
+2025-11-17T18:58:44.718Z    loading: true,
+2025-11-17T18:58:44.718Z    initialized: false,
+2025-11-17T18:58:44.718Z    computedLoading: true,
+2025-11-17T18:58:44.718Z    hasUser: false,
+2025-11-17T18:58:44.718Z    hasProfile: false
+2025-11-17T18:58:44.718Z  }
+2025-11-17T18:58:45.052Z  🔍 AuthProvider state: {
+2025-11-17T18:58:45.052Z    loading: true,
+2025-11-17T18:58:45.053Z    initialized: false,
+2025-11-17T18:58:45.053Z    computedLoading: true,
+2025-11-17T18:58:45.053Z    hasUser: false,
+2025-11-17T18:58:45.053Z    hasProfile: false
+2025-11-17T18:58:45.053Z  }
+2025-11-17T18:58:45.073Z  🔍 AuthProvider state: {
+2025-11-17T18:58:45.074Z    loading: true,
+2025-11-17T18:58:45.074Z    initialized: false,
+2025-11-17T18:58:45.074Z    computedLoading: true,
+2025-11-17T18:58:45.074Z    hasUser: false,
+2025-11-17T18:58:45.074Z    hasProfile: false
+2025-11-17T18:58:45.074Z  }
+2025-11-17T18:58:45.092Z  🔍 AuthProvider state: {
+2025-11-17T18:58:45.092Z    loading: true,
+2025-11-17T18:58:45.092Z    initialized: false,
+2025-11-17T18:58:45.093Z    computedLoading: true,
+2025-11-17T18:58:45.093Z    hasUser: false,
+2025-11-17T18:58:45.093Z    hasProfile: false
+2025-11-17T18:58:45.093Z  }
+2025-11-17T18:58:45.093Z   ⨯ useSearchParams() should be wrapped in a suspense boundary at page "/pdf-preview". Read more: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
+2025-11-17T18:58:45.093Z      at o (/vercel/path0/.next/server/chunks/4471.js:1:10502)
+2025-11-17T18:58:45.093Z      at d (/vercel/path0/.next/server/chunks/4471.js:1:21394)
+2025-11-17T18:58:45.093Z      at i (/vercel/path0/.next/server/app/pdf-preview/page.js:1:2285)
+2025-11-17T18:58:45.093Z      at nj (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:46252)
+2025-11-17T18:58:45.093Z      at nM (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47572)
+2025-11-17T18:58:45.093Z      at nN (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64547)
+2025-11-17T18:58:45.093Z      at nI (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47011)
+2025-11-17T18:58:45.093Z      at nM (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:47718)
+2025-11-17T18:58:45.093Z      at nM (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:61547)
+2025-11-17T18:58:45.094Z      at nN (/vercel/path0/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:12:64547)
+2025-11-17T18:58:45.094Z  
+2025-11-17T18:58:45.094Z  Error occurred prerendering page "/pdf-preview". Read more: https://nextjs.org/docs/messages/prerender-error
+2025-11-17T18:58:45.094Z  
+2025-11-17T18:58:45.176Z  🔍 AuthProvider state: {
+2025-11-17T18:58:45.177Z    loading: true,
+2025-11-17T18:58:45.177Z    initialized: false,
+2025-11-17T18:58:45.177Z    computedLoading: true,
+2025-11-17T18:58:45.177Z    hasUser: false,
+2025-11-17T18:58:45.177Z    hasProfile: false
+2025-11-17T18:58:45.177Z  }
+2025-11-17T18:58:45.211Z  🔍 AuthProvider state: {
+2025-11-17T18:58:45.211Z    loading: true,
+2025-11-17T18:58:45.211Z    initialized: false,
+2025-11-17T18:58:45.211Z    computedLoading: true,
+2025-11-17T18:58:45.212Z    hasUser: false,
+2025-11-17T18:58:45.212Z    hasProfile: false
+2025-11-17T18:58:45.212Z  }
+2025-11-17T18:58:49.376Z  [ERROR] Meta API: Ad relevance fetch failed: {
+2025-11-17T18:58:49.376Z    message: '(#100) Tried accessing nonexisting field (quality_score_ectr) on node type (AdsInsights)',
+2025-11-17T18:58:49.376Z    type: 'OAuthException',
+2025-11-17T18:58:49.376Z    code: 400,
+2025-11-17T18:58:49.376Z    error_subcode: undefined,
+2025-11-17T18:58:49.376Z    fbtrace_id: 'A-QNXg7Lp2ksUXmRVbD96m9'
+2025-11-17T18:58:49.376Z  }
+2025-11-17T18:58:49.376Z  [INFO] ✅ Meta tables data and account info fetched for current month cache: {
+2025-11-17T18:58:49.376Z    placementCount: 23,
+2025-11-17T18:58:49.376Z    demographicCount: 21,
+2025-11-17T18:58:49.376Z    adRelevanceCount: 0,
+2025-11-17T18:58:49.377Z    hasAccountInfo: true
+2025-11-17T18:58:49.377Z  }
+2025-11-17T18:58:49.377Z  [INFO] ✅ Using 17 REAL campaigns with parsed conversion data
+2025-11-17T18:58:49.377Z  [INFO] ✅ Using REAL per-campaign data (NOT distributed averages)
+2025-11-17T18:58:49.377Z  [INFO] 🔍 Sample campaign verification: {
+2025-11-17T18:58:49.377Z    campaign_name: '[PBM] HOT | Remarketing | www i SM',
+2025-11-17T18:58:49.377Z    spend: 2533.11,
+2025-11-17T18:58:49.377Z    booking_step_1: 3308,
+2025-11-17T18:58:49.377Z    reservations: 80,
+2025-11-17T18:58:49.377Z    is_distributed: '✅ NO (GOOD)'
+2025-11-17T18:58:49.377Z  }
+2025-11-17T18:58:49.377Z  [INFO] 📦 Cache data assembled: {
+2025-11-17T18:58:49.377Z    campaignsCount: 17,
+2025-11-17T18:58:49.377Z    totalSpend: 24908.789999999997,
+2025-11-17T18:58:49.377Z    totalConversions: 412,
+2025-11-17T18:58:49.377Z    hasMetaTables: true,
+2025-11-17T18:58:49.377Z    metaTablesIncluded: { placement: 23, demographics: 21, adRelevance: 0 }
+2025-11-17T18:58:49.378Z  }
+2025-11-17T18:58:49.378Z  [INFO] 💾 Saving Meta campaigns to database for permanent storage...
+2025-11-17T18:58:49.378Z  [INFO] ✅ Saved 25 Meta campaigns to database
+2025-11-17T18:58:49.378Z  [INFO] 🔍 DIAGNOSTIC: Data being cached: {
+2025-11-17T18:58:49.378Z    clientId: 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa',
+2025-11-17T18:58:49.378Z    periodId: '2025-11',
+2025-11-17T18:58:49.378Z    stats: {
+2025-11-17T18:58:49.378Z      totalSpend: 24908.789999999997,
+2025-11-17T18:58:49.378Z      totalImpressions: 1992373,
+2025-11-17T18:58:49.378Z      totalClicks: 55255,
+2025-11-17T18:58:49.378Z      totalConversions: 412,
+2025-11-17T18:58:49.378Z      averageCtr: 2.773326079002275,
+2025-11-17T18:58:49.378Z      averageCpc: 0.45079703194281057
+2025-11-17T18:58:49.378Z    },
+2025-11-17T18:58:49.378Z    conversionMetrics: {
+2025-11-17T18:58:49.378Z      click_to_call: 7,
+2025-11-17T18:58:49.378Z      email_contacts: 276,
+2025-11-17T18:58:49.378Z      booking_step_1: 27732,
+2025-11-17T18:58:49.379Z      booking_step_2: 7888,
+2025-11-17T18:58:49.379Z      booking_step_3: 2294,
+2025-11-17T18:58:49.379Z      reservations: 412,
+2025-11-17T18:58:49.379Z      reservation_value: 1569700,
+2025-11-17T18:58:49.379Z      roas: 63.01791455947881,
+2025-11-17T18:58:49.379Z      cost_per_reservation: 60.458228155339796
+2025-11-17T18:58:49.379Z    },
+2025-11-17T18:58:49.379Z    campaignsCount: 17,
+2025-11-17T18:58:49.379Z    hasMetaTables: true
+2025-11-17T18:58:49.379Z  }
+2025-11-17T18:58:49.379Z  [INFO] 💾 Fresh data cached successfully
+2025-11-17T18:58:49.379Z  [INFO] 💾 Cached stats: {
+2025-11-17T18:58:49.379Z    totalSpend: 24908.789999999997,
+2025-11-17T18:58:49.379Z    totalImpressions: 1992373,
+2025-11-17T18:58:49.380Z    totalClicks: 55255
+2025-11-17T18:58:49.380Z  }
+2025-11-17T18:58:49.380Z  [INFO] ✅ Fresh meta data cached successfully
+2025-11-17T18:58:49.380Z  📊 Refresh result:
+2025-11-17T18:58:49.380Z    Success: true
+2025-11-17T18:58:49.380Z    Source: force-refresh
+2025-11-17T18:58:49.381Z    Total Spend: 24908.789999999997
+2025-11-17T18:58:49.381Z  
+2025-11-17T18:58:49.381Z  3️⃣ Checking cache state after refresh...
+2025-11-17T18:58:49.381Z  ❌ Updated cache query error: {
+2025-11-17T18:58:49.381Z    code: 'PGRST116',
+2025-11-17T18:58:49.381Z    details: 'The result contains 0 rows',
+2025-11-17T18:58:49.381Z    hint: null,
+2025-11-17T18:58:49.381Z    message: 'JSON object requested, multiple (or no) rows returned'
+2025-11-17T18:58:49.381Z  }
+2025-11-17T18:58:49.381Z  
+2025-11-17T18:58:49.381Z  4️⃣ Testing smart cache without force refresh...
+2025-11-17T18:58:49.381Z  [INFO] 📅 Smart cache request for current month: {
+2025-11-17T18:58:49.381Z    clientId: 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa',
+2025-11-17T18:58:49.381Z    platform: 'meta',
+2025-11-17T18:58:49.381Z    periodId: '2025-11',
+2025-11-17T18:58:49.381Z    forceRefresh: false
+2025-11-17T18:58:49.381Z  }
+2025-11-17T18:58:49.382Z  [INFO] ❌ Memory cache miss - checking database...
+2025-11-17T18:58:49.382Z  [INFO] 🕐 Cache age check: {
+2025-11-17T18:58:49.382Z    now: '2025-11-17T18:58:46.894Z',
+2025-11-17T18:58:49.382Z    cacheTime: '2025-11-17T18:58:46.306Z',
+2025-11-17T18:58:49.382Z    ageHours: '0.00',
+2025-11-17T18:58:49.382Z    maxAgeHours: 3,
+2025-11-17T18:58:49.382Z    isFresh: true
+2025-11-17T18:58:49.382Z  }
+2025-11-17T18:58:49.382Z  [INFO] ✅ Returning fresh cached data
+2025-11-17T18:58:49.382Z  [INFO] 🔍 DIAGNOSTIC: Cache data being returned: {
+2025-11-17T18:58:49.382Z    clientId: 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa',
+2025-11-17T18:58:49.382Z    periodId: '2025-11',
+2025-11-17T18:58:49.382Z    cacheAge: 588,
+2025-11-17T18:58:49.382Z    stats: {
+2025-11-17T18:58:49.382Z      averageCpc: 0.45079703194281057,
+2025-11-17T18:58:49.382Z      averageCtr: 2.773326079002275,
+2025-11-17T18:58:49.382Z      totalSpend: 24908.789999999997,
+2025-11-17T18:58:49.382Z      totalClicks: 55255,
+2025-11-17T18:58:49.382Z      totalConversions: 412,
+2025-11-17T18:58:49.382Z      totalImpressions: 1992373
+2025-11-17T18:58:49.383Z    },
+2025-11-17T18:58:49.383Z    conversionMetrics: {
+2025-11-17T18:58:49.383Z      roas: 63.01791455947881,
+2025-11-17T18:58:49.383Z      reservations: 412,
+2025-11-17T18:58:49.383Z      click_to_call: 7,
+2025-11-17T18:58:49.383Z      booking_step_1: 27732,
+2025-11-17T18:58:49.383Z      booking_step_2: 7888,
+2025-11-17T18:58:49.383Z      booking_step_3: 2294,
+2025-11-17T18:58:49.383Z      email_contacts: 276,
+2025-11-17T18:58:49.383Z      reservation_value: 1569700,
+2025-11-17T18:58:49.383Z      cost_per_reservation: 60.458228155339796
+2025-11-17T18:58:49.383Z    },
+2025-11-17T18:58:49.383Z    campaignsCount: 17,
+2025-11-17T18:58:49.383Z    hasMetaTables: true,
+2025-11-17T18:58:49.383Z    demographicCount: 21,
+2025-11-17T18:58:49.383Z    placementCount: 23
+2025-11-17T18:58:49.383Z  }
+2025-11-17T18:58:49.383Z  [INFO] 💾 Stored in memory cache for instant future access
+2025-11-17T18:58:49.383Z  📊 Normal result:
+2025-11-17T18:58:49.383Z    Success: true
+2025-11-17T18:58:49.384Z    Source: cache
+2025-11-17T18:58:49.384Z    Cache Age: 589ms
+2025-11-17T18:58:49.384Z    Total Spend: 24908.789999999997
+2025-11-17T18:58:49.384Z   ✓ Generating static pages (142/142)
+2025-11-17T18:58:49.412Z  
+2025-11-17T18:58:49.413Z  > Export encountered errors on following paths:
+2025-11-17T18:58:49.413Z  	/pdf-preview/page: /pdf-preview
+2025-11-17T18:58:49.530Z  Error: Command "npm run build" exited with 1

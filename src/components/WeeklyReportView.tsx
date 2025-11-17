@@ -820,14 +820,14 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     title="Wyświetlenia"
                     value={formatNumber(campaignTotals.impressions)}
                     tooltip="Całkowita liczba wyświetleń reklam"
-                    change={formatComparisonChange(yoyData?.changes?.impressions || 0)}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.impressions || 0)}
                   />
                   
                   <MetricCard
                     title="Kliknięcia"
                     value={formatNumber(campaignTotals.clicks)}
                     tooltip="Całkowita liczba kliknięć w linki"
-                    change={formatComparisonChange(yoyData?.changes?.clicks || 0)}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)}
                   />
                   
                   <MetricCard
