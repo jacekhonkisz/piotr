@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-export default function PDFPreviewPage() {
+function PDFPreviewContent() {
   const [htmlContent, setHtmlContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,5 +160,22 @@ export default function PDFPreviewPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function PDFPreviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading preview...</p>
+          </div>
+        </div>
+      }
+    >
+      <PDFPreviewContent />
+    </Suspense>
   );
 }
