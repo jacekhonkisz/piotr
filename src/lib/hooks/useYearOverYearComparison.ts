@@ -2,6 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import logger from '@/lib/logger';
 import { supabase } from '@/lib/supabase';
 
+// 🔧 PRODUCTION FIX: Only log in development to prevent performance issues
+const isDev = process.env.NODE_ENV === 'development';
+const devLog = isDev ? console.log : () => {};
+const devWarn = isDev ? console.warn : () => {};
+
 // ✅ GLOBAL deduplication cache - shared across ALL component instances
 const globalFetchCache = new Map<string, {
   inProgress: boolean;
@@ -76,7 +81,7 @@ export function useYearOverYearComparison({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log('🔍 Hook useEffect triggered:', {
+    devLog('🔍 Hook useEffect triggered:', {
       enabled,
       clientId: clientId?.substring(0,8),
       dateRange,
@@ -88,7 +93,7 @@ export function useYearOverYearComparison({
     });
     
     if (!enabled) {
-      console.log('🔍 Hook skipping fetch - disabled');
+      devLog('🔍 Hook skipping fetch - disabled');
       setData(null);
       setError(null);
       setLoading(false);
@@ -96,7 +101,7 @@ export function useYearOverYearComparison({
     }
     
     if (!clientId) {
-      console.log('🔍 Hook skipping fetch - missing clientId');
+      devLog('🔍 Hook skipping fetch - missing clientId');
       setData(null);
       setError('Missing client ID');
       setLoading(false);
@@ -104,7 +109,7 @@ export function useYearOverYearComparison({
     }
     
     if (!dateRange?.start || !dateRange?.end) {
-      console.log('🔍 Hook skipping fetch - missing date range:', { dateRange });
+      devLog('🔍 Hook skipping fetch - missing date range:', { dateRange });
       setData(null);
       setError('Missing date range');
       setLoading(false);
@@ -121,7 +126,7 @@ export function useYearOverYearComparison({
     const cached = globalFetchCache.get(fetchKey);
     
     if (cached && cached.inProgress) {
-      console.log('🚫 YoY Hook: GLOBAL duplicate call prevented', { 
+      devLog('🚫 YoY Hook: GLOBAL duplicate call prevented', { 
         fetchKey, 
         timeSinceStart: now - cached.timestamp 
       });
@@ -147,8 +152,8 @@ export function useYearOverYearComparison({
         setError(null);
 
         try {
-          console.log(`🔄 Fetching production comparison data (NO TIMEOUT) for ${platform}...`);
-        console.log(`🔄 API Request details:`, {
+          devLog(`🔄 Fetching production comparison data (NO TIMEOUT) for ${platform}...`);
+        devLog(`🔄 API Request details:`, {
           clientId: clientId?.substring(0,8),
           dateRange,
           platform,
@@ -158,7 +163,7 @@ export function useYearOverYearComparison({
         // Get the current session token from Supabase
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) {
-          console.error('❌ No authentication token available');
+          logger.error('❌ No authentication token available');
           throw new Error('No authentication token available');
         }
         
@@ -167,7 +172,7 @@ export function useYearOverYearComparison({
         
         // No timeout - let real data fetching take as long as needed
         const apiUrl = '/api/year-over-year-comparison';
-        console.log(`🔄 Making API call to: ${apiUrl}`);
+        devLog(`🔄 Making API call to: ${apiUrl}`);
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 
@@ -177,7 +182,7 @@ export function useYearOverYearComparison({
           body: JSON.stringify({ clientId, dateRange, platform })
         });
         
-        console.log(`🔄 API Response received:`, {
+        devLog(`🔄 API Response received:`, {
           status: response.status,
           statusText: response.statusText,
           ok: response.ok
@@ -185,7 +190,7 @@ export function useYearOverYearComparison({
 
         if (!response.ok) {
           if (response.status === 408) {
-            console.log('⏰ API timed out - skipping comparisons');
+            devLog('⏰ API timed out - skipping comparisons');
             setData(null);
             setError('Comparison API timed out - comparisons disabled');
             return;
@@ -195,25 +200,19 @@ export function useYearOverYearComparison({
         }
 
         const result = await response.json();
-        console.log(`🔄 API Response data:`, {
+        devLog(`🔄 API Response data:`, {
           hasResult: !!result,
           resultKeys: result ? Object.keys(result) : [],
           hasCurrent: !!result?.current,
           hasPrevious: !!result?.previous,
           hasChanges: !!result?.changes,
           currentSpend: result?.current?.spend,
-          previousSpend: result?.previous?.spend,
-          fullResult: result
+          previousSpend: result?.previous?.spend
         });
-        
-        // 🔍 DETAILED DEBUG: Check the actual data structure
-        console.log('🔍 DETAILED DEBUG - Current data:', result?.current);
-        console.log('🔍 DETAILED DEBUG - Previous data:', result?.previous);
-        console.log('🔍 DETAILED DEBUG - Changes data:', result?.changes);
         
         // Handle timeout response
         if (result.timeout) {
-          console.log('⏰ API returned timeout - skipping comparisons');
+          devLog('⏰ API returned timeout - skipping comparisons');
           setData(null);
           setError('Comparison API timed out - comparisons disabled');
           return;
@@ -221,7 +220,7 @@ export function useYearOverYearComparison({
         
         // Handle API errors
         if (result.error) {
-          console.error('❌ API returned error:', result.error);
+          logger.error('❌ API returned error:', result.error);
           setData(null);
           setError(`API Error: ${result.error}`);
           return;
@@ -230,35 +229,25 @@ export function useYearOverYearComparison({
         // ✅ PRODUCTION SYSTEM: Only set data if we have meaningful comparisons
         const hasComparison = result.current.spend > 0 || result.previous.spend > 0;
         
-        console.log('🔍 Hook comparison data check:', {
+        devLog('🔍 Hook comparison data check:', {
           currentSpend: result.current.spend,
           previousSpend: result.previous.spend,
           hasComparison,
-          willSetData: hasComparison,
-          clientId,
-          dateRange,
-          fullResult: result
-        });
-        
-        // 🔍 DEBUG: Check if the data is being set correctly
-        console.log('🔍 DEBUG - About to set data:', {
-          hasComparison,
-          willSetData: hasComparison,
-          dataToSet: result
+          willSetData: hasComparison
         });
         
         if (hasComparison) {
           setData(result);
-          console.log('✅ Production comparison data fetched successfully');
+          devLog('✅ Production comparison data fetched successfully');
         } else {
           setData(null);
-          console.log('ℹ️ No comparison data available for this period (expected behavior)');
+          devLog('ℹ️ No comparison data available for this period (expected behavior)');
         }
 
           return result;
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-          console.error('❌ Error fetching comparison data:', errorMessage);
+          logger.error('❌ Error fetching comparison data:', errorMessage);
           setError(errorMessage);
           setData(null); // Clear any existing data
           throw err;
@@ -280,7 +269,7 @@ export function useYearOverYearComparison({
     };
 
     fetchYearOverYearData().catch(err => {
-      console.error('YoY fetch error:', err);
+      logger.error('YoY fetch error:', err);
     });
   }, [clientId, dateRange.start, dateRange.end, enabled, platform]);
 
