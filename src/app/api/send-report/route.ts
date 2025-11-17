@@ -292,13 +292,13 @@ export async function POST(request: NextRequest) {
     const contactEmails = client.contact_emails || [client.email];
     
     // Extract month and year from date range for NEW template
-    const startDate = new Date(dateRange.start);
+    const reportStartDate = new Date(dateRange.start);
     const monthNames = [
       'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
       'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
     ];
-    const monthName = monthNames[startDate.getMonth()];
-    const year = startDate.getFullYear();
+    const monthName = monthNames[reportStartDate.getMonth()];
+    const year = reportStartDate.getFullYear();
     
     // Prepare NEW monthly report data
     const monthlyReportData = {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import EmailService from '../../../../lib/email';
+import { FlexibleEmailService } from '../../../../lib/flexible-email';
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get email service rate limit status
-    const emailService = EmailService.getInstance();
+    const emailService = FlexibleEmailService.getInstance();
     const rateLimitStatus = emailService.getRateLimitStatus();
 
     // Get recent email statistics from database
