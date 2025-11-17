@@ -579,6 +579,9 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   // Use hook data instead of local calculation (API is now working correctly)
   const localYoYData = calculateLocalYoYComparison();
   
+  // 🔧 PRODUCTION FIX: Fallback to local calculation if API fails
+  const effectiveYoYData = yoyData || localYoYData;
+  
   // Debug logging for YoY hook results
   console.log('🔍 YoY Hook Debug - Results:', {
     hasData: !!yoyData,
@@ -588,6 +591,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     currentSpend: yoyData?.current?.spend || 0,
     previousSpend: yoyData?.previous?.spend || 0,
     localYoYData: localYoYData,
+    effectiveYoYData: effectiveYoYData,
+    usingFallback: !yoyData && !!localYoYData,
     enabled: true, // Hook is enabled and working
     reportIds: reportIds,
     reportsKeys: Object.keys(reports)
@@ -619,8 +624,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
         // Helper function to format comparison change for MetricCard
         const formatComparisonChange = (changePercent: number) => {
-          // 🔧 FIX: Use hook YoY data (API is now working correctly)
-          if (!yoyData) return undefined;
+          // 🔧 PRODUCTION FIX: Use effective YoY data (API with fallback to local calculation)
+          if (!effectiveYoYData) return undefined;
           
           // Handle special case for no historical data (-999 indicates no comparison available)
           if (changePercent === -999) return undefined; // Don't show comparison when no historical data
@@ -808,7 +813,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     title="Wydatki"
                     value={formatCurrency(campaignTotals.spend)}
                     tooltip="Łączna kwota wydana na reklamy"
-                    change={formatComparisonChange(yoyData?.changes?.spend || 0)}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
                   />
                   
                   <MetricCard
@@ -841,7 +846,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     title="Konwersje"
                     value={(report.conversionMetrics?.reservations || campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)).toString()}
                     tooltip="Liczba zakończonych konwersji"
-                    change={formatComparisonChange(yoyData?.changes?.reservations || 0)}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
                   />
                 </div>
               </div>
@@ -971,7 +976,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   title="Rezerwacje"
                   value={(report.conversionMetrics?.reservations || campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)).toString()}
                   tooltip="Liczba zakończonych rezerwacji"
-                  change={formatComparisonChange(yoyData?.changes?.reservations || 0)}
+                  change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
                 />
                 
                 <MetricCard
@@ -1066,7 +1071,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="(wydana kwota / łączna wartość potencjalnych rezerwacji) × 100"
                   tooltip="Procentowy koszt pozyskania rezerwacji w stosunku do ich wartości"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.spend || 0)}
+                  change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
                 />
                 
                 <MetricCard
@@ -1093,7 +1098,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   subtitle="Suma wartości rezerwacji online i offline"
                   tooltip="Łączna wartość wszystkich potencjalnych rezerwacji"
                   icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(yoyData?.changes?.clicks || 0)} // Using clicks as proxy
+                  change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)} // Using clicks as proxy
                 />
               </div>
               
