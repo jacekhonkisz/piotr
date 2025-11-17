@@ -35,45 +35,47 @@ import logger from './logger';
  * ```
  */
 export function verifyCronAuth(request: NextRequest): boolean {
+  // METHOD 1: Check for Vercel's automatic cron header (most secure)
+  // Vercel automatically adds 'x-vercel-cron: 1' to all cron job requests
+  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
+  
+  if (isVercelCron) {
+    logger.info('✅ Verified Vercel cron job (x-vercel-cron header)', {
+      path: request.nextUrl.pathname
+    });
+    return true;
+  }
+
+  // METHOD 2: Check for CRON_SECRET (for manual triggers/testing)
   const authHeader = request.headers.get('authorization');
-  const expectedAuth = `Bearer ${process.env.CRON_SECRET}`;
+  const cronSecret = process.env.CRON_SECRET;
   
-  // Check if CRON_SECRET is configured
-  if (!process.env.CRON_SECRET) {
-    logger.error('🚨 CRITICAL: CRON_SECRET not configured', {
-      path: request.nextUrl.pathname,
-      environment: process.env.NODE_ENV
+  // If CRON_SECRET is configured and matches, allow access
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    logger.info('✅ Verified manual cron trigger (CRON_SECRET)', {
+      path: request.nextUrl.pathname
     });
-    return false;
+    return true;
   }
   
-  // Check if Authorization header matches expected value
-  if (authHeader !== expectedAuth) {
-    // Log unauthorized attempt for security monitoring
-    logger.warn('🚫 Unauthorized cron attempt detected', {
-      ip: request.headers.get('x-forwarded-for') || 'unknown',
-      userAgent: request.headers.get('user-agent') || 'unknown',
-      path: request.nextUrl.pathname,
-      hasAuthHeader: !!authHeader,
-      authHeaderPrefix: authHeader?.substring(0, 10) || 'none',
-      timestamp: new Date().toISOString()
-    });
-    
-    // In production, could trigger additional security alerts
-    if (process.env.NODE_ENV === 'production') {
-      // TODO: Add Sentry alert or security notification
-      // Sentry.captureMessage('Unauthorized cron attempt', { level: 'warning' });
-    }
-    
-    return false;
-  }
-  
-  // Log successful authentication (at debug level to avoid log spam)
-  logger.info('✅ Cron authentication successful', {
-    path: request.nextUrl.pathname
+  // UNAUTHORIZED: Neither Vercel header nor valid CRON_SECRET
+  logger.warn('🚫 Unauthorized cron attempt detected', {
+    ip: request.headers.get('x-forwarded-for') || 'unknown',
+    userAgent: request.headers.get('user-agent') || 'unknown',
+    path: request.nextUrl.pathname,
+    hasVercelHeader: !!request.headers.get('x-vercel-cron'),
+    hasAuthHeader: !!authHeader,
+    authHeaderPrefix: authHeader?.substring(0, 10) || 'none',
+    timestamp: new Date().toISOString()
   });
   
-  return true;
+  // In production, could trigger additional security alerts
+  if (process.env.NODE_ENV === 'production') {
+    // TODO: Add Sentry alert or security notification
+    // Sentry.captureMessage('Unauthorized cron attempt', { level: 'warning' });
+  }
+  
+  return false;
 }
 
 /**

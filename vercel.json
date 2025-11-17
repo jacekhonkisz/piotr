@@ -2,108 +2,63 @@
   "crons": [
     {
       "path": "/api/automated/refresh-all-caches",
-      "schedule": "0 */3 * * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/automated/refresh-social-media-cache",
-      "schedule": "25 */3 * * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "25 */3 * * *"
     },
     {
       "path": "/api/automated/daily-kpi-collection",
-      "schedule": "0 1 * * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/automated/google-ads-daily-collection",
-      "schedule": "15 1 * * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "15 1 * * *"
     },
     {
       "path": "/api/automated/send-scheduled-reports",
-      "schedule": "0 9 * * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/automated/generate-monthly-reports",
-      "schedule": "0 5 1 * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 5 1 * *"
     },
     {
       "path": "/api/automated/generate-weekly-reports",
-      "schedule": "0 4 * * 1",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 4 * * 1"
     },
     {
       "path": "/api/automated/end-of-month-collection",
-      "schedule": "0 2 1 * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 2 1 * *"
     },
     {
       "path": "/api/automated/archive-completed-months",
-      "schedule": "30 2 1 * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "30 2 1 * *"
     },
     {
       "path": "/api/automated/archive-completed-weeks",
-      "schedule": "0 3 * * 1",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 3 * * 1"
     },
     {
       "path": "/api/automated/collect-monthly-summaries",
-      "schedule": "0 23 * * 0",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 23 * * 0"
     },
     {
       "path": "/api/automated/collect-weekly-summaries",
-      "schedule": "0 2 * * 1",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 2 * * 1"
     },
     {
       "path": "/api/background/cleanup-old-data",
-      "schedule": "0 2 * * 6",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 2 * * 6"
     },
     {
       "path": "/api/background/cleanup-executive-summaries",
-      "schedule": "0 3 * * 6",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 3 * * 6"
     },
     {
       "path": "/api/automated/cleanup-old-data",
-      "schedule": "0 4 1 * *",
-      "headers": {
-        "Authorization": "Bearer ${CRON_SECRET}"
-      }
+      "schedule": "0 4 1 * *"
     }
   ]
 }
