@@ -159,6 +159,17 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         const rawDemographicArray = result.data.metaTables?.demographicPerformance || [];
         const adRelevanceArray = result.data.metaTables?.adRelevanceResults || [];
         
+        // 🔍 DEBUG: Log placement data to verify transformation
+        console.log('🔍 PLACEMENT DATA DEBUG:', {
+          placementCount: placementArray.length,
+          firstPlacement: placementArray[0],
+          hasPlacementField: placementArray[0]?.placement ? 'YES' : 'NO',
+          rawFields: {
+            publisher_platform: placementArray[0]?.publisher_platform,
+            platform_position: placementArray[0]?.platform_position
+          }
+        });
+        
         // Clean up demographic data to ensure Polish labels AND convert strings to numbers
         const demographicArray = rawDemographicArray.map((item: any) => ({
           ...item,

@@ -9,6 +9,41 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+/**
+ * Helper functions to translate Meta platform codes to Polish names
+ * These are used for backward compatibility with legacy data
+ */
+function translatePublisherPlatform(platform: string): string {
+  const translations: { [key: string]: string } = {
+    'facebook': 'Facebook',
+    'instagram': 'Instagram',
+    'messenger': 'Messenger',
+    'audience_network': 'Audience Network',
+    'whatsapp': 'WhatsApp',
+    'unknown': 'Nieznane'
+  };
+  return translations[platform?.toLowerCase()] || platform || 'Nieznane';
+}
+
+function translatePlatformPosition(position: string): string {
+  const translations: { [key: string]: string } = {
+    'feed': 'Aktualności',
+    'right_hand_column': 'Prawa kolumna',
+    'instant_article': 'Artykuł natychmiastowy',
+    'instream_video': 'Wideo w strumieniu',
+    'marketplace': 'Marketplace',
+    'rewarded_video': 'Wideo z nagrodą',
+    'story': 'Stories',
+    'search': 'Wyszukiwanie',
+    'video_feeds': 'Filmy',
+    'external': 'Zewnętrzne',
+    'an_classic': 'AN Classic',
+    'rewarded_video_interstitial': 'Wideo z nagrodą (pełny ekran)',
+    'unknown': 'Nieznane'
+  };
+  return translations[position?.toLowerCase()] || position || '';
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
@@ -169,6 +204,26 @@ export async function POST(request: NextRequest) {
       
       if (placementResult.status === 'fulfilled') {
         placementData = placementResult.value || [];
+        
+        // 🔧 FIX: Ensure all placement records have a readable placement name
+        // Handle legacy data that might not have the transformation applied
+        placementData = placementData.map((item: any) => {
+          if (item.placement) {
+            // Already has placement name from new transformation
+            return item;
+          }
+          
+          // Legacy data - create placement name from raw fields
+          const platformName = translatePublisherPlatform(item.publisher_platform);
+          const positionName = translatePlatformPosition(item.platform_position);
+          const placement = positionName ? `${platformName} - ${positionName}` : platformName;
+          
+          return {
+            ...item,
+            placement
+          };
+        });
+        
         logger.info('Success', placementData.length, 'records');
       } else {
         console.error('❌ Placement performance failed:', placementResult.reason);

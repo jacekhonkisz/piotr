@@ -472,7 +472,8 @@ export class MetaAPIServiceOptimized {
 
     logger.info('Meta API: Fetching placement performance from API');
     
-    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,cpm,cpc,ctr&breakdowns=publisher_platform,platform_position&limit=500&access_token=${this.accessToken}`;
+    // 🔧 FIX: Include actions and action_values to get conversion data (reservations, reservation_value)
+    const url = `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=impressions,clicks,spend,cpm,cpc,ctr,actions,action_values,conversions,conversion_values&breakdowns=publisher_platform,platform_position&limit=500&access_token=${this.accessToken}`;
     const response = await this.makeRequest(url);
 
     if (response.error) {
@@ -480,11 +481,88 @@ export class MetaAPIServiceOptimized {
       return [];
     }
 
-    const data = response.data || [];
-    this.setCachedResponse(cacheKey, data);
+    const rawData = response.data || [];
     
-    logger.info(`Meta API: Fetched ${data.length} placement records`);
-    return data;
+    // 🔧 FIX: Transform data to create readable placement names and extract conversion metrics
+    const transformedData = rawData.map((item: any) => {
+      // Extract conversion actions (same logic as demographic and campaign processing)
+      const actions = item.actions || [];
+      const actionValues = item.action_values || [];
+      
+      // Find reservation-related conversions
+      const reservationAction = actions.find((a: any) => 
+        a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+        a.action_type === 'offsite_conversion.fb_pixel_complete_registration' ||
+        a.action_type === 'omni_purchase'
+      );
+      
+      const reservationValueAction = actionValues.find((a: any) => 
+        a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+        a.action_type === 'offsite_conversion.fb_pixel_complete_registration' ||
+        a.action_type === 'omni_purchase'
+      );
+      
+      // Create readable placement name from publisher_platform and platform_position
+      const platformName = this.translatePublisherPlatform(item.publisher_platform);
+      const positionName = this.translatePlatformPosition(item.platform_position);
+      const placement = positionName ? `${platformName} - ${positionName}` : platformName;
+      
+      return {
+        placement,
+        publisher_platform: item.publisher_platform,
+        platform_position: item.platform_position,
+        spend: parseFloat(item.spend || '0'),
+        impressions: parseInt(item.impressions || '0'),
+        clicks: parseInt(item.clicks || '0'),
+        ctr: parseFloat(item.ctr || '0'),
+        cpc: parseFloat(item.cpc || '0'),
+        cpm: parseFloat(item.cpm || '0'),
+        reservation_value: parseFloat(reservationValueAction?.value || '0'),
+        reservations: parseInt(reservationAction?.value || '0')
+      };
+    });
+    
+    this.setCachedResponse(cacheKey, transformedData);
+    
+    logger.info(`Meta API: Fetched ${transformedData.length} placement records with conversion data`);
+    return transformedData;
+  }
+
+  /**
+   * Translate Meta publisher platform codes to Polish names
+   */
+  private translatePublisherPlatform(platform: string): string {
+    const translations: { [key: string]: string } = {
+      'facebook': 'Facebook',
+      'instagram': 'Instagram',
+      'messenger': 'Messenger',
+      'audience_network': 'Audience Network',
+      'whatsapp': 'WhatsApp',
+      'unknown': 'Nieznane'
+    };
+    return translations[platform?.toLowerCase()] || platform || 'Nieznane';
+  }
+
+  /**
+   * Translate Meta platform position codes to Polish names
+   */
+  private translatePlatformPosition(position: string): string {
+    const translations: { [key: string]: string } = {
+      'feed': 'Aktualności',
+      'right_hand_column': 'Prawa kolumna',
+      'instant_article': 'Artykuł natychmiastowy',
+      'instream_video': 'Wideo w strumieniu',
+      'marketplace': 'Marketplace',
+      'rewarded_video': 'Wideo z nagrodą',
+      'story': 'Stories',
+      'search': 'Wyszukiwanie',
+      'video_feeds': 'Filmy',
+      'external': 'Zewnętrzne',
+      'an_classic': 'AN Classic',
+      'rewarded_video_interstitial': 'Wideo z nagrodą (pełny ekran)',
+      'unknown': 'Nieznane'
+    };
+    return translations[position?.toLowerCase()] || position || '';
   }
 
   /**
