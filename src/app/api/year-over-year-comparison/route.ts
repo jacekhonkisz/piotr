@@ -106,11 +106,13 @@ export async function POST(request: NextRequest) {
     // Fetch current data using the same API as main dashboard for consistency
     console.log(`🔄 [${requestId}] Fetching current data using main dashboard API for consistency...`);
     
-    // Define base URL for API calls
-    // Use empty string for same-origin requests in production (more reliable than NEXT_PUBLIC_APP_URL)
+    // 🔧 PRODUCTION FIX: Build base URL from request origin to avoid empty baseUrl
+    // In production, use the request's origin; in dev, use localhost
     const baseUrl = process.env.NODE_ENV === 'production' 
-      ? '' 
+      ? `${request.nextUrl.protocol}//${request.nextUrl.host}`
       : 'http://localhost:3000';
+    
+    console.log(`🔍 [${requestId}] Using baseUrl: ${baseUrl}`);
     
     let currentData = null;
     
