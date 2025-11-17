@@ -173,11 +173,23 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   // 🔒 STRICT: Only exact current month gets cache (must match year AND month AND end date >= today)
   const requestYear = parseInt(startDate.split('-')[0]);
   const requestMonth = parseInt(startDate.split('-')[1]);
+  
+  // 🔧 CRITICAL FIX: For current month, cap endDate to today
+  // This prevents requesting future dates that don't have data yet
+  let adjustedEndDate = endDate;
+  if (summaryType === 'monthly' && requestYear === currentYear && requestMonth === currentMonth) {
+    if (endDate > today) {
+      console.log(`📅 CURRENT MONTH FIX: Capping month end from ${endDate} to ${today}`);
+      console.log(`   → Reason: Cannot cache data for future dates`);
+      adjustedEndDate = today;
+    }
+  }
+  
   const isExactCurrentMonth = (
     summaryType === 'monthly' && 
     requestYear === currentYear && 
-    requestMonth === currentMonth &&
-    endDate >= today
+    requestMonth === currentMonth
+    // No longer checking endDate >= today - we capped it above
   );
   
   // 🔒 STRICT: Week must include today
@@ -189,6 +201,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     today,
     startDate,
     endDate,
+    adjustedEndDate, // Show the capped date
     currentYear,
     currentMonth,
     requestYear,
@@ -196,7 +209,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     isExactCurrentMonth,
     isCurrentWeek,
     isPastPeriod,
-    decision: isPastPeriod ? '💾 DATABASE (past period)' : '🔄 CACHE (current period)'
+    decision: isPastPeriod ? '💾 DATABASE (past period)' : '🔄 CACHE (current period)',
+    dateAdjustment: adjustedEndDate !== endDate ? `Capped from ${endDate} to ${adjustedEndDate}` : 'No adjustment'
   });
   
   let storedSummary, error;
@@ -285,7 +299,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         .select('*')
         .eq('client_id', clientId)
         .gte('date', startDate)
-        .lte('date', endDate)
+        .lte('date', adjustedEndDate) // Use capped date for current month
         .order('date', { ascending: true });
         
       if (dailyRecords && dailyRecords.length > 0) {
