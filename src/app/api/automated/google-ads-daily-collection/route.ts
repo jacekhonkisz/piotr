@@ -2,16 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { GoogleAdsAPIService } from '../../../../lib/google-ads-api';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
-// This endpoint is for automated daily Google Ads collection - no authentication required
-// Should only be called from internal scripts or cron jobs
+// 🔒 SECURITY: This endpoint is PROTECTED with CRON_SECRET authentication
+// Only authorized cron jobs can call this endpoint
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return POST(new NextRequest('http://localhost:3000/api/automated/google-ads-daily-collection'));
+  return POST(request);
 }
 
 export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   try {
     logger.info('🤖 Automated Google Ads daily KPI collection started');
     

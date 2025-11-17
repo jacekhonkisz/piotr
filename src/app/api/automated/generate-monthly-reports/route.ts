@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateReportForPeriod } from '../../../../lib/automated-report-generator';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -14,7 +15,11 @@ const supabase = createClient(
  * Triggered by cron job on the 1st day of each month at 2 AM
  * Generates reports for the previous completed month for all active clients
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   const startTime = Date.now();
   
   try {
@@ -166,6 +171,11 @@ export async function GET() {
  * Manual trigger for monthly report generation (for testing)
  */
 export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   try {
     const body = await request.json().catch(() => ({}));
     const { month, year } = body;

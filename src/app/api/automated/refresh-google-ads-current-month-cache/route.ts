@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { fetchFreshGoogleAdsCurrentMonthData } from '../../../../lib/google-ads-smart-cache-helper';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,12 +24,21 @@ function getCurrentMonthInfo() {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return POST();
+  return POST(request);
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   const startTime = Date.now();
   
   try {

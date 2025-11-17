@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ExecutiveSummaryCacheService } from '../../../../lib/executive-summary-cache';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
-  // For Vercel cron jobs - bypass authentication
-  logger.info('🧹 Executive summaries cleanup triggered by cron job');
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication (was previously bypassed - NOW FIXED)
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
+  logger.info('🧹 Executive summaries cleanup triggered by authenticated cron job');
   
   try {
     console.log(`🧹 Starting executive summaries cleanup via cron job`);

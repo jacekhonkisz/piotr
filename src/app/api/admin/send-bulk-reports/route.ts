@@ -64,90 +64,74 @@ export async function POST() {
     let failedSends = 0;
     const errors: string[] = [];
 
-    // Prepare bulk email data with rate limiting
+    // Send reports directly to each client using the NEW monthly template
     const emailService = FlexibleEmailService.getInstance();
-    const bulkEmailData: any[] = [];
 
-    // First, prepare all email data
+    // Get current month for reports
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentYear = now.getFullYear();
+    const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const yearForReport = currentMonth === 1 ? currentYear - 1 : currentYear;
+
+    // Send to each client individually
     for (const client of clients) {
       try {
-        // Generate sample report data (in production, this would be real data)
-        const sampleReportData = {
-          dateRange: 'Last 30 days',
-          totalSpend: 12500.50,
-          totalImpressions: 250000,
-          totalClicks: 5000,
-          ctr: 0.02,
-          cpc: 2.50,
-          cpm: 50.00
-        };
-
-        const fromEmail = process.env.EMAIL_FROM_ADDRESS || 'noreply@yourdomain.com';
-        const emailTemplate = emailService.generateReportEmailTemplate(client.name, sampleReportData);
-
-        // For monitoring mode, we'll send one email per client (will be redirected to monitoring addresses)
-        // In production, this would iterate through client.contact_emails || [client.email]
-        const originalEmail = client.email; // Use primary email as the "original recipient"
+        // Use contact_emails or fallback to primary email
+        const contactEmails = client.contact_emails || [client.email];
         
-        bulkEmailData.push({
-          to: originalEmail, // This will be overridden to monitoring addresses in EmailService
-          from: fromEmail,
-          subject: emailTemplate.subject,
-          html: emailTemplate.html,
-          text: emailTemplate.text,
-            clientId: client.id,
-          clientName: client.name
-        });
+        for (const email of contactEmails) {
+          try {
+            // Create dummy report data for bulk send (in production, fetch real data)
+            const dummyReportData = {
+              dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+              totalOnlineReservations: 0,
+              totalOnlineValue: 0,
+              onlineCostPercentage: 0,
+              totalMicroConversions: 0,
+              estimatedOfflineReservations: 0,
+              estimatedOfflineValue: 0,
+              finalCostPercentage: 0,
+              totalValue: 0
+            };
+
+            const result = await emailService.sendClientMonthlyReport(
+              email,
+              client.id,
+              client.name,
+              getPolishMonthName(previousMonth),
+              yearForReport,
+              dummyReportData
+            );
+
+            if (result.success) {
+              successfulSends++;
+            } else {
+              failedSends++;
+              errors.push(`${client.name} (${email}): ${result.error || 'Unknown error'}`);
+            }
+          } catch (emailError: any) {
+            failedSends++;
+            errors.push(`${client.name} (${email}): ${emailError.message}`);
+          }
+        }
 
       } catch (error: any) {
-        errors.push(`Error preparing email for ${client.name}: ${error.message}`);
+        failedSends++;
+        errors.push(`Error processing client ${client.name}: ${error.message}`);
       }
     }
 
-    console.log(`📧 MONITORING MODE: Prepared ${bulkEmailData.length} emails for ${clients.length} clients`);
-    console.log(`📧 All emails will be redirected to monitoring addresses (see email-config.ts)`);
-
-    // Send bulk emails with rate limiting and progress tracking
-    const bulkResult = await emailService.sendBulkEmails(
-      bulkEmailData,
-      (sent, total, current) => {
-        if (sent % 5 === 0) { // Log every 5 emails
-          console.log(`📧 Bulk email progress: ${sent}/${total} - original recipient: ${current.to} (redirected to monitoring)`);
-        }
-      }
-    );
-
-    successfulSends = bulkResult.successful;
-    failedSends = bulkResult.failed;
-
-    // Process results for database logging
-    for (const result of bulkResult.results) {
-      const emailData = bulkEmailData.find(e => e.to === result.email);
-      if (emailData) {
-        // Log email in database
-        const { error: logError } = await supabase
-          .from('email_logs')
-          .insert({
-            client_id: emailData.clientId,
-            admin_id: null, // Bulk operation, no specific admin
-            email_type: 'bulk_report',
-            recipient_email: result.email,
-            subject: emailData.subject,
-            message_id: result.messageId || null,
-            sent_at: new Date().toISOString(),
-            status: result.success ? 'sent' : 'failed',
-            error_message: result.error || null
-          });
-
-        if (logError) {
-          console.error('Error logging email:', logError);
-        }
-      }
-
-      if (!result.success && result.error) {
-        errors.push(`${result.email}: ${result.error}`);
-      }
+    // Helper function for Polish month names
+    function getPolishMonthName(month: number): string {
+      const months = [
+        'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
+        'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
+      ];
+      return months[month - 1] || 'unknown';
     }
+
+    console.log(`📧 Bulk send completed: ${successfulSends} successful, ${failedSends} failed`);
 
     // Update bulk email log
     await supabase

@@ -4,16 +4,26 @@ import { MetaAPIService } from '../../../../lib/meta-api-optimized';
 import logger from '../../../../lib/logger';
 import { DataValidator } from '../../../../lib/data-validation';
 import { withRetry } from '../../../../lib/retry-helper';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
-// This endpoint is for automated daily collection - no authentication required
-// Should only be called from internal scripts or cron jobs
+// 🔒 SECURITY: This endpoint is PROTECTED with CRON_SECRET authentication
+// Only authorized cron jobs can call this endpoint
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return await POST({} as NextRequest);
+  return await POST(request);
 }
 
 export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   try {
     logger.info('🚀 Starting automated daily KPI collection...');
     

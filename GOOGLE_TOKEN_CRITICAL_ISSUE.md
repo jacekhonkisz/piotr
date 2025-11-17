@@ -254,3 +254,4 @@ The monitoring shows:
 **Priority:** HIGH - Affects all Google Ads data collection
 
 
+

@@ -48,8 +48,8 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
   });
   
   // 🔒 STRICT: Must be exact current month AND include today
-  const today = now.toISOString().split('T')[0];
-  const includesCurrentDay = endDate >= today;
+  const today: string = now.toISOString().split('T')[0];
+  const includesCurrentDay: boolean = endDate >= today;
   
   const result = startYear === currentYear && 
          startMonth === currentMonth &&
@@ -119,8 +119,8 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   const currentWeekEnd = new Date(currentWeekInfo.endDate);
   
   // 🔒 STRICT: Must match current week exactly AND include today
-  const today = now.toISOString().split('T')[0];
-  const includesCurrentDay = endDate >= today;
+  const today: string = now.toISOString().split('T')[0];
+  const includesCurrentDay: boolean = endDate >= today;
   const startMatches = startDate === currentWeekInfo.startDate;
   const endMatches = endDate === currentWeekInfo.endDate;
   

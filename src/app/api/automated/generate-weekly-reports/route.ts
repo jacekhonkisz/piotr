@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateReportForPeriod } from '../../../../lib/automated-report-generator';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,8 +14,13 @@ const supabase = createClient(
  * 
  * Triggered by cron job every Monday at 3 AM
  * Generates reports for the previous completed week (Monday to Sunday) for all active clients
+ * Security: Protected with CRON_SECRET authentication
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   const startTime = Date.now();
   
   try {

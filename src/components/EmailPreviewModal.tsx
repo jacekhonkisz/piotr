@@ -59,10 +59,16 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [error, setError] = useState('');
   const [editableText, setEditableText] = useState('');
+  const [editableHtml, setEditableHtml] = useState('');
+  const [mainTemplateHtml, setMainTemplateHtml] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [previewCache, setPreviewCache] = useState<{ [key: string]: PreviewData }>({});
+  const [activeTab, setActiveTab] = useState<'preview' | 'client-html' | 'main-template'>('preview');
+  const [hasCustomTemplate, setHasCustomTemplate] = useState(false);
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
 
   // FIXED: Only reset when modal opens, load data when clientId changes but without refresh
   useEffect(() => {
@@ -96,8 +102,29 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
   useEffect(() => {
     if (previewData && !isEditing) {
       setEditableText(previewData.text);
+      setEditableHtml(previewData.html);
     }
   }, [previewData, isEditing]);
+
+  // ✅ AUTO-SAVE: Debounced save after 2 seconds of inactivity
+  useEffect(() => {
+    if (!isEditing || !clientId) return;
+
+    const autoSaveTimeout = setTimeout(() => {
+      console.log('🔄 Auto-saving template...');
+      saveTemplate(false); // false = silent save (no alert)
+    }, 2000); // 2 seconds debounce
+
+    return () => clearTimeout(autoSaveTimeout);
+  }, [editableHtml, mainTemplateHtml, isEditing, clientId]);
+
+  // Load client-specific template or main template on mount
+  useEffect(() => {
+    if (isOpen && clientId) {
+      loadClientTemplate();
+      loadMainTemplate();
+    }
+  }, [isOpen, clientId]);
 
   // REMOVED: Email drafts system was replaced with simpler direct sending
   // See OLD_EMAIL_DRAFT_SYSTEM_REMOVAL.md for details
@@ -105,7 +132,7 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
 
   // Save draft to database
   const saveDraft = useCallback(async () => {
-    if (!editableText.trim()) return;
+    if (!editableText.trim() && !editableHtml.trim()) return;
 
     setIsSaving(true);
     try {
@@ -118,7 +145,7 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
         template_type: 'standard',
         custom_message: customMessage || null,
         subject_template: previewData?.subject || null,
-        html_template: editableText.replace(/\n/g, '<br>'),
+        html_template: editableHtml, // Save the HTML version
         text_template: editableText,
         is_active: true
       };
@@ -138,6 +165,7 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
       
       setDraftId(result.data.id);
       // Draft system removed - simulating success
+      alert('✅ Zmiany zapisane! Ten email będzie wysłany do klienta.');
       
     } catch (error) {
       console.error('❌ Error saving draft:', error);
@@ -145,7 +173,183 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     } finally {
       setIsSaving(false);
     }
-  }, [clientId, editableText, draftId, customMessage, previewData]);
+  }, [clientId, editableText, editableHtml, draftId, customMessage, previewData]);
+
+  // Load client-specific template from database
+  const loadClientTemplate = useCallback(async () => {
+    if (!clientId) return;
+
+    setIsLoadingTemplate(true);
+    try {
+      const { data, error } = await supabase
+        .from('email_templates')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('template_type', 'monthly_report')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        console.error('❌ Error loading client template:', error);
+        return;
+      }
+
+      if (data) {
+        setEditableHtml(data.html_template || '');
+        setHasCustomTemplate(true);
+        console.log('✅ Loaded custom template for client:', clientId);
+      } else {
+        setHasCustomTemplate(false);
+        console.log('ℹ️ No custom template, will use main template');
+      }
+    } catch (error) {
+      console.error('❌ Error loading client template:', error);
+    } finally {
+      setIsLoadingTemplate(false);
+    }
+  }, [clientId]);
+
+  // Load main template (global template for all clients)
+  const loadMainTemplate = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_templates')
+        .select('*')
+        .is('client_id', null) // Main template has no client_id
+        .eq('template_type', 'monthly_report')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('❌ Error loading main template:', error);
+        return;
+      }
+
+      if (data) {
+        setMainTemplateHtml(data.html_template || '');
+        console.log('✅ Loaded main template');
+        
+        // If client has no custom template, use main template
+        if (!hasCustomTemplate && !editableHtml) {
+          setEditableHtml(data.html_template || '');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading main template:', error);
+    }
+  }, [hasCustomTemplate, editableHtml]);
+
+  // Save template (client-specific or main)
+  const saveTemplate = useCallback(async (showAlert = true) => {
+    setIsSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const isMainTemplate = activeTab === 'main-template';
+      const htmlToSave = isMainTemplate ? mainTemplateHtml : editableHtml;
+
+      if (!htmlToSave.trim()) {
+        console.warn('⚠️ Empty template, skipping save');
+        setIsSaving(false);
+        return;
+      }
+
+      // Prepare template data
+      const templateData = {
+        client_id: isMainTemplate ? null : clientId,
+        admin_id: user.id,
+        template_type: 'monthly_report',
+        html_template: htmlToSave,
+        text_template: editableText,
+        is_active: true,
+        updated_at: new Date().toISOString()
+      };
+
+      // Check if template exists
+      let query = supabase
+        .from('email_templates')
+        .select('id')
+        .eq('template_type', 'monthly_report')
+        .eq('is_active', true);
+
+      if (isMainTemplate) {
+        query = query.is('client_id', null);
+      } else {
+        query = query.eq('client_id', clientId);
+      }
+
+      const { data: existing, error: selectError } = await query.single();
+
+      let result;
+      if (existing) {
+        // Update existing template
+        result = await supabase
+          .from('email_templates')
+          .update(templateData)
+          .eq('id', existing.id);
+      } else {
+        // Insert new template
+        result = await supabase
+          .from('email_templates')
+          .insert(templateData);
+      }
+
+      if (result.error) throw result.error;
+
+      setLastSaved(new Date());
+      setIsEditing(false);
+
+      if (isMainTemplate) {
+        console.log('✅ Main template saved (affects all non-customized clients)');
+        if (showAlert) {
+          alert('✅ Szablon główny zapisany! Zmiana dotyczy wszystkich klientów bez własnego szablonu.');
+        }
+      } else {
+        setHasCustomTemplate(true);
+        console.log('✅ Client-specific template saved');
+        if (showAlert) {
+          alert('✅ Szablon klienta zapisany! Ten klient będzie otrzymywał ten dostosowany email.');
+        }
+      }
+
+    } catch (error) {
+      console.error('❌ Error saving template:', error);
+      if (showAlert) {
+        setError('Failed to save template: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [activeTab, clientId, editableHtml, mainTemplateHtml, editableText]);
+
+  // Reset client template to use main template
+  const resetToMainTemplate = useCallback(async () => {
+    if (!confirm('Czy na pewno chcesz usunąć dostosowany szablon i użyć głównego szablonu?')) {
+      return;
+    }
+
+    try {
+      // Deactivate client-specific template
+      await supabase
+        .from('email_templates')
+        .update({ is_active: false })
+        .eq('client_id', clientId)
+        .eq('template_type', 'monthly_report');
+
+      setHasCustomTemplate(false);
+      setEditableHtml(mainTemplateHtml);
+      alert('✅ Szablon klienta usunięty. Używany będzie główny szablon.');
+      console.log('✅ Reset to main template for client:', clientId);
+    } catch (error) {
+      console.error('❌ Error resetting template:', error);
+      alert('❌ Błąd podczas resetowania szablonu');
+    }
+  }, [clientId, mainTemplateHtml]);
 
   const generatePreview = useCallback(async () => {
     // OPTIMIZED: Check cache first to avoid redundant API calls AND loading states
@@ -213,16 +417,9 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
         }
       }
       
-      // Fallback to generated summary if no real one available
+      // Fallback to simple summary if no real one available
       if (!summary) {
-        summary = generatePolishReportSummary({
-          dateRange,
-          totalSpend,
-          totalImpressions,
-          totalClicks,
-          totalConversions,
-          campaigns: finalCampaigns
-        });
+        summary = `[Podsumowanie zostanie wygenerowane podczas wysyłania]`;
       }
 
       const reportData = {
@@ -241,11 +438,11 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
         reservationValue: totalReservationValue
       };
 
-      // Generate Polish email template (fully editable) - Updated to show only podsumowanie
+      // Generate Polish email template with FULL data from campaigns
       const emailTemplate = generatePolishEmailTemplate(clientName, reportData, {
         summary,
         customMessage
-      });
+      }, finalCampaigns);
       
       // Add note about PDF for pending reports
       let finalText = emailTemplate.text;
@@ -310,371 +507,273 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     }
   };
 
-  // Helper function to generate Polish email template - UPDATED TO MATCH STANDARDIZED TEMPLATE
-  const generatePolishEmailTemplate = (clientName: string, reportData: any, content: { summary: string; customMessage: string }) => {
-    const periodDisplay = reportData.dateRange.includes('to') 
-      ? reportData.dateRange.replace(' to ', ' - ')
-      : reportData.dateRange;
+  // GENERATE FULL MONTHLY TEMPLATE WITH REAL DATA
+  const generatePolishEmailTemplate = (clientName: string, reportData: any, content: { summary: string; customMessage: string }, campaignsData: any[]) => {
+    const startDate = new Date(reportData.dateRange.split(' to ')[0]);
+    const monthNames = [
+      'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
+      'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
+    ];
+    const monthName = monthNames[startDate.getMonth()];
+    const year = startDate.getFullYear();
 
-    // Generate subject in Polish
-    const subject = `Raport wydajności kampanii reklamowych - ${periodDisplay}`;
+    // campaignsData now contains summary records (already separated by platform)
+    const googleSummary = campaignsData.find(c => c.platform === 'google') || {};
+    const metaSummary = campaignsData.find(c => c.platform === 'meta') || {};
 
-    // Generate Polish email content using STANDARDIZED TEMPLATE
-    const textContent = `Szanowni Państwo,
+    // Extract Google Ads data from summary (already aggregated)
+    const googleSpend = googleSummary.spend || 0;
+    const googleImpressions = googleSummary.impressions || 0;
+    const googleClicks = googleSummary.clicks || 0;
+    const googleCPC = googleSummary.cpc || (googleClicks > 0 ? googleSpend / googleClicks : 0);
+    const googleCTR = googleSummary.ctr || (googleImpressions > 0 ? (googleClicks / googleImpressions) * 100 : 0);
+    const googleFormSubmissions = googleSummary.form_submissions || 0;
+    const googleEmails = googleSummary.email_contacts || 0;
+    const googlePhones = googleSummary.click_to_call || 0;
+    const googleBE1 = googleSummary.booking_step_1 || 0;
+    const googleBE2 = googleSummary.booking_step_2 || 0;
+    const googleBE3 = googleSummary.booking_step_3 || 0;
+    const googleReservations = googleSummary.reservations || 0;
+    const googleReservationValue = googleSummary.reservation_value || 0;
+    const googleROAS = googleSummary.roas || (googleSpend > 0 ? (googleReservationValue / googleSpend) : 0);
 
-${content.customMessage ? content.customMessage + '\n\n' : 'W załączeniu przekazujemy raport wydajności kampanii reklamowych prowadzonych dla ' + clientName + ' w okresie ' + periodDisplay + '.'}
+    // Extract Meta Ads data from summary (already aggregated)
+    const metaSpend = metaSummary.spend || 0;
+    const metaImpressions = metaSummary.impressions || 0;
+    const metaClicks = metaSummary.clicks || 0;
+    const metaFormSubmissions = metaSummary.form_submissions || 0;
+    const metaEmails = metaSummary.email_contacts || 0;
+    const metaPhones = metaSummary.click_to_call || 0;
+    const metaReservations = metaSummary.reservations || 0;
+    const metaReservationValue = metaSummary.reservation_value || 0;
+    const metaROAS = metaSummary.roas || (metaSpend > 0 ? (metaReservationValue / metaSpend) : 0);
 
-📈 PODSUMOWANIE WYKONAWCZE:
-${content.summary || '[Podsumowanie AI zostanie wygenerowane podczas wysyłania]'}
+    // Calculate overall totals
+    const totalOnlineReservations = googleReservations + metaReservations;
+    const totalOnlineValue = googleReservationValue + metaReservationValue;
+    const totalSpend = googleSpend + metaSpend;
+    const onlineCostPercentage = totalOnlineValue > 0 ? (totalSpend / totalOnlineValue) * 100 : 0;
 
-📊 GŁÓWNE WSKAŹNIKI:
-• Łączne Wydatki: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
-• Wyświetlenia: ${reportData.totalImpressions.toLocaleString('pl-PL')}
-• Kliknięcia: ${reportData.totalClicks.toLocaleString('pl-PL')}
-• Koszt za Tysiąc Wyświetleń (CPM): ${(reportData.cpm || 0).toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}${reportData.reservations ? '\n• Rezerwacje: ' + reportData.reservations.toLocaleString('pl-PL') : ''}${reportData.reservationValue ? '\n• Wartość rezerwacji: ' + reportData.reservationValue.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' }) : ''}
-
-📎 ZAŁĄCZNIK:
-Szczegółowy raport znajdą Państwo w załączeniu do tego e-maila.
-
-W przypadku pytań dotyczących wyników, proszę o kontakt.
-
-Z poważaniem,
-Piotr Bajerlein`;
-
-    return {
-      subject,
-      text: textContent,
-      html: textContent.replace(/\n/g, '<br>')
-    };
-  };
-
-  // Helper function to generate Polish report summary (same as PDF generation)
-  const generatePolishReportSummary = (data: {
-    dateRange: { start: string; end: string };
-    totalSpend: number;
-  totalImpressions: number;
-  totalClicks: number;
-  totalConversions: number;
-  campaigns: any[];
-}): string => {
-    const { dateRange, totalSpend, totalImpressions, totalClicks, totalConversions } = data;
-    
-    // Detect if it's weekly or monthly
-    const startDate = new Date(dateRange.start);
-    const endDate = new Date(dateRange.end);
-    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const isWeekly = daysDiff === 7;
-    const periodLabel = isWeekly ? 'tygodniu' : 'miesiącu';
-    
-    // Format dates and numbers in Polish
-    const formatDate = (dateString: string) => {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('pl-PL', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit' 
-      });
-    };
+    // Calculate micro conversions
+    const totalMicroConversions = googleFormSubmissions + googleEmails + googlePhones + metaFormSubmissions + metaEmails + metaPhones;
+    const estimatedOfflineReservations = Math.round(totalMicroConversions * 0.2);
+    const avgReservationValue = totalOnlineReservations > 0 ? totalOnlineValue / totalOnlineReservations : 0;
+    const estimatedOfflineValue = estimatedOfflineReservations * avgReservationValue;
+    const totalValue = totalOnlineValue + estimatedOfflineValue;
+    const finalCostPercentage = totalValue > 0 ? (totalSpend / totalValue) * 100 : 0;
 
     // Format currency
-    const formatCurrency = (value: number) => {
-      return new Intl.NumberFormat('pl-PL', { 
-        style: 'currency', 
-        currency: 'PLN',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(value);
-    };
+    const fmt = (val: number) => val.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtInt = (val: number) => val.toLocaleString('pl-PL');
+    const fmtThousands = (val: number) => Math.round(val / 1000).toLocaleString('pl-PL');
 
-    // Format numbers
-    const formatNumber = (value: number) => {
-      return new Intl.NumberFormat('pl-PL').format(Math.round(value));
-    };
+    const subject = `Podsumowanie miesiąca - ${monthName} ${year} | ${clientName}`;
 
-    // Format percentage
-    const formatPercentage = (value: number) => {
-      return new Intl.NumberFormat('pl-PL', { 
-        style: 'percent',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(value / 100);
-    };
+    const textContent = `Dzień dobry,
 
-    const summaryParts = [];
-    
-    const startDateFormatted = formatDate(dateRange.start);
-    const endDateFormatted = formatDate(dateRange.end);
-    
-    summaryParts.push(`W ${periodLabel} od ${startDateFormatted} do ${endDateFormatted} wydaliśmy na kampanie reklamowe ${formatCurrency(totalSpend)}.`);
-    
-    if (totalImpressions > 0) {
-      summaryParts.push(`Działania te zaowocowały ${formatNumber(totalImpressions)} wyświetleniami`);
-      if (totalClicks > 0) {
-        summaryParts.push(`a liczba kliknięć wyniosła ${formatNumber(totalClicks)}.`);
-      } else {
-        summaryParts.push('.');
-      }
-    }
-    
-    if (totalConversions > 0) {
-      summaryParts.push(`W tym okresie zaobserwowaliśmy ${formatNumber(totalConversions)} konwersje.`);
-    }
-    
-    return summaryParts.join(' ');
-  };
+poniżej przesyłam podsumowanie najważniejszych danych z poprzedniego miesiąca.
 
-  // Generate email template (same as EmailService)
-  const generateCustomReportEmailTemplate = (
-    clientName: string, 
-    reportData: any, 
-    content: { summary: string; customMessage: string }
-  ) => {
-    const subject = `📊 Meta Ads Performance Report - ${reportData.dateRange}`;
-    
-    const html = `
-      <!DOCTYPE html>
+Szczegółowe raporty za działania znajdą Państwo w panelu klienta - ${process.env.NEXT_PUBLIC_APP_URL || 'https://app.example.com'}/dashboard
+
+W załączniku przesyłam też szczegółowy raport PDF.
+
+1. Google Ads
+Wydana kwota: ${fmt(googleSpend)} zł
+Wyświetlenia: ${fmtInt(googleImpressions)}
+Kliknięcia: ${fmtInt(googleClicks)}
+CPC: ${fmt(googleCPC)} zł
+CTR: ${fmt(googleCTR)}%
+Wysłanie formularza: ${fmtInt(googleFormSubmissions)}
+Kliknięcia w adres e-mail: ${fmtInt(googleEmails)}
+Kliknięcia w numer telefonu: ${fmtInt(googlePhones)}
+Booking Engine krok 1: ${fmtInt(googleBE1)}
+Booking Engine krok 2: ${fmtInt(googleBE2)}
+Booking Engine krok 3: ${fmtInt(googleBE3)}
+Rezerwacje: ${fmtInt(googleReservations)}
+Wartość rezerwacji: ${fmt(googleReservationValue)} zł
+ROAS: ${fmt(googleROAS)} (${fmt(googleROAS * 100)}%)
+
+2. Meta Ads
+Wydana kwota: ${fmt(metaSpend)} zł
+Wyświetlenia: ${fmtInt(metaImpressions)}
+Kliknięcia linku: ${fmtInt(metaClicks)}
+Wysłanie formularza: ${fmtInt(metaFormSubmissions)}
+Kliknięcia w adres e-mail: ${fmtInt(metaEmails)}
+Kliknięcia w numer telefonu: ${fmtInt(metaPhones)}
+Rezerwacje: ${fmtInt(metaReservations)}
+Wartość rezerwacji: ${fmt(metaReservationValue)} zł
+ROAS: ${fmt(metaROAS)} (${fmt(metaROAS * 100)}%)
+
+Podsumowanie ogólne
+Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtThousands(totalOnlineValue)} tys. zł.
+Koszt pozyskania rezerwacji online zatem wyniósł: ${fmt(onlineCostPercentage)}%.
+
+Dodatkowo pozyskaliśmy też ${fmtInt(totalMicroConversions)} mikro konwersji (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy ${fmtInt(estimatedOfflineReservations)} rezerwacji i dodatkowe ok. ${fmtThousands(estimatedOfflineValue)} tys. zł tą drogą.
+
+Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${fmt(finalCostPercentage)}%.
+
+Zatem suma wartości rezerwacji za ${monthName} ${year} (online + offline) wynosi około: ${fmtThousands(totalValue)} tys. zł.
+
+W razie pytań proszę o kontakt.
+
+Pozdrawiam
+Piotr`;
+
+    // Generate proper HTML with styling
+    const htmlContent = `<!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Meta Ads Performance Report</title>
+  <title>${subject}</title>
         <style>
           body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6; 
             color: #333; 
-            margin: 0; 
+      max-width: 600px;
+      margin: 0 auto;
             padding: 20px;
             background-color: #f5f7fa;
           }
           .container { 
-            max-width: 600px; 
-            margin: 0 auto; 
-            background: #ffffff;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-          }
-          .header { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            color: white; 
-            padding: 40px 30px; 
-            text-align: center; 
-            position: relative;
-          }
-          .header h1 { 
-            margin: 0; 
-            font-size: 28px; 
-            font-weight: 600;
-          }
-          .header p { 
-            margin: 10px 0 0 0; 
-            font-size: 16px; 
-            opacity: 0.9;
-          }
-          .content { 
-            padding: 40px 30px; 
-            background: #ffffff;
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
           }
           .greeting {
+            font-size: 16px; 
+      margin-bottom: 20px;
+          }
+    .section {
+            margin: 25px 0;
+          }
+    .section-title {
             font-size: 18px;
-            margin-bottom: 25px;
-            color: #2c3e50;
-          }
-          .custom-message {
-            background: #e8f4fd;
-            border-left: 4px solid #3498db;
-            padding: 20px;
-            margin: 25px 0;
-            border-radius: 0 8px 8px 0;
-            font-style: italic;
-            color: #2c3e50;
-          }
-          .summary-section {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 25px;
-            margin: 25px 0;
-            border: 1px solid #e9ecef;
-          }
-          .summary-title {
-            font-size: 20px;
             font-weight: 600;
-            color: #495057;
+      color: #1a1a1a;
             margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #3b82f6;
+    }
+    .metrics {
+            background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+    .metric-line {
+      padding: 4px 0;
             display: flex;
-            align-items: center;
-          }
-          .summary-title::before {
-            content: '📊';
-            margin-right: 10px;
-            font-size: 24px;
-          }
-          .summary-text {
-            font-size: 16px;
-            line-height: 1.7;
-            color: #6c757d;
-            text-align: justify;
-          }
-          .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 15px;
-            margin: 30px 0;
-          }
-          .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      justify-content: space-between;
+    }
+    .metric-label {
+      color: #666;
           }
           .metric-value {
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 5px;
-            display: block;
-          }
-          .metric-label {
-            font-size: 12px;
-            opacity: 0.9;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
-          .pdf-notice {
-            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
-            color: #2d3436;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .summary {
+      background: #e3f2fd;
             padding: 20px;
-            border-radius: 12px;
-            margin: 25px 0;
-            text-align: center;
-            font-weight: 500;
-          }
-          .pdf-notice::before {
-            content: '📎';
-            font-size: 24px;
-            margin-right: 10px;
-          }
-          .closing {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 2px solid #e9ecef;
-          }
-          .signature {
-            color: #495057;
+      border-radius: 6px;
+      border-left: 4px solid #3b82f6;
+      margin: 20px 0;
+    }
+    .link {
+      color: #3b82f6;
+      text-decoration: none;
             font-weight: 500;
           }
           .footer { 
-            background: #2c3e50;
-            color: #bdc3c7;
-            text-align: center; 
-            padding: 20px 30px;
-            font-size: 12px;
-            line-height: 1.5;
+            margin-top: 30px;
+            padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      color: #666;
+      font-size: 14px;
           }
         </style>
       </head>
       <body>
         <div class="container">
-          <div class="header">
-            <h1>📊 Meta Ads Performance Report</h1>
-            <p>${reportData.dateRange}</p>
-          </div>
-          
-          <div class="content">
-            <div class="greeting">
-              Dear ${clientName},
+    <div class="greeting">Dzień dobry,</div>
+    
+    <p>poniżej przesyłam podsumowanie najważniejszych danych z poprzedniego miesiąca.</p>
+    
+    <p>Szczegółowe raporty za działania znajdą Państwo w panelu klienta - <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://app.example.com'}/dashboard" class="link">TUTAJ</a></p>
+    
+    <p>W załączniku przesyłam też szczegółowy raport PDF.</p>
+    
+    <div class="section">
+      <div class="section-title">1. Google Ads</div>
+      <div class="metrics">
+        <div class="metric-line"><span class="metric-label">Wydana kwota:</span> <span class="metric-value">${fmt(googleSpend)} zł</span></div>
+        <div class="metric-line"><span class="metric-label">Wyświetlenia:</span> <span class="metric-value">${fmtInt(googleImpressions)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia:</span> <span class="metric-value">${fmtInt(googleClicks)}</span></div>
+        <div class="metric-line"><span class="metric-label">CPC:</span> <span class="metric-value">${fmt(googleCPC)} zł</span></div>
+        <div class="metric-line"><span class="metric-label">CTR:</span> <span class="metric-value">${fmt(googleCTR)}%</span></div>
+        <div class="metric-line"><span class="metric-label">Wysłanie formularza:</span> <span class="metric-value">${fmtInt(googleFormSubmissions)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia w adres e-mail:</span> <span class="metric-value">${fmtInt(googleEmails)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu:</span> <span class="metric-value">${fmtInt(googlePhones)}</span></div>
+        <div class="metric-line"><span class="metric-label">Booking Engine krok 1:</span> <span class="metric-value">${fmtInt(googleBE1)}</span></div>
+        <div class="metric-line"><span class="metric-label">Booking Engine krok 2:</span> <span class="metric-value">${fmtInt(googleBE2)}</span></div>
+        <div class="metric-line"><span class="metric-label">Booking Engine krok 3:</span> <span class="metric-value">${fmtInt(googleBE3)}</span></div>
+        <div class="metric-line"><span class="metric-label">Rezerwacje:</span> <span class="metric-value">${fmtInt(googleReservations)}</span></div>
+        <div class="metric-line"><span class="metric-label">Wartość rezerwacji:</span> <span class="metric-value">${fmt(googleReservationValue)} zł</span></div>
+        <div class="metric-line"><span class="metric-label">ROAS:</span> <span class="metric-value">${fmt(googleROAS)} (${fmt(googleROAS * 100)}%)</span></div>
+            </div>
             </div>
             
-            <p>Here's your Meta Ads performance report for the period <strong>${reportData.dateRange}</strong>.</p>
-            
-            ${content.customMessage ? `
-            <div class="custom-message">
-              ${content.customMessage.replace(/\n/g, '<br>')}
-            </div>
-            ` : ''}
-            
-            ${content.summary ? `
-            <div class="summary-section">
-              <div class="summary-title">Podsumowanie</div>
-              <div class="summary-text">${content.summary}</div>
-            </div>
-            ` : ''}
-            
-            <div class="metrics-grid">
-              <div class="metric-card">
-                <span class="metric-value">${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}</span>
-                <span class="metric-label">Total Spend</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-value">${reportData.totalImpressions.toLocaleString('pl-PL')}</span>
-                <span class="metric-label">Impressions</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-value">${reportData.totalClicks.toLocaleString('pl-PL')}</span>
-                <span class="metric-label">Clicks</span>
-              </div>
-            </div>
-            
-            <div class="pdf-notice">
-              <strong>Complete detailed report is attached as PDF</strong><br>
-              Open the PDF attachment for comprehensive analysis, charts, and campaign details.
-            </div>
-            
-            <p>If you have any questions about this report or would like to discuss optimization strategies, please don't hesitate to reach out to us.</p>
-            
-            <div class="closing">
-              <div class="signature">
-                Best regards,<br>
-                <strong>Your Meta Ads Team</strong>
+    <div class="section">
+      <div class="section-title">2. Meta Ads</div>
+      <div class="metrics">
+        <div class="metric-line"><span class="metric-label">Wydana kwota:</span> <span class="metric-value">${fmt(metaSpend)} zł</span></div>
+        <div class="metric-line"><span class="metric-label">Wyświetlenia:</span> <span class="metric-value">${fmtInt(metaImpressions)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia linku:</span> <span class="metric-value">${fmtInt(metaClicks)}</span></div>
+        <div class="metric-line"><span class="metric-label">Wysłanie formularza:</span> <span class="metric-value">${fmtInt(metaFormSubmissions)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia w adres e-mail:</span> <span class="metric-value">${fmtInt(metaEmails)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu:</span> <span class="metric-value">${fmtInt(metaPhones)}</span></div>
+        <div class="metric-line"><span class="metric-label">Rezerwacje:</span> <span class="metric-value">${fmtInt(metaReservations)}</span></div>
+        <div class="metric-line"><span class="metric-label">Wartość rezerwacji:</span> <span class="metric-value">${fmt(metaReservationValue)} zł</span></div>
+        <div class="metric-line"><span class="metric-label">ROAS:</span> <span class="metric-value">${fmt(metaROAS)} (${fmt(metaROAS * 100)}%)</span></div>
               </div>
             </div>
+            
+    <div class="summary">
+      <strong>Podsumowanie ogólne</strong><br><br>
+      Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtThousands(totalOnlineValue)} tys. zł.<br>
+      Koszt pozyskania rezerwacji online zatem wyniósł: ${fmt(onlineCostPercentage)}%.<br><br>
+      
+      Dodatkowo pozyskaliśmy też ${fmtInt(totalMicroConversions)} mikro konwersji (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. 
+      Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy ${fmtInt(estimatedOfflineReservations)} rezerwacji i dodatkowe ok. ${fmtThousands(estimatedOfflineValue)} tys. zł tą drogą.<br><br>
+      
+      Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${fmt(finalCostPercentage)}%.<br><br>
+      
+      <strong>Zatem suma wartości rezerwacji za ${monthName} ${year} (online + offline) wynosi około: ${fmtThousands(totalValue)} tys. zł.</strong>
           </div>
           
           <div class="footer">
-            <p>This is an automated report generated by your Meta Ads management system.</p>
-            <p>For support, contact us at support@example.com</p>
+      <p>W razie pytań proszę o kontakt.</p>
+      <p>Pozdrawiam<br><strong>Piotr</strong></p>
           </div>
         </div>
       </body>
-      </html>
-    `;
+</html>`;
 
-    const text = `
-Meta Ads Performance Report - ${reportData.dateRange}
-
-Dear ${clientName},
-
-Here's your Meta Ads performance report for the period ${reportData.dateRange}.
-
-${content.customMessage ? `
-Custom Message:
-${content.customMessage}
-
-` : ''}${content.summary ? `
-Podsumowanie:
-${content.summary}
-
-` : ''}Performance Metrics:
-- Total Spend: ${reportData.totalSpend.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' })}
-- Impressions: ${reportData.totalImpressions.toLocaleString('pl-PL')}
-- Clicks: ${reportData.totalClicks.toLocaleString('pl-PL')}
-
-Complete detailed report is attached as PDF. Open the PDF attachment for comprehensive analysis, charts, and campaign details.
-
-If you have any questions about this report or would like to discuss optimization strategies, please don't hesitate to reach out to us.
-
-Best regards,
-Your Meta Ads Team
-
----
-This is an automated report generated by your Meta Ads management system.
-For support, contact us at support@example.com
-    `;
-
-    return { subject, html, text };
+    return {
+      subject,
+      text: textContent,
+      html: htmlContent
+    };
   };
+
+  // REMOVED: Old summary generator - not needed for preview
+  // Real summaries are generated at send time by FlexibleEmailService
+
+  // REMOVED: Old generateCustomReportEmailTemplate() - not needed for preview
+  // Real emails use FlexibleEmailService.sendClientMonthlyReport()
 
   const formatDateRange = () => {
     const startDate = new Date(dateRange.start);
@@ -754,24 +853,247 @@ For support, contact us at support@example.com
                 </div>
               </div>
 
-              {/* Email Content Header */}
-              <div className="border-b border-gray-200 pb-2 mb-4">
-                <h4 className="text-lg font-medium text-gray-900 flex items-center">
-                  <FileText className="w-5 h-5 mr-2" />
-                  Email Content (Text Version)
-                </h4>
+              {/* Data Source Debug Info */}
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                <div className="text-xs text-purple-800">
+                  <strong>🔍 Debug Info (będzie usunięte):</strong>
+                  <div className="mt-1 font-mono">
+                    • <strong>KLIENT: {clientName}</strong>
+                    <br />
+                    • Źródło danych: <strong>daily_kpi_data</strong> (TO SAMO CO /REPORTS!)
+                    <br />
+                    • Okres: {dateRange.start} to {dateRange.end}
+                    <br />
+                    • Google Ads wydatki: {campaigns?.find((c: any) => c.platform === 'google')?.spend?.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00'} zł
+                    <br />
+                    • Meta Ads wydatki: {campaigns?.find((c: any) => c.platform === 'meta')?.spend?.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00'} zł
+                    <br />
+                    • Google Ads rezerwacje: {campaigns?.find((c: any) => c.platform === 'google')?.reservations || 0}
+                    <br />
+                    • Meta Ads rezerwacje: {campaigns?.find((c: any) => c.platform === 'meta')?.reservations || 0}
+                    <br />
+                    • Platformy załadowane: {campaigns?.length || 0}
+                    <br />
+                    {(!campaigns || campaigns.length === 0) && (
+                      <span className="text-red-600">
+                        ⚠️ BRAK DANYCH w daily_kpi_data - Sprawdź czy /reports pokazuje dane!
+                      </span>
+                    )}
+                    {campaigns && campaigns.length > 0 && (
+                      <span className="text-green-600">
+                        ✅ Dane załadowane z daily_kpi_data - TO SAME DANE CO W /REPORTS!
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Email Content */}
+              {/* No Data Warning */}
+              {campaigns && campaigns.length === 0 && (
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        <strong>BRAK DANYCH:</strong> Widzisz zera, ponieważ nie ma danych w tabeli <code className="bg-yellow-100 px-1 rounded">daily_kpi_data</code> dla tego klienta i okresu.
+                        <br /><br />
+                        <strong>✅ WAŻNE: Email używa TEJ SAMEJ tabeli co /reports!</strong>
+                        <br /><br />
+                        <strong>Sprawdź:</strong>
+                        <br />1. Idź do <code className="bg-yellow-100 px-1 rounded">/reports</code>
+                        <br />2. Wybierz tego samego klienta i okres
+                        <br />3. Jeśli /reports pokazuje dane → email też je pokaże (odśwież)
+                        <br />4. Jeśli /reports też pokazuje zera → brak danych w bazie
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab System - 3 Tabs */}
+              <div className="border-b border-gray-200 mb-4">
+                <div className="flex space-x-1">
+                  {/* Tab 1: Preview */}
+                  <button
+                    onClick={() => setActiveTab('preview')}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'preview'
+                        ? 'border-blue-600 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <Eye className="w-4 h-4 inline-block mr-2" />
+                    Podgląd Emaila
+                  </button>
+                  
+                  {/* Tab 2: Client-Specific HTML Editor */}
+                  <button
+                    onClick={() => setActiveTab('client-html')}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'client-html'
+                        ? 'border-blue-600 text-blue-600 bg-blue-50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 inline-block mr-2" />
+                    Szablon Klienta
+                    {hasCustomTemplate && (
+                      <span className="ml-1 px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded">Dostosowany</span>
+                    )}
+                  </button>
+                  
+                  {/* Tab 3: Main Template Editor */}
+                  <button
+                    onClick={() => setActiveTab('main-template')}
+                    className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'main-template'
+                        ? 'border-purple-600 text-purple-600 bg-purple-50'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 inline-block mr-2" />
+                    Szablon Główny
+                    <span className="ml-1 px-1.5 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">Globalne</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab Content */}
+              {/* Tab 1: Preview - Shows dynamically generated email with REAL DATA */}
+              {activeTab === 'preview' && (
+                <div className="border rounded-lg overflow-hidden bg-white p-6 min-h-[400px]">
+                  <div 
+                    className="prose max-w-none text-sm leading-relaxed"
+                    dangerouslySetInnerHTML={{ __html: previewData?.html || editableHtml }}
+                  />
+                </div>
+              )}
+
+              {/* Tab 2: Client-Specific HTML Editor */}
+              {activeTab === 'client-html' && (
+                <div className="space-y-3">
+                  {/* Info Banner */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start">
+                    <svg className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-blue-800">
+                      <strong>Szablon dla klienta: {clientName}</strong>
+                      <br />
+                      {hasCustomTemplate ? (
+                        <>✅ Ten klient ma dostosowany szablon. Zmiany dotyczą TYLKO tego klienta.</>
+                      ) : (
+                        <>ℹ️ Ten klient używa głównego szablonu. Edycja utworzy dostosowany szablon dla tego klienta.</>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Auto-save indicator */}
+                  {lastSaved && (
+                    <div className="text-xs text-gray-500 flex items-center">
+                      <svg className="w-3 h-3 text-green-500 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Zapisano automatycznie: {lastSaved.toLocaleTimeString('pl-PL')}
+                    </div>
+                  )}
+
+                  {/* Warning Banner */}
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start">
+                    <svg className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-yellow-800">
+                      <strong>UWAGA:</strong> To jest rzeczywisty kod HTML, który zostanie wysłany do tego klienta. Auto-zapis włączony (2 sekundy).
+                    </div>
+                  </div>
+                  
+                  {/* HTML Editor */}
               <div className="border rounded-lg overflow-hidden">
                 <textarea
-                  className="w-full h-full p-6 text-sm font-mono bg-gray-50 min-h-[400px] leading-relaxed"
-                  value={editableText}
-                  onChange={(e) => setEditableText(e.target.value)}
+                      className="w-full h-full p-6 text-sm font-mono bg-gray-900 text-green-400 min-h-[500px] leading-relaxed"
+                      value={editableHtml}
+                      onChange={(e) => {
+                        setEditableHtml(e.target.value);
+                        setIsEditing(true);
+                      }}
                   onBlur={() => setIsEditing(false)}
-                  onFocus={() => setIsEditing(true)}
+                      placeholder="<html>...</html>"
+                      spellCheck={false}
                 />
               </div>
+                  
+                  {/* Reset to Main Template Button */}
+                  {hasCustomTemplate && (
+                    <button
+                      onClick={resetToMainTemplate}
+                      className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-300"
+                    >
+                      🗑️ Usuń dostosowany szablon (użyj głównego)
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 3: Main Template Editor */}
+              {activeTab === 'main-template' && (
+                <div className="space-y-3">
+                  {/* Info Banner */}
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 flex items-start">
+                    <svg className="w-6 h-6 text-purple-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-purple-900">
+                      <strong>⚠️ SZABLON GŁÓWNY (GLOBALNY)</strong>
+                      <br /><br />
+                      <strong>Ten szablon jest używany przez:</strong>
+                      <br />• Wszystkich klientów, którzy NIE mają dostosowanego szablonu
+                      <br />• Nowych klientów (domyślnie)
+                      <br /><br />
+                      <strong className="text-purple-700">🔔 Zmiana tego szablonu wpłynie na WSZYSTKICH klientów bez dostosowanego szablonu!</strong>
+                    </div>
+                  </div>
+                  
+                  {/* Auto-save indicator */}
+                  {lastSaved && (
+                    <div className="text-xs text-gray-500 flex items-center">
+                      <svg className="w-3 h-3 text-green-500 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                      Zapisano automatycznie: {lastSaved.toLocaleTimeString('pl-PL')}
+                    </div>
+                  )}
+
+                  {/* Warning Banner */}
+                  <div className="bg-orange-50 border border-orange-300 rounded-lg p-3 flex items-start">
+                    <svg className="w-5 h-5 text-orange-600 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-orange-800">
+                      <strong>UWAGA:</strong> Edytujesz GLOBALNY szablon. Zmiana wpłynie na wszystkich klientów! Auto-zapis włączony (2 sekundy).
+                    </div>
+                  </div>
+                  
+                  {/* HTML Editor for Main Template */}
+                  <div className="border-2 border-purple-300 rounded-lg overflow-hidden">
+                    <textarea
+                      className="w-full h-full p-6 text-sm font-mono bg-gray-900 text-purple-300 min-h-[500px] leading-relaxed"
+                      value={mainTemplateHtml}
+                      onChange={(e) => {
+                        setMainTemplateHtml(e.target.value);
+                        setIsEditing(true);
+                      }}
+                      onBlur={() => setIsEditing(false)}
+                      placeholder="<html>...</html>"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Summary Display */}
               {previewData.summary && (
@@ -809,14 +1131,25 @@ For support, contact us at support@example.com
           )}
 
           {/* Action Buttons */}
-          <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
+          <div className="mt-6 pt-4 border-t border-gray-200 space-y-4">
+            {/* Warning Notice */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start">
+              <svg className="w-5 h-5 text-green-600 mr-3 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <div className="text-sm text-green-800">
+                <strong>Potwierdź:</strong> Ten email zostanie rzeczywiście wysłany do klienta podczas automatycznego wysyłania. Każda zmiana w zakładce "Edytor HTML" będzie użyta w prawdziwym emailu.
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center">
             <button
               onClick={saveDraft}
-              disabled={isSaving || !editableText.trim()}
-              className="flex items-center px-4 py-2 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSaving || (!editableText.trim() && !editableHtml.trim())}
+                className="flex items-center px-6 py-3 text-sm font-medium bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               <Save className="w-4 h-4 mr-2" />
-              {isSaving ? 'Zapisywanie...' : draftId ? 'Aktualizuj szkic' : 'Zapisz szkic'}
+                {isSaving ? 'Zapisywanie...' : '✅ Zapisz i użyj tego emaila'}
             </button>
             
             <div className="flex space-x-3">
@@ -824,14 +1157,15 @@ For support, contact us at support@example.com
                 onClick={resetToOriginal}
                 className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
               >
-                Przywróć oryginalną treść
+                  Przywróć oryginał
               </button>
               <button
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 transition-colors"
               >
-                Zamknij podgląd
+                  Zamknij
               </button>
+              </div>
             </div>
           </div>
         </div>

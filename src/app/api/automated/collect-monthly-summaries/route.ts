@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { BackgroundDataCollector } from '@/lib/background-data-collector';
 import logger from '@/lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '@/lib/cron-auth';
 
 /**
  * AUTOMATED MONTHLY SUMMARIES COLLECTION
@@ -9,6 +10,7 @@ import logger from '@/lib/logger';
  * Runs automatically via cron job
  * 
  * Schedule: 1st of every month at 3 AM
+ * Security: Protected with CRON_SECRET authentication
  * 
  * What it does:
  * - Fetches all active clients
@@ -17,16 +19,25 @@ import logger from '@/lib/logger';
  * - Platform-separated (meta vs google)
  * 
  * Usage:
- * - Automated: Vercel cron (1st of month)
+ * - Automated: Vercel cron (1st of month, requires CRON_SECRET)
  * - Manual: GET/POST /api/automated/collect-monthly-summaries
  */
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return await POST();
+  return await POST(request);
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   const startTime = Date.now();
 
   try {

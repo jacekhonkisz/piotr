@@ -285,3 +285,4 @@ Run Test 1 SQL above. Should show:
 **Fix complexity:** 🟢 LOW (65 lines changed)  
 **Risk:** 🟢 LOW (improves accuracy, no breaking changes)
 
+

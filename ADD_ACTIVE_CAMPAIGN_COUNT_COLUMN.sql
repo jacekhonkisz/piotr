@@ -30,3 +30,4 @@ WHERE table_name = 'campaign_summaries'
 
 
 
+

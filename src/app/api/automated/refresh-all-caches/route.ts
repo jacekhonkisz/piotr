@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 /**
  * Unified cache refresh endpoint - refreshes all cache types in one job
@@ -7,14 +8,24 @@ import logger from '../../../../lib/logger';
  * 
  * Schedule: Every 3 hours
  * Replaces: Individual cache refresh cron jobs
+ * Security: Protected with CRON_SECRET authentication
  */
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return await POST();
+  return await POST(request);
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   const startTime = Date.now();
   const results: any = {
     metaMonthly: { status: 'pending' },

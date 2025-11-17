@@ -116,3 +116,4 @@ WHERE client_id = (SELECT id FROM clients WHERE name ILIKE '%belmonte%' LIMIT 1)
 --    - All campaigns have exact same value (e.g., all 20.00)
 --    - Distribution check shows "ALL CAMPAIGNS HAVE SAME VALUE"
 
+

@@ -530,6 +530,45 @@ export async function POST(request: NextRequest) {
       .update({ last_report_date: new Date().toISOString() })
       .eq('id', targetClient.id);
 
+    // Generate PDF for the report
+    logger.info('📄 Generating PDF for report...');
+    let pdfUrl: string | null = null;
+    let pdfSize: number | null = null;
+    
+    try {
+      const { generateReportForPeriod } = await import('../../../lib/automated-report-generator');
+      const generatedReport = await generateReportForPeriod(
+        targetClient.id,
+        'monthly',
+        startDate,
+        endDate
+      );
+      
+      pdfUrl = generatedReport.pdf_url;
+      pdfSize = generatedReport.pdf_size_bytes;
+      
+      logger.info('✅ PDF generated and uploaded successfully', {
+        pdfUrl,
+        pdfSize
+      });
+      
+      // Update the report record with PDF info
+      await supabase
+        .from('reports')
+        .update({
+          pdf_url: pdfUrl,
+          pdf_size_bytes: pdfSize
+        })
+        .eq('id', reportRecord.id);
+        
+    } catch (pdfError) {
+      logger.error('⚠️ PDF generation failed (continuing without PDF)', {
+        error: pdfError instanceof Error ? pdfError.message : 'Unknown error'
+      });
+      // Don't fail the whole request if PDF generation fails
+      // The email scheduler will regenerate it when needed
+    }
+
     const responseTime = Date.now() - startTime;
     performanceMonitor.recordAPICall('generate-report', responseTime);
     
@@ -537,7 +576,8 @@ export async function POST(request: NextRequest) {
       clientId: targetClient.id,
       reportId: reportRecord.id,
       responseTime,
-      campaignCount: report.campaigns.length
+      campaignCount: report.campaigns.length,
+      pdfGenerated: !!pdfUrl
     });
     
     return NextResponse.json({
@@ -553,6 +593,8 @@ export async function POST(request: NextRequest) {
         platform_data: report.platformData,
         meta_tables: tablesData.meta,
         google_tables: tablesData.google,
+        pdf_url: pdfUrl,
+        pdf_size_bytes: pdfSize,
         errors: report.errors
       }
     });

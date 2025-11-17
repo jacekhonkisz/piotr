@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ProductionDataManager } from '../../../../lib/production-data-manager';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 /**
  * AUTOMATED MONTHLY AGGREGATION
@@ -10,14 +11,25 @@ import logger from '../../../../lib/logger';
  * 1. Generate monthly summaries from daily data
  * 2. Preserve historical data before cleanup
  * 3. Ensure data continuity for reports
+ * 
+ * Security: Protected with CRON_SECRET authentication
  */
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return await POST({} as NextRequest);
+  return await POST(request);
 }
 
 export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   try {
     logger.info('🏭 Starting automated monthly aggregation...');
     

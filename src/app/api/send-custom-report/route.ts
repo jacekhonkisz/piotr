@@ -301,34 +301,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Send email to all contact emails
+    // Send email to all contact emails using NEW MONTHLY TEMPLATE
     const emailService = FlexibleEmailService.getInstance();
     const contactEmails = client.contact_emails || [client.email];
+    
+    // Extract month and year from date range for NEW template
+    const startDate = new Date(dateRange.start);
+    const monthNames = [
+      'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
+      'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
+    ];
+    const monthName = monthNames[startDate.getMonth()];
+    const year = startDate.getFullYear();
+    
+    // Prepare NEW monthly report data (simplified for now - real data would come from fetcher)
+    const monthlyReportData = {
+      dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+      totalOnlineReservations: 0,
+      totalOnlineValue: 0,
+      onlineCostPercentage: 0,
+      totalMicroConversions: 0,
+      estimatedOfflineReservations: 0,
+      estimatedOfflineValue: 0,
+      finalCostPercentage: 0,
+      totalValue: 0
+    };
     
     let emailResults = [];
     for (const email of contactEmails) {
       try {
-        const emailResult = await emailService.sendCustomReportEmail(
+        const emailResult = await emailService.sendClientMonthlyReport(
           email,
+          clientId,
           client.name,
-          reportData || {
-            dateRange: `${dateRange.start} to ${dateRange.end}`,
-            totalSpend: 0,
-            totalImpressions: 0,
-            totalClicks: 0,
-            totalConversions: 0,
-            ctr: 0,
-            cpc: 0,
-            cpm: 0
-          },
-          {
-            summary: reportSummary,
-            customMessage: customMessage || ''
-          },
-          pdfBuffer,
-          undefined, // provider (auto-detect)
-          clientId, // clientId for draft loading
-          user.id // adminId for draft loading
+          monthName,
+          year,
+          monthlyReportData,
+          pdfBuffer
         );
         emailResults.push({ email, success: emailResult.success, error: emailResult.error });
 
@@ -338,9 +347,9 @@ export async function POST(request: NextRequest) {
           .insert({
             client_id: clientId,
             admin_id: user.id,
-            email_type: 'custom_report',
+            email_type: 'monthly_report',
             recipient_email: email,
-            subject: `Raport Meta Ads - ${formatDateRange(dateRange)}`,
+            subject: `Podsumowanie miesiąca - ${monthName} ${year} | ${client.name}`,
             message_id: emailResult.messageId,
             sent_at: new Date().toISOString(),
             status: emailResult.success ? 'sent' : 'failed',

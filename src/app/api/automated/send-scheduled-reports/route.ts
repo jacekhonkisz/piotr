@@ -1,8 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { EmailScheduler } from '../../../../lib/email-scheduler';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   try {
     logger.info('🚀 Automated email scheduler triggered');
     
@@ -43,7 +48,11 @@ export async function POST() {
 }
 
 // Also support GET for manual testing
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   try {
     logger.info('🔍 Manual email scheduler check triggered');
     

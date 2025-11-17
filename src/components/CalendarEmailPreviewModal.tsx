@@ -184,13 +184,114 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
         }
       }
 
+      // ✅ FETCH REAL CAMPAIGN DATA - Use SAME source as /reports page
+      // Use StandardizedDataFetcher (matches /reports EXACTLY)
+      console.log('🔍 FETCHING DATA FOR EMAIL (UNIFIED):', {
+        client_id: report.client_id,
+        client_name: report.client_name,
+        dateRange,
+        method: 'StandardizedDataFetcher (SAME AS /REPORTS)'
+      });
+
+      // ✅ USE THE SAME DATA FETCHERS AS /REPORTS PAGE
+      const { StandardizedDataFetcher } = await import('../lib/standardized-data-fetcher');
+      const { GoogleAdsStandardizedDataFetcher } = await import('../lib/google-ads-standardized-data-fetcher');
+
+      const [metaResult, googleResult] = await Promise.all([
+        StandardizedDataFetcher.fetchData({
+          clientId: report.client_id,
+          dateRange,
+          platform: 'meta',
+          reason: 'email-preview-calendar'
+        }),
+        GoogleAdsStandardizedDataFetcher.fetchData({
+          clientId: report.client_id,
+          dateRange,
+          reason: 'email-preview-calendar'
+        })
+      ]);
+
+      console.log('📊 UNIFIED FETCH RESULTS:', {
+        client_id: report.client_id,
+        client_name: report.client_name,
+        metaSuccess: metaResult.success,
+        googleSuccess: googleResult.success,
+        metaSpend: metaResult.data?.stats?.totalSpend || 0,
+        googleSpend: googleResult.data?.stats?.totalSpend || 0,
+        metaSource: metaResult.debug?.source,
+        googleSource: googleResult.debug?.source,
+        metaCampaigns: metaResult.data?.campaigns?.length || 0,
+        googleCampaigns: googleResult.data?.campaigns?.length || 0
+      });
+
+      // Transform the unified results to match the format expected by EmailPreviewModal
+      const metaCampaignData = metaResult.success && metaResult.data ? {
+        platform: 'meta',
+        spend: metaResult.data.stats.totalSpend,
+        impressions: metaResult.data.stats.totalImpressions,
+        clicks: metaResult.data.stats.totalClicks,
+        conversions: metaResult.data.stats.totalConversions,
+        cpc: metaResult.data.stats.averageCpc,
+        ctr: metaResult.data.stats.averageCtr,
+        form_submissions: 0,
+        email_contacts: metaResult.data.conversionMetrics.email_contacts,
+        click_to_call: metaResult.data.conversionMetrics.click_to_call,
+        booking_step_1: metaResult.data.conversionMetrics.booking_step_1,
+        booking_step_2: metaResult.data.conversionMetrics.booking_step_2,
+        booking_step_3: metaResult.data.conversionMetrics.booking_step_3,
+        reservations: metaResult.data.conversionMetrics.reservations,
+        reservation_value: metaResult.data.conversionMetrics.reservation_value,
+        roas: metaResult.data.conversionMetrics.roas
+      } : null;
+
+      const googleCampaignData = googleResult.success && googleResult.data ? {
+        platform: 'google',
+        spend: googleResult.data.stats.totalSpend,
+        impressions: googleResult.data.stats.totalImpressions,
+        clicks: googleResult.data.stats.totalClicks,
+        conversions: googleResult.data.stats.totalConversions,
+        cpc: googleResult.data.stats.averageCpc,
+        ctr: googleResult.data.stats.averageCtr,
+        form_submissions: 0,
+        email_contacts: googleResult.data.conversionMetrics.email_contacts,
+        click_to_call: googleResult.data.conversionMetrics.click_to_call,
+        booking_step_1: googleResult.data.conversionMetrics.booking_step_1,
+        booking_step_2: googleResult.data.conversionMetrics.booking_step_2,
+        booking_step_3: googleResult.data.conversionMetrics.booking_step_3,
+        reservations: googleResult.data.conversionMetrics.reservations,
+        reservation_value: googleResult.data.conversionMetrics.reservation_value,
+        roas: googleResult.data.conversionMetrics.roas
+      } : null;
+
+      const campaignsData = [metaCampaignData, googleCampaignData].filter(Boolean);
+      const totals = {
+        spend: campaignsData.reduce((sum, c) => sum + (c.spend || 0), 0),
+        impressions: campaignsData.reduce((sum, c) => sum + (c.impressions || 0), 0),
+        clicks: campaignsData.reduce((sum, c) => sum + (c.clicks || 0), 0),
+        conversions: campaignsData.reduce((sum, c) => sum + (c.conversions || 0), 0),
+        ctr: 0,
+        cpc: 0,
+        cpm: 0
+      };
+
+      // Calculate derived metrics
+      if (totals.impressions > 0) {
+        totals.ctr = (totals.clicks / totals.impressions) * 100;
+        totals.cpm = (totals.spend / totals.impressions) * 1000;
+      }
+      if (totals.clicks > 0) {
+        totals.cpc = totals.spend / totals.clicks;
+      }
+
       setReportData(prev => ({
         ...prev,
         [report.id]: {
           clientId: report.client_id,
           clientName: report.client_name,
           dateRange,
-          reportType: report.report_type
+          reportType: report.report_type,
+          campaigns: campaignsData,  // ✅ Include real campaign data
+          totals  // ✅ Include calculated totals
         }
       }));
     } catch (error) {
@@ -407,8 +508,8 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
           clientName={currentReportData.clientName}
           dateRange={currentReportData.dateRange}
           customMessage=""
-          campaigns={[]}
-          totals={{}}
+          campaigns={currentReportData.campaigns || []}
+          totals={currentReportData.totals || {}}
           client={currentClient}
           metaTables={[]}
         />

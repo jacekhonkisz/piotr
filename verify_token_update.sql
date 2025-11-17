@@ -25,3 +25,4 @@ WHERE ad_account_id IS NOT NULL
 GROUP BY token_status;
 
 
+

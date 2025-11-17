@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { BackgroundDataCollector } from '../../../../lib/background-data-collector';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,10 +14,16 @@ const supabase = createClient(
  * 
  * This endpoint specifically updates current week data more frequently
  * to ensure real-time accuracy for ongoing weeks
+ * 
+ * Security: Protected with CRON_SECRET authentication
  */
-export async function GET() {
-  // For Vercel cron jobs - bypass authentication
-  logger.info('📅 Current week data collection triggered by cron job');
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication (was previously bypassed - NOW FIXED)
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
+  logger.info('📅 Current week data collection triggered by authenticated cron job');
   
   try {
     console.log(`📅 Starting current week data collection via cron job`);

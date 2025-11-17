@@ -186,9 +186,21 @@ export class EmailScheduler {
       };
     }
 
-    // Send the report
+    // 🔍 PRE-FLIGHT CHECK: Verify PDF exists before attempting to send
+    logger.info(`🔍 Pre-flight check: Verifying PDF exists for ${client.name}...`);
+    const existingReport = await this.getGeneratedReport(client.id, period);
+    
+    if (!existingReport || !existingReport.pdf_url) {
+      logger.warn(`⚠️ PDF not found for ${client.name}, will generate during send process`);
+      // Note: The sendProfessionalMonthlyReport method will handle PDF generation
+      // This pre-flight check is just for early detection and logging
+    } else {
+      logger.info(`✅ Pre-flight check passed: PDF exists for ${client.name}`);
+    }
+
+    // Send the report using NEW professional monthly template
     try {
-      await this.sendScheduledReport(client, period);
+      await this.sendProfessionalMonthlyReport(client, period);
       
       // Update client's last sent date
       await this.updateClientLastSentDate(client.id);
@@ -294,17 +306,7 @@ export class EmailScheduler {
   }
 
   /**
-   * Send a scheduled report to a client using NEW professional template
-   */
-  private async sendScheduledReport(client: Client, period: ReportPeriod): Promise<void> {
-    logger.info(`📤 Sending scheduled report to ${client.name} for ${period.start} to ${period.end}`);
-
-    // Use new professional template with dynamic data fetching
-    await this.sendProfessionalMonthlyReport(client, period);
-  }
-
-  /**
-   * NEW: Send professional monthly report with dynamic data fetching
+   * Send professional monthly report with dynamic data fetching
    * Fetches Google Ads + Meta Ads data and uses the new Polish template
    */
   private async sendProfessionalMonthlyReport(client: Client, period: ReportPeriod): Promise<void> {
@@ -416,27 +418,57 @@ export class EmailScheduler {
         finalCostPercentage: reportData.finalCostPercentage.toFixed(2) + '%'
       });
 
-      // Step 5: Generate PDF (optional)
-      logger.info('4️⃣ Generating PDF...');
+      // Step 5: ENSURE PDF EXISTS (MANDATORY)
+      logger.info('4️⃣ Ensuring PDF is generated...');
       let pdfBuffer: Buffer | undefined;
       
-      try {
-        // Try to get existing generated report PDF
-        const generatedReport = await this.getGeneratedReport(client.id, period);
-        if (generatedReport?.pdf_url) {
-          try {
-            const pdfResponse = await fetch(generatedReport.pdf_url);
-            if (pdfResponse.ok) {
-              pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-              logger.info(`✅ PDF fetched from storage: ${pdfBuffer.length} bytes`);
-            }
-          } catch (error) {
-            logger.warn('⚠️ Could not fetch PDF:', error);
-          }
+      // First, try to get existing PDF
+      let generatedReport = await this.getGeneratedReport(client.id, period);
+      
+      if (!generatedReport || !generatedReport.pdf_url) {
+        logger.info('⚠️ PDF not found in storage, generating now...');
+        
+        // Generate the PDF using automated-report-generator
+        const { generateReportForPeriod } = await import('./automated-report-generator');
+        try {
+          const newReport = await generateReportForPeriod(
+            client.id,
+            'monthly',
+            period.start,
+            period.end
+          );
+          generatedReport = newReport;
+          logger.info('✅ PDF generated successfully');
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          logger.error('❌ PDF generation failed:', errorMsg);
+          throw new Error(`Cannot send email: PDF generation failed - ${errorMsg}`);
         }
-      } catch (error) {
-        logger.warn('⚠️ No PDF available for this report');
       }
+      
+      // Fetch the PDF from storage
+      if (generatedReport?.pdf_url) {
+        try {
+          const pdfResponse = await fetch(generatedReport.pdf_url);
+          if (pdfResponse.ok) {
+            pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+            logger.info(`✅ PDF fetched from storage: ${pdfBuffer.length} bytes`);
+          } else {
+            throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          logger.error('❌ Failed to fetch PDF from storage:', errorMsg);
+          throw new Error(`Cannot send email: PDF fetch failed - ${errorMsg}`);
+        }
+      }
+      
+      // MANDATORY VALIDATION: PDF must exist
+      if (!pdfBuffer) {
+        throw new Error('Cannot send email: PDF is mandatory but not available');
+      }
+      
+      logger.info('✅ PDF ready for email attachment');
 
       // Step 6: Send to all contact emails
       const contactEmails = client.contact_emails || [client.email];
@@ -717,8 +749,8 @@ export class EmailScheduler {
         return { success: false, error: 'Could not determine report period' };
       }
 
-      // Send the report
-      await this.sendScheduledReport(client, reportPeriod);
+      // Send the report using NEW professional monthly template
+      await this.sendProfessionalMonthlyReport(client, reportPeriod);
 
       // Log manual send
       await this.supabase

@@ -149,3 +149,4 @@ WHERE client_id = (SELECT id FROM clients WHERE name ILIKE '%belmonte%' LIMIT 1)
 --    - No campaigns show funnel data (all zeros)
 --    - Cache doesn't match daily_kpi_data (and daily data exists)
 
+

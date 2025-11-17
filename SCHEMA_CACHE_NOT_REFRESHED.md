@@ -96,3 +96,4 @@ tail -50 /tmp/next-server.log | grep -E "bigint|BIGINT|Failed"
 
 
 
+

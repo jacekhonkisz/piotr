@@ -728,6 +728,16 @@ export default function AdminCalendarPage() {
                   <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-green-700 sm:hidden">Email</span>
                 </div>
               </button>
+              <button
+                onClick={() => router.push('/admin/templates')}
+                className="group nav-premium-button hover:border-purple-300 min-h-[44px] flex-1 sm:flex-none"
+              >
+                <div className="flex items-center justify-center">
+                  <Mail className="h-4 w-4 mr-1 sm:mr-2 text-gray-600 group-hover:text-purple-600 transition-colors" />
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-purple-700 hidden sm:inline">Szablony</span>
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-purple-700 sm:hidden">Szab.</span>
+                </div>
+              </button>
             </div>
           </div>
         </div>

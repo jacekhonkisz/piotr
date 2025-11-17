@@ -109,3 +109,4 @@ COMMENT ON COLUMN settings.value IS 'Setting value (plain text, tokens are store
 COMMENT ON COLUMN settings.description IS 'Human-readable description of the setting';
 
 
+

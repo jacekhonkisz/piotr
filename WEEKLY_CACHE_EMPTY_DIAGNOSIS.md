@@ -293,3 +293,4 @@ ORDER BY ordinal_position;
 ✅ **Once fixed, weekly cache will populate automatically every 3 hours!**
 
 
+

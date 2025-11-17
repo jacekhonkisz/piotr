@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIService } from '../../../../lib/meta-api-optimized';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
 /**
  * END OF MONTH DATA COLLECTION
@@ -14,9 +15,11 @@ import logger from '../../../../lib/logger';
  * 5. Platform-separated (Meta and Google distinct)
  * 
  * Usage:
- * - Automated: Vercel cron on 1st of month at 2 AM
- * - Manual: POST /api/automated/end-of-month-collection
+ * - Automated: Vercel cron on 1st of month at 2 AM (requires CRON_SECRET)
+ * - Manual: POST /api/automated/end-of-month-collection (requires CRON_SECRET)
  *   Body: { "targetMonth": "2025-09", "dryRun": false }
+ * 
+ * Security: Protected with CRON_SECRET authentication
  */
 
 interface CollectionResult {
@@ -34,12 +37,21 @@ interface CollectionResult {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+  
   // For Vercel cron jobs - they only support GET requests
-  return await POST({} as NextRequest);
+  return await POST(request);
 }
 
 export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   const startTime = Date.now();
   
   try {
