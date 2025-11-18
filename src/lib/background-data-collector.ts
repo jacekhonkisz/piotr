@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { MetaAPIServiceOptimized } from './meta-api-optimized';
 import { GoogleAdsAPIService } from './google-ads-api';
 import { StandardizedDataFetcher } from './standardized-data-fetcher';
-import { getMonthBoundaries, getWeekBoundaries } from './date-range-utils';
+import { getMonthBoundaries } from './date-range-utils';
+import { getMondayOfWeek, getSundayOfWeek, formatDateISO, validateIsMonday, getLastNWeeks } from './week-helpers';
 import logger from './logger';
 
 const supabase = createClient(
@@ -465,6 +466,7 @@ export class BackgroundDataCollector {
 
   /**
    * Collect weekly summary for a specific client
+   * ✅ FIXED: Now uses ISO week helpers to ensure all weeks start on Monday
    * @param client Client to collect data for
    * @param startWeek Starting week offset (0 = current week)
    * @param endWeek Ending week offset (53 = 53 weeks ago)
@@ -473,71 +475,46 @@ export class BackgroundDataCollector {
     const weekCount = endWeek - startWeek + 1;
     logger.info(`📊 Collecting ${weekCount} weeks (${startWeek}-${endWeek}) for ${client.name}...`);
 
-    // 🔧 FIX: Only collect COMPLETED weeks, not current partial week
     const currentDate = new Date();
     const weeksToCollect = [];
 
-    // Start from last completed week (not current week)
-    const lastCompletedWeekEnd = new Date(currentDate);
-    const dayOfWeek = lastCompletedWeekEnd.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    // ✅ FIX: Use getLastNWeeks helper to get properly aligned ISO weeks
+    const includeCurrentWeek = startWeek === 0;
+    const totalWeeksNeeded = endWeek - startWeek + 1;
+    const allWeekMondays = getLastNWeeks(totalWeeksNeeded, includeCurrentWeek);
     
-    // Go back to last Sunday (end of last completed week)
-    const daysToLastSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
-    lastCompletedWeekEnd.setDate(lastCompletedWeekEnd.getDate() - daysToLastSunday);
-    lastCompletedWeekEnd.setHours(23, 59, 59, 999);
+    logger.info(`✅ Generated ${allWeekMondays.length} ISO weeks (all start on Monday)`);
 
-    logger.info(`🔧 Starting from last completed week ending: ${lastCompletedWeekEnd.toISOString().split('T')[0]}`);
-
-    // 🔧 Collect specified week range only
-    for (let i = startWeek; i <= endWeek; i++) {
-      const weekEndDate = new Date(lastCompletedWeekEnd.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
-      const weekStartDate = new Date(weekEndDate.getTime() - (6 * 24 * 60 * 60 * 1000)); // 7 days before
-      const weekRange = getWeekBoundaries(weekStartDate);
+    // Process each week Monday
+    for (let i = 0; i < allWeekMondays.length; i++) {
+      const weekMonday = allWeekMondays[i];
+      const weekSunday = getSundayOfWeek(weekMonday);
       
-      // Only collect weeks that are completely in the past
-      const isCompleteWeek = weekEndDate < currentDate;
-      
-      if (isCompleteWeek) {
-        weeksToCollect.push({
-          startDate: weekRange.start,
-          endDate: weekRange.end,
-          weekNumber: Math.ceil((weekEndDate.getTime() - new Date(weekEndDate.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
-          isComplete: true
-        });
-      } else {
-        logger.info(`⏭️ Skipping incomplete week: ${weekRange.start} to ${weekRange.end}`);
+      // ✅ VALIDATE: Ensure week starts on Monday
+      try {
+        validateIsMonday(weekMonday);
+      } catch (error) {
+        logger.error(`❌ Week validation failed: ${error.message}`);
+        continue;
       }
-    }
-
-    logger.info(`📅 Will collect ${weeksToCollect.length} completed weeks from specified range`);
-    
-    // 🔧 CONDITIONAL: Only collect current week if startWeek includes week 0
-    if (startWeek === 0) {
-      const currentWeekStart = new Date(currentDate);
-      const currentDayOfWeek = currentWeekStart.getDay();
-      const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
-      currentWeekStart.setDate(currentWeekStart.getDate() - daysToMonday);
-      currentWeekStart.setHours(0, 0, 0, 0);
       
-      const currentWeekEnd = new Date(currentWeekStart);
-      currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
-      currentWeekEnd.setHours(23, 59, 59, 999);
+      // Check if this is current week or completed week
+      const isCurrent = i === 0 && includeCurrentWeek;
+      const isComplete = weekSunday < currentDate;
       
-      const currentWeekRange = getWeekBoundaries(currentWeekStart);
-      
-      // Add current week for real-time updates (will be updated multiple times)
-      weeksToCollect.unshift({
-        startDate: currentWeekRange.start,
-        endDate: currentWeekRange.end,
-        weekNumber: Math.ceil((currentWeekEnd.getTime() - new Date(currentWeekEnd.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
-        isComplete: false,
-        isCurrent: true
+      weeksToCollect.push({
+        startDate: formatDateISO(weekMonday),
+        endDate: formatDateISO(weekSunday),
+        weekNumber: i,
+        isComplete: isComplete,
+        isCurrent: isCurrent
       });
-
-      logger.info(`📅 Added current week for real-time updates: ${currentWeekRange.start} to ${currentWeekRange.end}`);
-    } else {
-      logger.info(`⏭️ Skipping current week (not in requested range: ${startWeek}-${endWeek})`);
+      
+      const weekType = isCurrent ? 'CURRENT' : isComplete ? 'COMPLETED' : 'FUTURE';
+      logger.info(`📅 Week ${i}: ${formatDateISO(weekMonday)} to ${formatDateISO(weekSunday)} (${weekType})`);
     }
+
+    logger.info(`📅 Will collect ${weeksToCollect.length} ISO-standard weeks (all start on Monday)`)
 
     // Initialize Meta API service
     if (!client.meta_access_token || !client.ad_account_id) {
@@ -1016,6 +993,15 @@ export class BackgroundDataCollector {
    */
   private async storeWeeklySummary(clientId: string, data: any, platform: 'meta' | 'google' = 'meta'): Promise<void> {
     logger.info(`💾 Storing ${platform} weekly summary for client ${clientId} on ${data.summary_date}`);
+
+    // ✅ VALIDATE: Ensure summary_date is a Monday (ISO week start)
+    try {
+      validateIsMonday(data.summary_date);
+      logger.info(`✅ Validated: ${data.summary_date} is a Monday`);
+    } catch (error) {
+      logger.error(`❌ VALIDATION FAILED: ${error.message}`);
+      throw new Error(`Cannot store weekly summary: ${error.message}`);
+    }
 
     // Aggregate conversion metrics from campaigns
     const campaigns = data.campaigns || [];
