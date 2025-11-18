@@ -41,17 +41,25 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
   try {
-    logger.info('🤖 Starting automated weekly summaries collection for all clients...');
+    // 🧪 TEST: Check if filtering by client name
+    const searchParams = request.nextUrl.searchParams;
+    const testClient = searchParams.get('testClient'); // e.g., ?testClient=belmonte
+    
+    if (testClient) {
+      logger.info(`🧪 TEST MODE: Collecting for client matching '${testClient}' only...`);
+    } else {
+      logger.info('🤖 Starting automated weekly summaries collection for all clients...');
+    }
 
     const collector = BackgroundDataCollector.getInstance();
     
     // This will:
-    // 1. Fetch all active clients
+    // 1. Fetch all active clients (or filtered client if testClient provided)
     // 2. For each client:
     //    - Collect Meta weekly data (53 weeks + current)
     //    - Collect Google Ads weekly data (53 weeks + current) if enabled
     // 3. Store in campaign_summaries with platform='meta' or 'google'
-    await collector.collectWeeklySummaries();
+    await collector.collectWeeklySummaries(testClient || undefined);
 
     const responseTime = Date.now() - startTime;
 

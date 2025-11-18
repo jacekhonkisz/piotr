@@ -120,10 +120,12 @@ export class BackgroundDataCollector {
 
   /**
    * Collect and store weekly summaries for all active clients
+   * @param clientNameFilter Optional filter to collect for specific client only (for testing)
    */
-  async collectWeeklySummaries(): Promise<void> {
+  async collectWeeklySummaries(clientNameFilter?: string): Promise<void> {
     console.log('🔵 [DEBUG] ENTERING collectWeeklySummaries');
     console.log('🔵 [DEBUG] isRunning flag:', this.isRunning);
+    console.log('🔵 [DEBUG] clientNameFilter:', clientNameFilter || 'none');
     
     if (this.isRunning) {
       console.log('🔴 [DEBUG] EARLY RETURN: isRunning is true');
@@ -133,11 +135,21 @@ export class BackgroundDataCollector {
 
     this.isRunning = true;
     console.log('🟢 [DEBUG] Set isRunning = true');
-    logger.info('📅 Starting weekly data collection...');
+    logger.info(clientNameFilter 
+      ? `📅 Starting weekly data collection for client matching '${clientNameFilter}'...`
+      : '📅 Starting weekly data collection for all clients...'
+    );
 
     try {
       console.log('🔵 [DEBUG] Calling getAllActiveClients...');
-      const clients = await this.getAllActiveClients();
+      let clients = await this.getAllActiveClients();
+      
+      // 🧪 TEST: Filter clients if clientNameFilter provided
+      if (clientNameFilter) {
+        clients = clients.filter(c => c.name.toLowerCase().includes(clientNameFilter.toLowerCase()));
+        console.log(`🧪 [DEBUG] Filtered to ${clients.length} client(s) matching '${clientNameFilter}'`);
+      }
+      
       console.log('🟢 [DEBUG] Found clients:', clients.length);
       console.log('🟢 [DEBUG] Client names:', clients.map(c => c.name).join(', '));
       logger.info(`📊 Found ${clients.length} active clients for weekly collection`);
