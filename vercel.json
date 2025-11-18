@@ -42,11 +42,11 @@
     },
     {
       "path": "/api/automated/collect-monthly-summaries",
-      "schedule": "0 23 * * 0"
+      "schedule": "0 1 * * 0"
     },
     {
-      "path": "/api/automated/incremental-weekly-collection",
-      "schedule": "0 2 * * 1"
+      "path": "/api/automated/collect-weekly-summaries",
+      "schedule": "0 3 * * 0"
     },
     {
       "path": "/api/background/cleanup-old-data",

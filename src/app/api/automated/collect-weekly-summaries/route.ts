@@ -9,7 +9,7 @@ import { verifyCronAuth, createUnauthorizedResponse } from '@/lib/cron-auth';
  * Collects weekly campaign summaries for ALL clients (Meta & Google Ads)
  * Runs automatically via cron job
  * 
- * Schedule: Every Sunday at 2 AM (weekly)
+ * Schedule: Every Sunday at 3 AM (weekly)
  * Security: Protected with CRON_SECRET authentication
  * 
  * What it does:

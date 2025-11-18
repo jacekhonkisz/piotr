@@ -880,8 +880,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         } catch (cacheError) {
           console.error('⚠️ Weekly smart cache failed, falling back to live fetch:', cacheError);
         }
-      } else if (isCurrentMonthRequest && !forceFresh) {
+      } else if (isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh) {
         // Current month: USE SMART CACHE SYSTEM
+        // ✅ CRITICAL FIX: Added !isCurrentWeekRequest check to prevent weekly requests from falling through to monthly cache
         logger.info('📊 🔴 CURRENT MONTH DETECTED - USING SMART CACHE SYSTEM...');
         logger.debug('Debug info', {
           clientId,

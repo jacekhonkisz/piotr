@@ -9,7 +9,7 @@ import { verifyCronAuth, createUnauthorizedResponse } from '@/lib/cron-auth';
  * Collects monthly campaign summaries for ALL clients (Meta & Google Ads)
  * Runs automatically via cron job
  * 
- * Schedule: 1st of every month at 3 AM
+ * Schedule: Every Sunday at 1 AM
  * Security: Protected with CRON_SECRET authentication
  * 
  * What it does:
@@ -19,7 +19,7 @@ import { verifyCronAuth, createUnauthorizedResponse } from '@/lib/cron-auth';
  * - Platform-separated (meta vs google)
  * 
  * Usage:
- * - Automated: Vercel cron (1st of month, requires CRON_SECRET)
+ * - Automated: Vercel cron (every Sunday, requires CRON_SECRET)
  * - Manual: GET/POST /api/automated/collect-monthly-summaries
  */
 
