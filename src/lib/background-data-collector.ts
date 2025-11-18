@@ -509,31 +509,35 @@ export class BackgroundDataCollector {
       }
     }
 
-    logger.info(`📅 Will collect ${weeksToCollect.length} completed weeks (53 weeks = 1 year + 1 week for complete coverage)`);
+    logger.info(`📅 Will collect ${weeksToCollect.length} completed weeks from specified range`);
     
-    // 🔧 FIX: Also collect current week if it has significant data (for real-time updates)
-    const currentWeekStart = new Date(currentDate);
-    const currentDayOfWeek = currentWeekStart.getDay();
-    const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
-    currentWeekStart.setDate(currentWeekStart.getDate() - daysToMonday);
-    currentWeekStart.setHours(0, 0, 0, 0);
-    
-    const currentWeekEnd = new Date(currentWeekStart);
-    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
-    currentWeekEnd.setHours(23, 59, 59, 999);
-    
-    const currentWeekRange = getWeekBoundaries(currentWeekStart);
-    
-    // Add current week for real-time updates (will be updated multiple times)
-    weeksToCollect.unshift({
-      startDate: currentWeekRange.start,
-      endDate: currentWeekRange.end,
-      weekNumber: Math.ceil((currentWeekEnd.getTime() - new Date(currentWeekEnd.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
-      isComplete: false,
-      isCurrent: true
-    });
+    // 🔧 CONDITIONAL: Only collect current week if startWeek includes week 0
+    if (startWeek === 0) {
+      const currentWeekStart = new Date(currentDate);
+      const currentDayOfWeek = currentWeekStart.getDay();
+      const daysToMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
+      currentWeekStart.setDate(currentWeekStart.getDate() - daysToMonday);
+      currentWeekStart.setHours(0, 0, 0, 0);
+      
+      const currentWeekEnd = new Date(currentWeekStart);
+      currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+      currentWeekEnd.setHours(23, 59, 59, 999);
+      
+      const currentWeekRange = getWeekBoundaries(currentWeekStart);
+      
+      // Add current week for real-time updates (will be updated multiple times)
+      weeksToCollect.unshift({
+        startDate: currentWeekRange.start,
+        endDate: currentWeekRange.end,
+        weekNumber: Math.ceil((currentWeekEnd.getTime() - new Date(currentWeekEnd.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)),
+        isComplete: false,
+        isCurrent: true
+      });
 
-    logger.info(`📅 Added current week for real-time updates: ${currentWeekRange.start} to ${currentWeekRange.end}`);
+      logger.info(`📅 Added current week for real-time updates: ${currentWeekRange.start} to ${currentWeekRange.end}`);
+    } else {
+      logger.info(`⏭️ Skipping current week (not in requested range: ${startWeek}-${endWeek})`);
+    }
 
     // Initialize Meta API service
     if (!client.meta_access_token || !client.ad_account_id) {
