@@ -370,7 +370,8 @@ function ReportsPageContent() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
   const [loadingPeriod, setLoadingPeriod] = useState<string | null>(null);
-  // 🔧 FIX: Start with weekly view to match current week  const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'all-time' | 'custom'>('weekly');
+  // 🔧 FIX: Start with weekly view to match current week
+  const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'all-time' | 'custom'>('weekly');
   const [apiCallInProgress, setApiCallInProgress] = useState(false);
   const [customDateRange, setCustomDateRange] = useState<{ start: string; end: string }>({
     start: '',
