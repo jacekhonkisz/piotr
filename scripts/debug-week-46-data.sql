@@ -8,7 +8,14 @@
 -- ✅ EXACT QUERY USED BY StandardizedDataFetcher for Week 46
 SELECT 
   '1. StandardizedDataFetcher Query (exact match)' as query_type,
-  *
+  summary_date,
+  summary_type,
+  platform,
+  total_spend,
+  total_impressions,
+  total_clicks,
+  total_conversions,
+  COALESCE(jsonb_array_length(campaign_data::jsonb), 0) as campaign_count
 FROM campaign_summaries
 WHERE client_id = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa'
   AND summary_type = 'weekly'
@@ -27,8 +34,7 @@ SELECT
   total_impressions,
   total_clicks,
   COALESCE(jsonb_array_length(campaign_data::jsonb), 0) as campaign_count,
-  created_at,
-  updated_at
+  created_at
 FROM campaign_summaries
 WHERE client_id = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa'
   AND summary_type = 'weekly'
