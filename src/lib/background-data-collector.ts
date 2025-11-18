@@ -278,12 +278,13 @@ export class BackgroundDataCollector {
       try {
         logger.info(`📅 Collecting ${monthData.year}-${monthData.month.toString().padStart(2, '0')} for ${client.name}`);
 
-        // Fetch campaign insights using placement performance (MetaAPIServiceOptimized method)
+        // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
         // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-        const campaignInsights = await metaService.getPlacementPerformance(
+        const campaignInsights = await metaService.getCampaignInsights(
           processedAdAccountId,
           monthData.startDate,
-          monthData.endDate
+          monthData.endDate,
+          0  // timeIncrement = 0 for period totals (not daily breakdown)
         );
 
         logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete data`);
@@ -541,11 +542,12 @@ export class BackgroundDataCollector {
         const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
         logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
 
-        // Fetch weekly campaign insights using placement performance (MetaAPIServiceOptimized method)
-        const campaignInsights = await metaService.getPlacementPerformance(
+        // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
+        const campaignInsights = await metaService.getCampaignInsights(
           processedAdAccountId,
           weekData.startDate,
-          weekData.endDate
+          weekData.endDate,
+          0  // timeIncrement = 0 for period totals (not daily breakdown)
         );
 
         logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
