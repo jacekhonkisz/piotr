@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
  * 🧪 TEST ENDPOINT: Check if week range parameters are working
  * Returns what weeks WOULD be processed without actually processing them
  */
-export async function POST(request: NextRequest) {
+async function handleRequest(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const testClient = searchParams.get('testClient');
@@ -34,5 +34,13 @@ export async function POST(request: NextRequest) {
       error: error.message
     }, { status: 500 });
   }
+}
+
+export async function GET(request: NextRequest) {
+  return handleRequest(request);
+}
+
+export async function POST(request: NextRequest) {
+  return handleRequest(request);
 }
 
