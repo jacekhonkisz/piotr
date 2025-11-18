@@ -45,17 +45,28 @@ export async function POST(request: NextRequest) {
   try {
     logger.info('🚀 Starting INCREMENTAL weekly collection for all clients...');
     
-    // Get all active clients
+    // Get all clients (status check removed - all clients are active by default)
+    // If status column exists and is set, we prefer 'active' clients, but don't require it
     const { data: clients, error: clientsError } = await supabaseAdmin
       .from('clients')
       .select('*')
-      .eq('status', 'active');
+      .or('status.eq.active,status.is.null');
       
-    if (clientsError || !clients || clients.length === 0) {
-      logger.warn('No active clients found');
+    if (clientsError) {
+      logger.error('Error fetching clients:', clientsError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to fetch clients',
+        details: clientsError.message,
+        timestamp: new Date().toISOString()
+      }, { status: 500 });
+    }
+    
+    if (!clients || clients.length === 0) {
+      logger.warn('No clients found');
       return NextResponse.json({
         success: true,
-        message: 'No active clients to process',
+        message: 'No clients to process',
         clientsCount: 0,
         timestamp: new Date().toISOString()
       });
