@@ -3179,6 +3179,51 @@ function ReportsPageContent() {
               <Calendar className="w-4 h-4" />
               <span>Własny Zakres</span>
             </button>
+            
+            {/* Platform Switcher: Meta vs Google Ads */}
+            <div className="flex items-center gap-1 ml-4 pl-4 border-l border-gray-300">
+              <button
+                onClick={() => {
+                  setActiveAdsProvider('meta');
+                  // Clear current reports to force refetch
+                  setReports({});
+                  if (selectedPeriod) {
+                    loadReportData(selectedPeriod);
+                  }
+                }}
+                disabled={!selectedClient?.meta_access_token}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeAdsProvider === 'meta'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                } ${!selectedClient?.meta_access_token ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={!selectedClient?.meta_access_token ? 'Meta Ads not configured for this client' : 'Switch to Meta Ads'}
+              >
+                <Target className="w-4 h-4" />
+                <span>Meta</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setActiveAdsProvider('google');
+                  // Clear current reports to force refetch
+                  setReports({});
+                  if (selectedPeriod) {
+                    loadReportData(selectedPeriod);
+                  }
+                }}
+                disabled={!selectedClient?.google_ads_enabled || !selectedClient?.google_ads_customer_id}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeAdsProvider === 'google'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                } ${(!selectedClient?.google_ads_enabled || !selectedClient?.google_ads_customer_id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                title={(!selectedClient?.google_ads_enabled || !selectedClient?.google_ads_customer_id) ? 'Google Ads not configured for this client' : 'Switch to Google Ads'}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Google</span>
+              </button>
+            </div>
           </div>
 
             {/* Right Group: Actions - All buttons same size/hierarchy */}
