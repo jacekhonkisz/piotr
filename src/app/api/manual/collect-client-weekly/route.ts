@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BackgroundDataCollector } from '@/lib/background-data-collector';
 import logger from '@/lib/logger';
-import { authenticateRequest, createErrorResponse } from '../../../lib/auth-middleware';
+import { authenticateRequest, createErrorResponse } from '../../../../lib/auth-middleware';
 
 /**
  * MANUAL WEEKLY COLLECTION FOR SINGLE CLIENT
