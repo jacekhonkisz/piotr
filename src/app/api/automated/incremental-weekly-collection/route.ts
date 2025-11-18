@@ -183,10 +183,10 @@ async function findMissingWeeks(clientId: string, platform: string): Promise<str
     weekStartDate.setDate(startOfYear.getDate() + (weekNumber - 1) * 7);
     const weekStart = weekStartDate.toISOString().split('T')[0];
     
-    // Check if this week exists in database
+    // Check if this week exists in database AND has valid data
     const { data: existing, error } = await supabaseAdmin
       .from('campaign_summaries')
-      .select('summary_date')
+      .select('summary_date, campaign_data')
       .eq('client_id', clientId)
       .eq('summary_type', 'weekly')
       .eq('platform', platform)
@@ -199,7 +199,16 @@ async function findMissingWeeks(clientId: string, platform: string): Promise<str
       continue;
     }
     
-    if (!existing || existing.length === 0) {
+    // ✅ CRITICAL FIX: Collect if week is missing OR has empty campaign_data
+    const needsCollection = !existing || 
+                           existing.length === 0 || 
+                           !existing[0].campaign_data || 
+                           existing[0].campaign_data.length === 0;
+    
+    if (needsCollection) {
+      if (existing && existing.length > 0 && existing[0].campaign_data?.length === 0) {
+        logger.info(`🔄 Week ${weekStart} exists but has empty campaign_data - will re-collect`);
+      }
       missingWeeks.push(weekStart);
     }
   }
