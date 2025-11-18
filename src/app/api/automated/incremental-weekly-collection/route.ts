@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '@/lib/meta-api-optimized';
 import logger from '@/lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '@/lib/cron-auth';
+import { parseMetaActions } from '@/lib/meta-actions-parser';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -232,18 +233,79 @@ async function collectMissingWeeks(
       logger.info(`📅 Collecting week ${weekStart} to ${weekEnd} for ${client.name}`);
       
       // Fetch data from Meta API
-      const campaigns = await metaService.getCampaignInsights(
+      const rawInsights = await metaService.getCampaignInsights(
         adAccountId,
         weekStart,
         weekEnd,
         0 // No time increment
       );
       
-      // Calculate totals
+      // ✅ CRITICAL: Parse Meta API actions array to extract conversion metrics
+      const campaigns = rawInsights.map(insight => {
+        const parsed = parseMetaActions(
+          insight.actions || [],
+          insight.action_values || [],
+          insight.campaign_name
+        );
+        
+        const spend = parseFloat(insight.spend) || 0;
+        const reservations = parsed.reservations || 0;
+        const reservationValue = parsed.reservation_value || 0;
+        
+        return {
+          campaign_id: insight.campaign_id,
+          campaign_name: insight.campaign_name,
+          status: 'ACTIVE',
+          
+          // Core metrics from Meta API
+          spend,
+          impressions: parseInt(insight.impressions) || 0,
+          clicks: parseInt(insight.clicks) || 0,
+          conversions: parseInt(insight.conversions) || 0,
+          ctr: parseFloat(insight.ctr) || 0,
+          cpc: parseFloat(insight.cpc) || 0,
+          cpm: parseFloat(insight.cpm) || 0,
+          cpp: parseFloat(insight.cpp) || 0,
+          frequency: parseFloat(insight.frequency) || 0,
+          reach: parseInt(insight.reach) || 0,
+          
+          // ✅ Parsed conversion funnel metrics
+          click_to_call: parsed.click_to_call || 0,
+          email_contacts: parsed.email_contacts || 0,
+          booking_step_1: parsed.booking_step_1 || 0,
+          booking_step_2: parsed.booking_step_2 || 0,
+          booking_step_3: parsed.booking_step_3 || 0,
+          reservations,
+          reservation_value: reservationValue,
+          
+          // Calculated metrics
+          roas: spend > 0 && reservationValue > 0 ? reservationValue / spend : 0,
+          cost_per_reservation: reservations > 0 && spend > 0 ? spend / reservations : 0
+        };
+      });
+      
+      // Calculate totals from parsed campaigns
       const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
       const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0);
       const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
       const totalConversions = campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
+      
+      // Calculate aggregated conversion metrics
+      const totalClickToCall = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+      const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+      const totalBookingStep1 = campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0);
+      const totalBookingStep2 = campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0);
+      const totalBookingStep3 = campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0);
+      const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+      const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+      
+      // Calculate aggregated ROAS and cost per reservation
+      const totalROAS = totalSpend > 0 && totalReservationValue > 0 
+        ? totalReservationValue / totalSpend 
+        : 0;
+      const totalCostPerReservation = totalReservations > 0 && totalSpend > 0 
+        ? totalSpend / totalReservations 
+        : 0;
       
       // Store in database
       const { error: insertError } = await supabaseAdmin
@@ -260,16 +322,21 @@ async function collectMissingWeeks(
           total_conversions: totalConversions,
           average_ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
           average_cpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
-          // Conversion metrics
-          click_to_call: campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0),
-          email_contacts: campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0),
-          booking_step_1: campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0),
-          booking_step_2: campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0),
-          booking_step_3: campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0),
-          reservations: campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
-          reservation_value: campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          
+          // ✅ COMPLETE conversion funnel metrics
+          click_to_call: totalClickToCall,
+          email_contacts: totalEmailContacts,
+          booking_step_1: totalBookingStep1,
+          booking_step_2: totalBookingStep2,
+          booking_step_3: totalBookingStep3,
+          reservations: totalReservations,
+          reservation_value: totalReservationValue,
+          
+          // ✅ Calculated conversion metrics
+          roas: totalROAS,
+          cost_per_reservation: totalCostPerReservation,
+          
+          created_at: new Date().toISOString()
         }, {
           onConflict: 'client_id,summary_type,summary_date,platform'
         });
