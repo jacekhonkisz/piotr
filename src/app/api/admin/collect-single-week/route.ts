@@ -18,7 +18,36 @@ const supabaseAdmin = createClient(
  * Usage:
  * POST /api/admin/collect-single-week
  * Body: { clientId: "...", weekStart: "2025-11-10" }
+ * 
+ * Or GET with query params:
+ * GET /api/admin/collect-single-week?clientId=...&weekStart=2025-11-10
  */
+
+export async function GET(request: NextRequest) {
+  // 🔒 SECURITY: Verify cron authentication
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
+
+  const { searchParams } = new URL(request.url);
+  const clientId = searchParams.get('clientId');
+  const weekStart = searchParams.get('weekStart');
+  
+  if (!clientId || !weekStart) {
+    return NextResponse.json({
+      success: false,
+      error: 'Missing required query params: clientId, weekStart'
+    }, { status: 400 });
+  }
+
+  // Create a fake request with body for the POST handler
+  const fakeRequest = {
+    ...request,
+    json: async () => ({ clientId, weekStart })
+  } as NextRequest;
+
+  return POST(fakeRequest);
+}
 
 export async function POST(request: NextRequest) {
   // 🔒 SECURITY: Verify cron authentication
