@@ -221,7 +221,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   
   if (summaryType === 'weekly') {
     // 📅 WEEKLY DATA: Always use campaign_summaries table
-    console.log(`📅 Searching for weekly data in campaign_summaries between ${startDate} and ${endDate}`);
+    console.log(`📅 Searching for weekly data in campaign_summaries between ${startDate} and ${adjustedEndDate}`);
     
     const { data: weeklyResults, error: weeklyError } = await supabase
       .from('campaign_summaries')
@@ -230,7 +230,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       .eq('summary_type', 'weekly')
       .eq('platform', platform)
       .gte('summary_date', startDate)
-      .lte('summary_date', endDate)
+      .lte('summary_date', adjustedEndDate) // Use capped date for current week
       .order('summary_date', { ascending: false })
       .limit(1);
     
