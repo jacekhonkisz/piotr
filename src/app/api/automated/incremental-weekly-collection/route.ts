@@ -82,34 +82,40 @@ export async function POST(request: NextRequest) {
       try {
         logger.info(`📅 Processing client: ${client.name}`);
         
-        // Find missing weeks for this client
-        const missingWeeks = await findMissingWeeks(client.id, 'meta');
+        let clientWeeksCollected = 0;
         
-        logger.info(`🔍 Found ${missingWeeks.length} missing weeks for ${client.name}`);
+        // ✅ PROCESS META PLATFORM
+        const missingMetaWeeks = await findMissingWeeks(client.id, 'meta');
+        logger.info(`🔍 Found ${missingMetaWeeks.length} missing Meta weeks for ${client.name}`);
         
-        if (missingWeeks.length === 0) {
-          results.push({
-            clientId: client.id,
-            clientName: client.name,
-            weeksCollected: 0,
-            status: 'up-to-date'
-          });
-          continue;
+        if (missingMetaWeeks.length > 0) {
+          const metaCollected = await collectMissingWeeks(client, missingMetaWeeks, 'meta');
+          clientWeeksCollected += metaCollected;
+          logger.info(`✅ Collected ${metaCollected} Meta weeks for ${client.name}`);
         }
         
-        // Collect only missing weeks (much faster!)
-        const collected = await collectMissingWeeks(client, missingWeeks, 'meta');
+        // ✅ PROCESS GOOGLE ADS PLATFORM (if configured)
+        if (client.google_ads_refresh_token && client.google_ads_customer_id) {
+          const missingGoogleWeeks = await findMissingWeeks(client.id, 'google');
+          logger.info(`🔍 Found ${missingGoogleWeeks.length} missing Google Ads weeks for ${client.name}`);
+          
+          if (missingGoogleWeeks.length > 0) {
+            const googleCollected = await collectMissingWeeksGoogle(client, missingGoogleWeeks, 'google');
+            clientWeeksCollected += googleCollected;
+            logger.info(`✅ Collected ${googleCollected} Google Ads weeks for ${client.name}`);
+          }
+        }
         
-        totalWeeksCollected += collected;
+        totalWeeksCollected += clientWeeksCollected;
         
         results.push({
           clientId: client.id,
           clientName: client.name,
-          weeksCollected: collected,
-          status: 'success'
+          weeksCollected: clientWeeksCollected,
+          status: clientWeeksCollected > 0 ? 'success' : 'up-to-date'
         });
         
-        logger.info(`✅ Collected ${collected} weeks for ${client.name}`);
+        logger.info(`✅ Total collected ${clientWeeksCollected} weeks for ${client.name}`);
         
       } catch (clientError) {
         logger.error(`❌ Failed to process client ${client.name}:`, clientError);
@@ -362,6 +368,115 @@ async function collectMissingWeeks(
       
     } catch (weekError) {
       logger.error(`Failed to collect week ${weekStart}:`, weekError);
+    }
+  }
+  
+  return collected;
+}
+
+/**
+ * Collect Google Ads data for missing weeks
+ */
+async function collectMissingWeeksGoogle(
+  client: any,
+  missingWeeks: string[],
+  platform: string
+): Promise<number> {
+  let collected = 0;
+  
+  // Import Google Ads service dynamically
+  const { GoogleAdsAPIService } = await import('@/lib/google-ads-api');
+  
+  for (const weekStart of missingWeeks) {
+    try {
+      // Calculate week end (6 days after start)
+      const startDate = new Date(weekStart);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      const weekEnd = endDate.toISOString().split('T')[0];
+      
+      logger.info(`📅 Collecting Google Ads week ${weekStart} to ${weekEnd} for ${client.name}`);
+      
+      // Initialize Google Ads API service
+      const googleService = new GoogleAdsAPIService({
+        clientId: process.env.GOOGLE_ADS_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
+        developerToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+        refreshToken: client.google_ads_refresh_token,
+        customerId: client.google_ads_customer_id
+      });
+      
+      // Fetch campaign data
+      const campaigns = await googleService.getCampaignData(weekStart, weekEnd);
+      
+      // Calculate totals
+      const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+      const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0);
+      const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
+      const totalConversions = campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
+      
+      // Calculate aggregated conversion metrics
+      const totalClickToCall = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+      const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
+      const totalBookingStep1 = campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0);
+      const totalBookingStep2 = campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0);
+      const totalBookingStep3 = campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0);
+      const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+      const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+      
+      const totalROAS = totalSpend > 0 && totalReservationValue > 0 
+        ? totalReservationValue / totalSpend 
+        : 0;
+      const totalCostPerReservation = totalReservations > 0 && totalSpend > 0 
+        ? totalSpend / totalReservations 
+        : 0;
+      
+      // Store in database
+      const { error: insertError } = await supabaseAdmin
+        .from('campaign_summaries')
+        .upsert({
+          client_id: client.id,
+          summary_type: 'weekly',
+          summary_date: weekStart,
+          platform,
+          campaign_data: campaigns,
+          total_spend: totalSpend,
+          total_impressions: totalImpressions,
+          total_clicks: totalClicks,
+          total_conversions: totalConversions,
+          average_ctr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+          average_cpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
+          
+          // ✅ COMPLETE conversion funnel metrics
+          click_to_call: totalClickToCall,
+          email_contacts: totalEmailContacts,
+          booking_step_1: totalBookingStep1,
+          booking_step_2: totalBookingStep2,
+          booking_step_3: totalBookingStep3,
+          reservations: totalReservations,
+          reservation_value: totalReservationValue,
+          
+          // ✅ Calculated conversion metrics
+          roas: totalROAS,
+          cost_per_reservation: totalCostPerReservation,
+          
+          created_at: new Date().toISOString()
+        }, {
+          onConflict: 'client_id,summary_type,summary_date,platform'
+        });
+        
+      if (insertError) {
+        logger.error(`Failed to store Google Ads week ${weekStart}:`, insertError);
+      } else {
+        collected++;
+        logger.info(`✅ Stored Google Ads week ${weekStart} (${campaigns.length} campaigns, ${totalSpend.toFixed(2)} PLN)`);
+      }
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+    } catch (weekError) {
+      logger.error(`Failed to collect Google Ads week ${weekStart}:`, weekError);
     }
   }
   
