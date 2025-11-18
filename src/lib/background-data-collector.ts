@@ -121,11 +121,14 @@ export class BackgroundDataCollector {
   /**
    * Collect and store weekly summaries for all active clients
    * @param clientNameFilter Optional filter to collect for specific client only (for testing)
+   * @param startWeek Starting week offset (0 = current week, 1 = last week, etc.)
+   * @param endWeek Ending week offset (53 = 53 weeks ago)
    */
-  async collectWeeklySummaries(clientNameFilter?: string): Promise<void> {
+  async collectWeeklySummaries(clientNameFilter?: string, startWeek: number = 0, endWeek: number = 53): Promise<void> {
     console.log('🔵 [DEBUG] ENTERING collectWeeklySummaries');
     console.log('🔵 [DEBUG] isRunning flag:', this.isRunning);
     console.log('🔵 [DEBUG] clientNameFilter:', clientNameFilter || 'none');
+    console.log('🔵 [DEBUG] Week range:', startWeek, 'to', endWeek);
     
     if (this.isRunning) {
       console.log('🔴 [DEBUG] EARLY RETURN: isRunning is true');
@@ -135,9 +138,11 @@ export class BackgroundDataCollector {
 
     this.isRunning = true;
     console.log('🟢 [DEBUG] Set isRunning = true');
+    
+    const weekCount = endWeek - startWeek + 1;
     logger.info(clientNameFilter 
-      ? `📅 Starting weekly data collection for client matching '${clientNameFilter}'...`
-      : '📅 Starting weekly data collection for all clients...'
+      ? `📅 Starting weekly data collection for client matching '${clientNameFilter}' (${weekCount} weeks: ${startWeek}-${endWeek})...`
+      : `📅 Starting weekly data collection for all clients (${weekCount} weeks: ${startWeek}-${endWeek})...`
     );
 
     try {
@@ -163,7 +168,7 @@ export class BackgroundDataCollector {
       for (const client of clients) {
         console.log(`🔵 [DEBUG] Processing client: ${client.name} (${client.id})`);
         try {
-          await this.collectWeeklySummaryForClient(client);
+          await this.collectWeeklySummaryForClient(client, startWeek, endWeek);
           console.log(`✅ [DEBUG] Completed client: ${client.name}`);
           // ✅ OPTIMIZED: Reduced delay between clients from 2000ms to 500ms
           await this.delay(500);
@@ -460,9 +465,13 @@ export class BackgroundDataCollector {
 
   /**
    * Collect weekly summary for a specific client
+   * @param client Client to collect data for
+   * @param startWeek Starting week offset (0 = current week)
+   * @param endWeek Ending week offset (53 = 53 weeks ago)
    */
-  private async collectWeeklySummaryForClient(client: Client): Promise<void> {
-    logger.info(`📊 Collecting weekly summary for ${client.name}...`);
+  private async collectWeeklySummaryForClient(client: Client, startWeek: number = 0, endWeek: number = 53): Promise<void> {
+    const weekCount = endWeek - startWeek + 1;
+    logger.info(`📊 Collecting ${weekCount} weeks (${startWeek}-${endWeek}) for ${client.name}...`);
 
     // 🔧 FIX: Only collect COMPLETED weeks, not current partial week
     const currentDate = new Date();
@@ -479,8 +488,8 @@ export class BackgroundDataCollector {
 
     logger.info(`🔧 Starting from last completed week ending: ${lastCompletedWeekEnd.toISOString().split('T')[0]}`);
 
-    // 🔧 Collect 53 weeks (full year + 1 week for complete coverage)
-    for (let i = 0; i < 53; i++) {
+    // 🔧 Collect specified week range only
+    for (let i = startWeek; i <= endWeek; i++) {
       const weekEndDate = new Date(lastCompletedWeekEnd.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
       const weekStartDate = new Date(weekEndDate.getTime() - (6 * 24 * 60 * 60 * 1000)); // 7 days before
       const weekRange = getWeekBoundaries(weekStartDate);
@@ -549,22 +558,15 @@ export class BackgroundDataCollector {
       ? adAccountId.substring(4)
       : adAccountId;
 
-    // 🚀 BATCH PROCESSING: Process weeks in parallel batches for massive speedup
-    const BATCH_SIZE = 5; // Process 5 weeks at a time
-    const batches: any[][] = [];
-    
-    for (let i = 0; i < weeksToCollect.length; i += BATCH_SIZE) {
-      batches.push(weeksToCollect.slice(i, i + BATCH_SIZE));
-    }
-    
-    logger.info(`🚀 Processing ${weeksToCollect.length} weeks in ${batches.length} batches of ${BATCH_SIZE}`);
+    // 🔧 SEQUENTIAL PROCESSING: Process weeks one-by-one to avoid rate limits
+    // This is slower but RELIABLE - each week takes ~3-5s, no timeout risk
+    logger.info(`🔄 Processing ${weeksToCollect.length} weeks sequentially (one-by-one to avoid rate limits)`);
 
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      logger.info(`📦 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} weeks)`);
+    for (let weekIndex = 0; weekIndex < weeksToCollect.length; weekIndex++) {
+      const weekData = weeksToCollect[weekIndex];
+      logger.info(`📅 Processing week ${weekIndex + 1}/${weeksToCollect.length}: ${weekData.startDate}`);
 
-      // Process all weeks in this batch in PARALLEL
-      await Promise.all(batch.map(async (weekData) => {
+      try {
         try {
           const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
           logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
@@ -637,20 +639,17 @@ export class BackgroundDataCollector {
           isCurrentWeek: weekData.isCurrent
         }, 'meta'); // ✅ Explicitly specify Meta platform
 
-          logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
+        logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
 
-        } catch (error) {
-          logger.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
-        }
-      }));
+        // Small delay between weeks to respect rate limits (but not too long)
+        await this.delay(100); // 100ms between weeks
 
-      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} completed`);
-
-      // Small delay between batches to respect rate limits
-      if (batchIndex < batches.length - 1) {
-        await this.delay(500); // 500ms between batches
+      } catch (error) {
+        logger.error(`❌ Failed to collect week ${weekIndex + 1} (${weekData.startDate}) for ${client.name}:`, error);
       }
     }
+
+    logger.info(`✅ Completed all ${weeksToCollect.length} weeks for ${client.name}`);
 
     // ✨ NEW: Collect Google Ads weekly data if enabled
     if (client.google_ads_customer_id) {
