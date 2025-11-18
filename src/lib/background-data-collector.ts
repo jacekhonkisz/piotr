@@ -801,8 +801,15 @@ export class BackgroundDataCollector {
     // 🔧 ENHANCED: If Meta API didn't return conversion metrics, try to get them from daily_kpi_data
     let enhancedConversionMetrics = { ...conversionTotals };
     
-    if (conversionTotals.reservations === 0 && conversionTotals.booking_step_1 === 0) {
+    // 🔧 FIX: Check if ANY booking step metrics are missing, not just step 1
+    const hasAnyConversionData = conversionTotals.reservations > 0 || 
+                                  conversionTotals.booking_step_1 > 0 ||
+                                  conversionTotals.booking_step_2 > 0 ||
+                                  conversionTotals.booking_step_3 > 0;
+    
+    if (!hasAnyConversionData) {
       logger.info(`🔧 No conversion metrics from Meta API for ${data.summary_date}, trying daily_kpi_data fallback...`);
+      logger.info(`📊 Meta API conversion totals:`, conversionTotals);
       
       try {
         // Get the month start and end dates
@@ -1002,8 +1009,15 @@ export class BackgroundDataCollector {
     // 🔧 ENHANCED: If Meta API didn't return conversion metrics, try to get them from daily_kpi_data
     let enhancedConversionMetrics = { ...conversionTotals };
     
-    if (conversionTotals.reservations === 0 && conversionTotals.booking_step_1 === 0) {
+    // 🔧 FIX: Check if ANY booking step metrics are missing, not just step 1
+    const hasAnyConversionData = conversionTotals.reservations > 0 || 
+                                  conversionTotals.booking_step_1 > 0 ||
+                                  conversionTotals.booking_step_2 > 0 ||
+                                  conversionTotals.booking_step_3 > 0;
+    
+    if (!hasAnyConversionData) {
       logger.info(`🔧 No conversion metrics from Meta API for week ${data.summary_date}, trying daily_kpi_data fallback...`);
+      logger.info(`📊 Meta API conversion totals:`, conversionTotals);
       
       try {
         // Get the week start and end dates
