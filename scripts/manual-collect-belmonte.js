@@ -17,22 +17,19 @@ const BELMONTE_CLIENT_ID = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa';
 const CRON_SECRET = process.env.CRON_SECRET || 'KihtM33QrVCKZjap/d6xcHYSPkt6hq+K+ZJDKwnZ+oLjEcUl9/4PKNLZW076sHK';
 const API_URL = 'https://piotr-gamma.vercel.app';
 
-console.log('🚀 Starting manual weekly data collection for Belmonte Hotel...');
-console.log(`📅 This will collect 53 weeks + current week of data`);
-console.log(`⏱️  Estimated time: 2-3 minutes\n`);
+console.log('🚀 Starting incremental weekly data collection...');
+console.log(`📅 This will collect ONLY missing weeks for all clients`);
+console.log(`⏱️  Estimated time: 1-2 minutes\n`);
 
-const data = JSON.stringify({
-  clientId: BELMONTE_CLIENT_ID
-});
+const data = '';  // No body needed - collects for all clients
 
 const options = {
   hostname: 'piotr-gamma.vercel.app',
   port: 443,
-  path: '/api/manual/collect-client-weekly',
+  path: '/api/automated/incremental-weekly-collection',
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json',
-    'Content-Length': data.length
+    'Authorization': `Bearer ${CRON_SECRET}`
   },
   timeout: 300000 // 5 minutes
 };
@@ -53,12 +50,15 @@ const req = https.request(options, (res) => {
       const result = JSON.parse(responseData);
       
       if (result.success) {
-        console.log('✅ SUCCESS! Weekly data collection completed');
-        console.log(`📊 Details:`, result.details || result.message);
+        console.log('✅ SUCCESS! Incremental weekly data collection completed');
+        console.log(`📊 Summary:`);
+        console.log(`   - Clients processed: ${result.summary?.clientsProcessed || 'N/A'}`);
+        console.log(`   - Weeks collected: ${result.summary?.totalWeeksCollected || 'N/A'}`);
+        console.log(`   - Time: ${result.summary?.responseTimeMs ? (result.summary.responseTimeMs/1000).toFixed(2) + 's' : 'N/A'}`);
         console.log(`\n🎯 Next steps:`);
         console.log(`   1. Go to Reports page`);
-        console.log(`   2. Select Week 46 (Nov 10-16)`);
-        console.log(`   3. Verify data shows correct weekly totals (~3,500 zł)`);
+        console.log(`   2. Select Weekly view`);
+        console.log(`   3. Verify Week 46 shows correct data (~3,500 zł)`);
       } else {
         console.error('❌ FAILED:', result.error || result.message);
         console.error('Details:', result.details || 'No additional details');
@@ -85,6 +85,5 @@ req.on('timeout', () => {
 });
 
 console.log('📡 Sending request to API...\n');
-req.write(data);
 req.end();
 
