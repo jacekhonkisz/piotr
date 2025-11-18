@@ -1285,7 +1285,10 @@ function ReportsPageContent() {
       console.log(`✅ View type corrected: ${viewType} → ${detectedViewType}, continuing with data load`);
     }
     
-    console.log(`📊 Loading ${viewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
+    // 🔧 FIX: Use detectedViewType instead of viewType to avoid race condition
+    const activeViewType = detectedViewType; // Always use detected type, not state (state updates async)
+    
+    console.log(`📊 Loading ${activeViewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
     
     // CRITICAL: Prevent ALL duplicate calls with multiple layers of protection
     const callKey = `${periodId}-${activeAdsProvider}-${clientData.id}`;
@@ -1318,7 +1321,7 @@ function ReportsPageContent() {
     
     // Layer 3: Check if we already have this data and it's not forced
     // 🔧 TEMPORARY FIX: Force refresh for all weekly data to clear corrupted cache
-    const forceWeeklyRefresh = viewType === 'weekly';
+    const forceWeeklyRefresh = activeViewType === 'weekly';
     const existingReport = reports[periodId];
     if (!forceClearCache && !forceWeeklyRefresh && existingReport && existingReport.campaigns && existingReport.campaigns.length > 0) {
       console.log('🚫 BLOCKED: Data already exists (Layer 3)', {
@@ -1344,11 +1347,11 @@ function ReportsPageContent() {
 
     // Check if this is the current period (month or week)
     const isCurrentPeriod = (() => {
-      if (viewType === 'monthly') {
+      if (activeViewType === 'monthly') {
         const [year, month] = periodId.split('-').map(Number);
         const currentDate = new Date();
         return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
-      } else if (viewType === 'weekly') {
+      } else if (activeViewType === 'weekly') {
         return isCurrentWeekPeriod(periodId);
       }
       return false;
@@ -1362,10 +1365,10 @@ function ReportsPageContent() {
     // }
 
     if (isCurrentPeriod) {
-      console.log(`🔄 Current ${viewType.slice(0, -2)} detected - using SMART CACHING system`);
+      console.log(`🔄 Current ${activeViewType.slice(0, -2)} detected - using SMART CACHING system`);
       // Let smart caching handle current period data optimization
     } else {
-      console.log(`📚 Previous ${viewType.slice(0, -2)} detected - will use stored data if available`);
+      console.log(`📚 Previous ${activeViewType.slice(0, -2)} detected - will use stored data if available`);
     }
 
     // Check if this period is in the future (which won't have data)
@@ -1418,7 +1421,7 @@ function ReportsPageContent() {
       loadingRef.current = true;
       setApiCallInProgress(true);
       setLoadingPeriod(periodId);
-      console.log(`📡 Loading data for ${viewType} period: ${periodId}`);
+      console.log(`📡 Loading data for ${activeViewType} period: ${periodId}`);
       console.log(`👤 Using explicit client:`, clientData);
       console.log(`🎯 Data source: ${isCurrentPeriod ? 'LIVE API (current period)' : 'API (previous period)'}`);
       
@@ -1430,7 +1433,8 @@ function ReportsPageContent() {
 
       let dateRange: { start: string; end: string };
 
-      if (viewType === 'monthly') {
+      // 🔧 FIX: Use activeViewType (detected from periodId) instead of viewType state
+      if (activeViewType === 'monthly') {
         // Parse month ID to get start and end dates
         const [year, month] = periodId.split('-').map(Number);
         
@@ -1587,9 +1591,9 @@ function ReportsPageContent() {
       
       // Add specific loading message for current vs historical periods
       if (isCurrentPeriod) {
-        console.log(`📅 Current ${viewType.slice(0, -2)} detected - using smart cache (should be fast)`);
+        console.log(`📅 Current ${activeViewType.slice(0, -2)} detected - using smart cache (should be fast)`);
       } else {
-        console.log(`📅 Previous ${viewType.slice(0, -2)} detected - using database (should be fast)`);
+        console.log(`📅 Previous ${activeViewType.slice(0, -2)} detected - using database (should be fast)`);
       }
       
       // 🎯 USE STANDARDIZED DATA FETCHER (loadPeriodDataWithClient)
@@ -1898,11 +1902,11 @@ function ReportsPageContent() {
         return newState;
       });
     } catch (error) {
-      console.error(`❌ Error loading ${viewType} data for ${periodId}:`, error);
+      console.error(`❌ Error loading ${activeViewType} data for ${periodId}:`, error);
       
       // Check if this is current month
       const isCurrentMonth = (() => {
-        if (viewType === 'monthly') {
+        if (activeViewType === 'monthly') {
           const [year, month] = periodId.split('-').map(Number);
           const currentDate = new Date();
           return year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
