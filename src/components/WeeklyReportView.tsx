@@ -90,6 +90,28 @@ const formatNumber = (num: number) => {
   return num.toLocaleString('pl-PL');
 };
 
+/**
+ * 🎯 STANDARDIZED METHOD: Get conversion metric
+ * 
+ * ALWAYS prioritizes conversionMetrics object (from daily_kpi_data) over campaigns array
+ * This ensures consistent data across all UI components
+ * 
+ * Priority: conversionMetrics → campaigns.reduce() → 0
+ */
+const getConversionMetric = (
+  report: WeeklyReport | undefined,
+  metric: 'booking_step_1' | 'booking_step_2' | 'booking_step_3' | 'reservations' | 'reservation_value' | 'click_to_call' | 'email_contacts',
+  campaigns: Campaign[]
+): number => {
+  // 🥇 PRIORITY 1: Use conversionMetrics (from daily_kpi_data)
+  if (report?.conversionMetrics && report.conversionMetrics[metric] !== undefined) {
+    return report.conversionMetrics[metric];
+  }
+  
+  // 🥈 PRIORITY 2: Calculate from campaigns array (fallback)
+  return campaigns.reduce((sum, c) => sum + (c[metric] || 0), 0);
+};
+
 const formatDate = (dateString: string) => {
   if (!dateString || dateString.trim() === '') {
     return 'Brak daty';
@@ -514,21 +536,16 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     if (!firstReport || !firstReport.campaigns) return null;
     
     // Calculate current period totals from existing report data
-    // 🎯 FIX: Use conversionMetrics (priority 1: daily_kpi_data) instead of calculating from campaigns
-    // Campaigns array may have zero values if stored before the unified priority fix
+    // 🎯 STANDARDIZED: Use getConversionMetric helper for consistency
     const currentTotals = {
       spend: firstReport.campaigns.reduce((sum, c) => sum + (c.spend || 0), 0),
       impressions: firstReport.campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0),
       clicks: firstReport.campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0),
-      // ✅ Use conversionMetrics if available (correctly aggregated from daily_kpi_data)
-      booking_step_1: firstReport.conversionMetrics?.booking_step_1 || 
-                      firstReport.campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0),
-      booking_step_2: firstReport.conversionMetrics?.booking_step_2 || 
-                      firstReport.campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0),
-      booking_step_3: firstReport.conversionMetrics?.booking_step_3 || 
-                      firstReport.campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0),
-      reservations: firstReport.conversionMetrics?.reservations || 
-                    firstReport.campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
+      // ✅ Use standardized helper (priority: conversionMetrics → campaigns.reduce())
+      booking_step_1: getConversionMetric(firstReport, 'booking_step_1', firstReport.campaigns),
+      booking_step_2: getConversionMetric(firstReport, 'booking_step_2', firstReport.campaigns),
+      booking_step_3: getConversionMetric(firstReport, 'booking_step_3', firstReport.campaigns),
+      reservations: getConversionMetric(firstReport, 'reservations', firstReport.campaigns),
     };
     
     console.log('🔍 Local YoY Current Totals:', currentTotals);
@@ -843,7 +860,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   
                   <MetricCard
                     title="Konwersje"
-                    value={(report.conversionMetrics?.reservations || campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)).toString()}
+                    value={getConversionMetric(report, 'reservations', campaigns).toString()}
                     tooltip="Liczba zakończonych konwersji"
                     change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
                   />
@@ -852,14 +869,14 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
               {/* Conversion Funnel - Second Section */}
               <ConversionFunnel
-                step1={campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0)}
-                step2={campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0)}
-                step3={campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0)}
-                reservations={campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)}
-                reservationValue={campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0)}
+                step1={getConversionMetric(report, 'booking_step_1', campaigns)}
+                step2={getConversionMetric(report, 'booking_step_2', campaigns)}
+                step3={getConversionMetric(report, 'booking_step_3', campaigns)}
+                reservations={getConversionMetric(report, 'reservations', campaigns)}
+                reservationValue={getConversionMetric(report, 'reservation_value', campaigns)}
                 roas={(() => {
                   const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                  const totalValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                  const totalValue = getConversionMetric(report, 'reservation_value', campaigns);
                   return totalSpend > 0 ? totalValue / totalSpend : 0;
                 })()}
                 previousYear={yoyData ? {
@@ -961,26 +978,26 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 <MetricCard
                   title="E-mail"
-                  value={(report.conversionMetrics?.email_contacts || campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0)).toString()}
+                  value={getConversionMetric(report, 'email_contacts', campaigns).toString()}
                   tooltip="Liczba kliknięć w adres e-mail"
                 />
                 
                 <MetricCard
                   title="Telefon"
-                  value={(report.conversionMetrics?.click_to_call || campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0)).toString()}
+                  value={getConversionMetric(report, 'click_to_call', campaigns).toString()}
                   tooltip="Liczba kliknięć w numer telefonu"
                 />
                 
                 <MetricCard
                   title="Rezerwacje"
-                  value={(report.conversionMetrics?.reservations || campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0)).toString()}
+                  value={getConversionMetric(report, 'reservations', campaigns).toString()}
                   tooltip="Liczba zakończonych rezerwacji"
                   change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
                 />
                 
                 <MetricCard
                   title="Wartość rezerwacji"
-                  value={formatCurrency(report.conversionMetrics?.reservation_value || campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0))}
+                  value={formatCurrency(getConversionMetric(report, 'reservation_value', campaigns))}
                   tooltip="Łączna wartość rezerwacji"
                 />
               </div>
@@ -1004,11 +1021,11 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Wartość offline</div>
                     <div className="text-lg font-semibold text-slate-900 tabular-nums">
                       {(() => {
-                        const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                        const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                        const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
+                        const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                         const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                        const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                        const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                        const totalReservations = getConversionMetric(report, 'reservations', campaigns);
                         const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
                         const totalPotentialOfflineValue = averageReservationValue * potentialOfflineReservations;
                         return formatCurrency(totalPotentialOfflineValue);
@@ -1019,14 +1036,14 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Łączna wartość</div>
                     <div className="text-lg font-semibold text-slate-900 tabular-nums">
                       {(() => {
-                        const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                        const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                        const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
+                        const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                         const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                        const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                        const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                        const totalReservations = getConversionMetric(report, 'reservations', campaigns);
                         const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
                         const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-                        const onlineReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                        const onlineReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
                         return formatCurrency(potentialOfflineValue + onlineReservationValue);
                       })()}
                     </div>
@@ -1044,19 +1061,19 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     if (report.conversionMetrics?.offline_value !== undefined) {
                       potentialOfflineValue = report.conversionMetrics.offline_value;
                     } else {
-                      const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                      const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                      const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
+                      const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                       const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
                       
-                      const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                      const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                      const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                      const totalReservations = getConversionMetric(report, 'reservations', campaigns);
                       
                       const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
                       potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
                     }
                     
                     // Calculate online value
-                    const onlineReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const onlineReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
                     
                     // Total potential value
                     const totalPotentialValue = potentialOfflineValue + onlineReservationValue;
@@ -1077,17 +1094,17 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   title="Łączna wartość potencjalnych rezerwacji online + offline"
                   value={(() => {
                     // Calculate offline value
-                    const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                    const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
+                    const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
+                    const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                     const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
                     
-                    const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-                    const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
+                    const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                    const totalReservations = getConversionMetric(report, 'reservations', campaigns);
                     const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
                     const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
                     
                     // Calculate online value
-                    const onlineReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+                    const onlineReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
                     
                     // Total potential value (offline + online)
                     const totalPotentialValue = potentialOfflineValue + onlineReservationValue;
