@@ -1006,77 +1006,57 @@ export class BackgroundDataCollector {
       total_spend: 0
     });
 
-    // 🔧 ENHANCED: If Meta API didn't return conversion metrics, try to get them from daily_kpi_data
+    // 🎯 MATCH SMART CACHE: ALWAYS prioritize daily_kpi_data first (lines 1198-1228 in smart-cache-helper.ts)
     let enhancedConversionMetrics = { ...conversionTotals };
     
-    // 🔧 FIX: Check if ANY booking step metrics are missing, not just step 1
-    const hasAnyConversionData = conversionTotals.reservations > 0 || 
-                                  conversionTotals.booking_step_1 > 0 ||
-                                  conversionTotals.booking_step_2 > 0 ||
-                                  conversionTotals.booking_step_3 > 0;
+    // Get the week start and end dates
+    const weekStart = data.summary_date;
+    const weekEndDate = new Date(weekStart);
+    weekEndDate.setDate(weekEndDate.getDate() + 6);
+    const weekEnd = weekEndDate.toISOString().split('T')[0];
     
-    if (!hasAnyConversionData) {
-      logger.info(`🔧 No conversion metrics from Meta API for week ${data.summary_date}, trying daily_kpi_data fallback...`);
-      logger.info(`📊 Meta API conversion totals:`, conversionTotals);
+    // 🥇 PRIORITY 1: ALWAYS try daily_kpi_data FIRST (same as smart cache)
+    try {
+      const { data: dailyKpiData, error: kpiError } = await supabase
+        .from('daily_kpi_data')
+        .select('*')
+        .eq('client_id', clientId)
+        .gte('date', weekStart)
+        .lte('date', weekEnd);
       
-      try {
-        // Get the week start and end dates
-        const weekStart = data.summary_date;
-        // 🔧 FIX: Use setDate instead of getTime() + milliseconds to avoid invalid dates
-        const weekEndDate = new Date(weekStart);
-        weekEndDate.setDate(weekEndDate.getDate() + 6);
-        const weekEnd = weekEndDate.toISOString().split('T')[0];
+      if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
+        logger.info(`✅ Found ${dailyKpiData.length} daily KPI records for week ${data.summary_date}, using as PRIORITY 1 (matching smart cache)`);
         
-        // Query daily_kpi_data for this week
-        const { data: dailyKpiData, error: kpiError } = await supabase
-          .from('daily_kpi_data')
-          .select('*')
-          .eq('client_id', clientId)
-          .gte('date', weekStart)
-          .lte('date', weekEnd);
+        // Aggregate conversion metrics from daily_kpi_data
+        enhancedConversionMetrics = dailyKpiData.reduce((acc: any, record: any) => ({
+          click_to_call: acc.click_to_call + (record.click_to_call || 0),
+          email_contacts: acc.email_contacts + (record.email_contacts || 0),
+          booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
+          reservations: acc.reservations + (record.reservations || 0),
+          reservation_value: acc.reservation_value + (record.reservation_value || 0),
+          booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
+          booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0)
+        }), {
+          click_to_call: 0,
+          email_contacts: 0,
+          booking_step_1: 0,
+          reservations: 0,
+          reservation_value: 0,
+          booking_step_2: 0,
+          booking_step_3: 0
+        });
         
-        if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
-          logger.info(`🔧 Found ${dailyKpiData.length} daily KPI records for week ${data.summary_date}, aggregating conversion metrics...`);
-          
-          // Aggregate conversion metrics from daily_kpi_data
-          const dailyConversionTotals = dailyKpiData.reduce((acc: any, record: any) => ({
-            click_to_call: acc.click_to_call + (record.click_to_call || 0),
-            email_contacts: acc.email_contacts + (record.email_contacts || 0),
-            booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
-            reservations: acc.reservations + (record.reservations || 0),
-            reservation_value: acc.reservation_value + (record.reservation_value || 0),
-            booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
-            booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0)
-          }), {
-            click_to_call: 0,
-            email_contacts: 0,
-            booking_step_1: 0,
-            reservations: 0,
-            reservation_value: 0,
-            booking_step_2: 0,
-            booking_step_3: 0
-          });
-          
-          // Use daily_kpi_data conversion metrics as fallback
-          enhancedConversionMetrics = {
-            click_to_call: dailyConversionTotals.click_to_call,
-            email_contacts: dailyConversionTotals.email_contacts,
-            booking_step_1: dailyConversionTotals.booking_step_1,
-            reservations: dailyConversionTotals.reservations,
-            reservation_value: dailyConversionTotals.reservation_value,
-            booking_step_2: dailyConversionTotals.booking_step_2,
-            booking_step_3: dailyConversionTotals.booking_step_3
-          };
-          
-          logger.info(`✅ Enhanced conversion metrics from daily_kpi_data:`, enhancedConversionMetrics);
-        } else {
-          logger.warn(`⚠️ No daily_kpi_data found for week ${data.summary_date}, keeping zero conversion metrics`);
-        }
-      } catch (fallbackError) {
-        logger.error(`❌ Error getting daily_kpi_data fallback for week ${data.summary_date}:`, fallbackError);
+        logger.info(`✅ Using daily_kpi_data conversion metrics (PRIORITY 1, matching smart cache):`, enhancedConversionMetrics);
+      } else {
+        // 🥈 PRIORITY 2: Fallback to Meta API (same as smart cache)
+        logger.info(`⚠️ No daily_kpi_data found for week ${data.summary_date}, using Meta API as fallback (matching smart cache)`);
+        logger.info(`📊 Meta API conversion totals:`, conversionTotals);
+        enhancedConversionMetrics = { ...conversionTotals };
       }
-    } else {
-      logger.info(`✅ Using conversion metrics from Meta API:`, enhancedConversionMetrics);
+    } catch (fallbackError) {
+      // 🥉 ERROR FALLBACK: Use Meta API on error (same as smart cache)
+      logger.error(`❌ Error querying daily_kpi_data for week ${data.summary_date}, using Meta API as fallback:`, fallbackError);
+      enhancedConversionMetrics = { ...conversionTotals };
     }
 
     // Calculate derived conversion metrics

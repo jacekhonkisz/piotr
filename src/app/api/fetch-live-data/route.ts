@@ -382,67 +382,105 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     averageCpc: storedSummary.average_cpc || 0
   };
 
-  // 🔧 FIX: ALWAYS calculate from campaign_data if available (most accurate)
-  // Only use pre-aggregated database columns if campaign_data is empty
+  // 🎯 MATCH SMART CACHE: ALWAYS prioritize daily_kpi_data first (lines 1198-1228 in smart-cache-helper.ts)
   let conversionMetrics;
   
-  if (campaigns && campaigns.length > 0) {
-    // ✅ PREFERRED: Calculate from campaign data (most accurate, has all fields)
-    conversionMetrics = {
-      click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
-      email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
-      booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
-      reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
-      reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
-      booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
-      booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
-      roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
-      cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
-        totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0,
-      // Add performance metrics from meta_tables
-      reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
-      offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
-      offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
-    };
+  // 🥇 PRIORITY 1: ALWAYS try daily_kpi_data FIRST (same as smart cache)
+  try {
+    const { data: dailyKpiData, error: kpiError } = await supabase
+      .from('daily_kpi_data')
+      .select('*')
+      .eq('client_id', clientId)
+      .gte('date', startDate)
+      .lte('date', adjustedEndDate);
     
-    console.log(`✅ Calculated conversion metrics from campaign data (${campaigns.length} campaigns):`, conversionMetrics);
-  } else if (storedSummary.click_to_call !== null && storedSummary.click_to_call !== undefined) {
-    // Fallback: Use pre-aggregated database columns if no campaign data
-    conversionMetrics = {
-      click_to_call: storedSummary.click_to_call || 0,
-      email_contacts: storedSummary.email_contacts || 0,
-      booking_step_1: storedSummary.booking_step_1 || 0,
-      reservations: storedSummary.reservations || 0,
-      reservation_value: storedSummary.reservation_value || 0,
-      booking_step_2: storedSummary.booking_step_2 || 0,
-      booking_step_3: storedSummary.booking_step_3 || 0,
-      roas: storedSummary.roas || 0,
-      cost_per_reservation: storedSummary.cost_per_reservation || 0,
-      // Add performance metrics from meta_tables
-      reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
-      offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
-      offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
-    };
-    
-    console.log(`📊 Using pre-aggregated database columns (no campaign data):`, conversionMetrics);
-  } else {
-    // Last resort: All zeros
-    conversionMetrics = {
-      click_to_call: 0,
-      email_contacts: 0,
-      booking_step_1: 0,
-      reservations: 0,
-      reservation_value: 0,
-      booking_step_2: 0,
-      booking_step_3: 0,
-      roas: 0,
-      cost_per_reservation: 0,
-      reach: 0,
-      offline_reservations: 0,
-      offline_value: 0
-    };
-    
-    console.log(`⚠️ No conversion metrics available (no campaign data, no database columns)`);
+    if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
+      console.log(`✅ Found ${dailyKpiData.length} daily KPI records, using as PRIORITY 1 (matching smart cache)`);
+      
+      // Aggregate conversion metrics from daily_kpi_data
+      conversionMetrics = {
+        click_to_call: dailyKpiData.reduce((sum: number, r: any) => sum + (r.click_to_call || 0), 0),
+        email_contacts: dailyKpiData.reduce((sum: number, r: any) => sum + (r.email_contacts || 0), 0),
+        booking_step_1: dailyKpiData.reduce((sum: number, r: any) => sum + (r.booking_step_1 || 0), 0),
+        reservations: dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservations || 0), 0),
+        reservation_value: dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservation_value || 0), 0),
+        booking_step_2: dailyKpiData.reduce((sum: number, r: any) => sum + (r.booking_step_2 || 0), 0),
+        booking_step_3: dailyKpiData.reduce((sum: number, r: any) => sum + (r.booking_step_3 || 0), 0),
+        roas: totals.totalSpend > 0 ? dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservation_value || 0), 0) / totals.totalSpend : 0,
+        cost_per_reservation: dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservations || 0), 0) > 0 ?
+          totals.totalSpend / dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservations || 0), 0) : 0,
+        // Add performance metrics from meta_tables
+        reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
+        offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
+        offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
+      };
+      
+      console.log(`✅ Using daily_kpi_data conversion metrics (PRIORITY 1, matching smart cache):`, conversionMetrics);
+    } else {
+      // No daily_kpi_data, move to priority 2
+      throw new Error('No daily_kpi_data, trying priority 2');
+    }
+  } catch (fallbackError) {
+    // 🥈 PRIORITY 2: Calculate from campaign_data (same priority as smart cache fallback)
+    if (campaigns && campaigns.length > 0) {
+      console.log(`📊 No daily_kpi_data, using campaign_data as PRIORITY 2 (matching smart cache)`);
+      
+      conversionMetrics = {
+        click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
+        email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+        booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+        reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
+        reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
+        booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+        booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
+        roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
+        cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
+          totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0,
+        // Add performance metrics from meta_tables
+        reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
+        offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
+        offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
+      };
+      
+      console.log(`✅ Calculated conversion metrics from campaign data (${campaigns.length} campaigns, PRIORITY 2)`);
+    } else if (storedSummary.click_to_call !== null && storedSummary.click_to_call !== undefined) {
+      // 🥉 PRIORITY 3: Use pre-aggregated database columns
+      console.log(`📊 No campaign_data, using pre-aggregated DB columns as PRIORITY 3 (matching smart cache)`);
+      
+      conversionMetrics = {
+        click_to_call: storedSummary.click_to_call || 0,
+        email_contacts: storedSummary.email_contacts || 0,
+        booking_step_1: storedSummary.booking_step_1 || 0,
+        reservations: storedSummary.reservations || 0,
+        reservation_value: storedSummary.reservation_value || 0,
+        booking_step_2: storedSummary.booking_step_2 || 0,
+        booking_step_3: storedSummary.booking_step_3 || 0,
+        roas: storedSummary.roas || 0,
+        cost_per_reservation: storedSummary.cost_per_reservation || 0,
+        // Add performance metrics from meta_tables
+        reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
+        offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
+        offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
+      };
+    } else {
+      // ❌ LAST RESORT: All zeros
+      console.log(`⚠️ No conversion data available, using zeros (matching smart cache last resort)`);
+      
+      conversionMetrics = {
+        click_to_call: 0,
+        email_contacts: 0,
+        booking_step_1: 0,
+        reservations: 0,
+        reservation_value: 0,
+        booking_step_2: 0,
+        booking_step_3: 0,
+        roas: 0,
+        cost_per_reservation: 0,
+        reach: 0,
+        offline_reservations: 0,
+        offline_value: 0
+      };
+    }
   }
 
   return {

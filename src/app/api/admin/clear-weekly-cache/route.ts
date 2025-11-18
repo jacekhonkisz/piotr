@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   const week = searchParams.get('week');
   const clearAll = searchParams.get('all') === 'true';
   const clientId = searchParams.get('clientId');
-
+    
   try {
     logger.info('🗑️ Clear weekly cache request:', { week, clearAll, clientId });
 
@@ -40,11 +40,11 @@ export async function GET(request: NextRequest) {
         .from('current_week_cache')
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Match all
-
+        
       if (error) {
         throw error;
       }
-
+      
       logger.info('✅ Cleared all weekly cache entries');
       
       return NextResponse.json({
@@ -65,13 +65,13 @@ export async function GET(request: NextRequest) {
       }
 
       const { data, error } = await query;
-
+        
       if (error) {
         throw error;
       }
-
+      
       logger.info(`✅ Cleared cache for week ${week}`, { clientId });
-
+      
       return NextResponse.json({
         success: true,
         message: `Cleared cache for week ${week}`,
@@ -94,11 +94,11 @@ export async function GET(request: NextRequest) {
       }
 
       const { data, error } = await query;
-
+        
       if (error) {
         throw error;
       }
-
+      
       logger.info(`✅ Cleared cache for current week ${currentWeek}`, { clientId });
 
       return NextResponse.json({
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
 
       const { error } = await query;
       if (error) throw error;
-
+      
       return NextResponse.json({
         success: true,
         message: `Cleared cache for week ${week}`,
@@ -192,10 +192,10 @@ export async function POST(request: NextRequest) {
         clientId
       });
     }
-
+    
   } catch (error) {
     logger.error('❌ Failed to clear weekly cache:', error);
-
+    
     return NextResponse.json({
       success: false,
       error: 'Failed to clear weekly cache',
