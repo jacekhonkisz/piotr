@@ -549,20 +549,35 @@ export class BackgroundDataCollector {
       ? adAccountId.substring(4)
       : adAccountId;
 
-    for (const weekData of weeksToCollect) {
-      try {
-        const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
-        logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
+    // 🚀 BATCH PROCESSING: Process weeks in parallel batches for massive speedup
+    const BATCH_SIZE = 5; // Process 5 weeks at a time
+    const batches: any[][] = [];
+    
+    for (let i = 0; i < weeksToCollect.length; i += BATCH_SIZE) {
+      batches.push(weeksToCollect.slice(i, i + BATCH_SIZE));
+    }
+    
+    logger.info(`🚀 Processing ${weeksToCollect.length} weeks in ${batches.length} batches of ${BATCH_SIZE}`);
 
-        // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
-        const campaignInsights = await metaService.getCampaignInsights(
-          processedAdAccountId,
-          weekData.startDate,
-          weekData.endDate,
-          0  // timeIncrement = 0 for period totals (not daily breakdown)
-        );
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      logger.info(`📦 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} weeks)`);
 
-        logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
+      // Process all weeks in this batch in PARALLEL
+      await Promise.all(batch.map(async (weekData) => {
+        try {
+          const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
+          logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
+
+          // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
+          const campaignInsights = await metaService.getCampaignInsights(
+            processedAdAccountId,
+            weekData.startDate,
+            weekData.endDate,
+            0  // timeIncrement = 0 for period totals (not daily breakdown)
+          );
+
+          logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
 
         // 🔧 FIX: For current week, log the actual funnel data being collected
         if (weekData.isCurrent) {
@@ -622,14 +637,18 @@ export class BackgroundDataCollector {
           isCurrentWeek: weekData.isCurrent
         }, 'meta'); // ✅ Explicitly specify Meta platform
 
-        logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
+          logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
 
-        // ✅ OPTIMIZED: Reduced delay from 1000ms to 100ms (Meta API limit: 200 calls/hour = 1 per 18s max)
-        // We're well under the limit, no need for 1s delays
-        await this.delay(weekData.isCurrent ? 50 : 100);
+        } catch (error) {
+          logger.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
+        }
+      }));
 
-      } catch (error) {
-        logger.error(`❌ Failed to collect week ${weekData.weekNumber} for ${client.name}:`, error);
+      logger.info(`✅ Batch ${batchIndex + 1}/${batches.length} completed`);
+
+      // Small delay between batches to respect rate limits
+      if (batchIndex < batches.length - 1) {
+        await this.delay(500); // 500ms between batches
       }
     }
 
