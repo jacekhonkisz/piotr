@@ -370,7 +370,7 @@ function ReportsPageContent() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
   const [loadingPeriod, setLoadingPeriod] = useState<string | null>(null);
-  const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'all-time' | 'custom'>('monthly');
+  // 🔧 FIX: Start with weekly view to match current week  const [viewType, setViewType] = useState<'monthly' | 'weekly' | 'all-time' | 'custom'>('weekly');
   const [apiCallInProgress, setApiCallInProgress] = useState(false);
   const [customDateRange, setCustomDateRange] = useState<{ start: string; end: string }>({
     start: '',
@@ -1273,11 +1273,15 @@ function ReportsPageContent() {
       console.warn(`⚠️ VIEW TYPE MISMATCH: Period ${periodId} is ${detectedViewType} but current view is ${viewType}`);
       console.warn(`🔧 AUTO-FIXING: Switching to ${detectedViewType} view to prevent January dates`);
       
-      // Force switch to correct view type
+      // ✅ FIX: Force switch AND continue with data loading
       setViewType(detectedViewType);
       
-      // Don't continue with wrong view type - let the re-render handle it
-      return;
+      // ⚠️ CRITICAL: Update availablePeriods for the new view type
+      const newPeriods = generatePeriodOptions(detectedViewType);
+      setAvailablePeriods(newPeriods);
+      
+      // Don't return early - continue loading with corrected view type
+      console.log(`✅ View type corrected: ${viewType} → ${detectedViewType}, continuing with data load`);
     }
     
     console.log(`📊 Loading ${viewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
