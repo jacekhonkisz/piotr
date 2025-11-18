@@ -514,23 +514,22 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     if (!firstReport || !firstReport.campaigns) return null;
     
     // Calculate current period totals from existing report data
-    const currentTotals = firstReport.campaigns.reduce((acc, campaign) => ({
-      spend: acc.spend + (campaign.spend || 0),
-      impressions: acc.impressions + (campaign.impressions || 0),
-      clicks: acc.clicks + (campaign.clicks || 0),
-      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-      booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
-      reservations: acc.reservations + (campaign.reservations || 0),
-    }), {
-      spend: 0,
-      impressions: 0,
-      clicks: 0,
-      booking_step_1: 0,
-      booking_step_2: 0,
-      booking_step_3: 0,
-      reservations: 0,
-    });
+    // 🎯 FIX: Use conversionMetrics (priority 1: daily_kpi_data) instead of calculating from campaigns
+    // Campaigns array may have zero values if stored before the unified priority fix
+    const currentTotals = {
+      spend: firstReport.campaigns.reduce((sum, c) => sum + (c.spend || 0), 0),
+      impressions: firstReport.campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0),
+      clicks: firstReport.campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0),
+      // ✅ Use conversionMetrics if available (correctly aggregated from daily_kpi_data)
+      booking_step_1: firstReport.conversionMetrics?.booking_step_1 || 
+                      firstReport.campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0),
+      booking_step_2: firstReport.conversionMetrics?.booking_step_2 || 
+                      firstReport.campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0),
+      booking_step_3: firstReport.conversionMetrics?.booking_step_3 || 
+                      firstReport.campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0),
+      reservations: firstReport.conversionMetrics?.reservations || 
+                    firstReport.campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
+    };
     
     console.log('🔍 Local YoY Current Totals:', currentTotals);
     console.log('🔍 Local YoY Sample Campaign Data:', firstReport.campaigns[0] ? {
