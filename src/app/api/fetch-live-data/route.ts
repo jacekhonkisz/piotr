@@ -631,6 +631,10 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const isCurrentMonthRequest = requestType === 'monthly' && isCurrentMonth(startDate, endDate);
       const isCurrentWeekRequest = requestType === 'weekly' && isCurrentWeek(startDate, endDate);
       
+      // 🔍 ENHANCED DEBUG: Get detailed current week info
+      const currentWeekInfo = getCurrentWeekInfo();
+      const today = new Date().toISOString().split('T')[0];
+      
       console.log(`📊 CRITICAL DEBUG - ROUTING ANALYSIS:`, {
         startDate,
         endDate,
@@ -639,16 +643,26 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         currentSystemDate: new Date().toISOString(),
         currentYear: new Date().getFullYear(),
         currentMonth: new Date().getMonth() + 1,
+        today,
+        currentWeekStart: currentWeekInfo.startDate,
+        currentWeekEnd: currentWeekInfo.endDate,
         isCurrentMonthRequest,
         isCurrentWeekRequest,
         forceFresh,
         forceFreshType: typeof forceFresh,
         cacheFirstEnforced: ENFORCE_STRICT_CACHE_FIRST,
-        routingDecision: isCurrentMonthRequest ? 'SMART CACHE (MONTHLY)' : 
-                        isCurrentWeekRequest ? 'SMART CACHE (WEEKLY)' : 'DATABASE FIRST',
+        routingDecision: isCurrentWeekRequest ? '🟡 WEEKLY CACHE' :
+                        isCurrentMonthRequest ? '🔴 MONTHLY CACHE' : '💾 DATABASE',
         willUseWeeklyCache: isCurrentWeekRequest && !forceFresh,
+        willUseMonthlyCache: isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh,
         willUseDatabaseLookup: !forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest,
-        cacheBypassAllowed: !ENFORCE_STRICT_CACHE_FIRST || forceFresh
+        cacheBypassAllowed: !ENFORCE_STRICT_CACHE_FIRST || forceFresh,
+        weekCheckDetails: {
+          startMatches: startDate === currentWeekInfo.startDate,
+          endMatches: endDate === currentWeekInfo.endDate,
+          includesCurrentDay: endDate >= today,
+          startsBeforeToday: startDate <= today
+        }
       });
 
       // CRITICAL DEBUG: Check exactly why database cache might be skipped
@@ -813,7 +827,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         }
       } else if (isCurrentWeekRequest && !forceFresh) {
         // Current week: Use smart cache (3-hour refresh) for weekly data
-        logger.info('📊 🟡 CURRENT WEEK DETECTED - CHECKING WEEKLY SMART CACHE...');
+        logger.info('📊 🟡 CURRENT WEEK DETECTED - USING WEEKLY SMART CACHE...');
+        console.log('✅ ROUTING: Current week request → WEEKLY CACHE');
         
         try {
           // Generate period ID from date range
@@ -883,7 +898,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       } else if (isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh) {
         // Current month: USE SMART CACHE SYSTEM
         // ✅ CRITICAL FIX: Added !isCurrentWeekRequest check to prevent weekly requests from falling through to monthly cache
-        logger.info('📊 🔴 CURRENT MONTH DETECTED - USING SMART CACHE SYSTEM...');
+        logger.info('📊 🔴 CURRENT MONTH DETECTED - USING MONTHLY SMART CACHE...');
+        console.log('✅ ROUTING: Current month request → MONTHLY CACHE (weekly check passed: !isCurrentWeekRequest =', !isCurrentWeekRequest, ')');
         logger.debug('Debug info', {
           clientId,
           currentTime: new Date().toISOString()
