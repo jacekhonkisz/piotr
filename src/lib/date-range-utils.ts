@@ -24,13 +24,16 @@ export interface DateRangeAnalysis {
 export function analyzeDateRange(startDate: string, endDate: string): DateRangeAnalysis {
   const start = new Date(startDate);
   const end = new Date(endDate);
-  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  // 🔧 CRITICAL FIX: Add +1 to match fetch-live-data/route.ts logic
+  // A week from Mon-Sun is 6 days in milliseconds, but 7 days inclusive
+  const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
   // Check if it's a valid monthly range (start of month to end of month)
   const isValidMonthly = isFullMonthRange(start, end);
   
   // Check if it's a valid weekly range (7 days)
-  const isValidWeekly = daysDiff === 7;
+  // 🔧 CRITICAL FIX: Use <= 7 to match fetch-live-data/route.ts logic
+  const isValidWeekly = daysDiff <= 7 && daysDiff >= 7;
 
   let rangeType: 'daily' | 'weekly' | 'monthly' | 'custom';
   let timeIncrement: number;
@@ -189,8 +192,9 @@ export function validateDateRange(startDate: string, endDate: string): {
                       currentDate.getMonth() === end.getMonth();
   
   // Check if this is a current week request (7 days or less, includes today)
+  // 🔧 CONSISTENT: Use same calculation as analyzeDateRange
   const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  const isWeeklyRequest = daysDiff <= 7;
+  const isWeeklyRequest = daysDiff === 7; // Exactly 7 days for weekly
   const isCurrentWeek = isWeeklyRequest && start <= currentDate && end >= currentDate;
   
   let maxAllowedEnd: Date;
