@@ -174,15 +174,19 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   const requestYear = parseInt(startDate.split('-')[0]);
   const requestMonth = parseInt(startDate.split('-')[1]);
   
-  // 🔧 CRITICAL FIX: For current month, cap endDate to today
+  // 🔧 CRITICAL FIX: For current month AND current week, cap endDate to today
   // This prevents requesting future dates that don't have data yet
   let adjustedEndDate = endDate;
-  if (summaryType === 'monthly' && requestYear === currentYear && requestMonth === currentMonth) {
-    if (endDate > today) {
-      console.log(`📅 CURRENT MONTH FIX: Capping month end from ${endDate} to ${today}`);
-      console.log(`   → Reason: Cannot cache data for future dates`);
-      adjustedEndDate = today;
-    }
+  
+  // Check if this is current month OR current week
+  const isCurrentMonth = (summaryType === 'monthly' && requestYear === currentYear && requestMonth === currentMonth);
+  const isWeekIncludingToday = (summaryType === 'weekly' && start <= now && end >= now);
+  
+  if ((isCurrentMonth || isWeekIncludingToday) && endDate > today) {
+    console.log(`📅 CURRENT ${summaryType.toUpperCase()} FIX: Capping end from ${endDate} to ${today}`);
+    console.log(`   → Reason: Cannot fetch data for future dates (${endDate} > ${today})`);
+    console.log(`   → This ensures we only request data that actually exists`);
+    adjustedEndDate = today;
   }
   
   const isExactCurrentMonth = (
@@ -192,8 +196,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     // No longer checking endDate >= today - we capped it above
   );
   
-  // 🔒 STRICT: Week must include today
-  const isCurrentWeek = summaryType === 'weekly' && start <= now && end >= now && endDate >= today;
+  // 🔒 STRICT: Week must include today (using adjusted end date)
+  const isCurrentWeek = summaryType === 'weekly' && start <= now && end >= now && adjustedEndDate >= today;
   
   const isPastPeriod = !isExactCurrentMonth && !isCurrentWeek;
   
