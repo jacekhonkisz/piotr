@@ -59,8 +59,7 @@ export async function POST(request: NextRequest) {
     // Get all clients
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
-      .select('*')
-      .eq('is_active', true);
+      .select('*');
 
     if (clientsError) throw clientsError;
     if (!clients || clients.length === 0) {
