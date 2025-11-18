@@ -644,7 +644,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      const requestType = daysDiff <= 8 ? 'weekly' : 'monthly'; // 🔧 FIX: Allow up to 8 days for weekly (week can span month boundary)
+      const requestType = daysDiff === 7 ? 'weekly' : 'monthly'; // 🔧 FIX: ISO weeks are exactly 7 days (Mon-Sun), not 8
       
       // Apply current/historical logic based on request type
       const isCurrentMonthRequest = requestType === 'monthly' && isCurrentMonth(startDate, endDate);
