@@ -382,11 +382,32 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     averageCpc: storedSummary.average_cpc || 0
   };
 
-  // ENHANCED: Use aggregated conversion metrics from database if available
+  // 🔧 FIX: ALWAYS calculate from campaign_data if available (most accurate)
+  // Only use pre-aggregated database columns if campaign_data is empty
   let conversionMetrics;
   
-  if (storedSummary.click_to_call !== null && storedSummary.click_to_call !== undefined) {
-    // Use pre-aggregated conversion metrics from database columns (preferred)
+  if (campaigns && campaigns.length > 0) {
+    // ✅ PREFERRED: Calculate from campaign data (most accurate, has all fields)
+    conversionMetrics = {
+      click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
+      email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+      booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+      reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
+      reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
+      booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+      booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
+      roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
+      cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
+        totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0,
+      // Add performance metrics from meta_tables
+      reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
+      offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
+      offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
+    };
+    
+    console.log(`✅ Calculated conversion metrics from campaign data (${campaigns.length} campaigns):`, conversionMetrics);
+  } else if (storedSummary.click_to_call !== null && storedSummary.click_to_call !== undefined) {
+    // Fallback: Use pre-aggregated database columns if no campaign data
     conversionMetrics = {
       click_to_call: storedSummary.click_to_call || 0,
       email_contacts: storedSummary.email_contacts || 0,
@@ -403,27 +424,25 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
     };
     
-    console.log(`📊 Using real conversion metrics from database:`, conversionMetrics);
+    console.log(`📊 Using pre-aggregated database columns (no campaign data):`, conversionMetrics);
   } else {
-    // Fallback: Calculate from campaign data (legacy support)
+    // Last resort: All zeros
     conversionMetrics = {
-      click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
-      email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
-      booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
-      reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
-      reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
-      booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
-      booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
-      roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
-      cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
-        totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0,
-      // Add performance metrics from meta_tables (fallback also uses stored data)
-      reach: storedSummary.meta_tables?.performanceMetrics?.reach || 0,
-      offline_reservations: storedSummary.meta_tables?.performanceMetrics?.offline_reservations || 0,
-      offline_value: storedSummary.meta_tables?.performanceMetrics?.offline_value || 0
+      click_to_call: 0,
+      email_contacts: 0,
+      booking_step_1: 0,
+      reservations: 0,
+      reservation_value: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
+      roas: 0,
+      cost_per_reservation: 0,
+      reach: 0,
+      offline_reservations: 0,
+      offline_value: 0
     };
     
-    console.log(`📊 Calculated conversion metrics from campaign data (fallback):`, conversionMetrics);
+    console.log(`⚠️ No conversion metrics available (no campaign data, no database columns)`);
   }
 
   return {
