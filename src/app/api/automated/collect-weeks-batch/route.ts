@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { BackgroundDataCollector } from '../../../../lib/background-data-collector';
+import { BackgroundDataCollector } from '@/lib/background-data-collector';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database access
@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
 
             // Call the Meta API directly for this specific week
             if (platform === 'meta') {
-              const metaService = (await import('../../../../lib/meta-service')).default;
+              const { MetaAPIService } = await import('@/lib/meta-api-optimized');
+              const metaService = new MetaAPIService(client.meta_access_token);
               const adAccountId = client.ad_account_id?.startsWith('act_')
                 ? client.ad_account_id.substring(4)
                 : client.ad_account_id;
