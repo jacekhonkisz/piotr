@@ -2386,8 +2386,20 @@ function generatePDFHTML(reportData: ReportData): string {
     </head>
     <body>
         ${generateTitleSection(sanitizedData)}
-        ${generateConditionalSection(generateYoYSection(sanitizedData))}
-        ${generateConditionalSection(generateMetaMetricsSection(sanitizedData))}
+        ${(() => {
+          const yoySection = generateYoYSection(sanitizedData);
+          const metaMetrics = generateMetaMetricsSection(sanitizedData);
+          
+          // 🔧 Smart page break logic: Only add page breaks when needed
+          // If YoY exists, both sections get page breaks
+          // If no YoY, Meta Metrics flows directly from title (no blank page)
+          if (yoySection && yoySection.trim() !== '') {
+            return generateConditionalSection(yoySection) + generateConditionalSection(metaMetrics);
+          } else {
+            // No YoY - Meta Metrics on same page as title (no blank page)
+            return metaMetrics || '';
+          }
+        })()}
         ${generateConditionalSection(generateMetaFunnelSection(sanitizedData))}
         ${generateConditionalSection(generateGoogleMetricsSection(sanitizedData))}
         ${generateConditionalSection(generateGoogleFunnelSection(sanitizedData))}
@@ -2643,17 +2655,106 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     try {
       logger.info('📊 Fetching Meta data using StandardizedDataFetcher (same as reports)...');
       
+      // 🔍 DEBUG: Log date range before fetching
+      logger.info('🔍 PDF WEEKLY DATA FETCH DEBUG:', {
+        dateRange,
+        daysDiff: Math.ceil((new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1,
+        startDayOfWeek: new Date(dateRange.start).getDay(),
+        isLikelyWeekly: Math.ceil((new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()) / (1000 * 60 * 60 * 24)) + 1 <= 7
+      });
+      
+      // ✅ CRITICAL: Use EXACT same data fetching logic as /reports page
+      // StandardizedDataFetcher automatically routes to:
+      // - current_week_cache (via weekly smart cache) for current week periods
+      // - campaign_summaries (via database) for historical periods
+      // This ensures PDF data matches /reports page exactly
+      logger.info('📊 PDF: Using StandardizedDataFetcher (same as /reports page) for data source routing');
+      
       const metaResult = await StandardizedDataFetcher.fetchData({
         clientId,
         dateRange,
         platform: 'meta',
-        reason: 'pdf-generation-meta',
+        reason: 'pdf-generation-meta', // Same pattern as reports page
         sessionToken: clientData.meta_access_token // Use client's access token
       });
       
       if (metaResult.success) {
         metaData = metaResult.data;
+        
+        // ✅ CRITICAL FIX: Sanitize data immediately after fetching (before any logging)
+        // This prevents string concatenation issues
+        const sanitizeNumber = (value: any): number => {
+          if (value === null || value === undefined) return 0;
+          if (typeof value === 'string') {
+            // Handle string concatenation artifacts - extract first valid number
+            const cleaned = value.replace(/[^0-9.-]/g, '');
+            const num = parseFloat(cleaned);
+            return Number.isFinite(num) ? num : 0;
+          }
+          const num = Number(value);
+          return Number.isFinite(num) ? num : 0;
+        };
+        
+        // Sanitize stats immediately
+        if (metaData?.stats) {
+          metaData.stats = {
+            ...metaData.stats,
+            totalSpend: sanitizeNumber(metaData.stats.totalSpend),
+            totalImpressions: sanitizeNumber(metaData.stats.totalImpressions),
+            totalClicks: sanitizeNumber(metaData.stats.totalClicks),
+            totalConversions: sanitizeNumber(metaData.stats.totalConversions),
+            averageCtr: sanitizeNumber(metaData.stats.averageCtr),
+            averageCpc: sanitizeNumber(metaData.stats.averageCpc)
+          };
+        }
+        
+        // Sanitize conversionMetrics
+        if (metaData?.conversionMetrics) {
+          metaData.conversionMetrics = {
+            ...metaData.conversionMetrics,
+            reservations: sanitizeNumber(metaData.conversionMetrics.reservations),
+            reservation_value: sanitizeNumber(metaData.conversionMetrics.reservation_value),
+            roas: sanitizeNumber(metaData.conversionMetrics.roas),
+            email_contacts: sanitizeNumber(metaData.conversionMetrics.email_contacts),
+            click_to_call: sanitizeNumber(metaData.conversionMetrics.click_to_call)
+          };
+        }
+        
         logger.info('✅ Meta data fetched successfully via StandardizedDataFetcher');
+        logger.info('🔍 META DATA SOURCE DEBUG:', {
+          totalSpend: metaData?.stats?.totalSpend,
+          totalImpressions: metaData?.stats?.totalImpressions,
+          totalClicks: metaData?.stats?.totalClicks,
+          totalReservations: metaData?.conversionMetrics?.reservations,
+          totalReservationValue: metaData?.conversionMetrics?.reservation_value,
+          source: metaResult.debug?.source,
+          cachePolicy: metaResult.debug?.cachePolicy,
+          periodType: metaResult.debug?.periodType,
+          dataSourcePriority: metaResult.debug?.dataSourcePriority,
+          hasStats: !!metaData?.stats,
+          hasConversionMetrics: !!metaData?.conversionMetrics,
+          campaignsCount: metaData?.campaigns?.length || 0
+        });
+        
+        // ✅ VERIFY: Ensure we're using the correct data source
+        const expectedSourceForCurrentWeek = ['weekly-smart-cache', 'smart-cache-direct', 'weekly-cache', 'stale-weekly-cache'];
+        const expectedSourceForHistorical = ['campaign-summaries-database', 'campaign_summaries', 'daily-kpi-data'];
+        const actualSource = metaResult.debug?.source || 'unknown';
+        
+        if (metaResult.debug?.periodType === 'current-week' || metaResult.debug?.periodType === 'current') {
+          if (!expectedSourceForCurrentWeek.includes(actualSource)) {
+            logger.warn('⚠️ PDF DATA SOURCE MISMATCH: Current week should use smart cache, but got:', actualSource);
+            logger.warn('⚠️ This may indicate smart cache validation failed - check weekly cache overlap logic');
+          } else {
+            logger.info('✅ PDF DATA SOURCE VERIFIED: Current week using smart cache (matches /reports page)');
+          }
+        } else if (metaResult.debug?.periodType === 'historical' || metaResult.debug?.periodType === 'historical-week') {
+          if (!expectedSourceForHistorical.includes(actualSource)) {
+            logger.warn('⚠️ PDF DATA SOURCE MISMATCH: Historical period should use database, but got:', actualSource);
+          } else {
+            logger.info('✅ PDF DATA SOURCE VERIFIED: Historical period using database (matches /reports page)');
+          }
+        }
         console.log('🔍 META DATA DEBUG:', {
           totalSpend: metaData?.stats?.totalSpend,
           totalReservations: metaData?.conversionMetrics?.reservations,
@@ -2707,7 +2808,11 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     try {
       logger.info('📊 Fetching Google Ads data using /api/fetch-google-ads-live-data (same as reports with fallback)...');
       
-      // Use the same API endpoint as reports page - this has fallback logic for expired tokens
+      // ✅ CRITICAL: Use the same API endpoint as reports page
+      // This endpoint automatically routes to:
+      // - Google Ads smart cache (current_week_cache or google_ads_current_month_cache) for current periods
+      // - campaign_summaries database for historical periods
+      // This ensures PDF data matches /reports page exactly
       const googleResponse = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
         method: 'POST',
         headers: {
@@ -2725,15 +2830,30 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         const googleResult = await googleResponse.json();
         if (googleResult.success && googleResult.data) {
           googleData = googleResult.data;
+          
+          // ✅ VERIFY: Log data source to ensure correct routing
+          const googleSource = googleResult.source || googleResult.debug?.source || (googleData.fromDatabase ? 'database' : 'live_api');
           logger.info('✅ Google Ads data fetched successfully via API endpoint:', {
             totalSpend: googleData.stats?.totalSpend || 0,
             totalReservations: googleData.stats?.totalConversions || 0,
             totalReservationValue: googleData.conversionMetrics?.reservation_value || 0,
-            source: googleData.fromDatabase ? 'database' : 'live_api',
+            source: googleSource,
             hasStats: !!googleData.stats,
             hasConversionMetrics: !!googleData.conversionMetrics,
-            campaignCount: googleData.campaigns?.length || 0
+            campaignsCount: googleData.campaigns?.length || 0
           });
+          
+          // ✅ VERIFY: Ensure we're using the correct data source
+          const expectedGoogleSourceForCurrentWeek = ['google-ads-weekly-cache', 'google-ads-cache-stale', 'google-ads-cache-fresh', 'google-ads-cache'];
+          const expectedGoogleSourceForHistorical = ['campaign_summaries', 'database'];
+          
+          if (expectedGoogleSourceForCurrentWeek.includes(googleSource)) {
+            logger.info('✅ PDF GOOGLE ADS DATA SOURCE VERIFIED: Current period using smart cache (matches /reports page)');
+          } else if (expectedGoogleSourceForHistorical.includes(googleSource)) {
+            logger.info('✅ PDF GOOGLE ADS DATA SOURCE VERIFIED: Historical period using database (matches /reports page)');
+          } else {
+            logger.warn('⚠️ PDF GOOGLE ADS DATA SOURCE: Unknown source:', googleSource);
+          }
         } else {
           logger.error('❌ Google Ads API returned unsuccessful response:', googleResult);
           googleError = googleResult.error || 'Unknown Google Ads API error';
@@ -2999,6 +3119,45 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.warn('⚠️ Year-over-year comparison failed:', error);
   }
   
+  // ✅ CRITICAL FIX: Sanitize data immediately after fetching to prevent string concatenation
+  const sanitizeNumber = (value: any): number => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'string') {
+      // Handle string concatenation artifacts
+      const cleaned = value.replace(/[^0-9.-]/g, '');
+      const num = parseFloat(cleaned);
+      return Number.isFinite(num) ? num : 0;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+  
+  // ✅ FIX: Sanitize metaData stats immediately after fetching
+  if (metaData?.stats) {
+    metaData.stats = {
+      ...metaData.stats,
+      totalSpend: sanitizeNumber(metaData.stats.totalSpend),
+      totalImpressions: sanitizeNumber(metaData.stats.totalImpressions),
+      totalClicks: sanitizeNumber(metaData.stats.totalClicks),
+      totalConversions: sanitizeNumber(metaData.stats.totalConversions),
+      averageCtr: sanitizeNumber(metaData.stats.averageCtr),
+      averageCpc: sanitizeNumber(metaData.stats.averageCpc)
+    };
+  }
+  
+  // ✅ FIX: Sanitize googleData stats immediately after fetching
+  if (googleData?.stats) {
+    googleData.stats = {
+      ...googleData.stats,
+      totalSpend: sanitizeNumber(googleData.stats.totalSpend),
+      totalImpressions: sanitizeNumber(googleData.stats.totalImpressions),
+      totalClicks: sanitizeNumber(googleData.stats.totalClicks),
+      totalConversions: sanitizeNumber(googleData.stats.totalConversions),
+      averageCtr: sanitizeNumber(googleData.stats.averageCtr),
+      averageCpc: sanitizeNumber(googleData.stats.averageCpc)
+    };
+  }
+  
   // 🔍 DEBUG: Check if we have any data at all
   logger.info('🔍 DATA AVAILABILITY CHECK:', {
     hasMetaData: !!metaData,
@@ -3006,7 +3165,9 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     metaError: metaError,
     googleError: googleError,
     metaSpend: metaData?.stats?.totalSpend || 0,
-    googleSpend: googleData?.stats?.totalSpend || 0
+    metaSpendType: typeof metaData?.stats?.totalSpend,
+    googleSpend: googleData?.stats?.totalSpend || 0,
+    googleSpendType: typeof googleData?.stats?.totalSpend
   });
 
   // 🔧 FALLBACK: If direct fetchers failed, try using the same API endpoint as reports page
@@ -3032,6 +3193,18 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         const fallbackData = await fallbackResponse.json();
         if (fallbackData.success && fallbackData.data) {
           metaData = fallbackData.data;
+          // ✅ FIX: Sanitize fallback data immediately
+          if (metaData?.stats) {
+            metaData.stats = {
+              ...metaData.stats,
+              totalSpend: sanitizeNumber(metaData.stats.totalSpend),
+              totalImpressions: sanitizeNumber(metaData.stats.totalImpressions),
+              totalClicks: sanitizeNumber(metaData.stats.totalClicks),
+              totalConversions: sanitizeNumber(metaData.stats.totalConversions),
+              averageCtr: sanitizeNumber(metaData.stats.averageCtr),
+              averageCpc: sanitizeNumber(metaData.stats.averageCpc)
+            };
+          }
           logger.info('✅ Meta data fetched successfully via fallback API');
           console.log('🔍 FALLBACK META DATA DEBUG:', {
             totalSpend: metaData?.stats?.totalSpend,
@@ -3056,13 +3229,16 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       const conversionMetrics = metaData.conversionMetrics || {};
       const campaigns = metaData.campaigns || [];
       
+      // ✅ CRITICAL FIX: Use sanitizeNumber defined at function scope (line 3025)
+      // Note: sanitizeNumber is already defined above, use it here
+      
       // Calculate additional metrics using same logic as reports page
-      const totalConversions = stats.totalConversions || 0;
-      const emailContacts = conversionMetrics.email_contacts || 0;
-      const phoneContacts = conversionMetrics.click_to_call || 0;
-      const totalReservationValue = conversionMetrics.reservation_value || 0;
-      const totalReservations = conversionMetrics.reservations || 0;
-      const totalSpend = stats.totalSpend || 0;
+      const totalConversions = sanitizeNumber(stats.totalConversions);
+      const emailContacts = sanitizeNumber(conversionMetrics.email_contacts);
+      const phoneContacts = sanitizeNumber(conversionMetrics.click_to_call);
+      const totalReservationValue = sanitizeNumber(conversionMetrics.reservation_value);
+      const totalReservations = sanitizeNumber(conversionMetrics.reservations);
+      const totalSpend = sanitizeNumber(stats.totalSpend);
       
       // Calculate campaign averages (same as reports page) - legacy metrics removed
       const avgRelevanceScore = campaigns.length > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.relevance_score || 0), 0) / campaigns.length : 0;
@@ -3072,19 +3248,19 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       reportData.metaData = {
         metrics: {
           totalSpend: totalSpend,
-          totalImpressions: stats.totalImpressions || 0,
-          totalClicks: stats.totalClicks || 0,
+          totalImpressions: sanitizeNumber(stats.totalImpressions),
+          totalClicks: sanitizeNumber(stats.totalClicks),
           totalConversions: totalConversions,
-          averageCtr: stats.averageCtr || 0,
-          averageCpc: stats.averageCpc || 0,
+          averageCtr: sanitizeNumber(stats.averageCtr),
+          averageCpc: sanitizeNumber(stats.averageCpc),
           averageCpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
-          averageCpm: (stats.totalImpressions || 0) > 0 ? (totalSpend / (stats.totalImpressions || 0)) * 1000 : 0,
-          reach: totalReach,
-          relevanceScore: avgRelevanceScore,
-          landingPageViews: totalLandingPageViews,
+          averageCpm: sanitizeNumber(stats.totalImpressions) > 0 ? (totalSpend / sanitizeNumber(stats.totalImpressions)) * 1000 : 0,
+          reach: sanitizeNumber(totalReach),
+          relevanceScore: sanitizeNumber(avgRelevanceScore),
+          landingPageViews: sanitizeNumber(totalLandingPageViews),
           totalReservations: totalReservations,
           totalReservationValue: totalReservationValue,
-          roas: conversionMetrics.roas || 0,
+          roas: sanitizeNumber(conversionMetrics.roas),
           emailContacts: emailContacts,
           phoneContacts: phoneContacts
         },
@@ -3370,7 +3546,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { clientId, dateRange } = body;
+    const { clientId, dateRange, campaigns, totals, client, metaTables, bypassAllCache, viewType } = body;
+    
+    // 🔧 CUSTOM DATE RANGE: Check if live data was passed
+    const hasLiveData = bypassAllCache && viewType === 'custom' && campaigns && client;
+    if (hasLiveData) {
+      logger.info('🚀 CUSTOM DATE RANGE: Using passed live data for PDF generation (bypassing all cache)');
+    }
     
     // Check if this is a preview request (development/design tool)
     const isPreviewMode = request.headers.get('X-Preview-Mode') === 'true';
@@ -3395,7 +3577,77 @@ export async function POST(request: NextRequest) {
       logger.info('🎨 Preview mode - using mock data for design preview');
       reportData = generateMockReportData(clientId, dateRange);
       logger.info('✅ Mock report data generated for preview');
-    } else {
+    }
+    // 🚀 CUSTOM DATE RANGE: Use passed live data directly
+    else if (hasLiveData) {
+      logger.info('🚀 CUSTOM DATE RANGE: Building report from passed live data');
+      
+      // Build report data from passed campaigns - match expected ReportData structure
+      const totalSpend = totals?.spend || campaigns.reduce((sum: number, c: any) => sum + (c.spend || 0), 0);
+      const totalImpressions = totals?.impressions || campaigns.reduce((sum: number, c: any) => sum + (c.impressions || 0), 0);
+      const totalClicks = totals?.clicks || campaigns.reduce((sum: number, c: any) => sum + (c.clicks || 0), 0);
+      const totalConversions = totals?.conversions || campaigns.reduce((sum: number, c: any) => sum + (c.conversions || 0), 0);
+      const reservations = campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0);
+      const reservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+      
+      const metrics = {
+        totalSpend,
+        totalImpressions,
+        totalClicks,
+        totalConversions,
+        averageCtr: totals?.ctr || (totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0),
+        averageCpc: totals?.cpc || (totalClicks > 0 ? totalSpend / totalClicks : 0),
+        averageCpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
+        averageCpm: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
+        reach: campaigns.reduce((sum: number, c: any) => sum + (c.reach || 0), 0),
+        relevanceScore: 0,
+        landingPageViews: campaigns.reduce((sum: number, c: any) => sum + (c.landing_page_view || 0), 0),
+        totalReservations: reservations,
+        totalReservationValue: reservationValue,
+        roas: totalSpend > 0 ? reservationValue / totalSpend : 0,
+        emailContacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+        phoneContacts: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0)
+      };
+      
+      const funnel = {
+        booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+        booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+        booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
+        reservations,
+        reservation_value: reservationValue,
+        roas: totalSpend > 0 ? reservationValue / totalSpend : 0
+      };
+      
+      const tables = {
+        placementPerformance: metaTables?.placementPerformance || [],
+        demographicPerformance: metaTables?.demographicPerformance || [],
+        adRelevanceResults: metaTables?.adRelevanceResults || []
+      };
+      
+      reportData = {
+        clientId,
+        clientName: client.name,
+        clientLogo: client.logo_url || undefined,
+        dateRange,
+        aiSummary: undefined,
+        yoyComparison: undefined, // Skip YoY for custom date ranges
+        metaData: {
+          metrics,
+          campaigns,
+          funnel,
+          tables
+        },
+        googleData: undefined // Custom ranges currently support Meta only
+      };
+      
+      logger.info('✅ Report data built from live data:', {
+        campaignCount: campaigns.length,
+        totalSpend: totalSpend,
+        totalClicks: totalClicks,
+        reservations: reservations
+      });
+    }
+    else {
       logger.info('🔄 Fetching report data from same sources as /reports page...');
     try {
       reportData = await fetchReportData(clientId, dateRange, request);

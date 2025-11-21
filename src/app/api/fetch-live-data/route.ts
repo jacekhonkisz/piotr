@@ -11,6 +11,7 @@ import {
 } from '../../../lib/date-range-utils';
 import { getCurrentWeekInfo } from '../../../lib/week-utils';
 import { StandardizedDataFetcher } from '../../../lib/standardized-data-fetcher';
+import { getMondayOfWeek, formatDateISO, validateIsMonday } from '../../../lib/week-helpers';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -118,7 +119,9 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   const currentWeekStart = new Date(currentWeekInfo.startDate);
   const currentWeekEnd = new Date(currentWeekInfo.endDate);
   
-  // 🔒 STRICT: Must match current week exactly AND include today
+  // ✅ CRITICAL FIX: More flexible current week detection
+  // For current week, accept if start matches and includes today, even if end extends beyond today
+  // This handles Mon-Sun requests when we're in the middle of the week (Mon-Today)
   const today: string = now.toISOString().split('T')[0];
   const includesCurrentDay: boolean = endDate >= today;
   const startMatches = startDate === currentWeekInfo.startDate;
@@ -129,9 +132,12 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   const isMondayStart = requestStart.getDay() === 1;
   const isExactWeek = daysDiff === 7 && isMondayStart;
   
-  const result = startMatches && endMatches && isExactWeek && includesCurrentDay;
+  // ✅ FIX: Accept if start matches AND includes today, even if end doesn't match exactly
+  // This is correct: Mon-Sun request (2025-11-17 to 2025-11-23) should use Mon-Today cache (2025-11-17 to 2025-11-21)
+  const result = startMatches && includesCurrentDay && isExactWeek;
   
-  logger.debug('🔒 STRICT WEEK CHECK:', {
+  // ✅ CRITICAL DEBUG: Log the decision with explicit reasoning
+  logger.info('🔒 FLEXIBLE WEEK CHECK (FIXED):', {
     startDateMatches: startMatches,
     endDateMatches: endMatches,
     isExactWeek: isExactWeek,
@@ -141,7 +147,13 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
     result: result,
     today: today,
     endDate: endDate,
-    reasoning: result ? 'CURRENT WEEK (use cache)' : 'PAST WEEK (use database)'
+    currentWeekEnd: currentWeekInfo.endDate,
+    reasoning: result 
+      ? '✅ CURRENT WEEK (use cache) - Start matches, includes today, exact week' 
+      : `❌ PAST WEEK (use database) - startMatches: ${startMatches}, includesToday: ${includesCurrentDay}, isExactWeek: ${isExactWeek}`,
+    note: result 
+      ? 'Mon-Sun request accepted even though end extends beyond cached range (Mon-Today)' 
+      : 'Check why current week detection failed'
   });
   
   return result;
@@ -220,51 +232,61 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   let storedSummary, error;
   
   if (summaryType === 'weekly') {
-    // 📅 WEEKLY DATA: Always use campaign_summaries table
-    console.log(`📅 Searching for weekly data in campaign_summaries between ${startDate} and ${adjustedEndDate}`);
+    // 📅 WEEKLY DATA: Use exact Monday match (same as StandardizedDataFetcher)
+    // ✅ CRITICAL: Must use week-helpers.getMondayOfWeek (same as BackgroundDataCollector)
     
-    const { data: weeklyResults, error: weeklyError } = await supabase
-      .from('campaign_summaries')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('summary_type', 'weekly')
-      .eq('platform', platform)
-      .gte('summary_date', startDate)
-      .lte('summary_date', adjustedEndDate) // Use capped date for current week
-      .order('summary_date', { ascending: false })
-      .limit(1);
+    // Calculate the exact Monday (same system as data storage)
+    const requestedStartDate = new Date(startDate);
+    const weekMonday = getMondayOfWeek(requestedStartDate);
+    const weekMondayStr = formatDateISO(weekMonday);
     
-    if (weeklyResults && weeklyResults.length > 0) {
-      storedSummary = weeklyResults[0];
-      error = null;
-      console.log(`✅ Found weekly data for ${storedSummary.summary_date} (requested ${startDate}-${endDate})`);
-    } else {
-      // Try broader search - within 7 days of start date
-      console.log(`📅 No exact match, searching within 7 days of ${startDate}`);
+    // Validate it's a Monday
+    try {
+      validateIsMonday(weekMonday);
+    } catch (validationError) {
+      console.error(`❌ VALIDATION FAILED: Calculated date is not Monday: ${weekMondayStr}`, validationError);
+      error = validationError as Error;
+      storedSummary = null;
+    }
+    
+    if (!error) {
+      console.log(`📅 Searching for weekly data in campaign_summaries:`, {
+        requestedRange: `${startDate} to ${adjustedEndDate}`,
+        calculatedMonday: weekMondayStr,
+        calculationMethod: 'week-helpers.getMondayOfWeek (SAME AS BackgroundDataCollector)',
+        note: 'summary_date is always the Monday of the week (ISO 8601)'
+      });
       
-      const weekBefore = new Date(startDate);
-      weekBefore.setDate(weekBefore.getDate() - 3);
-      const weekAfter = new Date(startDate);
-      weekAfter.setDate(weekAfter.getDate() + 3);
-      
-      const { data: broadResults, error: broadError } = await supabase
+      const { data: weeklyResults, error: weeklyError } = await supabase
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
         .eq('summary_type', 'weekly')
         .eq('platform', platform)
-        .gte('summary_date', weekBefore.toISOString().split('T')[0])
-        .lte('summary_date', weekAfter.toISOString().split('T')[0])
-        .order('summary_date', { ascending: false })
+        .eq('summary_date', weekMondayStr) // ✅ FIX: Query for exact Monday match (same system as storage)
         .limit(1);
       
-      if (broadResults && broadResults.length > 0) {
-        storedSummary = broadResults[0];
+      if (weeklyResults && weeklyResults.length > 0) {
+        storedSummary = weeklyResults[0];
         error = null;
-        console.log(`✅ Found nearby weekly data for ${storedSummary.summary_date} (requested ${startDate})`);
+        console.log(`✅ Found weekly data for week starting ${weekMondayStr} (requested ${startDate}-${endDate})`);
       } else {
-        storedSummary = null;
-        error = broadError || { message: 'No weekly data found in date range' };
+        error = weeklyError;
+        console.log(`⚠️ No weekly summary found for week starting ${weekMondayStr} (requested range: ${startDate} to ${endDate})`);
+        
+        // 🔍 DEBUG: Try broader search to see what's available
+        const { data: debugResults } = await supabase
+          .from('campaign_summaries')
+          .select('summary_date, total_spend')
+          .eq('client_id', clientId)
+          .eq('summary_type', 'weekly')
+          .eq('platform', platform)
+          .order('summary_date', { ascending: false })
+          .limit(5);
+        
+        if (debugResults && debugResults.length > 0) {
+          console.log(`🔍 DEBUG: Available weekly summaries (nearest 5):`, debugResults);
+        }
       }
     }
   } else {
@@ -528,7 +550,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     
     // Parse request body
     const requestBody = await request.json();
-    const { dateRange, clientId, clearCache, forceFresh, platform = 'meta', reason } = requestBody;
+    const { dateRange, clientId, clearCache, forceFresh, bypassAllCache, platform = 'meta', reason } = requestBody;
     
     if (!clientId) {
       return createErrorResponse('Client ID required', 400);
@@ -559,8 +581,19 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     
     const client = clientData;
 
+    // 🔧 BYPASS ALL CACHE: Log when bypassing all caching layers
+    if (bypassAllCache) {
+      console.log('🚀 BYPASS ALL CACHE MODE: Skipping StandardizedDataFetcher and all caching layers');
+      logger.info('🚀 BYPASS ALL CACHE: Direct Meta API call for custom date range', {
+        reason,
+        dateRange,
+        clientId
+      });
+    }
+
     // ✅ NEW: Use StandardizedDataFetcher if request comes from standardized system
-    if (reason?.includes('standardized') || reason?.includes('period-') || reason?.includes('meta_performance')) {
+    // 🔧 BYPASS: Skip StandardizedDataFetcher if bypassAllCache is set (for custom date ranges)
+    if (!bypassAllCache && (reason?.includes('standardized') || reason?.includes('period-') || reason?.includes('meta_performance'))) {
       logger.info('🎯 Using StandardizedDataFetcher for request:', { reason, clientId, dateRange, platform });
       
       try {
@@ -637,8 +670,13 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         reason
       });
       
+      // 🔧 BYPASS VALIDATION: Skip date validation for custom date ranges with bypassAllCache
+      if (bypassAllCache) {
+        logger.info('🚀 BYPASS ALL CACHE: Skipping date range validation for custom date range');
+        console.log('🚀 Custom date range validation bypassed:', { startDate, endDate, reason });
+      }
       // Only validate date range for requests within API limits AND not all-time/large range requests
-      if (isWithinAPILimits && !isAllTimeOrLargeRange) {
+      else if (isWithinAPILimits && !isAllTimeOrLargeRange) {
         const validation = validateDateRange(startDate, endDate);
         logger.info('📅 Date range validation result:', validation);
         
@@ -706,14 +744,16 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         isCurrentMonthRequest,
         isCurrentWeekRequest,
         forceFresh,
+        bypassAllCache,
         forceFreshType: typeof forceFresh,
         cacheFirstEnforced: ENFORCE_STRICT_CACHE_FIRST,
-        routingDecision: isCurrentWeekRequest ? '🟡 WEEKLY CACHE' :
+        routingDecision: bypassAllCache ? '🚀 DIRECT API (CUSTOM DATE)' :
+                        isCurrentWeekRequest ? '🟡 WEEKLY CACHE' :
                         isCurrentMonthRequest ? '🔴 MONTHLY CACHE' : '💾 DATABASE',
-        willUseWeeklyCache: isCurrentWeekRequest && !forceFresh,
-        willUseMonthlyCache: isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh,
-        willUseDatabaseLookup: !forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest,
-        cacheBypassAllowed: !ENFORCE_STRICT_CACHE_FIRST || forceFresh,
+        willUseWeeklyCache: isCurrentWeekRequest && !forceFresh && !bypassAllCache,
+        willUseMonthlyCache: isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh && !bypassAllCache,
+        willUseDatabaseLookup: !forceFresh && !isCurrentMonthRequest && !isCurrentWeekRequest && !bypassAllCache,
+        cacheBypassAllowed: !ENFORCE_STRICT_CACHE_FIRST || forceFresh || bypassAllCache,
         weekCheckDetails: {
           startMatches: startDate === currentWeekInfo.startDate,
           endMatches: endDate === currentWeekInfo.endDate,
@@ -722,15 +762,23 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         }
       });
 
+      // 🚀 BYPASS ALL CACHE: Skip all caching logic for custom date ranges
+      if (bypassAllCache) {
+        console.log('🚀 BYPASS ALL CACHE: Jumping directly to Meta API call for custom date range');
+        logger.info('🚀 BYPASS ALL CACHE: Skipping all cache checks (database, weekly, monthly)');
+        // Jump directly to Meta API call (line 1447+)
+      }
       // CRITICAL DEBUG: Check exactly why database cache might be skipped
-      console.log(`🔍 CRITICAL DEBUG - CACHE CONDITIONS:`, {
-        'isCurrentMonthRequest': isCurrentMonthRequest,
-        'NOT forceFresh': !forceFresh,
-        'Combined condition (isCurrentMonthRequest && !forceFresh)': isCurrentMonthRequest && !forceFresh,
-        'Will check database cache': isCurrentMonthRequest && !forceFresh
-      });
+      else {
+        console.log(`🔍 CRITICAL DEBUG - CACHE CONDITIONS:`, {
+          'isCurrentMonthRequest': isCurrentMonthRequest,
+          'NOT forceFresh': !forceFresh,
+          'Combined condition (isCurrentMonthRequest && !forceFresh)': isCurrentMonthRequest && !forceFresh,
+          'Will check database cache': isCurrentMonthRequest && !forceFresh
+        });
+      }
       
-      if (!isCurrentMonthRequest && !isCurrentWeekRequest) {
+      if (!bypassAllCache && !isCurrentMonthRequest && !isCurrentWeekRequest) {
         // Previous periods: STRICT DATABASE-FIRST POLICY
         console.log('📊 🔒 HISTORICAL PERIOD - ENFORCING DATABASE-FIRST POLICY');
         
@@ -882,10 +930,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             }
           });
         }
-      } else if (isCurrentWeekRequest && !forceFresh) {
+      } else if (isCurrentWeekRequest && !forceFresh && !bypassAllCache) {
         // Current week: Use smart cache (3-hour refresh) for weekly data
         logger.info('📊 🟡 CURRENT WEEK DETECTED - USING WEEKLY SMART CACHE...');
         console.log('✅ ROUTING: Current week request → WEEKLY CACHE');
+        console.log('✅ VERIFICATION: isCurrentWeekRequest =', isCurrentWeekRequest, ', forceFresh =', forceFresh);
         
         try {
           // Generate period ID from date range
@@ -952,7 +1001,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         } catch (cacheError) {
           console.error('⚠️ Weekly smart cache failed, falling back to live fetch:', cacheError);
         }
-      } else if (isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh) {
+      } else if (isCurrentMonthRequest && !isCurrentWeekRequest && !forceFresh && !bypassAllCache) {
         // Current month: USE SMART CACHE SYSTEM
         // ✅ CRITICAL FIX: Added !isCurrentWeekRequest check to prevent weekly requests from falling through to monthly cache
         logger.info('📊 🔴 CURRENT MONTH DETECTED - USING MONTHLY SMART CACHE...');
@@ -1379,11 +1428,17 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         });
       }
 
-      console.log(`🔄 EXPLICIT FORCE REFRESH - Proceeding with live Meta API fetch (forceFresh: ${forceFresh}, enforcement: ${ENFORCE_STRICT_CACHE_FIRST})`);
+      console.log(`🔄 EXPLICIT FORCE REFRESH - Proceeding with live Meta API fetch (forceFresh: ${forceFresh}, bypassAllCache: ${bypassAllCache}, enforcement: ${ENFORCE_STRICT_CACHE_FIRST})`);
       logger.info('🔍 Meta API call reason: Explicit force refresh requested or cache enforcement disabled');
 
-      // 🔧 ENHANCED: Even with forceFresh: true, use enhanced logic for current month
-      if (isCurrentMonthRequest) {
+      // 🔧 BYPASS ALL CACHE: Skip enhanced logic if bypassAllCache is set (for custom date ranges)
+      if (bypassAllCache) {
+        console.log('🚀 BYPASS ALL CACHE MODE: Skipping smart cache, calling Meta API directly...');
+        logger.info('🚀 BYPASS ALL CACHE: Direct Meta API call for custom date range');
+        // Skip to direct Meta API call below (after line 1445)
+      }
+      // 🔧 ENHANCED: Even with forceFresh: true, use enhanced logic for current month (unless bypassing)
+      else if (isCurrentMonthRequest) {
         console.log('🔧 ENHANCED: Force refresh for current month - using enhanced smart cache logic...');
         console.log('🔧 This will ensure reports page gets conversionMetrics with real data from daily_kpi_data');
         
@@ -1496,6 +1551,23 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           clicks: c.clicks
         }))
       });
+      
+      // 🔧 CRITICAL FIX: Parse conversion actions from Meta API response
+      // Import parser dynamically to avoid circular dependencies
+      const { enhanceCampaignsWithConversions } = await import('../../../lib/meta-actions-parser');
+      logger.info('🔍 Parsing conversion actions from Meta API response...');
+      campaignInsights = enhanceCampaignsWithConversions(campaignInsights);
+      logger.info('✅ Conversion actions parsed:', {
+        count: campaignInsights.length,
+        sampleCampaign: campaignInsights[0] ? {
+          name: campaignInsights[0].campaign_name,
+          booking_step_1: campaignInsights[0].booking_step_1,
+          booking_step_2: campaignInsights[0].booking_step_2,
+          booking_step_3: campaignInsights[0].booking_step_3,
+          reservations: campaignInsights[0].reservations
+        } : null
+      });
+      
     } catch (error) {
       console.error('❌ Failed to fetch campaign insights:', error);
       metaApiError = error instanceof Error ? error.message : 'Unknown error';
@@ -1552,21 +1624,26 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     }
 
     // Calculate summary stats
-    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + campaign.spend, 0);
-    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + campaign.impressions, 0);
-    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + campaign.clicks, 0);
-    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + campaign.conversions, 0);
+    // 🔧 CRITICAL FIX: Parse all values as numbers (Meta API returns strings)
+    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + parseFloat(campaign.spend || 0), 0);
+    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + parseInt(campaign.impressions || 0), 0);
+    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + parseInt(campaign.clicks || 0), 0);
+    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + parseInt(campaign.conversions || 0), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
     // Calculate conversion tracking totals
-    const totalClickToCall = campaignInsights.reduce((sum, campaign) => sum + (campaign.click_to_call || 0), 0);
-    const totalEmailContacts = campaignInsights.reduce((sum, campaign) => sum + (campaign.email_contacts || 0), 0);
-    const totalBookingStep1 = campaignInsights.reduce((sum, campaign) => sum + (campaign.booking_step_1 || 0), 0);
-    const totalReservations = campaignInsights.reduce((sum, campaign) => sum + (campaign.reservations || 0), 0);
-    const totalReservationValue = campaignInsights.reduce((sum, campaign) => sum + (campaign.reservation_value || 0), 0);
-    const totalBookingStep2 = campaignInsights.reduce((sum, campaign) => sum + (campaign.booking_step_2 || 0), 0);
-    const totalBookingStep3 = campaignInsights.reduce((sum, campaign) => sum + (campaign.booking_step_3 || 0), 0);
+    // 🔧 CRITICAL FIX: Aggregate parsed conversion metrics
+    const { aggregateConversionMetrics } = await import('../../../lib/meta-actions-parser');
+    const aggregatedConversions = aggregateConversionMetrics(campaignInsights);
+    
+    const totalClickToCall = aggregatedConversions.click_to_call;
+    const totalEmailContacts = aggregatedConversions.email_contacts;
+    const totalBookingStep1 = aggregatedConversions.booking_step_1;
+    const totalBookingStep2 = aggregatedConversions.booking_step_2;
+    const totalBookingStep3 = aggregatedConversions.booking_step_3;
+    const totalReservations = aggregatedConversions.reservations;
+    const totalReservationValue = aggregatedConversions.reservation_value;
 
     // Calculate overall ROAS and cost per reservation
     const overallRoas = totalSpend > 0 && totalReservationValue > 0 ? totalReservationValue / totalSpend : 0;

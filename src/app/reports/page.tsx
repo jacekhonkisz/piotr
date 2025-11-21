@@ -130,22 +130,12 @@ const fetchReportDataUnified = async (params: {
   try {
     let result;
     
-    if (platform === 'google') {
-      // Use separate Google Ads system (server-side only)
-      console.log('🎯 Using GoogleAdsStandardizedDataFetcher for Google Ads reports...');
+    // 🔧 FORCE FRESH: If forceFresh is true, bypass cache and call API directly
+    if (forceFresh) {
+      console.log('🚀 FORCE FRESH MODE: Bypassing cache, calling API directly...');
       
-      if (typeof window === 'undefined') {
-        // Server-side: use Google Ads fetcher directly
-        const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
-        
-        result = await GoogleAdsStandardizedDataFetcher.fetchData({
-          clientId,
-          dateRange,
-          reason: reason || 'google-ads-reports-standardized',
-          sessionToken: session?.access_token
-        });
-      } else {
-        // Client-side: redirect to API endpoint with authentication
+      if (platform === 'google') {
+        // Client-side: call Google Ads API endpoint directly with forceFresh
         const { createClient } = await import('@supabase/supabase-js');
         const supabase = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -162,7 +152,9 @@ const fetchReportDataUnified = async (params: {
           body: JSON.stringify({
             clientId,
             dateRange,
-            reason: reason || 'google-ads-reports-standardized'
+            forceRefresh: true, // Google Ads uses forceRefresh
+            bypassAllCache: true, // 🔧 NEW: Bypass ALL caching including smart cache
+            reason: reason || 'custom-date-direct-api-no-cache'
           })
         });
         
@@ -171,19 +163,114 @@ const fetchReportDataUnified = async (params: {
         }
         
         result = await response.json();
+      } else {
+        // Meta: call Meta API endpoint directly with forceFresh
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const { data: { session: clientSession } } = await supabase.auth.getSession();
+        
+        const response = await fetch('/api/fetch-live-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${clientSession?.access_token || ''}`
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange,
+            forceFresh: true, // Meta uses forceFresh
+            bypassAllCache: true, // 🔧 NEW: Bypass ALL caching including smart cache
+            reason: reason || 'custom-date-direct-api-no-cache'
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Meta API call failed: ${response.status}`);
+        }
+        
+        const apiResult = await response.json();
+        
+        // Transform API response to match StandardizedDataFetcher format
+        if (apiResult.success && apiResult.data) {
+          result = {
+            success: true,
+            data: {
+              campaigns: apiResult.data.campaigns || [],
+              stats: apiResult.data.stats,
+              conversionMetrics: apiResult.data.conversionMetrics
+            },
+            debug: {
+              source: 'live-api-force-fresh',
+              cachePolicy: 'force-fresh',
+              responseTime: apiResult.debug?.responseTime || 0,
+              reason: reason || 'meta-reports-force-fresh'
+            },
+            validation: apiResult.validation
+          };
+        } else {
+          throw new Error('Meta API returned no data');
+        }
       }
     } else {
-      // Use Meta system
-      console.log('🎯 Using StandardizedDataFetcher for Meta reports...');
-      const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
-      
-      result = await StandardizedDataFetcher.fetchData({
-        clientId,
-        dateRange,
-        platform: 'meta',
-        reason: reason || 'meta-reports-standardized',
-        sessionToken: session?.access_token
-      });
+      // Normal mode: Use StandardizedDataFetcher with smart caching
+      if (platform === 'google') {
+        // Use separate Google Ads system (server-side only)
+        console.log('🎯 Using GoogleAdsStandardizedDataFetcher for Google Ads reports...');
+        
+        if (typeof window === 'undefined') {
+          // Server-side: use Google Ads fetcher directly
+          const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+          
+          result = await GoogleAdsStandardizedDataFetcher.fetchData({
+            clientId,
+            dateRange,
+            reason: reason || 'google-ads-reports-standardized',
+            sessionToken: session?.access_token
+          });
+        } else {
+          // Client-side: redirect to API endpoint with authentication
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          );
+          const { data: { session: clientSession } } = await supabase.auth.getSession();
+          
+          const response = await fetch('/api/fetch-google-ads-live-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${clientSession?.access_token || ''}`
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange,
+              reason: reason || 'google-ads-reports-standardized'
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Google Ads API call failed: ${response.status}`);
+          }
+          
+          result = await response.json();
+        }
+      } else {
+        // Use Meta system
+        console.log('🎯 Using StandardizedDataFetcher for Meta reports...');
+        const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+        
+        result = await StandardizedDataFetcher.fetchData({
+          clientId,
+          dateRange,
+          platform: 'meta',
+          reason: reason || 'meta-reports-standardized',
+          sessionToken: session?.access_token
+        });
+      }
     }
     
     // Transform StandardizedDataFetcher result to match expected format
@@ -437,15 +524,56 @@ function ReportsPageContent() {
 
   // Refresh data when provider changes
   useEffect(() => {
-    if (selectedPeriod && selectedClient) {
-      console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing data for period: ${selectedPeriod}`);
+    if (!selectedClient) return;
+
+    // Only refresh if there's data to refresh (selectedPeriod, custom dates, or all-time view)
+    const hasDataToRefresh = selectedPeriod || 
+                             (viewType === 'custom' && customDateRange.start && customDateRange.end) ||
+                             (viewType === 'all-time' && Object.keys(reports).length > 0);
+    
+    if (!hasDataToRefresh) {
+      console.log('⏭️ No data to refresh on provider change');
+      return;
+    }
+
+    // 🔧 CRITICAL FIX: Use setTimeout to ensure state updates are processed
+    const switchProvider = async () => {
+      // Clear any existing loading state first
+      setLoadingPeriod(null);
+      setApiCallInProgress(false);
+      loadingRef.current = false;
       
-      // 🔧 CRITICAL FIX: Use setTimeout to ensure state updates are processed
-      const switchProvider = async () => {
-        // Clear any existing loading state first
-        setLoadingPeriod(null);
-        setApiCallInProgress(false);
-        loadingRef.current = false;
+      // Clear ALL API call trackers for this client to allow fresh calls
+      if ((window as any).apiCallTracker) {
+        Object.keys((window as any).apiCallTracker).forEach(key => {
+          if (key.includes(selectedClient.id)) {
+            delete (window as any).apiCallTracker[key];
+          }
+        });
+        console.log('🧹 Cleared ALL API call trackers for client:', selectedClient.id);
+      }
+      
+      // Wait for state updates to complete
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Handle different view types
+      if (viewType === 'custom' && customDateRange.start && customDateRange.end) {
+        // For custom date range, reload with new provider
+        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing custom date data`);
+        
+        // Clear custom report
+        setReports(prev => {
+          const newReports = { ...prev };
+          delete newReports['custom'];
+          return newReports;
+        });
+        
+        // Reload custom date data with new provider
+        setLoadingPeriod('custom');
+        await loadCustomDateData(customDateRange.start, customDateRange.end);
+      } else if (selectedPeriod) {
+        // For monthly/weekly periods, use existing logic
+        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing data for period: ${selectedPeriod}`);
         
         // Clear current report to force refresh
         setReports(prev => {
@@ -454,29 +582,20 @@ function ReportsPageContent() {
           return newReports;
         });
         
-        // Clear ALL API call trackers for this client to allow fresh calls
-        if ((window as any).apiCallTracker) {
-          Object.keys((window as any).apiCallTracker).forEach(key => {
-            if (key.includes(selectedClient.id)) {
-              delete (window as any).apiCallTracker[key];
-            }
-          });
-          console.log('🧹 Cleared ALL API call trackers for client:', selectedClient.id);
-        }
-        
-        // Wait for state updates to complete
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
         // Set loading state after clearing
         setLoadingPeriod(selectedPeriod);
         
         // Force fresh data load with new provider
         console.log(`🔄 FORCING FRESH DATA LOAD for ${activeAdsProvider} provider`);
         await loadPeriodDataWithClient(selectedPeriod, selectedClient, true); // Force clear cache
-      };
-      
-      switchProvider();
-    }
+      } else if (viewType === 'all-time') {
+        // For all-time, reload with new provider
+        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing all-time data`);
+        await loadAllTimeData();
+      }
+    };
+    
+    switchProvider();
   }, [activeAdsProvider]);
 
   // Note: Mock Google Ads data removed - now using real API calls
@@ -1076,14 +1195,15 @@ function ReportsPageContent() {
       
       // Determine API endpoint based on active provider
       // 🎯 USE STANDARDIZED DATA FETCHER (loadCustomDateData)
-      console.log('🎯 Using StandardizedDataFetcher for custom date data...');
+      // 🔧 FORCE FRESH: Custom date ranges should always fetch fresh data from API
+      console.log('🎯 Using StandardizedDataFetcher for custom date data with FORCE FRESH...');
       
       const data = await fetchReportDataUnified({
         dateRange: requestBody.dateRange,
         clientId: requestBody.clientId,
         platform: activeAdsProvider,
-        forceFresh: false,
-        reason: 'custom-date-standardized',
+        forceFresh: true, // 🔧 Always force fresh API call for custom date ranges
+        reason: 'custom-date-force-fresh-bypass-cache', // 🔧 Avoid 'standardized' to bypass cache routing
         session
       });
 
@@ -1091,6 +1211,10 @@ function ReportsPageContent() {
         throw new Error(data.debug?.reason || 'Failed to load custom date data');
       }
       const rawCampaigns = data.data?.campaigns || data.data?.campaigns || [];
+      
+      // 🔧 CRITICAL: Extract conversionMetrics from API response
+      const apiConversionMetrics = data.data?.conversionMetrics || {};
+      console.log('📊 API returned conversionMetrics:', apiConversionMetrics);
       
       const campaigns: Campaign[] = rawCampaigns.map((campaign: any, index: number) => {
         // Use already-parsed conversion tracking data from API response
@@ -1131,12 +1255,28 @@ function ReportsPageContent() {
         };
       });
       
+      // 🔧 CRITICAL FIX: Include conversionMetrics from API response
+      const totalSpend = campaigns.reduce((sum, c) => sum + c.spend, 0);
       const report: MonthlyReport | WeeklyReport = {
         id: 'custom',
         date_range_start: startDate,
         date_range_end: endDate,
         generated_at: new Date().toISOString(),
-        campaigns: campaigns
+        campaigns: campaigns,
+        conversionMetrics: {
+          click_to_call: apiConversionMetrics.click_to_call || 0,
+          email_contacts: apiConversionMetrics.email_contacts || 0,
+          booking_step_1: apiConversionMetrics.booking_step_1 || 0,
+          reservations: apiConversionMetrics.reservations || 0,
+          reservation_value: apiConversionMetrics.reservation_value || 0,
+          booking_step_2: apiConversionMetrics.booking_step_2 || 0,
+          booking_step_3: apiConversionMetrics.booking_step_3 || 0,
+          roas: apiConversionMetrics.roas || (totalSpend > 0 ? (apiConversionMetrics.reservation_value || 0) / totalSpend : 0),
+          cost_per_reservation: apiConversionMetrics.cost_per_reservation || (apiConversionMetrics.reservations > 0 ? totalSpend / apiConversionMetrics.reservations : 0),
+          reach: data.data?.stats?.reach || campaigns.reduce((sum, c) => sum + (c.reach || 0), 0),
+          offline_reservations: apiConversionMetrics.offline_reservations || 0,
+          offline_value: apiConversionMetrics.offline_value || 0
+        }
       };
 
       console.log('💾 Setting custom date report:', report);
@@ -1178,7 +1318,49 @@ function ReportsPageContent() {
     }
   };
 
+  // Generate custom report - triggers data fetch for Meta/Google Ads
+  const generateCustomReport = async () => {
+    if (!selectedClient) {
+      setError('Proszę wybrać klienta przed generowaniem raportu');
+      return;
+    }
 
+    if (!customDateRange.start || !customDateRange.end) {
+      setError('Proszę wybrać datę początkową i końcową');
+      return;
+    }
+
+    // Validate date range
+    const startDate = new Date(customDateRange.start);
+    const endDate = new Date(customDateRange.end);
+    
+    if (startDate > endDate) {
+      setError('Data początkowa nie może być późniejsza niż data końcowa');
+      return;
+    }
+
+    // Check Meta API limit (37 months)
+    const maxPastDate = new Date();
+    maxPastDate.setMonth(maxPastDate.getMonth() - 37);
+    
+    if (startDate < maxPastDate && activeAdsProvider === 'meta') {
+      setError(`Meta API ogranicza dostęp do danych do ostatnich 37 miesięcy. Najwcześniejsza dostępna data: ${maxPastDate.toLocaleDateString('pl-PL')}`);
+      return;
+    }
+
+    console.log('📊 Generating custom report:', {
+      start: customDateRange.start,
+      end: customDateRange.end,
+      provider: activeAdsProvider,
+      client: selectedClient.name
+    });
+
+    // Clear any existing error
+    setError(null);
+
+    // Load data using the same standardized method as other periods
+    await loadCustomDateData(customDateRange.start, customDateRange.end);
+  };
 
   // Get ISO week number
   const getWeekNumber = (date: Date) => {
@@ -2768,18 +2950,51 @@ function ReportsPageContent() {
         conversions: 0,
         ctr: 0,
         cpc: 0,
-        cpa: 0
+        cpa: 0,
+        reach: 0,
+        landing_page_view: 0,
+        reservations: 0,
+        reservation_value: 0,
+        email_contacts: 0,
+        click_to_call: 0,
+        booking_step_1: 0,
+        booking_step_2: 0,
+        booking_step_3: 0
       };
     }
 
     console.log('📊 Calculating totals from campaigns:', selectedReport.campaigns);
     
+    // 🔧 Calculate all metrics including funnel data
     const totals = selectedReport.campaigns.reduce((acc, campaign) => ({
       spend: acc.spend + (campaign.spend || 0),
       impressions: acc.impressions + (campaign.impressions || 0),
       clicks: acc.clicks + (campaign.clicks || 0),
-      conversions: acc.conversions + (campaign.conversions || 0)
-    }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
+      conversions: acc.conversions + (campaign.conversions || 0),
+      reach: acc.reach + (campaign.reach || 0),
+      landing_page_view: acc.landing_page_view + (campaign.landing_page_view || 0),
+      reservations: acc.reservations + (campaign.reservations || 0),
+      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0)
+    }), { 
+      spend: 0, 
+      impressions: 0, 
+      clicks: 0, 
+      conversions: 0,
+      reach: 0,
+      landing_page_view: 0,
+      reservations: 0,
+      reservation_value: 0,
+      email_contacts: 0,
+      click_to_call: 0,
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0
+    });
 
     // Calculate derived metrics
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
@@ -3188,51 +3403,6 @@ function ReportsPageContent() {
               <Calendar className="w-4 h-4" />
               <span>Własny Zakres</span>
             </button>
-            
-            {/* Platform Switcher: Meta vs Google Ads */}
-            <div className="flex items-center gap-1 ml-4 pl-4 border-l border-gray-300">
-              <button
-                onClick={() => {
-                  setActiveAdsProvider('meta');
-                  // Clear current reports to force refetch
-                  setReports({});
-                  if (selectedPeriod) {
-                    loadReportData(selectedPeriod);
-                  }
-                }}
-                disabled={!selectedClient?.meta_access_token}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeAdsProvider === 'meta'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                } ${!selectedClient?.meta_access_token ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title={!selectedClient?.meta_access_token ? 'Meta Ads not configured for this client' : 'Switch to Meta Ads'}
-              >
-                <Target className="w-4 h-4" />
-                <span>Meta</span>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setActiveAdsProvider('google');
-                  // Clear current reports to force refetch
-                  setReports({});
-                  if (selectedPeriod) {
-                    loadReportData(selectedPeriod);
-                  }
-                }}
-                disabled={!selectedClient?.google_ads_enabled || !selectedClient?.google_ads_customer_id}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  activeAdsProvider === 'google'
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-                } ${(!selectedClient?.google_ads_enabled || !selectedClient?.google_ads_customer_id) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title={(!selectedClient?.google_ads_enabled || !selectedClient?.google_ads_customer_id) ? 'Google Ads not configured for this client' : 'Switch to Google Ads'}
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span>Google</span>
-              </button>
-            </div>
           </div>
 
             {/* Right Group: Actions - All buttons same size/hierarchy */}
@@ -3257,6 +3427,7 @@ function ReportsPageContent() {
                       totals={getSelectedPeriodTotals()}
                       client={client}
                       metaTables={metaTablesData}
+                      viewType={viewType}
                     />
                   )}
               </div>

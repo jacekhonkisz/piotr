@@ -17,6 +17,7 @@ interface InteractivePDFButtonProps {
     demographicPerformance: any[];
     adRelevanceResults: any[];
   } | null;
+  viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom'; // Track if this is a custom date range
 }
 
 const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
@@ -27,7 +28,8 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
   campaigns,
   totals,
   client,
-  metaTables
+  metaTables,
+  viewType
 }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,15 +95,25 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         console.error('❌ InteractivePDFButton: Error fetching Meta tables data:', metaError);
       }
 
-      // Use smart caching approach for consistency
+      // 🔧 CUSTOM DATE RANGE: Pass live data directly to avoid cache
+      const isCustomDateRange = viewType === 'custom';
+      
       const requestBody = {
         clientId,
         dateRange: {
           start: dateStart,
           end: dateEnd
-        }
+        },
+        // 🔧 For custom date ranges, pass live data directly + bypass cache flag
+        ...(isCustomDateRange && {
+          campaigns,
+          totals,
+          client,
+          metaTables: metaTablesData,
+          bypassAllCache: true, // Force PDF to use passed data, not fetch from cache
+          viewType: 'custom'
+        })
         // Platform will be auto-detected by PDF generation based on client configuration
-        // Removed direct data - PDF will use smart caching for consistency
       };
 
       // Debug: Log the data being sent to PDF generation

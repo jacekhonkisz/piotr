@@ -505,10 +505,11 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   // 🔧 FIX: Use existing report data for year-over-year comparison instead of fetching fresh data
   // This prevents the issue where the API returns 0 values while the dashboard shows real data
   // CACHE BUST: 2025-01-11 v3 - Force browser refresh - YoY Hook Debug Added
+  // 🔧 SKIP YoY for custom date ranges - doesn't make sense to compare custom ranges
   const { data: yoyData, loading: yoyLoading, error: yoyError } = useYearOverYearComparison({
     clientId: clientData?.id || '',
     dateRange: yoyDateRange,
-    enabled: true, // 🔧 RE-ENABLED: API is now fixed and working correctly
+    enabled: viewType !== 'custom', // 🔧 DISABLED for custom date ranges
     platform: platform,
   });
   
@@ -640,6 +641,9 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
         // Helper function to format comparison change for MetricCard
         const formatComparisonChange = (changePercent: number) => {
+          // 🔧 SKIP YoY for custom date ranges - doesn't make sense to compare
+          if (viewType === 'custom') return undefined;
+          
           // 🔧 PRODUCTION FIX: Use effective YoY data (API with fallback to local calculation)
           if (!effectiveYoYData) return undefined;
           
