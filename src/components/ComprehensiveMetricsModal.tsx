@@ -91,45 +91,55 @@ const ComprehensiveMetricsModal: React.FC<ComprehensiveMetricsModalProps> = ({
       totalImpressions += parseInt(campaign.impressions || 0);
       totalClicks += parseInt(campaign.clicks || 0);
 
-      // Parse actions for conversions
+      // ✅ CRITICAL FIX: Build action lookup to use omni_* as single source of truth
+      // Meta API returns SAME event under multiple action types - use only omni_* to avoid double counting
+      const actionMap = new Map<string, number>();
+      const actionValueMap = new Map<string, number>();
+      
       if (campaign.actions) {
         campaign.actions.forEach((action: any) => {
+          const actionType = (action.action_type || '').toLowerCase();
           const value = parseInt(action.value || 0);
-          
-          switch (action.action_type) {
-            case 'purchase':
-            case 'offsite_conversion.fb_pixel_purchase':
-            case 'onsite_web_purchase':
-              totalPurchases += value;
-              break;
-            case 'offsite_conversion.custom.3490904591193350': // Booking step 1
-              totalBookingStep1 += value;
-              break;
-            case 'offsite_conversion.custom.627242345844289': // Booking step 2
-              totalBookingStep2 += value;
-              break;
-            case 'offsite_conversion.custom.1150356839010935': // Booking step 3
-              totalBookingStep3 += value;
-              break;
-            case 'offsite_conversion.custom.663090912484972': // Email clicks
-              totalEmailClicks += value;
-              break;
-            case 'offsite_conversion.custom.875475950314999': // Phone clicks
-              totalPhoneClicks += value;
-              break;
+          if (!isNaN(value) && value >= 0) {
+            actionMap.set(actionType, (actionMap.get(actionType) || 0) + value);
           }
         });
       }
-
-      // Parse action values for purchase value
+      
       if (campaign.action_values) {
-        campaign.action_values.forEach((actionValue: any) => {
-          if (actionValue.action_type === 'purchase' || 
-              actionValue.action_type === 'offsite_conversion.fb_pixel_purchase') {
-            totalPurchaseValue += parseFloat(actionValue.value || 0);
+        campaign.action_values.forEach((av: any) => {
+          const actionType = (av.action_type || '').toLowerCase();
+          const value = parseFloat(av.value || 0);
+          if (!isNaN(value) && value >= 0) {
+            actionValueMap.set(actionType, (actionValueMap.get(actionType) || 0) + value);
           }
         });
       }
+      
+      // Purchases - use ONLY omni_purchase (zakupy w witrynie)
+      totalPurchases += actionMap.get('omni_purchase') || 
+                       actionMap.get('offsite_conversion.fb_pixel_purchase') || 0;
+      
+      // Booking steps - use omni_* variants
+      totalBookingStep1 += actionMap.get('omni_search') || 
+                          actionMap.get('offsite_conversion.fb_pixel_search') || 0;
+      totalBookingStep2 += actionMap.get('omni_view_content') || 
+                          actionMap.get('offsite_conversion.fb_pixel_view_content') || 0;
+      totalBookingStep3 += actionMap.get('omni_initiated_checkout') || 
+                          actionMap.get('offsite_conversion.fb_pixel_initiate_checkout') || 0;
+      
+      // Email clicks - Priority: Havet PBM custom event > standard lead
+      totalEmailClicks += actionMap.get('offsite_conversion.custom.2770488499782793') ||  // Havet PBM
+                         actionMap.get('lead') || 
+                         actionMap.get('onsite_conversion.lead_grouped') || 0;
+      
+      // Phone clicks - Priority: Havet PBM custom event > standard click_to_call
+      totalPhoneClicks += actionMap.get('offsite_conversion.custom.1470262077092668') ||  // Havet PBM
+                         actionMap.get('click_to_call_call_confirm') || 0;
+      
+      // Purchase value - use ONLY omni_purchase
+      totalPurchaseValue += actionValueMap.get('omni_purchase') || 
+                          actionValueMap.get('offsite_conversion.fb_pixel_purchase') || 0;
     });
 
     const roas = totalPurchaseValue > 0 ? (totalPurchaseValue / totalSpend) : 0;

@@ -610,16 +610,37 @@ function ReportsPageContent() {
   // Handle client change for admin users
   const handleClientChange = async (newClient: Client) => {
     console.log('🔄 Client changed in reports:', newClient.name);
+    
+    // 🔧 CRITICAL FIX: Reset ALL loading states BEFORE switching clients
+    // This prevents Layer 1 blocking in loadPeriodDataWithClient
+    loadingRef.current = false;
+    setApiCallInProgress(false);
+    setLoadingPeriod(null);
+    
+    // 🔧 CRITICAL FIX: Clear API call trackers to prevent Layer 2 blocking
+    if ((window as any).apiCallTracker) {
+      // Clear ALL trackers to ensure fresh data load for new client
+      (window as any).apiCallTracker = {};
+      console.log('🧹 Cleared ALL API call trackers for client switch');
+    }
+    
+    // Update client state
     setSelectedClient(newClient);
     setClient(newClient); // 🔧 FIX: Also update client state for MetaAdsTables
     
     // Clear existing reports for the new client
     setReports({});
     
-    // Reload data for the current period with the new client
+    // Show loading state immediately
     if (selectedPeriod) {
-      console.log('📊 Reloading data for new client:', newClient.name);
-      await loadPeriodDataWithClient(selectedPeriod, newClient);
+      setLoadingPeriod(selectedPeriod);
+    }
+    
+    // Reload data for the current period with the new client
+    // 🔧 FIX: Use forceClearCache=true to bypass all blocking layers
+    if (selectedPeriod) {
+      console.log('📊 Reloading data for new client:', newClient.name, '(forceClearCache=true)');
+      await loadPeriodDataWithClient(selectedPeriod, newClient, true);
     }
   };
 
@@ -971,55 +992,62 @@ function ReportsPageContent() {
           let booking_step_2 = 0;
           let booking_step_3 = 0;
 
+          // ✅ CRITICAL FIX: Build action lookup to use omni_* as single source of truth
+          // Meta API returns the SAME event under multiple action types (omni_*, fb_pixel_*, base names)
+          // We must use ONLY omni_* variants to avoid double/triple counting!
+          const actionMap = new Map<string, number>();
+          const actionValueMap = new Map<string, number>();
+          
           if (campaign.actions && Array.isArray(campaign.actions)) {
             campaign.actions.forEach((action: any) => {
-              const actionType = action.action_type;
+              const actionType = (action.action_type || '').toLowerCase();
               const value = parseInt(action.value || '0');
-              
-              // 1. Potencjalne kontakty telefoniczne
-              if (actionType.includes('click_to_call')) {
-                click_to_call += value;
-              }
-              
-              // 2. Potencjalne kontakty email
-              if (actionType.includes('link_click') || actionType.includes('mailto') || actionType.includes('email')) {
-                email_contacts += value;
-              }
-              
-              // 3. Kroki rezerwacji – Etap 1 (search event in Booking Engine)
-              if (actionType.includes('booking_step_1') || actionType.includes('search')) {
-                booking_step_1 += value;
-              }
-              
-              // 4. Rezerwacje (zakończone rezerwacje) - Conservative: Specific purchase events only
-              if (actionType === 'purchase' || 
-                  actionType.includes('fb_pixel_purchase') ||
-                  actionType.includes('offsite_conversion.custom.fb_pixel_purchase')) {
-                reservations += value;
-              }
-              
-              // 8. Etap 2 rezerwacji - View content event in Booking Engine
-              if (actionType.includes('booking_step_2') || 
-                  actionType.includes('view_content')) {
-                booking_step_2 += value;
-              }
-              
-              // 9. Etap 3 rezerwacji - Initiate checkout event in Booking Engine
-              if (actionType.includes('booking_step_3') || 
-                  actionType.includes('initiate_checkout')) {
-                booking_step_3 += value;
+              if (!isNaN(value) && value >= 0) {
+                actionMap.set(actionType, (actionMap.get(actionType) || 0) + value);
               }
             });
           }
-
-          // 5. Wartość rezerwacji - Extract from action_values
+          
           if (campaign.action_values && Array.isArray(campaign.action_values)) {
-            campaign.action_values.forEach((actionValue: any) => {
-              if (actionValue.action_type === 'purchase' || actionValue.action_type.includes('purchase')) {
-                reservation_value = parseFloat(actionValue.value || '0');
+            campaign.action_values.forEach((av: any) => {
+              const actionType = (av.action_type || '').toLowerCase();
+              const value = parseFloat(av.value || '0');
+              if (!isNaN(value) && value >= 0) {
+                actionValueMap.set(actionType, (actionValueMap.get(actionType) || 0) + value);
               }
             });
           }
+          
+          // 1. Potencjalne kontakty telefoniczne (PHONE)
+          // Priority: Havet PBM custom event > standard click_to_call
+          click_to_call = actionMap.get('offsite_conversion.custom.1470262077092668') ||  // Havet PBM
+                         actionMap.get('click_to_call_call_confirm') || 0;
+          
+          // 2. Potencjalne kontakty email (EMAIL)
+          // Priority: Havet PBM custom event > standard lead
+          email_contacts = actionMap.get('offsite_conversion.custom.2770488499782793') ||  // Havet PBM
+                          actionMap.get('lead') || 
+                          actionMap.get('onsite_conversion.lead_grouped') || 0;
+          
+          // 3. Booking Step 1 (Search) - use ONLY omni_search
+          booking_step_1 = actionMap.get('omni_search') || 
+                          actionMap.get('offsite_conversion.fb_pixel_search') || 0;
+          
+          // 4. Rezerwacje (Purchase) - use ONLY omni_purchase ("zakupy w witrynie")
+          reservations = actionMap.get('omni_purchase') || 
+                        actionMap.get('offsite_conversion.fb_pixel_purchase') || 0;
+          
+          // 5. Booking Step 2 (View Content) - use ONLY omni_view_content
+          booking_step_2 = actionMap.get('omni_view_content') || 
+                          actionMap.get('offsite_conversion.fb_pixel_view_content') || 0;
+          
+          // 6. Booking Step 3 (Initiate Checkout) - use ONLY omni_initiated_checkout
+          booking_step_3 = actionMap.get('omni_initiated_checkout') || 
+                          actionMap.get('offsite_conversion.fb_pixel_initiate_checkout') || 0;
+          
+          // 7. Wartość rezerwacji - use ONLY omni_purchase value
+          reservation_value = actionValueMap.get('omni_purchase') || 
+                             actionValueMap.get('offsite_conversion.fb_pixel_purchase') || 0;
 
           return {
             id: campaign.campaign_id || `campaign-${index}`,

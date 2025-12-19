@@ -57,74 +57,101 @@ export function parseMetaActions(
     actionValues = [];
   }
 
-  // Parse actions array
+  // ✅ CRITICAL FIX: Meta API returns the SAME event under multiple action types:
+  // - omni_* (unified/aggregated)
+  // - offsite_conversion.fb_pixel_* (pixel-based)
+  // - base names (e.g., "search", "purchase")
+  //
+  // We must use ONLY the "omni_*" variants as the single source of truth
+  // to avoid double/triple counting conversions!
+  //
+  // Build a lookup map for fast access
+  const actionMap = new Map<string, number>();
+  actions.forEach((action) => {
+    const actionType = String(action.action_type || '').toLowerCase();
+    const value = parseInt(action.value || '0', 10);
+    if (!isNaN(value) && value >= 0) {
+      actionMap.set(actionType, (actionMap.get(actionType) || 0) + value);
+    }
+  });
+
+  // Parse actions array - using PRIORITY ORDER to avoid double counting
   actions.forEach((action) => {
     try {
       const actionType = String(action.action_type || '').toLowerCase();
       const value = parseInt(action.value || '0', 10);
+      
+      // 🔍 DEBUG: Log booking_step_3 related actions for debugging
+      if (actionType.includes('initiate_checkout') || actionType.includes('booking_step_3')) {
+        logger.debug(`🔍 parseMetaActions: Found booking_step_3 action: ${actionType} = ${value}`, { campaignName });
+      }
       
       if (isNaN(value) || value < 0) {
         logger.debug(`parseMetaActions: Invalid value for action_type "${actionType}": ${action.value}`);
         return; // Skip invalid values
       }
       
-      // Click to call conversions
-      if (actionType.includes('click_to_call') || 
-          actionType.includes('phone_number_clicks')) {
+      // ✅ CLICK TO CALL (PHONE)
+      // Priority 1: Known PBM custom events (Havet-specific)
+      // Priority 2: Standard click_to_call_call_confirm (all other clients)
+      if (actionType === 'offsite_conversion.custom.1470262077092668') {  // Havet PBM phone
         metrics.click_to_call += value;
       }
+      else if (actionType === 'click_to_call_call_confirm' && 
+               !actionMap.has('offsite_conversion.custom.1470262077092668')) {
+        metrics.click_to_call = value;
+      }
       
-      // Email contact conversions
-      if (actionType.includes('contact') || 
-          actionType.includes('email') ||
-          actionType.includes('onsite_web_lead')) {
+      // ✅ EMAIL CONTACTS
+      // Priority 1: Known PBM custom events (Havet-specific)
+      // Priority 2: Standard lead events (all other clients)
+      if (actionType === 'offsite_conversion.custom.2770488499782793') {  // Havet PBM email
+        metrics.email_contacts += value;
+      }
+      else if ((actionType === 'lead' || actionType === 'onsite_conversion.lead_grouped') && 
+               !actionMap.has('offsite_conversion.custom.2770488499782793')) {
         metrics.email_contacts += value;
       }
       
       // ✅ BOOKING STEP 1 - Search (Booking Engine Search)
-      // Maps to Meta column: "search"
-      // Includes: omni_search, offsite_conversion.fb_pixel_search, search
-      if (actionType.includes('booking_step_1') || 
-          actionType.includes('search') ||
-          actionType === 'search' ||
-          actionType === 'omni_search' ||
-          actionType.includes('fb_pixel_search')) {
-        metrics.booking_step_1 += value;
+      // Use ONLY omni_search as the single source of truth
+      // Meta duplicates this as: omni_search, offsite_conversion.fb_pixel_search, search
+      if (actionType === 'omni_search') {
+        metrics.booking_step_1 = value; // Use assignment, not +=
+      }
+      // Fallback if omni_search not present but fb_pixel_search is
+      else if (actionType === 'offsite_conversion.fb_pixel_search' && !actionMap.has('omni_search')) {
+        metrics.booking_step_1 = value;
       }
       
       // ✅ BOOKING STEP 2 - View Content (Booking Engine View Details)
-      // Maps to Meta column: "view content"
-      // Includes: omni_view_content, offsite_conversion.fb_pixel_view_content, view_content
-      if (actionType.includes('booking_step_2') || 
-          actionType.includes('view_content') ||
-          actionType === 'view_content' ||
-          actionType === 'omni_view_content' ||
-          actionType.includes('fb_pixel_view_content') ||
-          actionType.includes('offsite_conversion.custom.1150356839010935')) {
-        metrics.booking_step_2 += value;
+      // Use ONLY omni_view_content as the single source of truth
+      if (actionType === 'omni_view_content') {
+        metrics.booking_step_2 = value; // Use assignment, not +=
+      }
+      // Fallback if omni_view_content not present
+      else if (actionType === 'offsite_conversion.fb_pixel_view_content' && !actionMap.has('omni_view_content')) {
+        metrics.booking_step_2 = value;
       }
       
       // ✅ BOOKING STEP 3 - Initiate Checkout (Booking Engine Begin Booking)
-      // Maps to Meta column: "initiate checkout"
-      // Includes: omni_initiated_checkout, initiate_checkout, offsite_conversion.fb_pixel_initiate_checkout
-      if (actionType.includes('booking_step_3') || 
-          actionType.includes('initiate_checkout') ||
-          actionType === 'initiate_checkout' ||
-          actionType === 'omni_initiated_checkout' ||
-          actionType.includes('fb_pixel_initiate_checkout') ||
-          actionType.includes('offsite_conversion.custom.3490904591193350')) {
-        metrics.booking_step_3 += value;
+      // Use ONLY omni_initiated_checkout as the single source of truth
+      if (actionType === 'omni_initiated_checkout') {
+        metrics.booking_step_3 = value; // Use assignment, not +=
+      }
+      // Fallback if omni_initiated_checkout not present
+      else if (actionType === 'offsite_conversion.fb_pixel_initiate_checkout' && !actionMap.has('omni_initiated_checkout')) {
+        metrics.booking_step_3 = value;
       }
       
-      // RESERVATIONS - Final Purchase
-      // Maps to: purchase, complete_registration
-      if (actionType === 'purchase' || 
-          actionType.includes('fb_pixel_purchase') ||
-          actionType.includes('offsite_conversion.fb_pixel_purchase') ||
-          actionType.includes('omni_purchase') ||
-          actionType === 'onsite_web_purchase' ||
-          actionType.includes('complete_registration')) {
-        metrics.reservations += value;
+      // ✅ RESERVATIONS - Final Purchase
+      // Use ONLY omni_purchase as the single source of truth
+      if (actionType === 'omni_purchase') {
+        metrics.reservations = value; // Use assignment, not +=
+      }
+      // Fallback if omni_purchase not present
+      else if (actionType === 'offsite_conversion.fb_pixel_purchase' && !actionMap.has('omni_purchase')) {
+        metrics.reservations = value;
       }
       
     } catch (error) {
@@ -136,7 +163,18 @@ export function parseMetaActions(
     }
   });
 
+  // ✅ CRITICAL FIX: Build action_values lookup map to avoid double counting
+  const actionValueMap = new Map<string, number>();
+  actionValues.forEach((av) => {
+    const actionType = String(av.action_type || '').toLowerCase();
+    const value = parseFloat(av.value || '0');
+    if (!isNaN(value) && value >= 0) {
+      actionValueMap.set(actionType, (actionValueMap.get(actionType) || 0) + value);
+    }
+  });
+
   // Parse action_values array (for monetary values)
+  // Use ONLY omni_purchase as the single source of truth (same event duplicated)
   actionValues.forEach((actionValue) => {
     try {
       const actionType = String(actionValue.action_type || '').toLowerCase();
@@ -147,13 +185,13 @@ export function parseMetaActions(
         return; // Skip invalid values
       }
       
-      // Reservation value (purchase value)
-      if (actionType === 'purchase' || 
-          actionType.includes('fb_pixel_purchase') ||
-          actionType.includes('offsite_conversion.fb_pixel_purchase') ||
-          actionType.includes('omni_purchase') ||
-          actionType === 'onsite_web_purchase') {
-        metrics.reservation_value += value;
+      // ✅ Reservation value (purchase value) - use ONLY omni_purchase
+      if (actionType === 'omni_purchase') {
+        metrics.reservation_value = value; // Use assignment, not +=
+      }
+      // Fallback if omni_purchase not present
+      else if (actionType === 'offsite_conversion.fb_pixel_purchase' && !actionValueMap.has('omni_purchase')) {
+        metrics.reservation_value = value;
       }
       
     } catch (error) {
@@ -237,14 +275,26 @@ export function aggregateConversionMetrics(campaigns: any[]): ParsedConversionMe
     return totals;
   }
   
+  // ✅ CRITICAL FIX: Sanitize values to numbers to prevent string concatenation
+  const sanitizeNumber = (value: any): number => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/[^0-9.-]/g, '');
+      const num = parseFloat(cleaned);
+      return Number.isFinite(num) ? num : 0;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
   campaigns.forEach((campaign) => {
-    totals.click_to_call += campaign.click_to_call || 0;
-    totals.email_contacts += campaign.email_contacts || 0;
-    totals.booking_step_1 += campaign.booking_step_1 || 0;
-    totals.booking_step_2 += campaign.booking_step_2 || 0;
-    totals.booking_step_3 += campaign.booking_step_3 || 0;
-    totals.reservations += campaign.reservations || 0;
-    totals.reservation_value += campaign.reservation_value || 0;
+    totals.click_to_call += sanitizeNumber(campaign.click_to_call);
+    totals.email_contacts += sanitizeNumber(campaign.email_contacts);
+    totals.booking_step_1 += sanitizeNumber(campaign.booking_step_1);
+    totals.booking_step_2 += sanitizeNumber(campaign.booking_step_2);
+    totals.booking_step_3 += sanitizeNumber(campaign.booking_step_3);
+    totals.reservations += sanitizeNumber(campaign.reservations);
+    totals.reservation_value += sanitizeNumber(campaign.reservation_value);
   });
   
   return totals;
