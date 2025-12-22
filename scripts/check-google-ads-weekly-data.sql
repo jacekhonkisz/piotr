@@ -21,3 +21,5 @@ LEFT JOIN campaign_summaries cs ON cs.client_id = c.id
 GROUP BY c.id, c.name, c.google_ads_customer_id
 ORDER BY google_status, c.name;
 
+
+

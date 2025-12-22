@@ -193,11 +193,23 @@ export async function fetchFreshCurrentMonthData(client: any) {
       } : null
     });
 
-    // Calculate stats from Meta API insights (now with parsed conversion data)
-    const totalSpend = campaignInsights.reduce((sum, insight) => sum + (parseFloat(insight.spend) || 0), 0);
-    const totalImpressions = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.impressions) || 0), 0);
-    const totalClicks = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.clicks) || 0), 0);
-    const metaTotalConversions = campaignInsights.reduce((sum, insight) => sum + (parseInt(insight.conversions) || 0), 0);
+    // ✅ CRITICAL FIX: Sanitize campaign values to numbers to prevent string concatenation (same as weekly)
+    const sanitizeNumber = (value: any): number => {
+      if (value === null || value === undefined) return 0;
+      if (typeof value === 'string') {
+        const cleaned = value.replace(/[^0-9.-]/g, '');
+        const num = parseFloat(cleaned);
+        return Number.isFinite(num) ? num : 0;
+      }
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
+    };
+
+    // Calculate stats from Meta API insights with sanitized numbers
+    const totalSpend = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.spend), 0);
+    const totalImpressions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.impressions), 0);
+    const totalClicks = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.clicks), 0);
+    const metaTotalConversions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.conversions), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -277,53 +289,50 @@ export async function fetchFreshCurrentMonthData(client: any) {
     
     logger.info('📊 Aggregated Meta conversion metrics from parsed campaigns:', metaConversionMetrics);
 
-    // 🔧 PRIORITY: Use real daily_kpi_data if available, otherwise fall back to Meta API data
+    // ✅ PRODUCTION FIX: Use ONLY real data - NO ESTIMATES
+    // Priority: 1. daily_kpi_data (most accurate), 2. Meta API parsed actions, 3. Zero (no fake data)
     const conversionMetrics = {
+      // Use real data from daily_kpi_data first, then Meta API parsed actions, then 0
       click_to_call: realConversionMetrics.click_to_call > 0 
         ? realConversionMetrics.click_to_call 
-        : metaConversionMetrics.click_to_call > 0 
-          ? metaConversionMetrics.click_to_call 
-          : Math.round(metaTotalConversions * 0.15), // 15% estimate
+        : metaConversionMetrics.click_to_call, // Real Meta API data or 0
 
       email_contacts: realConversionMetrics.email_contacts > 0 
         ? realConversionMetrics.email_contacts 
-        : metaConversionMetrics.email_contacts > 0 
-          ? metaConversionMetrics.email_contacts 
-          : Math.round(metaTotalConversions * 0.10), // 10% estimate
+        : metaConversionMetrics.email_contacts, // Real Meta API data or 0
 
       booking_step_1: realConversionMetrics.booking_step_1 > 0 
         ? realConversionMetrics.booking_step_1 
-        : metaConversionMetrics.booking_step_1 > 0 
-          ? metaConversionMetrics.booking_step_1 
-          : Math.round(metaTotalConversions * 0.75), // 75% estimate
+        : metaConversionMetrics.booking_step_1, // Real Meta API data or 0
 
       booking_step_2: realConversionMetrics.booking_step_2 > 0 
         ? realConversionMetrics.booking_step_2 
-        : metaConversionMetrics.booking_step_2 > 0 
-          ? metaConversionMetrics.booking_step_2 
-          : Math.round(metaTotalConversions * 0.375), // 50% of step 1
+        : metaConversionMetrics.booking_step_2, // Real Meta API data or 0
 
       booking_step_3: realConversionMetrics.booking_step_3 > 0 
         ? realConversionMetrics.booking_step_3 
-        : metaConversionMetrics.booking_step_3 > 0 
-          ? metaConversionMetrics.booking_step_3 
-          : Math.round(metaTotalConversions * 0.30), // 80% of step 2
+        : metaConversionMetrics.booking_step_3, // Real Meta API data or 0
 
       reservations: realConversionMetrics.reservations > 0 
         ? realConversionMetrics.reservations 
         : metaConversionMetrics.reservations > 0 
           ? metaConversionMetrics.reservations 
-          : metaTotalConversions, // Use total conversions as fallback
+          : metaTotalConversions, // Use raw total conversions as last resort
 
       reservation_value: realConversionMetrics.reservation_value > 0 
         ? realConversionMetrics.reservation_value 
-        : metaConversionMetrics.reservation_value > 0 
-          ? metaConversionMetrics.reservation_value 
-          : 0, // Keep 0 if no real data
+        : metaConversionMetrics.reservation_value, // Real Meta API data or 0
 
       roas: 0, // Will be calculated below
       cost_per_reservation: 0 // Will be calculated below
     };
+    
+    logger.info('✅ PRODUCTION: Using REAL data only (no estimates):', {
+      source: realConversionMetrics.click_to_call > 0 ? 'daily_kpi_data' : metaConversionMetrics.click_to_call > 0 ? 'meta_api_actions' : 'no_data',
+      click_to_call: conversionMetrics.click_to_call,
+      reservations: conversionMetrics.reservations,
+      reservation_value: conversionMetrics.reservation_value
+    });
 
     // Calculate derived metrics
     conversionMetrics.roas = totalSpend > 0 && conversionMetrics.reservation_value > 0 
@@ -341,43 +350,14 @@ export async function fetchFreshCurrentMonthData(client: any) {
       ? realConversionMetrics.reservations // Use real reservations as primary conversion metric
       : conversionMetrics.reservations; // Fallback to calculated conversions
 
-    // 🔧 FALLBACK MECHANISM: If key conversion metrics are 0 and we have spend/impressions,
-    // create minimal realistic data to prevent "Nie skonfigurowane"
-    // Note: We ensure at least 1 for each metric to prevent UI showing "Nie skonfigurowane"
-    if ((totalSpend > 0 || totalClicks > 0)) {
-      // Apply smart fallback for any 0 values while preserving real data
-      if (conversionMetrics.click_to_call === 0) {
-        conversionMetrics.click_to_call = Math.max(1, Math.round(totalClicks * 0.01)); // 1% call rate
-      }
-      if (conversionMetrics.email_contacts === 0) {
-        conversionMetrics.email_contacts = Math.max(1, Math.round(totalClicks * 0.005)); // 0.5% email rate  
-      }
-      if (conversionMetrics.booking_step_1 === 0) {
-        conversionMetrics.booking_step_1 = Math.max(1, Math.round(totalClicks * 0.02)); // 2% booking start rate
-      }
-      if (conversionMetrics.reservations === 0) {
-        conversionMetrics.reservations = Math.max(1, Math.round(totalClicks * 0.005)); // 0.5% conversion rate
-      }
-      
-      // Handle booking_step_2 - typically 40-60% of booking_step_1
-      if (conversionMetrics.booking_step_2 === 0) {
-        conversionMetrics.booking_step_2 = Math.max(1, Math.round(conversionMetrics.booking_step_1 * 0.5)); // 50% of step 1
-      }
-      
-      // Handle booking_step_3 - typically 60-80% of booking_step_2
-      if (conversionMetrics.booking_step_3 === 0) {
-        conversionMetrics.booking_step_3 = Math.max(1, Math.round(conversionMetrics.booking_step_2 * 0.7)); // 70% of step 2
-      }
-      
-      // Handle reservation_value - average hotel reservation value
-      if (conversionMetrics.reservation_value === 0 && conversionMetrics.reservations > 0) {
-        conversionMetrics.reservation_value = conversionMetrics.reservations * 350; // $350 per reservation
-      }
-      
-      // Recalculate ROAS with the new reservation_value
-      if (conversionMetrics.reservation_value > 0 && totalSpend > 0) {
-        conversionMetrics.roas = conversionMetrics.reservation_value / totalSpend;
-      }
+    // ✅ PRODUCTION: NO FALLBACK ESTIMATES - Real data only
+    // If conversion metrics are 0, they stay 0. UI should handle displaying "No data" or "N/A"
+    // This ensures production accuracy - no fake/estimated data is ever shown
+    
+    // Log warning if we have spend but no conversion tracking
+    if ((totalSpend > 0 || totalClicks > 0) && conversionMetrics.reservations === 0) {
+      logger.warn('⚠️ PRODUCTION WARNING: Account has spend/clicks but no conversion data tracked');
+      logger.warn('   Ensure Meta Pixel is properly configured with conversion events');
     }
 
     // 🔧 NEW: Fetch meta tables data and account info for current month cache
@@ -1136,7 +1116,11 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
   });
   
   const currentWeek = weekToFetch;
-  const metaService = new MetaAPIServiceOptimized(client.meta_access_token);
+  // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+  const metaToken = client.system_user_token || client.meta_access_token;
+  const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+  logger.info(`🔑 Weekly data: Using ${tokenType} for ${client.name || client.id}`);
+  const metaService = new MetaAPIServiceOptimized(metaToken);
   
   const adAccountId = client.ad_account_id.startsWith('act_') 
     ? client.ad_account_id.substring(4)
@@ -1169,14 +1153,27 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       });
     }
 
-    // Get account info  
-    const accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
+    // Get account info (using let so it can be updated for weekly metaTables fetch)
+    let accountInfo = await metaService.getAccountInfo(adAccountId).catch(() => null);
 
-    // Calculate stats (same logic as monthly)
-    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
-    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
-    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
-    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+    // ✅ CRITICAL FIX: Sanitize campaign values to numbers to prevent string concatenation
+    // When retrieved from database, numeric values might be strings
+    const sanitizeNumber = (value: any): number => {
+      if (value === null || value === undefined) return 0;
+      if (typeof value === 'string') {
+        const cleaned = value.replace(/[^0-9.-]/g, '');
+        const num = parseFloat(cleaned);
+        return Number.isFinite(num) ? num : 0;
+      }
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
+    };
+    
+    // Calculate stats with sanitized numbers
+    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.spend), 0);
+    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.impressions), 0);
+    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.clicks), 0);
+    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.conversions), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -1243,49 +1240,35 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
                        realConversionMetrics.email_contacts > 0 ||
                        realConversionMetrics.reservations > 0;
 
+    // ✅ PRODUCTION FIX: Use ONLY real data - NO ESTIMATES for weekly metrics
     const conversionMetrics = {
-      click_to_call: hasRealData 
-        ? realConversionMetrics.click_to_call 
-        : Math.round(totalConversionsSum * 0.15),
-      
-      email_contacts: hasRealData 
-        ? realConversionMetrics.email_contacts 
-        : Math.round(totalConversionsSum * 0.10),
-      
-      booking_step_1: hasRealData 
-        ? realConversionMetrics.booking_step_1 
-        : Math.round(totalConversionsSum * 0.75),
-      
-      booking_step_2: hasRealData 
-        ? realConversionMetrics.booking_step_2 
-        : Math.round(totalConversionsSum * 0.75 * 0.50),
-      
-      booking_step_3: hasRealData 
-        ? realConversionMetrics.booking_step_3 
-        : Math.round(totalConversionsSum * 0.75 * 0.50 * 0.8), // 80% of step 2 proceed to step 3
-      
-      reservations: hasRealData 
+      click_to_call: realConversionMetrics.click_to_call, // Real data or 0
+      email_contacts: realConversionMetrics.email_contacts, // Real data or 0
+      booking_step_1: realConversionMetrics.booking_step_1, // Real data or 0
+      booking_step_2: realConversionMetrics.booking_step_2, // Real data or 0
+      booking_step_3: realConversionMetrics.booking_step_3, // Real data or 0
+      reservations: realConversionMetrics.reservations > 0 
         ? realConversionMetrics.reservations 
-        : totalConversionsSum,
-      
-      reservation_value: realConversionMetrics.reservation_value > 0 
-        ? realConversionMetrics.reservation_value 
-        : 0,
-      
+        : totalConversionsSum, // Use raw total conversions as fallback
+      reservation_value: realConversionMetrics.reservation_value, // Real data or 0
       roas: totalSpend > 0 && realConversionMetrics.reservation_value > 0 
         ? realConversionMetrics.reservation_value / totalSpend 
         : 0,
-      
-      cost_per_reservation: (realConversionMetrics.reservations || totalConversionsSum) > 0 
-        ? totalSpend / (realConversionMetrics.reservations || totalConversionsSum) 
+      cost_per_reservation: realConversionMetrics.reservations > 0 
+        ? totalSpend / realConversionMetrics.reservations 
         : 0
     };
 
-    logger.info(`📊 Final weekly conversion metrics:`, {
+    logger.info(`✅ PRODUCTION: Weekly conversion metrics (REAL DATA ONLY):`, {
       hasRealData,
       conversionMetrics,
-      source: hasRealData ? 'real_data' : 'calculated_estimates'
+      source: hasRealData ? 'daily_kpi_data/meta_api_parsed' : 'no_conversion_data'
     });
+    
+    // Log warning if we have spend but no conversion tracking
+    if ((totalSpend > 0 || totalClicks > 0) && !hasRealData) {
+      logger.warn('⚠️ PRODUCTION WARNING: Weekly data has spend/clicks but no conversion tracking');
+    }
 
     // 🔧 FIX: Create synthetic campaign data when no campaigns exist (weekly)
     let syntheticCampaigns = campaignInsights;
@@ -1303,8 +1286,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         ctr: averageCtr,
         cpc: averageCpc,
         cpp: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
-        frequency: totalImpressions > 0 ? totalImpressions / (totalImpressions / 1000) : 0,
-        reach: Math.round(totalImpressions * 0.8),
+        frequency: 0, // ✅ PRODUCTION: Don't estimate - requires real reach data
+        reach: 0, // ✅ PRODUCTION: Don't estimate reach - Meta API should provide real reach
         status: 'ACTIVE',
         date_start: currentWeek.startDate!,
         date_stop: currentWeek.endDate!
@@ -1321,6 +1304,44 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     // Note: If needed in the future, fetch real campaign list like monthly data does:
     // const campaigns = await metaService.getCampaigns(adAccountId, { start: currentWeek.startDate, end: currentWeek.endDate });
 
+    // ✅ NEW: Fetch meta tables data for weekly cache (same as monthly)
+    let metaTables = null;
+    // Note: accountInfo already declared above, will be updated if metaTables fetch succeeds
+    
+    try {
+      logger.info('📊 Fetching meta tables data for weekly cache...');
+      
+      const [placementData, demographicData, adRelevanceData, accountData] = await Promise.all([
+        metaService.getPlacementPerformance(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
+        metaService.getDemographicPerformance(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
+        metaService.getAdRelevanceResults(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
+        metaService.getAccountInfo(adAccountId).catch(() => null)
+      ]);
+      
+      metaTables = {
+        placementPerformance: placementData,
+        demographicPerformance: demographicData,
+        adRelevanceResults: adRelevanceData
+      };
+      
+      accountInfo = accountData;
+      
+      logger.info('✅ Meta tables data fetched for weekly cache:', {
+        placementCount: placementData?.length || 0,
+        demographicCount: demographicData?.length || 0,
+        adRelevanceCount: adRelevanceData?.length || 0,
+        hasAccountInfo: !!accountData
+      });
+    } catch (metaError) {
+      logger.warn('⚠️ Failed to fetch meta tables for weekly cache:', metaError);
+      metaTables = {
+        placementPerformance: [],
+        demographicPerformance: [],
+        adRelevanceResults: []
+      };
+      accountInfo = null;
+    }
+
     return {
       client: {
         ...client,
@@ -1336,6 +1357,7 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         averageCpc
       },
       conversionMetrics,
+      metaTables, // ✅ Include metaTables in weekly cache data
       dateRange: {
         start: currentWeek.startDate,
         end: currentWeek.endDate
@@ -1358,19 +1380,36 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
 // Weekly smart cache function - now supports specific period requests
 export async function getSmartWeekCacheData(clientId: string, forceRefresh: boolean = false, requestedPeriodId?: string) {
   // Use requested period or default to current week
-  const targetWeek = requestedPeriodId ? parseWeekPeriodId(requestedPeriodId) : getCurrentWeekInfo();
+  let targetWeek = requestedPeriodId ? parseWeekPeriodId(requestedPeriodId) : getCurrentWeekInfo();
+  
+  // 🔧 FIX: If this is the current week, cap end date to today (not future dates)
+  // parseWeekPeriodId returns full week (Mon-Sun), but current week should only go to today
+  const isCurrentWeekRequest = isCurrentWeekPeriod(targetWeek.periodId);
+  if (isCurrentWeekRequest) {
+    const originalEndDate = targetWeek.endDate; // Store original before capping
+    const currentWeekInfo = getCurrentWeekInfo();
+    // Use the capped end date from getCurrentWeekInfo() to avoid fetching future dates
+    targetWeek = {
+      ...targetWeek,
+      endDate: currentWeekInfo.endDate // Use capped end date (today, not Sunday)
+    };
+    logger.info('🔧 Current week detected - capping end date to today:', {
+      originalEndDate: originalEndDate,
+      cappedEndDate: currentWeekInfo.endDate,
+      reason: 'Prevents fetching future dates from Meta API'
+    });
+  }
+  
   const cacheKey = `${clientId}_${targetWeek.periodId}`;
   
   logger.info('📅 Smart weekly cache request:', {
     clientId,
     periodId: targetWeek.periodId,
     requestedPeriodId,
-    isCurrentWeek: isCurrentWeekPeriod(targetWeek.periodId),
-    forceRefresh
+    isCurrentWeek: isCurrentWeekRequest,
+    forceRefresh,
+    dateRange: `${targetWeek.startDate} to ${targetWeek.endDate}`
   });
-  
-  // Only use current week cache for current week requests
-  const isCurrentWeekRequest = isCurrentWeekPeriod(targetWeek.periodId);
   
   if (!isCurrentWeekRequest) {
     logger.info('📚 Historical week requested, should use database instead of smart cache');

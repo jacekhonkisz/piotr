@@ -37,3 +37,5 @@ WHERE client_id = (SELECT id FROM clients WHERE name = 'Belmonte Hotel' LIMIT 1)
   AND summary_date >= '2025-11-01'
 ORDER BY summary_type, summary_date;
 
+
+

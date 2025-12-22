@@ -219,3 +219,7 @@ Campaign C: Step 1 w BE = 307, Step 2 w BE = 31, Step 3 w BE = 6
 Thank you for providing the Google Ads screenshot! Both parsers are now complete and ready to use. 🚀
 
 
+
+
+
+

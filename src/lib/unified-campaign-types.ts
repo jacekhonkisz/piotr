@@ -30,17 +30,23 @@ export interface UnifiedCampaign {
   ad_type?: string;
   objective?: string;
   
-  // Conversion tracking metrics (mapped differently for each platform)
-  click_to_call?: number;        // Meta: click_to_call, Google: phone_clicks
-  email_contacts?: number;       // Meta: email_contacts, Google: email_clicks
-  form_submissions?: number;     // Google: form_submissions, Meta: calculated
-  phone_calls?: number;          // Google: phone_calls, Meta: calculated
-  booking_step_1?: number;
-  booking_step_2?: number;
-  booking_step_3?: number;
-  reservations?: number;
-  reservation_value?: number;
-  roas?: number;
+  // ✅ UNIFIED Conversion tracking metrics
+  // Primary fields (used by both platforms)
+  click_to_call?: number;        // Both platforms
+  email_contacts?: number;       // ✅ UNIFIED: Primary field for email/form contacts
+  booking_step_1?: number;       // Both platforms
+  booking_step_2?: number;       // Both platforms
+  booking_step_3?: number;       // Both platforms
+  reservations?: number;         // Both platforms
+  reservation_value?: number;    // Both platforms
+  roas?: number;                 // Both platforms
+  cost_per_reservation?: number; // Both platforms
+  
+  // Google Ads-specific fields (optional, for backward compatibility)
+  form_submissions?: number;     // Google: maps to email_contacts
+  phone_calls?: number;          // Google-specific
+  email_clicks?: number;         // Google-specific
+  phone_clicks?: number;         // Google-specific
 }
 
 // Unified report interface

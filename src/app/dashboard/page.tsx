@@ -247,6 +247,22 @@ export default function DashboardPage() {
 
   const handleClientChange = async (client: Client) => {
     console.log('🚀 DASHBOARD: handleClientChange called for client:', client.id);
+    
+    // 🔧 CRITICAL FIX: Reset ALL loading states BEFORE switching clients
+    // This prevents any blocking from previous operations
+    loadingRef.current = false;
+    setRefreshingData(false);
+    
+    // 🔧 CRITICAL FIX: Clear API call trackers to ensure fresh data load
+    if ((window as any).apiCallTracker) {
+      (window as any).apiCallTracker = {};
+      console.log('🧹 Cleared ALL API call trackers for client switch');
+    }
+    
+    // 🔧 CRITICAL FIX: Clear old clientData immediately to prevent stale values showing
+    setClientData(null);
+    
+    // Now set the new client and loading states
     setSelectedClient(client);
     setLoading(true);
     setLoadingMessage('Ładowanie danych klienta...');
@@ -1614,16 +1630,16 @@ export default function DashboardPage() {
                 currency="PLN"
                 sharedData={{
                   stats: clientData.stats,
+                  // ✅ UNIFIED: Pass conversion metrics directly using unified field names
                   conversionMetrics: {
-                    form_submissions: clientData.conversionMetrics.booking_step_1,
-                    phone_calls: clientData.conversionMetrics.click_to_call,
-                    email_clicks: clientData.conversionMetrics.email_contacts,
-                    phone_clicks: clientData.conversionMetrics.click_to_call,
+                    click_to_call: clientData.conversionMetrics.click_to_call,
+                    email_contacts: clientData.conversionMetrics.email_contacts,
                     booking_step_1: clientData.conversionMetrics.booking_step_1,
                     booking_step_2: clientData.conversionMetrics.booking_step_2,
                     booking_step_3: clientData.conversionMetrics.booking_step_3,
                     reservations: clientData.conversionMetrics.reservations,
                     reservation_value: clientData.conversionMetrics.reservation_value,
+                    roas: clientData.conversionMetrics.roas,
                     cost_per_reservation: clientData.conversionMetrics.cost_per_reservation
                   },
                   debug: clientData.debug,

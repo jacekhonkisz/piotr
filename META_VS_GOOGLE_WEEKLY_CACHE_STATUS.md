@@ -139,3 +139,7 @@ SELECT COUNT(*) as google_entries FROM google_ads_current_week_cache;
 
 
 
+
+
+
+

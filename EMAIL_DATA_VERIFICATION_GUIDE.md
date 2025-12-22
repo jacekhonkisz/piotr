@@ -240,3 +240,6 @@ ORDER BY summary_date DESC;
 Generated: 2025-11-17
 Purpose: Prove to you that the system WILL show real data once it exists
 
+
+
+

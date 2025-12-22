@@ -118,7 +118,9 @@ export async function POST(request: NextRequest) {
       logger.info(`👤 Processing: ${clientName} (${client.id})`);
 
       // PROCESS META ADS
-      if (client.meta_access_token && client.ad_account_id) {
+      // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+      const metaAvailable = (client.system_user_token || client.meta_access_token) && client.ad_account_id;
+      if (metaAvailable) {
         try {
           logger.info(`🔵 Processing Meta Ads for ${clientName}...`);
           
@@ -159,10 +161,12 @@ export async function POST(request: NextRequest) {
           if (!dryRun) {
             logger.info(`📡 Fetching Meta data from API for ${startDate} to ${endDate}...`);
             
-            const metaService = new MetaAPIService(
-              client.meta_access_token,
-              client.system_user_token || undefined
-            );
+            // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+            const metaToken = client.system_user_token || client.meta_access_token;
+            const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+            logger.info(`🔑 Using ${tokenType} for ${client.name || client.id}`);
+            
+            const metaService = new MetaAPIService(metaToken);
 
             // Fetch campaign insights
             const campaigns = await metaService.getCampaignInsights(

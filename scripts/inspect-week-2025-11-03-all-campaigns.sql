@@ -35,3 +35,5 @@ WHERE client_id = (SELECT id FROM clients WHERE name = 'Belmonte Hotel' LIMIT 1)
   AND summary_type = 'weekly'
   AND summary_date = '2025-11-03';
 
+
+

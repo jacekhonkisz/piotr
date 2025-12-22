@@ -25,3 +25,5 @@ WHERE cs.client_id = (SELECT id FROM clients WHERE name = 'Belmonte Hotel' LIMIT
 ORDER BY campaign->'spend' DESC
 LIMIT 5;  -- Top 5 campaigns by spend
 
+
+

@@ -85,7 +85,9 @@ export async function POST(request: NextRequest) {
     const client = clientData;
     
     // Validate client has required Meta credentials
-    if (!client.meta_access_token || !client.ad_account_id) {
+    // ✅ FIX: Check for system_user_token OR meta_access_token
+    const metaToken = client.system_user_token || client.meta_access_token;
+    if (!metaToken || !client.ad_account_id) {
       return createErrorResponse('Client missing Meta Ads credentials', 400);
     }
     
@@ -96,37 +98,61 @@ export async function POST(request: NextRequest) {
       forceRefresh
     });
     
-    // 🔧 NEW: Check if this is a current month request - use smart cache
+    // 🔧 NEW: Check if this is a current month OR current week request - use smart cache
     const startDate = new Date(dateRange.start);
     const endDate = new Date(dateRange.end);
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
+    // Calculate if this is a weekly or monthly request
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const isWeeklyRequest = daysDiff <= 7;
+    
     const isCurrentMonth = 
       startDate.getFullYear() === currentYear &&
       startDate.getMonth() === currentMonth &&
       endDate >= now;
     
+    // Check if this is current week
+    const isCurrentWeek = isWeeklyRequest && startDate <= now && endDate >= now;
+    
     logger.info('🔍 Meta tables date range analysis:', {
       isCurrentMonth,
+      isCurrentWeek,
+      isWeeklyRequest,
+      daysDiff,
       startDate: dateRange.start,
       endDate: dateRange.end,
       currentDate: now.toISOString().split('T')[0]
     });
     
-    // 🔧 CRITICAL FIX: Force smart cache for current month (bypass all fallbacks)
-    if (isCurrentMonth && !forceRefresh) {
-      logger.info('🔧 Attempting smart cache for current month');
+    // 🔧 CRITICAL FIX: Handle both current month AND current week
+    if ((isCurrentMonth || isCurrentWeek) && !forceRefresh) {
+      logger.info(`🔧 Attempting smart cache for current ${isCurrentWeek ? 'week' : 'month'}`);
       try {
-        const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
-        const cacheResult = await getSmartCacheData(clientId, false, 'meta');
+        let cacheResult: any;
         
-        logger.info('📊 Smart cache result:', {
-          success: cacheResult.success,
-          demographicCount: cacheResult.data?.metaTables?.demographicPerformance?.length || 0,
-          placementCount: cacheResult.data?.metaTables?.placementPerformance?.length || 0
-        });
+        // ✅ Use appropriate cache for weekly vs monthly
+        if (isCurrentWeek) {
+          const { getSmartWeekCacheData } = await import('../../../lib/smart-cache-helper');
+          const { getCurrentWeekInfo } = await import('../../../lib/week-utils');
+          const currentWeek = getCurrentWeekInfo();
+          cacheResult = await getSmartWeekCacheData(clientId, false, currentWeek.periodId);
+          logger.info('📊 Smart WEEKLY cache result:', {
+            success: cacheResult.success,
+            demographicCount: cacheResult.data?.metaTables?.demographicPerformance?.length || 0,
+            placementCount: cacheResult.data?.metaTables?.placementPerformance?.length || 0
+          });
+        } else {
+          const { getSmartCacheData } = await import('../../../lib/smart-cache-helper');
+          cacheResult = await getSmartCacheData(clientId, false, 'meta');
+          logger.info('📊 Smart MONTHLY cache result:', {
+            success: cacheResult.success,
+            demographicCount: cacheResult.data?.metaTables?.demographicPerformance?.length || 0,
+            placementCount: cacheResult.data?.metaTables?.placementPerformance?.length || 0
+          });
+        }
         
         // If smart cache has data, return it immediately (even if metaTables is empty)
         if (cacheResult.success && cacheResult.data) {
@@ -145,7 +171,7 @@ export async function POST(request: NextRequest) {
             // Don't return here - let it fall through to live API section below
           } else {
             // Cache has data - return it
-            logger.info('✅ Returning from smart cache with data');
+            logger.info(`✅ Returning from ${isCurrentWeek ? 'weekly' : 'monthly'} smart cache with data`);
             const responseTime = Date.now() - startTime;
             
             return NextResponse.json({
@@ -157,7 +183,7 @@ export async function POST(request: NextRequest) {
               },
               debug: {
                 responseTime,
-                source: 'smart-cache-forced',
+                source: isCurrentWeek ? 'weekly-smart-cache' : 'monthly-smart-cache',
                 cacheAge: cacheResult.data.cacheAge || 0,
                 metaApiError: null,
                 hasMetaApiError: false,
@@ -178,8 +204,12 @@ export async function POST(request: NextRequest) {
     // 🔴 FALLBACK: Fetch from live Meta API (historical data or cache miss)
     logger.info('📊 Fetching meta tables from live API...');
     
+    // metaToken is already defined at line 89 (uses system_user_token if available, otherwise meta_access_token)
+    const tokenType = client.system_user_token ? 'system_user_token (permanent)' : 'meta_access_token (60-day)';
+    logger.info(`🔑 Using ${tokenType} for ${client.name}`);
+    
     // Initialize Meta API service
-    const metaService = new MetaAPIService(client.meta_access_token);
+    const metaService = new MetaAPIService(metaToken);
     
     const adAccountId = client.ad_account_id.startsWith('act_') 
       ? client.ad_account_id.substring(4)

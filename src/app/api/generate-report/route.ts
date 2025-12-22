@@ -111,7 +111,9 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('/rest/v1', '');
     
     // Create fetch promises (don't await yet - start both simultaneously)
-    const metaPromise = (targetClient.meta_access_token && targetClient.ad_account_id)
+    // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+    const hasMetaCredentials = (targetClient.system_user_token || targetClient.meta_access_token) && targetClient.ad_account_id;
+    const metaPromise = hasMetaCredentials
       ? fetch(`${baseUrl}/api/fetch-live-data`, {
           method: 'POST',
           headers: {

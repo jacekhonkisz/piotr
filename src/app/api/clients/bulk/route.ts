@@ -260,8 +260,11 @@ async function handleBulkGenerateReports(clientIds: string[], results: any) {
         continue;
       }
 
+      // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+      const metaToken = client.system_user_token || client.meta_access_token;
+      
       // Generate report
-      const metaService = new MetaAPIService(client.meta_access_token);
+      const metaService = new MetaAPIService(metaToken);
       const endDate = new Date().toISOString().split('T')[0] || '';
       const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] || '';
       

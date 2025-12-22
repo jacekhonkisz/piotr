@@ -224,7 +224,11 @@ export class StandardizedDataFetcher {
     
     // 🔒 STRICT RULE #3: Current week detection (only if includes today)
     const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    const isCurrentWeek = (daysDiff >= 6 && daysDiff <= 7) && includesCurrentDay && startDate.getDay() === 1;
+    // ✅ FIX: More flexible current week detection - check if week includes today, not just if it starts on Monday
+    const isWeekPeriod = daysDiff >= 6 && daysDiff <= 7;
+    const weekIncludesToday = isWeekPeriod && includesCurrentDay;
+    // For current week, we should use smart cache even if it doesn't start exactly on Monday
+    const isCurrentWeek = isWeekPeriod && weekIncludesToday;
     
     // 🔒 FINAL DECISION: Only truly current periods use cache
     // Any past month (even last month) uses DATABASE
@@ -237,6 +241,12 @@ export class StandardizedDataFetcher {
     
     console.log('🎯 STRICT PERIOD CLASSIFICATION (DATABASE-FIRST FOR PAST):', {
       today,
+      requestedRange: `${dateRange.start} to ${dateRange.end}`,
+      daysDiff,
+      startDayOfWeek: startDate.getDay(),
+      isCurrentWeek,
+      includesCurrentDay,
+      needsSmartCache,
       currentYear,
       currentMonth,
       currentDay,
@@ -608,17 +618,19 @@ export class StandardizedDataFetcher {
     // 🔧 ENHANCED: Get conversion data from campaign_summaries (more accurate for conversions)
     console.log(`🎯 Fetching conversion data from campaign_summaries for ${platform}...`);
     
+    // ✅ CRITICAL FIX: Round conversion counts to integers
+    // Google Ads uses attribution models that can assign fractional conversions
     let conversionMetrics = {
-      click_to_call: totals.click_to_call,
-      email_contacts: totals.email_contacts,
-      booking_step_1: totals.booking_step_1,
-      booking_step_2: totals.booking_step_2,
-      booking_step_3: totals.booking_step_3,
-      reservations: totals.reservations,
-      reservation_value: totals.reservation_value,
+      click_to_call: Math.round(totals.click_to_call),
+      email_contacts: Math.round(totals.email_contacts),
+      booking_step_1: Math.round(totals.booking_step_1),
+      booking_step_2: Math.round(totals.booking_step_2),
+      booking_step_3: Math.round(totals.booking_step_3),
+      reservations: Math.round(totals.reservations),
+      reservation_value: Math.round(totals.reservation_value * 100) / 100, // Round to 2 decimal places
       roas: 0,
       cost_per_reservation: 0,
-      reach: totals.reach
+      reach: Math.round(totals.reach)
     };
     
     // Try to get more accurate conversion data from campaign_summaries
@@ -704,7 +716,10 @@ export class StandardizedDataFetcher {
       success: true,
       data: {
         stats: {
-          ...totals,
+          totalSpend: totals.totalSpend,
+          totalImpressions: totals.totalImpressions,
+          totalClicks: totals.totalClicks,
+          totalConversions: Math.round(totals.totalConversions), // ✅ Round to integer
           averageCtr,
           averageCpc
         },
@@ -836,17 +851,39 @@ export class StandardizedDataFetcher {
       const currentWeekStart = new Date(currentWeek.startDate);
       const currentWeekEnd = new Date(currentWeek.endDate);
       
-      // Check if requested week overlaps with current week
-      const isOverlapping = (
-        (requestedStart <= currentWeekEnd && requestedEnd >= currentWeekStart) ||
-        (requestedStart.toISOString().split('T')[0] === currentWeek.startDate)
-      );
+      // ✅ CRITICAL FIX: More flexible overlap check for current week
+      // For current week requests, accept if:
+      // 1. Start date matches current week start (Monday), OR
+      // 2. Any part of requested range overlaps with current week
+      // This handles cases where end date extends to Sunday (2025-11-23) but current week is capped to today (2025-11-21)
+      const requestedStartStr = requestedStart.toISOString().split('T')[0];
+      const requestedEndStr = requestedEnd.toISOString().split('T')[0];
+      const currentWeekStartStr = currentWeek.startDate;
+      const currentWeekEndStr = currentWeek.endDate;
+      
+      // Check if start date matches (most important - indicates same week)
+      const startMatches = requestedStartStr === currentWeekStartStr;
+      
+      // Check if any part overlaps (requested range intersects with current week range)
+      const hasOverlap = requestedStart <= currentWeekEnd && requestedEnd >= currentWeekStart;
+      
+      // For current week: Accept if start matches OR has overlap (even if end extends beyond today)
+      // This is correct because we're in the middle of the week, so Mon-Sun request should use Mon-Today cache
+      const isOverlapping = startMatches || hasOverlap;
       
       if (!isOverlapping) {
-        console.log(`⚠️ Week mismatch: Requested ${dateRange.start} to ${dateRange.end} does not match current week (${currentWeek.periodId})`);
+        console.log(`⚠️ Week mismatch: Requested ${dateRange.start} to ${dateRange.end} does not overlap with current week (${currentWeek.startDate} to ${currentWeek.endDate})`);
         console.log(`⚠️ Weekly smart cache only works for current week, falling back to database...`);
         return { success: false };
       }
+      
+      // ✅ LOG: Show why we're accepting this request
+      if (startMatches && requestedEndStr > currentWeekEndStr) {
+        console.log(`✅ Week start matches (${requestedStartStr} === ${currentWeekStartStr}) - accepting even though end extends to ${requestedEndStr} (current week capped to ${currentWeekEndStr})`);
+        console.log(`✅ This is correct: Mon-Sun request should use Mon-Today cache data`);
+      }
+      
+      console.log(`✅ Week overlap confirmed: Requested week overlaps with current week cache`);
       
       console.log(`✅ Week validated: Requested period matches current week (${currentWeek.periodId})`);
       console.log(`📅 Exact dates: Requested ${dateRange.start} to ${dateRange.end}, Cache has ${currentWeek.startDate} to ${currentWeek.endDate}`);
@@ -1031,8 +1068,39 @@ export class StandardizedDataFetcher {
     let storedSummary, error;
     
     if (summaryType === 'weekly') {
-      // 📅 WEEKLY DATA: Search for weekly data in campaign_summaries
-      console.log(`📅 Searching for weekly data in campaign_summaries between ${dateRange.start} and ${dateRange.end}`);
+      // 📅 WEEKLY DATA: Use the exact same Monday calculation system as BackgroundDataCollector
+      // ✅ CRITICAL: Must use week-helpers.getMondayOfWeek (same as data collector)
+      const { getMondayOfWeek, formatDateISO, validateIsMonday } = await import('./week-helpers');
+      
+      // ✅ FIX: dateRange.start from parseWeekPeriodId should already be Monday, but verify and normalize
+      // Use week-helpers to ensure we get the exact same Monday that BackgroundDataCollector uses
+      const requestedStartDate = new Date(dateRange.start);
+      const weekMonday = getMondayOfWeek(requestedStartDate); // ✅ SAME SYSTEM as BackgroundDataCollector
+      const weekMondayStr = formatDateISO(weekMonday);
+      
+      // ✅ VALIDATE: Ensure we calculated a Monday (same validation as BackgroundDataCollector)
+      try {
+        validateIsMonday(weekMonday);
+      } catch (validationError) {
+        console.error(`❌ VALIDATION FAILED: Calculated date is not Monday: ${weekMondayStr}`, validationError);
+        error = validationError as Error;
+        return { success: false };
+      }
+      
+      console.log(`📅 Searching for weekly data in campaign_summaries:`, {
+        clientId,
+        platform,
+        requestedRange: `${dateRange.start} to ${dateRange.end}`,
+        calculatedMonday: weekMondayStr,
+        query: {
+          client_id: clientId,
+          summary_type: 'weekly',
+          platform,
+          summary_date: weekMondayStr
+        },
+        calculationMethod: 'week-helpers.getMondayOfWeek (SAME AS BackgroundDataCollector)',
+        note: 'summary_date is always the Monday of the week (ISO 8601)'
+      });
       
       const { data: weeklyResults, error: weeklyError } = await dbClient
         .from('campaign_summaries')
@@ -1040,22 +1108,34 @@ export class StandardizedDataFetcher {
         .eq('client_id', clientId)
         .eq('summary_type', 'weekly')
         .eq('platform', platform)
-        .gte('summary_date', dateRange.start)
-        .lte('summary_date', dateRange.end)
-        .order('summary_date', { ascending: false })
+        .eq('summary_date', weekMondayStr) // ✅ FIX: Query for exact Monday match (same system as storage)
         .limit(1);
       
       if (weeklyResults && weeklyResults.length > 0) {
         storedSummary = weeklyResults[0];
-        console.log(`✅ Found weekly summary for ${dateRange.start} to ${dateRange.end}:`, {
+        console.log(`✅ Found weekly summary for week starting ${weekMondayStr}:`, {
           summaryDate: storedSummary?.summary_date,
           totalSpend: storedSummary?.total_spend,
           reservations: (storedSummary as any)?.reservations,
-          periodMatch: storedSummary?.summary_date >= dateRange.start && storedSummary?.summary_date <= dateRange.end
+          periodMatch: storedSummary?.summary_date === weekMondayStr
         });
       } else {
         error = weeklyError;
-        console.log(`⚠️ No weekly summary found for ${dateRange.start} to ${dateRange.end}`);
+        console.log(`⚠️ No weekly summary found for week starting ${weekMondayStr} (requested range: ${dateRange.start} to ${dateRange.end})`);
+        
+        // 🔍 DEBUG: Try broader search to see what's available
+        const { data: debugResults } = await dbClient
+          .from('campaign_summaries')
+          .select('summary_date, total_spend')
+          .eq('client_id', clientId)
+          .eq('summary_type', 'weekly')
+          .eq('platform', platform)
+          .order('summary_date', { ascending: false })
+          .limit(5);
+        
+        if (debugResults && debugResults.length > 0) {
+          console.log(`🔍 DEBUG: Available weekly summaries (nearest 5):`, debugResults);
+        }
       }
     } else {
       // 📅 MONTHLY DATA: Search for monthly data in campaign_summaries
@@ -1098,36 +1178,85 @@ export class StandardizedDataFetcher {
     }
       
     if (error || !storedSummary) {
-      console.log('⚠️ No campaign_summaries data available');
+      console.log('⚠️ No campaign_summaries data available', {
+        error: error?.message,
+        hasStoredSummary: !!storedSummary,
+        clientId: clientId.substring(0, 8) + '...',
+        platform,
+        summaryType
+      });
       return { success: false };
     }
     
-    console.log('✅ Using campaign_summaries data (proven working system)');
+    console.log('✅ Using campaign_summaries data (proven working system)', {
+      summaryDate: storedSummary.summary_date,
+      totalSpend: storedSummary.total_spend,
+      campaignsCount: Array.isArray(storedSummary.campaign_data) ? storedSummary.campaign_data.length : 0,
+      hasCampaignData: !!storedSummary.campaign_data
+    });
+    
+    // ✅ FIX: Ensure campaigns is always an array
+    const campaigns = Array.isArray(storedSummary.campaign_data) 
+      ? storedSummary.campaign_data 
+      : (storedSummary.campaign_data ? [storedSummary.campaign_data] : []);
+    
+    // ✅ CRITICAL FIX: Convert all database values to numbers to prevent string concatenation
+    const sanitizeNumber = (value: any): number => {
+      if (value === null || value === undefined) return 0;
+      if (typeof value === 'string') {
+        const cleaned = value.replace(/[^0-9.-]/g, '');
+        const num = parseFloat(cleaned);
+        return Number.isFinite(num) ? num : 0;
+      }
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
+    };
+    
+    const totalSpend = sanitizeNumber(storedSummary.total_spend);
+    const totalImpressions = sanitizeNumber(storedSummary.total_impressions);
+    const totalClicks = sanitizeNumber(storedSummary.total_clicks);
+    const totalConversions = sanitizeNumber(storedSummary.total_conversions);
+    const reservationValue = sanitizeNumber((storedSummary as any).reservation_value);
+    const reservations = sanitizeNumber((storedSummary as any).reservations);
     
     return {
       success: true,
       data: {
         stats: {
-          totalSpend: storedSummary.total_spend || 0,
-          totalImpressions: storedSummary.total_impressions || 0,
-          totalClicks: storedSummary.total_clicks || 0,
-          totalConversions: storedSummary.total_conversions || 0,
-          averageCtr: storedSummary.average_ctr || 0,
-          averageCpc: storedSummary.average_cpc || 0
+          totalSpend: totalSpend,
+          totalImpressions: totalImpressions,
+          totalClicks: totalClicks,
+          totalConversions: Math.round(totalConversions), // ✅ Round to integer
+          averageCtr: sanitizeNumber(storedSummary.average_ctr),
+          averageCpc: sanitizeNumber(storedSummary.average_cpc)
         },
+        // ✅ CRITICAL FIX: Round conversion counts to integers for consistent display
         conversionMetrics: {
-          click_to_call: (storedSummary as any).click_to_call || 0,
-          email_contacts: (storedSummary as any).email_contacts || 0,
-          booking_step_1: (storedSummary as any).booking_step_1 || 0,
-          booking_step_2: (storedSummary as any).booking_step_2 || 0,
-          booking_step_3: (storedSummary as any).booking_step_3 || 0,
-          reservations: (storedSummary as any).reservations || 0,
-          reservation_value: (storedSummary as any).reservation_value || 0,
-          roas: (storedSummary as any).reservation_value && storedSummary.total_spend ? (storedSummary as any).reservation_value / storedSummary.total_spend : 0,
-          cost_per_reservation: (storedSummary as any).reservations && storedSummary.total_spend ? storedSummary.total_spend / (storedSummary as any).reservations : 0,
-          reach: (storedSummary as any).reach || 0
+          click_to_call: Math.round(sanitizeNumber((storedSummary as any).click_to_call)),
+          email_contacts: Math.round(sanitizeNumber((storedSummary as any).email_contacts)),
+          booking_step_1: Math.round(sanitizeNumber((storedSummary as any).booking_step_1)),
+          booking_step_2: Math.round(sanitizeNumber((storedSummary as any).booking_step_2)),
+          booking_step_3: Math.round(sanitizeNumber((storedSummary as any).booking_step_3)),
+          reservations: Math.round(reservations),
+          reservation_value: Math.round(reservationValue * 100) / 100, // Round to 2 decimal places
+          roas: reservationValue && totalSpend ? Math.round((reservationValue / totalSpend) * 100) / 100 : 0,
+          cost_per_reservation: reservations && totalSpend ? Math.round((totalSpend / reservations) * 100) / 100 : 0,
+          reach: Math.round(sanitizeNumber((storedSummary as any).reach))
         },
-        campaigns: (storedSummary.campaign_data as any[]) || []
+        campaigns: campaigns // ✅ FIX: Always return array
+      },
+      debug: {
+        source: 'campaign-summaries-database',
+        cachePolicy: 'database-first-historical',
+        responseTime: 0, // Response time tracked at higher level
+        reason: 'standardized-fetch',
+        dataSourcePriority: ['campaign_summaries'],
+        periodType: summaryType === 'weekly' ? 'historical-week' : 'historical-month'
+      },
+      validation: {
+        actualSource: 'campaign_summaries',
+        expectedSource: 'campaign_summaries',
+        isConsistent: true
       }
     };
   }

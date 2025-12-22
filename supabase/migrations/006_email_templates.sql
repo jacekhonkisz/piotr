@@ -132,3 +132,6 @@ DO $$
 BEGIN
   RAISE NOTICE '✅ email_templates table created successfully!';
 END $$;
+
+
+

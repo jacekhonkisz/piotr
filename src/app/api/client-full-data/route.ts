@@ -41,12 +41,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    if (!client.meta_access_token || !client.ad_account_id) {
+    // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+    const metaToken = client.system_user_token || client.meta_access_token;
+    
+    if (!metaToken || !client.ad_account_id) {
       return NextResponse.json({ error: 'Client missing Meta credentials' }, { status: 400 });
     }
 
     const adId = client.ad_account_id.startsWith('act_') ? client.ad_account_id.substring(4) : client.ad_account_id;
-    const meta = new MetaAPIService(client.meta_access_token);
+    // ✅ FIX: Use the correct token (system_user_token preferred)
+    const meta = new MetaAPIService(metaToken);
 
     // Determine earliest date: try 36 months back (API limit window)
     const endDate = new Date();

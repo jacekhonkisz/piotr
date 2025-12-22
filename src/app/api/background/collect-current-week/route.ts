@@ -29,11 +29,12 @@ export async function GET(request: NextRequest) {
     console.log(`📅 Starting current week data collection via cron job`);
 
     // Get all active clients
+    // ✅ FIX: Select BOTH meta_access_token AND system_user_token
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
-      .select('id, name, email, meta_access_token, ad_account_id')
-      .not('meta_access_token', 'is', null)
-      .not('ad_account_id', 'is', null);
+      .select('id, name, email, meta_access_token, system_user_token, ad_account_id')
+      .not('ad_account_id', 'is', null)
+      .or('meta_access_token.not.is.null,system_user_token.not.is.null');
 
     if (clientsError) {
       throw new Error(`Failed to get clients: ${clientsError.message}`);

@@ -351,3 +351,5 @@ WHERE jsonb_array_length(COALESCE(campaign_data, '[]'::jsonb)) > 0;
 
 
 
+
+

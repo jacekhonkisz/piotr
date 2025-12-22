@@ -120,7 +120,9 @@ export async function POST(request: NextRequest) {
             // Call the Meta API directly for this specific week
             if (platform === 'meta') {
               const { MetaAPIService } = await import('@/lib/meta-api-optimized');
-              const metaService = new MetaAPIService(client.meta_access_token);
+              // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+              const metaToken = client.system_user_token || client.meta_access_token;
+              const metaService = new MetaAPIService(metaToken);
               const adAccountId = client.ad_account_id?.startsWith('act_')
                 ? client.ad_account_id.substring(4)
                 : client.ad_account_id;

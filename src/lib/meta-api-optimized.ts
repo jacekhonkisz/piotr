@@ -360,11 +360,57 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Get token info for debugging
+   */
+  async getTokenInfo(): Promise<any> {
+    const cacheKey = this.getCacheKey('me', 'token_info');
+    
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const url = `${this.baseUrl}/me?fields=id,name&access_token=${this.accessToken}`;
+      const response = await this.makeRequest(url);
+      
+      if (response.error) {
+        return { error: response.error.message };
+      }
+      
+      this.setCachedResponse(cacheKey, response);
+      return response;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  /**
+   * Get monthly campaign insights (convenience method)
+   */
+  async getMonthlyCampaignInsights(adAccountId: string, year: number, month: number): Promise<any[]> {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    
+    logger.info(`Meta API: Fetching monthly insights for ${year}-${String(month).padStart(2, '0')}`);
+    return this.getCampaignInsights(adAccountId, startDate, endDate, 0);
+  }
+
+  /**
    * Get campaigns with optimized caching
    */
-  async getCampaigns(adAccountId: string, dateRange: { start: string; end: string }): Promise<any[]> {
+  async getCampaigns(adAccountId: string, dateRange?: { start: string; end: string }): Promise<any[]> {
     const endpoint = `act_${adAccountId}/campaigns`;
-    const params = `since=${dateRange.start}&until=${dateRange.end}`;
+    
+    // Use default date range if not provided (last 30 days)
+    const now = new Date();
+    const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const defaultEnd = now.toISOString().split('T')[0];
+    const start = dateRange?.start || defaultStart;
+    const end = dateRange?.end || defaultEnd;
+    
+    const params = `since=${start}&until=${end}`;
     const cacheKey = this.getCacheKey(endpoint, params);
 
     // Check cache first
@@ -397,7 +443,8 @@ export class MetaAPIServiceOptimized {
   async getCampaignInsights(adAccountId: string, dateStart: string, dateEnd: string, timeIncrement?: number): Promise<any[]> {
     const endpoint = `act_${adAccountId}/insights`;
     const timeIncrementParam = timeIncrement ? `&time_increment=${timeIncrement}` : '';
-    const params = `level=campaign&since=${dateStart}&until=${dateEnd}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
+    // ✅ FIX: Use time_range JSON format (same as placement/demographic functions)
+    const params = `level=campaign&time_range={"since":"${dateStart}","until":"${dateEnd}"}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
     const cacheKey = this.getCacheKey(endpoint, params);
 
     // Check cache first
@@ -407,7 +454,7 @@ export class MetaAPIServiceOptimized {
       return cached;
     }
 
-    logger.info('Meta API: Fetching campaign insights from API');
+    logger.info(`Meta API: Fetching campaign insights from API for ${dateStart} to ${dateEnd}`);
     
     const url = `${this.baseUrl}/${endpoint}?${params}&access_token=${this.accessToken}`;
     const response = await this.makeRequest(url);

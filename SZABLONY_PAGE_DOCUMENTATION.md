@@ -371,3 +371,6 @@ All operations require **admin role**:
 **Navigation**: Calendar page → "Szablony" button (purple)  
 **Status**: ✅ **PRODUCTION READY**
 
+
+
+

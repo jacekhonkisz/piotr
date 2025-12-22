@@ -108,3 +108,7 @@ The NEW monthly template is ready and working in:
 - ✅ Bulk sends
 - 🔄 Calendar preview (updating)
 
+
+
+
+

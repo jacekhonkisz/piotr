@@ -850,7 +850,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           
           // Import MetaAPIService dynamically
           const { MetaAPIService } = await import('../../../lib/meta-api-optimized');
-          const metaService = new MetaAPIService(clientData.meta_access_token);
+          // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+          const metaToken = clientData.system_user_token || clientData.meta_access_token;
+          const metaService = new MetaAPIService(metaToken);
           
           const adAccountId = clientData.ad_account_id.startsWith('act_') 
             ? clientData.ad_account_id.substring(4)
@@ -1477,7 +1479,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       }
 
       // Initialize Meta API service (fallback for non-current month or enhanced logic failure)
-      const metaService = new MetaAPIService(client.meta_access_token);
+      // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+      const metaTokenFallback = client.system_user_token || client.meta_access_token;
+      const metaService = new MetaAPIService(metaTokenFallback);
     
     // Check for cache clearing parameter
     const shouldClearCache = clearCache === 'true' || clearCache === true || forceFresh;
@@ -1625,10 +1629,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
     // Calculate summary stats
     // 🔧 CRITICAL FIX: Parse all values as numbers (Meta API returns strings)
-    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + parseFloat(campaign.spend || 0), 0);
-    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + parseInt(campaign.impressions || 0), 0);
-    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + parseInt(campaign.clicks || 0), 0);
-    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + parseInt(campaign.conversions || 0), 0);
+    const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (parseFloat(campaign.spend) || 0), 0);
+    const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.impressions) || 0), 0);
+    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.clicks) || 0), 0);
+    // 🔧 FIX NaN BUG: parseInt(undefined) returns NaN, so wrap with || 0
+    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.conversions) || 0), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 

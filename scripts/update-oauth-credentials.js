@@ -12,10 +12,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// OAuth credentials provided
+// OAuth credentials (updated December 19, 2025)
 const OAUTH_CREDENTIALS = {
   client_id: '1000164558061-q3du2rn10omdb5g0a0h6rbh10g7p6t9m.apps.googleusercontent.com',
-  client_secret: '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'
+  client_secret: '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'
 };
 
 async function updateOAuthCredentials() {

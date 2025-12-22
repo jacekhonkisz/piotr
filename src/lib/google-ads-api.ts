@@ -1092,7 +1092,11 @@ export class GoogleAdsAPIService {
         display_impression_share: 0, // Not available in aggregated data
       }));
 
+      // 🔍 DEBUG: Log final network performance values
       logger.info(`✅ Fetched ${networks.length} real network performance segments from Google Ads`);
+      networks.forEach(n => {
+        logger.info(`🔍 Network "${n.network}": spend=${n.spend.toFixed(2)}, conversions=${n.conversions.toFixed(2)}, conversion_value=${n.conversion_value.toFixed(2)}, roas=${n.roas.toFixed(4)}`);
+      });
       return networks;
     } catch (error) {
       logger.error('❌ Error fetching network performance:', error);

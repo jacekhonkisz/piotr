@@ -49,9 +49,10 @@ export async function POST(request: NextRequest) {
     console.log(`📅 Collecting data for: ${targetDate}`);
 
     // 🆕 Get clients with OFFSET and LIMIT for batching
+    // ✅ FIX: Select BOTH meta_access_token AND system_user_token
     const { data: clients, error: clientError } = await supabaseAdmin
       .from('clients')
-      .select('id, name, email, ad_account_id, meta_access_token, api_status')
+      .select('id, name, email, ad_account_id, meta_access_token, system_user_token, api_status')
       .eq('api_status', 'valid')
       .range(offset, offset + limit - 1); // Supabase uses range(start, end)
 
@@ -80,8 +81,12 @@ export async function POST(request: NextRequest) {
 
     // Process each client with retry logic
     for (const client of clients) {
+      // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+      const metaToken = (client as any).system_user_token || client.meta_access_token;
+      const tokenType = (client as any).system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+      
       // Skip clients without required Meta credentials
-      if (!client.meta_access_token || !client.ad_account_id) {
+      if (!metaToken || !client.ad_account_id) {
         console.log(`⏭️ Skipping ${client.name} - missing Meta credentials`);
         skippedCount++;
         results.push({
@@ -94,11 +99,11 @@ export async function POST(request: NextRequest) {
         continue;
       }
       
-      console.log(`\n📝 Processing: ${client.name}`);
+      console.log(`\n📝 Processing: ${client.name} (using ${tokenType})`);
       
       const result = await withRetry(async () => {
-        // Create MetaAPI service for this client
-        const metaAPI = new MetaAPIService(client.meta_access_token!);
+        // ✅ FIX: Use the correct token (system_user_token preferred)
+        const metaAPI = new MetaAPIService(metaToken!);
 
         // Fetch campaigns data for the target date
         const campaigns = await metaAPI.getCampaignInsights(

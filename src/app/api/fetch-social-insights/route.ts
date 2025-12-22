@@ -54,8 +54,12 @@ export async function POST(request: NextRequest) {
 
     const client = clientData;
     
+    // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+    const metaToken = client.system_user_token || client.meta_access_token;
+    const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+    
     // Validate client has required Meta credentials
-    if (!client.meta_access_token) {
+    if (!metaToken) {
       return createErrorResponse('Client missing Meta access token', 400);
     }
     
@@ -63,11 +67,12 @@ export async function POST(request: NextRequest) {
       id: client.id,
       name: client.name,
       email: client.email,
-      hasMetaToken: !!client.meta_access_token
+      hasMetaToken: !!metaToken,
+      tokenType
     });
     
-    // Initialize Social Insights API service
-    const socialService = new SocialInsightsService(client.meta_access_token);
+    // ✅ FIX: Use the correct token (system_user_token preferred)
+    const socialService = new SocialInsightsService(metaToken);
     
     // Validate social permissions first
     const permissionCheck = await socialService.validateSocialPermissions();

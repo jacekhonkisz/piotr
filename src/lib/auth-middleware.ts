@@ -69,18 +69,78 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
     }
 
     // Get user profile to check role
-    const { data: profile, error: profileError } = await supabase
+    let { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
+    // If profile doesn't exist, create it with default 'client' role
     if (profileError || !profile) {
-      return {
-        success: false,
-        error: 'User profile not found',
-        statusCode: 404
-      };
+      logger.warn('Profile not found for authenticated user, creating default profile', {
+        userId: user.id,
+        email: user.email,
+        error: profileError?.message
+      });
+      
+      // Try to create profile with default 'client' role
+      const { data: newProfile, error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: user.email || '',
+          role: 'client',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select('role')
+        .single();
+
+      if (createError) {
+        // If profile was created between check and insert (race condition), try fetching again
+        if (createError.code === '23505') { // Unique violation
+          logger.info('Profile created concurrently, fetching again', { userId: user.id });
+          const { data: retryProfile, error: retryError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          
+          if (retryError || !retryProfile) {
+            logger.error('Failed to fetch profile after concurrent creation', {
+              userId: user.id,
+              error: retryError?.message
+            });
+            return {
+              success: false,
+              error: 'User profile not found and could not be created',
+              statusCode: 404
+            };
+          }
+          profile = retryProfile;
+        } else {
+          logger.error('Failed to create profile for authenticated user', {
+            userId: user.id,
+            error: createError?.message,
+            code: createError.code
+          });
+          return {
+            success: false,
+            error: 'User profile not found and could not be created',
+            statusCode: 404
+          };
+        }
+      } else if (newProfile) {
+        profile = newProfile;
+        logger.info('Created default profile for user', { userId: user.id, email: user.email });
+      } else {
+        logger.error('Profile creation returned no data', { userId: user.id });
+        return {
+          success: false,
+          error: 'User profile not found and could not be created',
+          statusCode: 404
+        };
+      }
     }
 
     if (profile.role !== 'admin' && profile.role !== 'client') {

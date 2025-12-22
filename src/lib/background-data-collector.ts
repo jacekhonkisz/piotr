@@ -5,6 +5,7 @@ import { GoogleAdsAPIService } from './google-ads-api';
 import { StandardizedDataFetcher } from './standardized-data-fetcher';
 import { getMonthBoundaries } from './date-range-utils';
 import { getMondayOfWeek, getSundayOfWeek, formatDateISO, validateIsMonday, getLastNWeeks } from './week-helpers';
+import { enhanceCampaignsWithConversions } from './meta-actions-parser';
 import logger from './logger';
 
 const supabase = createClient(
@@ -298,14 +299,17 @@ export class BackgroundDataCollector {
 
         // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
         // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
-        const campaignInsights = await metaService.getCampaignInsights(
+        let rawCampaignInsights = await metaService.getCampaignInsights(
           processedAdAccountId,
           monthData.startDate,
           monthData.endDate,
           0  // timeIncrement = 0 for period totals (not daily breakdown)
         );
 
-        logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete data`);
+        // ✅ FIX: Parse actions array to extract conversion metrics
+        const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+
+        logger.info(`📊 Retrieved and parsed ${campaignInsights.length} campaigns with conversion data`);
 
         // Calculate totals from complete campaign data
         const totals = this.calculateTotals(campaignInsights);
@@ -441,6 +445,18 @@ export class BackgroundDataCollector {
         const activeCampaignCount = campaigns.length;
         logger.info(`📈 Active Google Ads campaigns for ${monthData.year}-${monthData.month}: ${activeCampaignCount}`);
 
+        // Fetch Google Ads tables (network, demographic, quality score)
+        let googleAdsTables = null;
+        try {
+          googleAdsTables = await googleAdsService.getGoogleAdsTables(
+            monthData.startDate,
+            monthData.endDate
+          );
+          logger.info(`📊 Fetched Google Ads tables for ${monthData.year}-${monthData.month}`);
+        } catch (error) {
+          logger.warn(`⚠️ Failed to fetch Google Ads tables for ${client.name} ${monthData.year}-${monthData.month}:`, error);
+        }
+
         // Store the Google Ads summary with platform="google"
         await this.storeGoogleAdsMonthlySummary(client.id, {
           summary_date: monthData.startDate,
@@ -451,6 +467,7 @@ export class BackgroundDataCollector {
             ctr,
             cpc
           },
+          googleAdsTables,
           activeCampaignCount
         });
 
@@ -548,19 +565,62 @@ export class BackgroundDataCollector {
       logger.info(`📅 Processing week ${weekIndex + 1}/${weeksToCollect.length}: ${weekData.startDate}`);
 
       try {
-        try {
-          const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
-          logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
+        const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
+        logger.info(`📅 Collecting ${weekType} week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate}) for ${client.name}`);
 
-          // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
-          const campaignInsights = await metaService.getCampaignInsights(
-            processedAdAccountId,
-            weekData.startDate,
-            weekData.endDate,
-            0  // timeIncrement = 0 for period totals (not daily breakdown)
-          );
+        // ✅ FIX: Use getCampaignInsights() for campaign-level data (not getPlacementPerformance!)
+        logger.info(`🔍 DEBUG: Calling Meta API with dates: ${weekData.startDate} to ${weekData.endDate}`);
+        let rawCampaignInsights = await metaService.getCampaignInsights(
+          processedAdAccountId,
+          weekData.startDate,
+          weekData.endDate,
+          0  // timeIncrement = 0 for period totals (not daily breakdown)
+        );
 
-          logger.info(`📊 Retrieved ${campaignInsights.length} campaigns with complete weekly data`);
+        // 🔍 DEBUG: Log raw API response to verify dates are working
+        if (rawCampaignInsights.length > 0) {
+          const sampleCampaign = rawCampaignInsights[0];
+          logger.info(`🔍 DEBUG: Sample campaign from API - spend: ${sampleCampaign.spend}, date_range: ${JSON.stringify(sampleCampaign.date_start || 'N/A')} to ${JSON.stringify(sampleCampaign.date_stop || 'N/A')}`);
+          const totalSpendFromAPI = rawCampaignInsights.reduce((sum: number, c: any) => sum + parseFloat(c.spend || 0), 0);
+          logger.info(`🔍 DEBUG: Total spend from API for ${weekData.startDate}: ${totalSpendFromAPI.toFixed(2)}`);
+          
+          // 🔍 DEBUG: Log actions array to verify all metrics are being fetched
+          if (sampleCampaign.actions && Array.isArray(sampleCampaign.actions)) {
+            logger.info(`🔍 DEBUG: Sample campaign has ${sampleCampaign.actions.length} actions`);
+            const actionTypes = sampleCampaign.actions.map((a: any) => a.action_type).filter(Boolean);
+            logger.info(`🔍 DEBUG: Action types found: ${JSON.stringify(actionTypes)}`);
+            
+            // Check specifically for click_to_call and email_contacts
+            const clickToCallActions = sampleCampaign.actions.filter((a: any) => 
+              String(a.action_type || '').toLowerCase().includes('click_to_call') ||
+              String(a.action_type || '').toLowerCase().includes('phone_number_clicks')
+            );
+            const emailActions = sampleCampaign.actions.filter((a: any) =>
+              String(a.action_type || '').toLowerCase().includes('contact') ||
+              String(a.action_type || '').toLowerCase().includes('email') ||
+              String(a.action_type || '').toLowerCase().includes('onsite_web_lead')
+            );
+            
+            if (clickToCallActions.length > 0) {
+              logger.info(`🔍 DEBUG: Found ${clickToCallActions.length} click_to_call actions:`, clickToCallActions);
+            } else {
+              logger.warn(`⚠️ DEBUG: No click_to_call actions found in sample campaign`);
+            }
+            
+            if (emailActions.length > 0) {
+              logger.info(`🔍 DEBUG: Found ${emailActions.length} email_contacts actions:`, emailActions);
+            } else {
+              logger.warn(`⚠️ DEBUG: No email_contacts actions found in sample campaign`);
+            }
+          } else {
+            logger.warn(`⚠️ DEBUG: Sample campaign has no actions array or it's not an array`);
+          }
+        }
+
+        // ✅ FIX: Parse actions array to extract conversion metrics
+        const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+
+        logger.info(`📊 Retrieved and parsed ${campaignInsights.length} campaigns with conversion data`);
 
         // 🔧 FIX: For current week, log the actual funnel data being collected
         if (weekData.isCurrent) {
@@ -792,17 +852,19 @@ export class BackgroundDataCollector {
       click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
       email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
       booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0), // ✅ FIX: Added missing booking_step_3
       reservations: acc.reservations + (campaign.reservations || 0),
       reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-      total_spend: acc.total_spend + (campaign.spend || 0)
+      total_spend: acc.total_spend + parseFloat(campaign.spend || 0) // ✅ FIX: Parse as float to avoid string concatenation
     }), {
       click_to_call: 0,
       email_contacts: 0,
       booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0, // ✅ FIX: Added missing booking_step_3
       reservations: 0,
       reservation_value: 0,
-      booking_step_2: 0,
       total_spend: 0
     });
 
@@ -970,6 +1032,7 @@ export class BackgroundDataCollector {
       reservation_value: totals.reservation_value || 0,
       cost_per_reservation: cost_per_reservation,
       campaign_data: campaigns, // Store raw campaign data for detailed analysis
+      google_ads_tables: data.googleAdsTables || null, // ✅ FIX: Store Google Ads tables data
       active_campaign_count: data.activeCampaignCount || 0,
       data_source: 'google_ads_api', // ✅ FIX: Explicitly set data source
       last_updated: new Date().toISOString()
@@ -1009,91 +1072,42 @@ export class BackgroundDataCollector {
       click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
       email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
       booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+      booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0), // ✅ FIX: Added missing booking_step_3
       reservations: acc.reservations + (campaign.reservations || 0),
       reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-      total_spend: acc.total_spend + (campaign.spend || 0)
+      total_spend: acc.total_spend + parseFloat(campaign.spend || 0) // ✅ FIX: Parse as float to avoid string concatenation
     }), {
       click_to_call: 0,
       email_contacts: 0,
       booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0, // ✅ FIX: Added missing booking_step_3
       reservations: 0,
       reservation_value: 0,
-      booking_step_2: 0,
       total_spend: 0
     });
 
-    // 🎯 MATCH SMART CACHE: ALWAYS prioritize daily_kpi_data first (lines 1198-1228 in smart-cache-helper.ts)
-    let enhancedConversionMetrics = { ...conversionTotals };
+    // ✅ EXACTLY MATCH MONTHLY LOGIC: Use ONLY Meta API campaign conversion data (no fallback)
+    // This ensures data consistency - all metrics come from the same source
+    // If Meta API has no conversion data, weekly summary will show zero conversions (same as monthly behavior)
     
-    // Get the week start and end dates
-    const weekStart = data.summary_date;
-    const weekEndDate = new Date(weekStart);
-    weekEndDate.setDate(weekEndDate.getDate() + 6);
-    const weekEnd = weekEndDate.toISOString().split('T')[0];
-    
-    // 🥇 PRIORITY 1: ALWAYS try daily_kpi_data FIRST (same as smart cache)
-    try {
-      const { data: dailyKpiData, error: kpiError } = await supabase
-        .from('daily_kpi_data')
-        .select('*')
-        .eq('client_id', clientId)
-        .gte('date', weekStart)
-        .lte('date', weekEnd);
-      
-      if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
-        logger.info(`✅ Found ${dailyKpiData.length} daily KPI records for week ${data.summary_date}, using as PRIORITY 1 (matching smart cache)`);
-        
-        // Aggregate conversion metrics from daily_kpi_data
-        enhancedConversionMetrics = dailyKpiData.reduce((acc: any, record: any) => ({
-          click_to_call: acc.click_to_call + (record.click_to_call || 0),
-          email_contacts: acc.email_contacts + (record.email_contacts || 0),
-          booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
-          reservations: acc.reservations + (record.reservations || 0),
-          reservation_value: acc.reservation_value + (record.reservation_value || 0),
-          booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
-          booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0)
-        }), {
-          click_to_call: 0,
-          email_contacts: 0,
-          booking_step_1: 0,
-          reservations: 0,
-          reservation_value: 0,
-          booking_step_2: 0,
-          booking_step_3: 0
-        });
-        
-        logger.info(`✅ Using daily_kpi_data conversion metrics (PRIORITY 1, matching smart cache):`, enhancedConversionMetrics);
-      } else {
-        // 🥈 PRIORITY 2: Fallback to Meta API (same as smart cache)
-        logger.info(`⚠️ No daily_kpi_data found for week ${data.summary_date}, using Meta API as fallback (matching smart cache)`);
-        logger.info(`📊 Meta API conversion totals:`, conversionTotals);
-        enhancedConversionMetrics = { ...conversionTotals };
-      }
-    } catch (fallbackError) {
-      // 🥉 ERROR FALLBACK: Use Meta API on error (same as smart cache)
-      logger.error(`❌ Error querying daily_kpi_data for week ${data.summary_date}, using Meta API as fallback:`, fallbackError);
-      enhancedConversionMetrics = { ...conversionTotals };
-    }
-
-    // Calculate derived conversion metrics
-    const roas = enhancedConversionMetrics.reservation_value > 0 && (data.totals.spend || 0) > 0 
-      ? enhancedConversionMetrics.reservation_value / (data.totals.spend || 0)
-      : 0;
-    
-    const cost_per_reservation = enhancedConversionMetrics.reservations > 0 && (data.totals.spend || 0) > 0
-      ? (data.totals.spend || 0) / enhancedConversionMetrics.reservations
-      : 0;
-
-    logger.info(`📊 Background weekly collection conversion metrics:`, {
+    logger.info(`📊 Weekly conversion metrics from Meta API campaigns:`, {
       clientId,
       summary_date: data.summary_date,
-      enhancedConversionMetrics,
-      roas,
-      cost_per_reservation,
-      source: enhancedConversionMetrics.reservations > 0 ? 'daily_kpi_data_fallback' : 'meta_api',
-      isCurrentWeek: data.isCurrentWeek || false
+      conversionTotals,
+      source: 'meta_api_only',
+      note: 'Now matches monthly behavior - no daily_kpi_data fallback'
     });
+
+    // Calculate derived conversion metrics (same logic as monthly)
+    const roas = conversionTotals.reservation_value > 0 && (data.totals.spend || 0) > 0 
+      ? conversionTotals.reservation_value / (data.totals.spend || 0)
+      : 0;
+    
+    const cost_per_reservation = conversionTotals.reservations > 0 && (data.totals.spend || 0) > 0
+      ? (data.totals.spend || 0) / conversionTotals.reservations
+      : 0;
 
     // ✅ FIX: Set correct data_source and tables field based on platform
     const dataSource = platform === 'google' ? 'google_ads_api' : 'meta_api';
@@ -1116,32 +1130,60 @@ export class BackgroundDataCollector {
       total_campaigns: data.campaigns.length,
       campaign_data: data.campaigns,
       [tablesField]: tablesData, // ✅ FIX: Use correct field name based on platform
-      data_source: dataSource, // ✅ FIX: Set correct data source
-      // Add enhanced conversion metrics (either from Meta API or daily_kpi_data fallback)
-      click_to_call: enhancedConversionMetrics.click_to_call,
-      email_contacts: enhancedConversionMetrics.email_contacts,
-      booking_step_1: enhancedConversionMetrics.booking_step_1,
-      reservations: enhancedConversionMetrics.reservations,
-      reservation_value: enhancedConversionMetrics.reservation_value,
-      booking_step_2: enhancedConversionMetrics.booking_step_2,
-      booking_step_3: enhancedConversionMetrics.booking_step_3,
+      data_source: dataSource, // ✅ Set correct data source
+      // Add conversion metrics from Meta API campaigns only (matches monthly behavior)
+      click_to_call: conversionTotals.click_to_call,
+      email_contacts: conversionTotals.email_contacts,
+      booking_step_1: conversionTotals.booking_step_1,
+      reservations: conversionTotals.reservations,
+      reservation_value: conversionTotals.reservation_value,
+      booking_step_2: conversionTotals.booking_step_2,
+      booking_step_3: conversionTotals.booking_step_3,
       roas: roas,
       cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()
     };
 
-    const { error } = await supabase
+    // 🔍 DEBUG: Log exact values being stored
+    logger.info(`🔍 About to upsert weekly summary:`, {
+      client_id: clientId,
+      summary_date: data.summary_date,
+      summary_type: 'weekly',
+      platform: platform,
+      total_spend: summary.total_spend,
+      reservations: summary.reservations,
+      unique_key: `${clientId}|weekly|${data.summary_date}|${platform}`
+    });
+
+    const { error, data: upsertResult } = await supabase
       .from('campaign_summaries')
       .upsert(summary, {
         onConflict: 'client_id,summary_type,summary_date,platform'
       });
 
     if (error) {
+      logger.error(`❌ UPSERT ERROR:`, {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        summary_date: data.summary_date,
+        client_id: clientId
+      });
       throw new Error(`Failed to store weekly summary: ${error.message}`);
     }
 
+    // 🔍 DEBUG: Log upsert result
+    logger.info(`✅ UPSERT SUCCESS:`, {
+      summary_date: data.summary_date,
+      client_id: clientId,
+      platform: platform,
+      upsert_returned_rows: upsertResult?.length || 0,
+      note: upsertResult ? 'Data returned from upsert' : 'No data returned (might be update, not insert)'
+    });
+
     const weekType = data.isCurrentWeek ? 'CURRENT WEEK' : 'COMPLETED WEEK';
-    logger.info(`💾 Stored ${weekType} summary with enhanced conversion metrics: ${enhancedConversionMetrics.reservations} reservations, ${enhancedConversionMetrics.reservation_value} value`);
+    logger.info(`💾 Stored ${weekType} summary with conversion metrics from Meta API: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value`);
   }
 
   /**

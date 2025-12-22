@@ -137,3 +137,5 @@ echo ""
 # Cleanup
 rm -f /tmp/week_*_response.json
 
+
+

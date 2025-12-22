@@ -741,3 +741,7 @@ Your application **MEETS ALL GOOGLE ADS API RMF REQUIREMENTS** for a reporting-o
 
 
 
+
+
+
+

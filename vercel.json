@@ -9,12 +9,24 @@
       "schedule": "25 */3 * * *"
     },
     {
-      "path": "/api/automated/daily-kpi-collection",
+      "path": "/api/automated/daily-kpi-collection-batched?offset=0&limit=5",
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/automated/google-ads-daily-collection",
+      "path": "/api/automated/daily-kpi-collection-batched?offset=5&limit=5",
       "schedule": "15 1 * * *"
+    },
+    {
+      "path": "/api/automated/daily-kpi-collection-batched?offset=10&limit=5",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/automated/daily-kpi-collection-batched?offset=15&limit=5",
+      "schedule": "45 1 * * *"
+    },
+    {
+      "path": "/api/automated/google-ads-daily-collection",
+      "schedule": "15 2 * * *"
     },
     {
       "path": "/api/automated/send-scheduled-reports",
@@ -46,11 +58,7 @@
     },
     {
       "path": "/api/automated/collect-weekly-summaries",
-      "schedule": "0 3 * * 0"
-    },
-    {
-      "path": "/api/background/cleanup-old-data",
-      "schedule": "0 2 * * 6"
+      "schedule": "0 4 * * 0"
     },
     {
       "path": "/api/background/cleanup-executive-summaries",

@@ -139,3 +139,7 @@ console.log('Placement data:', document.querySelector('[data-testid="placement-t
 
 The placement names should then appear!
 
+
+
+
+

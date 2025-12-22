@@ -24,16 +24,20 @@ interface GoogleAdsStats {
   averageCpc: number;
 }
 
+// ✅ UNIFIED: Uses same field names as Meta for consistency
 interface GoogleAdsConversionMetrics {
-  form_submissions: number;
-  phone_calls: number;
-  email_clicks: number;
-  phone_clicks: number;
+  click_to_call: number;         // ✅ UNIFIED: Primary field for phone clicks
+  email_contacts: number;        // ✅ UNIFIED: Primary field for form/email contacts
+  form_submissions?: number;     // Google-specific (backward compat)
+  phone_calls?: number;          // Google-specific (backward compat)
+  email_clicks?: number;         // Google-specific (backward compat)
+  phone_clicks?: number;         // Google-specific (backward compat)
   booking_step_1: number;
   booking_step_2: number;
   booking_step_3: number;
   reservations: number;
   reservation_value: number;
+  roas?: number;                 // ✅ UNIFIED: Added roas
   cost_per_reservation: number;
 }
 
@@ -134,7 +138,7 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     try {
       console.log('🔄 GoogleAdsPerformanceLive: Setting placeholder data for client:', clientId);
       
-      // Placeholder data structure - will be replaced with real API data
+      // ✅ UNIFIED: Placeholder data structure uses unified field names
       const placeholderData = {
         stats: {
           totalSpend: 0,
@@ -145,15 +149,14 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
           averageCpc: 0
         },
         conversionMetrics: {
-          form_submissions: 0,
-          phone_calls: 0,
-          email_clicks: 0,
-          phone_clicks: 0,
+          click_to_call: 0,        // ✅ UNIFIED
+          email_contacts: 0,       // ✅ UNIFIED
           booking_step_1: 0,
           booking_step_2: 0,
           booking_step_3: 0,
           reservations: 0,
           reservation_value: 0,
+          roas: 0,                 // ✅ UNIFIED
           cost_per_reservation: 0
         },
         lastUpdated: new Date().toISOString()

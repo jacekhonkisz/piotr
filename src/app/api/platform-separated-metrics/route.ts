@@ -58,11 +58,14 @@ export async function POST(request: NextRequest) {
     let metaData = null;
     let metaError = null;
     
-    if (clientData.meta_access_token && clientData.ad_account_id) {
+    // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+    const metaToken = clientData.system_user_token || clientData.meta_access_token;
+    if (metaToken && clientData.ad_account_id) {
       try {
         logger.info('📊 Fetching Meta-only data directly...');
         
-        const metaService = new MetaAPIService(clientData.meta_access_token);
+        // ✅ FIX: Use system_user_token if available, otherwise use meta_access_token
+        const metaService = new MetaAPIService(metaToken);
         
         // Validate token
         const tokenValidation = await metaService.validateToken();

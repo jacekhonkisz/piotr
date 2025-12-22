@@ -35,3 +35,5 @@ LEFT JOIN campaign_summaries cs ON cs.client_id = c.id
 GROUP BY c.id, c.name, c.ad_account_id, c.meta_access_token
 ORDER BY status, c.name;
 
+
+

@@ -30,3 +30,5 @@ WHERE client_id = (SELECT id FROM clients WHERE name = 'Belmonte Hotel' LIMIT 1)
 GROUP BY summary_date, summary_type, platform
 ORDER BY summary_date;
 
+
+

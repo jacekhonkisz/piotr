@@ -123,6 +123,13 @@ export async function POST(request: NextRequest) {
       shouldFetchUnifiedData
     });
     
+    // Helper function to sanitize numbers and prevent NaN/string concatenation
+    const sanitizeNumber = (value: any): number => {
+      if (value === null || value === undefined) return 0;
+      const num = Number(value);
+      return Number.isFinite(num) ? num : 0;
+    };
+    
     if (reportData && (reportData.metaData || reportData.googleData)) {
       // If reportData is provided with new structure (from PDF generation), convert it
       logger.info('🔍 [DEBUG] Extracting data from new structure:', {
@@ -130,23 +137,24 @@ export async function POST(request: NextRequest) {
         googleDataMetrics: reportData.googleData?.metrics
       });
       
-      const metaSpend = reportData.metaData?.metrics?.totalSpend || 0;
-      const metaImpressions = reportData.metaData?.metrics?.totalImpressions || 0;
-      const metaClicks = reportData.metaData?.metrics?.totalClicks || 0;
+      // ✅ CRITICAL FIX: Convert all values to numbers to prevent string concatenation
+      const metaSpend = sanitizeNumber(reportData.metaData?.metrics?.totalSpend);
+      const metaImpressions = sanitizeNumber(reportData.metaData?.metrics?.totalImpressions);
+      const metaClicks = sanitizeNumber(reportData.metaData?.metrics?.totalClicks);
       // ONLY CHANGE: Get reservations from conversionMetrics instead of metrics
-      const metaReservations = reportData.metaData?.conversionMetrics?.reservations || 
-                              reportData.metaData?.metrics?.totalReservations || 0;
-      const metaReservationValue = reportData.metaData?.conversionMetrics?.reservation_value || 
-                                  reportData.metaData?.metrics?.totalReservationValue || 0;
+      const metaReservations = sanitizeNumber(reportData.metaData?.conversionMetrics?.reservations || 
+                              reportData.metaData?.metrics?.totalReservations);
+      const metaReservationValue = sanitizeNumber(reportData.metaData?.conversionMetrics?.reservation_value || 
+                                  reportData.metaData?.metrics?.totalReservationValue);
       
-      const googleSpend = reportData.googleData?.metrics?.totalSpend || 0;
-      const googleImpressions = reportData.googleData?.metrics?.totalImpressions || 0;
-      const googleClicks = reportData.googleData?.metrics?.totalClicks || 0;
+      const googleSpend = sanitizeNumber(reportData.googleData?.metrics?.totalSpend);
+      const googleImpressions = sanitizeNumber(reportData.googleData?.metrics?.totalImpressions);
+      const googleClicks = sanitizeNumber(reportData.googleData?.metrics?.totalClicks);
       // ONLY CHANGE: Get reservations from conversionMetrics instead of metrics
-      const googleReservations = reportData.googleData?.conversionMetrics?.reservations || 
-                                reportData.googleData?.metrics?.totalReservations || 0;
-      const googleReservationValue = reportData.googleData?.conversionMetrics?.reservation_value || 
-                                    reportData.googleData?.metrics?.totalReservationValue || 0;
+      const googleReservations = sanitizeNumber(reportData.googleData?.conversionMetrics?.reservations || 
+                                reportData.googleData?.metrics?.totalReservations);
+      const googleReservationValue = sanitizeNumber(reportData.googleData?.conversionMetrics?.reservation_value || 
+                                    reportData.googleData?.metrics?.totalReservationValue);
       
       logger.info('🔍 [DEBUG] Extracted values:', {
         metaSpend, metaImpressions, metaClicks, metaReservations, metaReservationValue,
@@ -419,16 +427,16 @@ export async function POST(request: NextRequest) {
         platformSources = ['meta', 'google'];
         platformBreakdown = {
           meta: {
-            spend: actualReportData.account_summary.meta_spend || 0,
-            impressions: actualReportData.account_summary.meta_impressions || 0,
-            clicks: actualReportData.account_summary.meta_clicks || 0,
-            conversions: actualReportData.account_summary.meta_conversions || 0
+            spend: Number.isFinite(actualReportData.account_summary.meta_spend) ? actualReportData.account_summary.meta_spend : 0,
+            impressions: Number.isFinite(actualReportData.account_summary.meta_impressions) ? actualReportData.account_summary.meta_impressions : 0,
+            clicks: Number.isFinite(actualReportData.account_summary.meta_clicks) ? actualReportData.account_summary.meta_clicks : 0,
+            conversions: Number.isFinite(actualReportData.account_summary.meta_conversions) ? actualReportData.account_summary.meta_conversions : 0
           },
           google: {
-            spend: actualReportData.account_summary.google_spend || 0,
-            impressions: actualReportData.account_summary.google_impressions || 0,
-            clicks: actualReportData.account_summary.google_clicks || 0,
-            conversions: actualReportData.account_summary.google_conversions || 0
+            spend: Number.isFinite(actualReportData.account_summary.google_spend) ? actualReportData.account_summary.google_spend : 0,
+            impressions: Number.isFinite(actualReportData.account_summary.google_impressions) ? actualReportData.account_summary.google_impressions : 0,
+            clicks: Number.isFinite(actualReportData.account_summary.google_clicks) ? actualReportData.account_summary.google_clicks : 0,
+            conversions: Number.isFinite(actualReportData.account_summary.google_conversions) ? actualReportData.account_summary.google_conversions : 0
           }
         };
       } else if (hasMetaData) {
@@ -490,23 +498,25 @@ export async function POST(request: NextRequest) {
       conversionKeys: actualReportData.conversionMetrics ? Object.keys(actualReportData.conversionMetrics) : []
     });
     
+    // Note: sanitizeNumber is already defined earlier in the function (line 127)
+    
     const summaryData: ExecutiveSummaryData = {
-      totalSpend: actualReportData.account_summary?.total_spend || 0,
-      totalImpressions: actualReportData.account_summary?.total_impressions || 0,
-      totalClicks: actualReportData.account_summary?.total_clicks || 0,
-      totalConversions: actualReportData.account_summary?.total_conversions || 0,
-      averageCtr: actualReportData.account_summary?.average_ctr || 0,
-      averageCpc: actualReportData.account_summary?.average_cpc || 0,
-      averageCpa: actualReportData.account_summary?.average_cpa || 0,
+      totalSpend: sanitizeNumber(actualReportData.account_summary?.total_spend),
+      totalImpressions: sanitizeNumber(actualReportData.account_summary?.total_impressions),
+      totalClicks: sanitizeNumber(actualReportData.account_summary?.total_clicks),
+      totalConversions: sanitizeNumber(actualReportData.account_summary?.total_conversions),
+      averageCtr: sanitizeNumber(actualReportData.account_summary?.average_ctr),
+      averageCpc: sanitizeNumber(actualReportData.account_summary?.average_cpc),
+      averageCpa: sanitizeNumber(actualReportData.account_summary?.average_cpa),
       currency: 'PLN', // Hardcoded to PLN for Polish market
       dateRange: dateRange,
       clientName: client.name,
       // Extract conversion tracking data if available - FIXED to use actual reservations
-      reservations: actualReportData.account_summary?.total_conversions || 0,
-      reservationValue: actualReportData.account_summary?.total_conversion_value || 0,
-      roas: actualReportData.account_summary?.roas || 0,
-      microConversions: actualReportData.account_summary?.micro_conversions || 0,
-      costPerReservation: actualReportData.account_summary?.average_cpa || 0,
+      reservations: sanitizeNumber(actualReportData.account_summary?.total_conversions),
+      reservationValue: sanitizeNumber(actualReportData.account_summary?.total_conversion_value),
+      roas: sanitizeNumber(actualReportData.account_summary?.roas),
+      microConversions: sanitizeNumber(actualReportData.account_summary?.micro_conversions),
+      costPerReservation: sanitizeNumber(actualReportData.account_summary?.average_cpa),
       // Add platform attribution
       platformAttribution: platformAttribution,
       platformSources: platformSources,

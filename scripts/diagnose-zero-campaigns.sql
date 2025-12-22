@@ -36,3 +36,7 @@ WHERE client_id = (SELECT id FROM clients WHERE name ILIKE '%belmonte%' LIMIT 1)
   AND period_id = TO_CHAR(CURRENT_DATE, 'YYYY-MM');
 
 
+
+
+
+

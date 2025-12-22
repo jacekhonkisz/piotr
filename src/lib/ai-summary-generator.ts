@@ -326,12 +326,23 @@ function generateFallbackSummary(data: ExecutiveSummaryData): string {
     const metaData = data.platformBreakdown.meta;
     const googleData = data.platformBreakdown.google;
     
+    // Sanitize NaN values to prevent "NaN zł" in output
+    const metaSpendSafe = Number.isFinite(metaData.spend) ? metaData.spend : 0;
+    const metaImpressionsSafe = Number.isFinite(metaData.impressions) ? metaData.impressions : 0;
+    const metaClicksSafe = Number.isFinite(metaData.clicks) ? metaData.clicks : 0;
+    const metaConversionsSafe = Number.isFinite(metaData.conversions) ? metaData.conversions : 0;
+    
+    const googleSpendSafe = Number.isFinite(googleData.spend) ? googleData.spend : 0;
+    const googleImpressionsSafe = Number.isFinite(googleData.impressions) ? googleData.impressions : 0;
+    const googleClicksSafe = Number.isFinite(googleData.clicks) ? googleData.clicks : 0;
+    const googleConversionsSafe = Number.isFinite(googleData.conversions) ? googleData.conversions : 0;
+    
     // Meta Ads results
-    summary += ` o budżecie ${formatCurrency(metaData.spend || 0)} w Meta Ads i ${formatCurrency(googleData.spend || 0)} w Google Ads. `;
-    summary += `Kampanie Meta Ads wygenerowały ${formatNumber(metaData.impressions || 0)} wyświetleń i ${formatNumber(metaData.clicks || 0)} kliknięć, osiągając CTR na poziomie ${((metaData.clicks || 0) / (metaData.impressions || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(metaData.conversions || 0)} rezerwacji. `;
+    summary += ` o budżecie ${formatCurrency(metaSpendSafe)} w Meta Ads i ${formatCurrency(googleSpendSafe)} w Google Ads. `;
+    summary += `Kampanie Meta Ads wygenerowały ${formatNumber(metaImpressionsSafe)} wyświetleń i ${formatNumber(metaClicksSafe)} kliknięć, osiągając CTR na poziomie ${((metaClicksSafe) / (metaImpressionsSafe || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(metaConversionsSafe)} rezerwacji. `;
     
     // Google Ads results
-    summary += `Kampanie Google Ads wygenerowały ${formatNumber(googleData.impressions || 0)} wyświetlenia i ${formatNumber(googleData.clicks || 0)} kliknięć, osiągając CTR na poziomie ${((googleData.clicks || 0) / (googleData.impressions || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(googleData.conversions || 0)} rezerwacji. `;
+    summary += `Kampanie Google Ads wygenerowały ${formatNumber(googleImpressionsSafe)} wyświetlenia i ${formatNumber(googleClicksSafe)} kliknięć, osiągając CTR na poziomie ${((googleClicksSafe) / (googleImpressionsSafe || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(googleConversionsSafe)} rezerwacji. `;
     
     // Combined results
     summary += `Łącznie działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.averageCpa || 0)}.`;
