@@ -130,9 +130,14 @@ const fetchReportDataUnified = async (params: {
   try {
     let result;
     
-    // 🔧 FORCE FRESH: If forceFresh is true, bypass cache and call API directly
-    if (forceFresh) {
-      console.log('🚀 FORCE FRESH MODE: Bypassing cache, calling API directly...');
+    // 🔧 FORCE FRESH: If forceFresh is true, check if it's a custom date range
+    // For current periods: use smart cache (fast) even with forceFresh
+    // For custom date ranges: bypass all cache and call API directly
+    const isCustomDateRange = reason?.includes('custom-date');
+    
+    if (forceFresh && isCustomDateRange) {
+      // 🔧 CUSTOM DATE RANGE: Bypass all cache and call API directly
+      console.log('🚀 CUSTOM DATE RANGE MODE: Bypassing all cache, calling API directly...');
       
       if (platform === 'google') {
         // Client-side: call Google Ads API endpoint directly with forceFresh
@@ -153,7 +158,7 @@ const fetchReportDataUnified = async (params: {
             clientId,
             dateRange,
             forceRefresh: true, // Google Ads uses forceRefresh
-            bypassAllCache: true, // 🔧 NEW: Bypass ALL caching including smart cache
+            bypassAllCache: true, // 🔧 Only bypass for custom date ranges
             reason: reason || 'custom-date-direct-api-no-cache'
           })
         });
@@ -182,7 +187,7 @@ const fetchReportDataUnified = async (params: {
             clientId,
             dateRange,
             forceFresh: true, // Meta uses forceFresh
-            bypassAllCache: true, // 🔧 NEW: Bypass ALL caching including smart cache
+            bypassAllCache: true, // 🔧 Only bypass for custom date ranges
             reason: reason || 'custom-date-direct-api-no-cache'
           })
         });
@@ -213,6 +218,65 @@ const fetchReportDataUnified = async (params: {
         } else {
           throw new Error('Meta API returned no data');
         }
+      }
+    } else if (forceFresh && !isCustomDateRange) {
+      // 🔧 CURRENT PERIOD FORCE REFRESH: Use smart cache (NOT live API)
+      // This happens when switching providers - smart cache is already fresh
+      console.log('🚀 CURRENT PERIOD FORCE REFRESH: Using smart cache (NOT bypassing)...');
+      
+      if (platform === 'google') {
+        // Use Google Ads smart cache system
+        console.log('🎯 Using GoogleAdsStandardizedDataFetcher for force-refresh (smart cache)...');
+        
+        if (typeof window === 'undefined') {
+          const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+          result = await GoogleAdsStandardizedDataFetcher.fetchData({
+            clientId,
+            dateRange,
+            reason: reason || 'google-ads-force-refresh-smart-cache',
+            sessionToken: session?.access_token
+          });
+        } else {
+          // Client-side: redirect to API endpoint WITHOUT bypassAllCache
+          const { createClient } = await import('@supabase/supabase-js');
+          const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          );
+          const { data: { session: clientSession } } = await supabase.auth.getSession();
+          
+          const response = await fetch('/api/fetch-google-ads-live-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${clientSession?.access_token || ''}`
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange,
+              // 🔧 NO bypassAllCache - use smart cache
+              reason: reason || 'google-ads-force-refresh-smart-cache'
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Google Ads API call failed: ${response.status}`);
+          }
+          
+          result = await response.json();
+        }
+      } else {
+        // Use Meta smart cache system
+        console.log('🎯 Using StandardizedDataFetcher for Meta force-refresh (smart cache)...');
+        const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+        
+        result = await StandardizedDataFetcher.fetchData({
+          clientId,
+          dateRange,
+          platform: 'meta',
+          reason: reason || 'meta-force-refresh-smart-cache',
+          sessionToken: session?.access_token
+        });
       }
     } else {
       // Normal mode: Use StandardizedDataFetcher with smart caching
