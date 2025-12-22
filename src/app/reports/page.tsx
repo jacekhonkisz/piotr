@@ -1879,6 +1879,7 @@ function ReportsPageContent() {
 
         console.log(`💾 Setting empty report for failed ${periodId}:`, emptyReport);
         setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+        setLoadingPeriod(null); // Clear loading after setting empty state
         return;
       }
 
@@ -2135,6 +2136,8 @@ function ReportsPageContent() {
       }
       console.log(`🎯 ${isCurrentPeriod ? 'LIVE API DATA' : 'API DATA'} set for ${periodId} with ${campaigns.length} campaigns`);
       
+      // 🔧 FIX: Set reports AND clear loading in same state update batch
+      // This prevents the "Brak danych" flash between loading and data display
       setReports(prev => {
         const newState = { ...prev, [periodId]: report };
         console.log('💾 Updated reports state:', {
@@ -2146,6 +2149,12 @@ function ReportsPageContent() {
         });
         return newState;
       });
+      
+      // 🔧 FIX: Clear loading state IMMEDIATELY after setReports (same tick)
+      // This ensures React batches both updates together
+      setLoadingPeriod(null);
+      console.log('✅ Data loaded and loading state cleared for:', periodId);
+      
     } catch (error) {
       console.error(`❌ Error loading ${activeViewType} data for ${periodId}:`, error);
       
@@ -2177,6 +2186,7 @@ function ReportsPageContent() {
 
         console.log('💾 Setting empty report for current month API failure:', emptyReport);
         setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+        setLoadingPeriod(null); // Clear loading after setting error state
         
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         if (errorMessage.includes('timeout')) {
@@ -2217,13 +2227,16 @@ function ReportsPageContent() {
 
         console.log('💾 Setting fallback report for previous month:', fallbackReport);
         setReports(prev => ({ ...prev, [periodId]: fallbackReport }));
+        setLoadingPeriod(null); // Clear loading after setting fallback state
         
         setError(`API Error: ${error instanceof Error ? error.message : 'Unknown error'}. Showing fallback data.`);
       }
     } finally {
+      // 🔧 FIX: Only reset refs and API state, NOT loading period
+      // Loading period is cleared in try block (success) or catch block (error)
       loadingRef.current = false;
       setApiCallInProgress(false);
-      setLoadingPeriod(null);
+      // Note: setLoadingPeriod is handled in try/catch blocks to ensure proper batching
     }
   };
 
