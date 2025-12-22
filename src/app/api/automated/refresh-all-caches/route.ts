@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+            // ✅ FIX: Use CRON_SECRET for internal cron calls (verifyCronAuth expects this)
+            'Authorization': `Bearer ${process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY}`
           }
         });
 

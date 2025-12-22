@@ -7,9 +7,10 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // ✅ FIX: Allow service role token for automated cron jobs
+    // ✅ FIX: Allow service role token OR CRON_SECRET for automated cron jobs
     const authHeader = request.headers.get('authorization');
-    const isServiceRole = authHeader?.includes(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+    const isServiceRole = authHeader?.includes(process.env.SUPABASE_SERVICE_ROLE_KEY || '') ||
+                          authHeader === `Bearer ${process.env.CRON_SECRET}`;
     
     let user = null;
     

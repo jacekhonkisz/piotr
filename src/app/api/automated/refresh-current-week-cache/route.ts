@@ -35,9 +35,10 @@ export async function POST(request: NextRequest) {
     const currentWeek = getCurrentWeekInfo();
     
     // Get all active clients that need cache refresh
+    // ✅ FIX: Select BOTH meta_access_token AND system_user_token
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
-      .select('id, name, email, meta_access_token, ad_account_id, api_status')
+      .select('id, name, email, meta_access_token, system_user_token, ad_account_id, api_status')
       .eq('api_status', 'valid'); // Include ALL valid clients
     
     if (clientsError) {
@@ -66,8 +67,11 @@ export async function POST(request: NextRequest) {
       const batch = clients.slice(i, i + batchSize);
       
       const batchPromises = batch.map(async (client) => {
+        // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
+        const metaToken = (client as any).system_user_token || client.meta_access_token;
+        
         // Skip clients without required Meta credentials
-        if (!client.meta_access_token || !client.ad_account_id) {
+        if (!metaToken || !client.ad_account_id) {
           console.log(`⏭️ Skipping ${client.name} - missing Meta credentials`);
           skippedCount++;
           return {
@@ -116,7 +120,8 @@ export async function POST(request: NextRequest) {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+                // ✅ FIX: Use CRON_SECRET for internal cron calls
+                'Authorization': `Bearer ${process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY}`
               },
               body: JSON.stringify({ 
                 clientId: client.id,

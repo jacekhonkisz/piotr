@@ -101,7 +101,8 @@ export async function GET(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+            // ✅ FIX: Use CRON_SECRET for internal cron calls
+            'Authorization': `Bearer ${process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY}`
           },
           body: JSON.stringify({
             clientId: client.id,
