@@ -573,20 +573,25 @@ function ReportsPageContent() {
       // Wait for state updates to complete
       await new Promise(resolve => setTimeout(resolve, 100));
       
+      // 🔧 CRITICAL FIX: Capture provider at this exact moment to avoid stale closure
+      const currentProvider = activeAdsProvider;
+      console.log(`🔄 Provider switch executing with currentProvider: ${currentProvider}`);
+      
       // Handle different view types
       if (currentViewType === 'custom' && customDateRange.start && customDateRange.end) {
-        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing custom date data`);
+        console.log(`🔄 Provider changed to ${currentProvider}, refreshing custom date data`);
         setLoadingPeriod('custom');
         await loadCustomDateData(customDateRange.start, customDateRange.end);
       } else if (currentPeriod && (currentViewType === 'monthly' || currentViewType === 'weekly')) {
-        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing data for period: ${currentPeriod}`);
+        console.log(`🔄 Provider changed to ${currentProvider}, refreshing data for period: ${currentPeriod}`);
         setLoadingPeriod(currentPeriod);
         
         // Force fresh data load with new provider
-        console.log(`🔄 FORCING FRESH DATA LOAD for ${activeAdsProvider} provider`);
-        await loadPeriodDataWithClient(currentPeriod, currentClient, true);
+        // 🔧 FIX: Pass provider explicitly to avoid stale closure issues
+        console.log(`🔄 FORCING FRESH DATA LOAD for ${currentProvider} provider`);
+        await loadPeriodDataWithClient(currentPeriod, currentClient, true, currentProvider);
       } else if (currentViewType === 'all-time') {
-        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing all-time data`);
+        console.log(`🔄 Provider changed to ${currentProvider}, refreshing all-time data`);
         await loadAllTimeData();
       } else {
         // 🔧 FIX: Generate periods and load initial data if no period is selected
@@ -597,7 +602,8 @@ function ReportsPageContent() {
           setAvailablePeriods(periods);
           setSelectedPeriod(initialPeriod);
           setLoadingPeriod(initialPeriod);
-          await loadPeriodDataWithClient(initialPeriod, currentClient, true);
+          // 🔧 FIX: Pass provider explicitly
+          await loadPeriodDataWithClient(initialPeriod, currentClient, true, currentProvider);
         }
       }
     };
@@ -1485,7 +1491,21 @@ function ReportsPageContent() {
   };
 
   // Load data for a specific period with explicit client data
-  const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false) => {
+  // 🔧 FIX: Added optional `platform` parameter to avoid stale closure issues when switching providers
+  const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false, platform?: string) => {
+    // 🔧 CRITICAL FIX: Use explicit platform if provided, otherwise use current state
+    // This avoids stale closure issues when provider changes
+    const effectivePlatform = platform || activeAdsProvider;
+    
+    console.log(`🔄 loadPeriodDataWithClient called:`, {
+      periodId,
+      clientId: clientData.id,
+      forceClearCache,
+      explicitPlatform: platform,
+      effectivePlatform,
+      stateAdsProvider: activeAdsProvider
+    });
+    
     // 🔧 FORCE CORRECT VIEW TYPE: Auto-fix view type mismatch to prevent January dates
     const detectedViewType = periodId.includes('-W') ? 'weekly' : 'monthly';
     if (viewType !== detectedViewType) {
@@ -1506,10 +1526,11 @@ function ReportsPageContent() {
     // 🔧 FIX: Use detectedViewType instead of viewType to avoid race condition
     const activeViewType = detectedViewType; // Always use detected type, not state (state updates async)
     
-    console.log(`📊 Loading ${activeViewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache });
+    console.log(`📊 Loading ${activeViewType} data for period: ${periodId} with explicit client`, { periodId, clientId: clientData.id, forceClearCache, effectivePlatform });
     
     // CRITICAL: Prevent ALL duplicate calls with multiple layers of protection
-    const callKey = `${periodId}-${activeAdsProvider}-${clientData.id}`;
+    // 🔧 FIX: Use effectivePlatform instead of activeAdsProvider for consistent key
+    const callKey = `${periodId}-${effectivePlatform}-${clientData.id}`;
     
     // Layer 1: Check loading refs (but allow if forcing clear cache)
     if (!forceClearCache && (loadingRef.current || apiCallInProgress)) {
@@ -1517,7 +1538,7 @@ function ReportsPageContent() {
         loadingRef: loadingRef.current,
         apiCallInProgress,
         periodId,
-        activeAdsProvider,
+        effectivePlatform,
         forceClearCache
       });
       return;
@@ -1530,7 +1551,7 @@ function ReportsPageContent() {
     if (!forceClearCache && (window as any).apiCallTracker[callKey] && (now - (window as any).apiCallTracker[callKey]) < 2000) {
       console.log('🚫 BLOCKED: Recent call detected (Layer 2)', { 
         periodId, 
-        activeAdsProvider,
+        effectivePlatform,
         timeSinceLastCall: now - (window as any).apiCallTracker[callKey],
         forceClearCache
       });
@@ -1561,7 +1582,7 @@ function ReportsPageContent() {
     
     // Track this call immediately
     (window as any).apiCallTracker[callKey] = now;
-    console.log('✅ ALLOWED: API call proceeding', { periodId, activeAdsProvider, callKey });
+    console.log('✅ ALLOWED: API call proceeding', { periodId, effectivePlatform, callKey });
 
     // Check if this is the current period (month or week)
     const isCurrentPeriod = (() => {
@@ -1775,9 +1796,9 @@ function ReportsPageContent() {
           end: periodEndDate
         },
         clientId: clientData.id, // Always send the client ID for real clients
-        platform: activeAdsProvider, // Include platform for database lookup
+        platform: effectivePlatform, // 🔧 FIX: Use effectivePlatform instead of state
         ...(forceClearCache && { 
-          [activeAdsProvider === 'google' ? 'forceRefresh' : 'forceFresh']: true 
+          [effectivePlatform === 'google' ? 'forceRefresh' : 'forceFresh']: true 
         }) // Use correct force parameter based on provider
       };
       
@@ -1815,14 +1836,14 @@ function ReportsPageContent() {
       }
       
       // 🎯 USE STANDARDIZED DATA FETCHER (loadPeriodDataWithClient)
-      console.log('🎯 Using StandardizedDataFetcher for period data...');
+      console.log('🎯 Using StandardizedDataFetcher for period data...', { effectivePlatform, forceClearCache });
       
       const response = await fetchReportDataUnified({
         dateRange,
         clientId: clientData.id,
-        platform: activeAdsProvider,
+        platform: effectivePlatform, // 🔧 FIX: Use effectivePlatform to avoid stale closure
         forceFresh: forceClearCache,
-        reason: `period-${periodId}-standardized`,
+        reason: `period-${periodId}-standardized-${effectivePlatform}`,
         session
       });
       
@@ -1839,7 +1860,7 @@ function ReportsPageContent() {
         console.error(`❌ StandardizedDataFetcher failed for ${periodId}:`, errorReason);
         
         // Show error message
-        setError(`Failed to load ${activeAdsProvider} data for ${periodId}: ${errorReason}`);
+        setError(`Failed to load ${effectivePlatform} data for ${periodId}: ${errorReason}`);
         
         // Add empty period if fetch fails
         const emptyReport: MonthlyReport | WeeklyReport = {
@@ -1883,7 +1904,7 @@ function ReportsPageContent() {
         // 🚨 CRITICAL DEBUG: Check what the API actually returned
         console.log(`🚨 CRITICAL API RESPONSE:`, {
           periodId,
-          activeAdsProvider,
+          effectivePlatform,
           responseSuccess: data.success,
         apiDateRange: 'standardized-fetch',
         apiFromCache: 'standardized-fetch',
@@ -1897,7 +1918,7 @@ function ReportsPageContent() {
         });
         
         // 🔍 GOOGLE ADS SPECIFIC DEBUG
-        if (activeAdsProvider === 'google') {
+        if (effectivePlatform === 'google') {
           console.log('🔍 GOOGLE ADS SPECIFIC DEBUG:', {
           success: data.success,
           source: data.debug?.source,
