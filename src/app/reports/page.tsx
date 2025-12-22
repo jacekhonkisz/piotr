@@ -3774,7 +3774,7 @@ function ReportsPageContent() {
           </div>
         )}
 
-        {selectedReport && !loadingPeriod && (
+        {!loadingPeriod && (
           <>
             {/* 🔧 DATA SOURCE INDICATOR: Show which data source is being used */}
             <DataSourceIndicator 
@@ -3786,8 +3786,14 @@ function ReportsPageContent() {
               const totals = getSelectedPeriodTotals();
               
               // Use the real report data regardless of provider
-              // The API routing now handles fetching the correct data
-              const reportData = selectedReport;
+              // 🔧 FIX: If no report, create empty report with 0s to avoid "Brak danych"
+              const reportData = selectedReport || {
+                id: selectedPeriod || 'empty',
+                date_range_start: '',
+                date_range_end: '',
+                generated_at: new Date().toISOString(),
+                campaigns: []
+              };
               
               return (
                 <WeeklyReportView
@@ -3808,7 +3814,7 @@ function ReportsPageContent() {
             })()}
             
             {/* Conditional Ads Tables Section */}
-            {selectedReport.date_range_start && selectedReport.date_range_end && (
+            {selectedReport && selectedReport.date_range_start && selectedReport.date_range_end && (
               <div className="mt-8">
                 {activeAdsProvider === 'meta' ? (
                   <MetaAdsTables
@@ -3868,24 +3874,7 @@ function ReportsPageContent() {
           </>
         )}
 
-        {!selectedReport && !loadingPeriod && (
-          <div className="bg-white rounded-lg p-8 mb-8">
-            <div className="text-center">
-              <DatabaseIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Brak danych</h3>
-              <p className="text-gray-600">
-                {viewType === 'all-time' && 'Nie znaleziono danych dla całego okresu.'}
-                {viewType === 'custom' && 'Nie znaleziono danych dla wybranego zakresu dat.'}
-                {(viewType === 'monthly' || viewType === 'weekly') && selectedPeriod && 
-                  `Nie znaleziono danych dla wybranego okresu ${viewType === 'monthly' ? 'miesięcznego' : 'tygodniowego'}.`
-                }
-                {(viewType === 'monthly' || viewType === 'weekly') && !selectedPeriod && 
-                  'Proszę wybrać okres do analizy.'
-                }
-              </p>
-            </div>
-          </div>
-        )}
+        {/* 🔧 REMOVED: "Brak danych" screen - now showing 0s instead when no data */}
 
 
 
