@@ -40,12 +40,15 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString()
     });
 
-    // Get the correct base URL for API calls
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}`
-      : (process.env.NODE_ENV === 'production' 
-        ? 'https://piotr-33s37fogt-jachonkisz-gmailcoms-projects.vercel.app'
-        : 'http://localhost:3000');
+    // Get the correct base URL for API calls - use request origin for reliability
+    const requestOrigin = request.nextUrl.origin;
+    const baseUrl = requestOrigin && requestOrigin !== 'null' 
+      ? requestOrigin 
+      : (process.env.NEXT_PUBLIC_APP_URL 
+        || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+        || 'http://localhost:3000');
+    
+    logger.info('🔗 Using base URL for internal calls:', baseUrl);
 
     // Refresh all caches sequentially with delays to avoid overwhelming the system
     const cacheEndpoints = [
