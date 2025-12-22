@@ -3836,9 +3836,8 @@ function ReportsPageContent() {
                       clientId={client?.id || ''}
                       onDataLoaded={(data) => {
                         console.log('Google Ads tables data loaded:', data);
-                        // Clear loading state when Google Ads data is loaded
-                        setLoadingPeriod(null);
-                        setApiCallInProgress(false);
+                        // 🔧 FIX: Don't clear loading here - main component handles it
+                        // This was causing premature loading state clear
                       }}
                     />
                     
