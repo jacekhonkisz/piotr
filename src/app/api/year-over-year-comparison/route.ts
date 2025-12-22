@@ -121,47 +121,66 @@ export async function POST(request: NextRequest) {
     const normalizedPlatform = platform === 'google_ads' ? 'google' : platform;
     
     if (platform === 'google_ads' || platform === 'google') {
-        console.log(`🔄 [${requestId}] Platform: Google Ads - using robust API endpoint`);
-      // Use the same robust API endpoint as PDF generation with fallback logic
-      const response = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          clientId,
-          dateRange,
-          includeTableData: false,
-          reason: 'comparison-current-google'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success && data.data?.stats) {
-          currentData = data.data.stats;
+      console.log(`🔄 [${requestId}] Platform: Google Ads - using SMART CACHE (fast)`);
+      
+      // 🔧 PERF FIX: Use smart cache directly instead of making HTTP call
+      // This avoids duplicate API calls and significantly speeds up YoY comparison
+      try {
+        const { getGoogleAdsSmartCacheData } = await import('../../../lib/google-ads-smart-cache-helper');
+        const smartCacheResult = await getGoogleAdsSmartCacheData(clientId, false);
+        
+        if (smartCacheResult.success && smartCacheResult.data?.stats) {
+          currentData = smartCacheResult.data.stats;
           
           // Add funnel data from conversionMetrics if available
-          if (data.data.conversionMetrics) {
-            currentData.totalBookingStep1 = data.data.conversionMetrics.booking_step_1 || 0;
-            currentData.totalBookingStep2 = data.data.conversionMetrics.booking_step_2 || 0;
-            currentData.totalBookingStep3 = data.data.conversionMetrics.booking_step_3 || 0;
-            currentData.totalReservations = data.data.conversionMetrics.reservations || 0;
-            currentData.totalReservationValue = data.data.conversionMetrics.reservation_value || 0;
+          if (smartCacheResult.data.conversionMetrics) {
+            currentData.totalBookingStep1 = smartCacheResult.data.conversionMetrics.booking_step_1 || 0;
+            currentData.totalBookingStep2 = smartCacheResult.data.conversionMetrics.booking_step_2 || 0;
+            currentData.totalBookingStep3 = smartCacheResult.data.conversionMetrics.booking_step_3 || 0;
+            currentData.totalReservations = smartCacheResult.data.conversionMetrics.reservations || 0;
+            currentData.totalReservationValue = smartCacheResult.data.conversionMetrics.reservation_value || 0;
             
             console.log(`✅ [${requestId}] Added funnel data from Google Ads conversionMetrics:`, {
               funnel: `${currentData.totalBookingStep1}→${currentData.totalBookingStep2}→${currentData.totalBookingStep3}→${currentData.totalReservations}`,
               reservationValue: currentData.totalReservationValue
             });
           }
+          console.log(`✅ [${requestId}] Google Ads data from SMART CACHE - fast!`);
         } else {
-          console.error(`❌ [${requestId}] Google Ads API failed:`, data.error);
+          console.warn(`⚠️ [${requestId}] Smart cache miss, falling back to API...`);
+          // Fallback to HTTP call if smart cache fails
+          const response = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange,
+              includeTableData: false,
+              reason: 'comparison-current-google-fallback'
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data?.stats) {
+              currentData = data.data.stats;
+              if (data.data.conversionMetrics) {
+                currentData.totalBookingStep1 = data.data.conversionMetrics.booking_step_1 || 0;
+                currentData.totalBookingStep2 = data.data.conversionMetrics.booking_step_2 || 0;
+                currentData.totalBookingStep3 = data.data.conversionMetrics.booking_step_3 || 0;
+                currentData.totalReservations = data.data.conversionMetrics.reservations || 0;
+                currentData.totalReservationValue = data.data.conversionMetrics.reservation_value || 0;
+              }
+            }
+          }
         }
-      } else {
-        console.error(`❌ [${requestId}] Google Ads API failed:`, response.status, response.statusText);
+      } catch (cacheError) {
+        console.error(`❌ [${requestId}] Smart cache error:`, cacheError);
       }
-      } else {
+    } else {
       console.log(`🔄 [${requestId}] Platform: Meta - using main dashboard API`);
       
       // Use the same API endpoint as the main dashboard
