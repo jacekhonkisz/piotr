@@ -13,8 +13,9 @@ import { getGoogleAdsSmartCacheData, getGoogleAdsSmartWeekCacheData } from '../.
  * Replaces: Individual cache refresh cron jobs
  * Security: Protected with CRON_SECRET authentication
  * 
- * ✅ REFACTORED: Now uses direct function calls instead of HTTP requests
+ * ✅ REFACTORED v2: Now uses direct function calls instead of HTTP requests
  * to avoid URL resolution issues in serverless environments.
+ * VERSION: 2025-12-22-v2
  */
 
 const supabase = createClient(
@@ -249,6 +250,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'All cache refresh operations completed',
+      version: '2025-12-22-v2-direct-calls',
       summary,
       details: results,
       timestamp: new Date().toISOString()
