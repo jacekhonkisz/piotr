@@ -281,6 +281,8 @@ const fetchReportDataUnified = async (params: {
           campaigns: result.data.campaigns || [],
           stats: result.data.stats,
           conversionMetrics: result.data.conversionMetrics,
+          // 🔧 FIX: Pass through googleAdsTables to avoid duplicate API calls
+          googleAdsTables: result.data.googleAdsTables || null,
           dataSourceValidation: {
             // ✅ FIX: Use actual validation from fetcher, not hardcoded values
             expectedSource: result.validation?.expectedSource || 'unknown',
@@ -303,7 +305,8 @@ const fetchReportDataUnified = async (params: {
         source: transformedResult.debug.source,
         periodType: transformedResult.debug.periodType,
         totalSpend: transformedResult.data.stats?.totalSpend,
-        reservations: transformedResult.data.conversionMetrics?.reservations
+        reservations: transformedResult.data.conversionMetrics?.reservations,
+        hasGoogleAdsTables: !!transformedResult.data.googleAdsTables
       });
       
       return transformedResult;
