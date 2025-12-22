@@ -628,6 +628,7 @@ function ReportsPageContent() {
   const clientLoadingRef = useRef(false);
   const mountedRef = useRef(false);
   const initialClientLoadRef = useRef(false);
+  const initialDataLoadedRef = useRef(false); // 🔧 Track if initial data load has been completed
 
   // Handle client change for admin users
   const handleClientChange = async (newClient: Client) => {
@@ -3156,10 +3157,14 @@ function ReportsPageContent() {
             setSelectedPeriod(initialPeriod);
             // Load data immediately with the client data we just loaded
             console.log('📊 Loading initial data for period:', initialPeriod);
-            loadPeriodDataWithClient(initialPeriod, clientData);
+            await loadPeriodDataWithClient(initialPeriod, clientData);
+            // 🔧 Mark initial data as loaded AFTER the call completes
+            initialDataLoadedRef.current = true;
+            console.log('✅ Initial data load completed, marking initialDataLoadedRef as true');
           }
         } else {
           console.log('⚠️ No periods generated');
+          initialDataLoadedRef.current = true; // Still mark as complete even if no periods
         }
 
         // Small delay to ensure state is fully updated
@@ -3186,6 +3191,7 @@ function ReportsPageContent() {
       loadingRef.current = false;
       clientLoadingRef.current = false;
       initialClientLoadRef.current = false;
+      initialDataLoadedRef.current = false;
     };
   }, []);
 
@@ -3217,6 +3223,13 @@ function ReportsPageContent() {
     // Skip if we're still in the initial loading process
     if (clientLoadingRef.current) {
       console.log('⚠️ Client loading in progress, skipping viewType update');
+      return;
+    }
+    
+    // 🔧 FIX: Skip if initial data load hasn't completed yet
+    // This prevents duplicate data fetching when loading state changes
+    if (!initialDataLoadedRef.current) {
+      console.log('⚠️ Initial data load not complete, skipping viewType update');
       return;
     }
     
@@ -3834,17 +3847,27 @@ function ReportsPageContent() {
               />
             ) : (
               <>
-                <GoogleAdsTables
-                  key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
-                  dateStart={selectedReport.date_range_start}
-                  dateEnd={selectedReport.date_range_end}
-                  clientId={client?.id || ''}
-                  // 🔧 FIX: Pass preloaded tables data to avoid duplicate API calls
-                  preloadedTablesData={(selectedReport as any)?.googleAdsTables || null}
-                  onDataLoaded={(data) => {
-                    console.log('Google Ads tables data loaded:', data);
-                  }}
-                />
+                {/* 🔧 FIX: Only render GoogleAdsTables when preloaded data is available
+                    This prevents the component from making duplicate API calls */}
+                {(selectedReport as any)?.googleAdsTables ? (
+                  <GoogleAdsTables
+                    key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                    dateStart={selectedReport.date_range_start}
+                    dateEnd={selectedReport.date_range_end}
+                    clientId={client?.id || ''}
+                    preloadedTablesData={(selectedReport as any).googleAdsTables}
+                    onDataLoaded={(data) => {
+                      console.log('Google Ads tables data loaded:', data);
+                    }}
+                  />
+                ) : (
+                  <div className="bg-white rounded-lg p-6 border border-gray-200">
+                    <div className="flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                      <span className="text-gray-600">Ładowanie szczegółowych danych Google Ads...</span>
+                    </div>
+                  </div>
+                )}
                 
                 {/* RMF R.20, R.30, R.40: Campaign Hierarchy with Ad Groups and Ads */}
                 {selectedReport && selectedReport.campaigns && selectedReport.campaigns.length > 0 && (
