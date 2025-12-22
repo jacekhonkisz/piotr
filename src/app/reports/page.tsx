@@ -3147,6 +3147,12 @@ function ReportsPageContent() {
         const periods = generatePeriodOptions(viewType);
         setAvailablePeriods(periods);
 
+        // 🔧 PROGRESSIVE LOADING: Show content structure immediately
+        // Set loading to false early so the page renders with loading indicators per section
+        clientLoadingRef.current = false;
+        setLoading(false);
+        console.log('✅ Page structure visible, starting data fetch...');
+
         // Set initial period and load data
         if (periods.length > 0) {
           // Use the first period (current month) as the initial period
@@ -3155,7 +3161,9 @@ function ReportsPageContent() {
           if (initialPeriod) {
             console.log('📅 Setting initial period:', initialPeriod);
             setSelectedPeriod(initialPeriod);
-            // Load data immediately with the client data we just loaded
+            setLoadingPeriod(initialPeriod); // 🔧 Show per-section loading indicators
+            
+            // Load data - page is already visible at this point
             console.log('📊 Loading initial data for period:', initialPeriod);
             await loadPeriodDataWithClient(initialPeriod, clientData);
             // 🔧 Mark initial data as loaded AFTER the call completes
@@ -3175,9 +3183,7 @@ function ReportsPageContent() {
       } catch (error) {
         console.error('Error initializing reports:', error);
         setError(`Failed to initialize reports: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      } finally {
-        clientLoadingRef.current = false;
-        setLoading(false);
+        setLoading(false); // Ensure loading is false even on error
       }
     };
 

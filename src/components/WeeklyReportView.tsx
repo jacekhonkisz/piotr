@@ -623,10 +623,50 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     reportsKeys: Object.keys(reports)
   });
   
-  if (reportIds.length === 0) {
+  // 🔧 PROGRESSIVE LOADING: Show content immediately, even with empty data
+  // The MetricCards will show 0s while loading
+  if (reportIds.length === 0 && !isLoading) {
     return (
       <div className="text-center py-8">
         <p className="text-gray-500">Brak danych do wyświetlenia</p>
+      </div>
+    );
+  }
+  
+  // If loading with no reports yet, create a placeholder report structure
+  if (reportIds.length === 0 && isLoading) {
+    // Show the structure with loading indicators
+    return (
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 space-y-6 sm:space-y-10">
+        <div className="space-y-10">
+          {/* Header Section - Loading */}
+          <div className="border-b pb-8" style={{ borderColor: '#E5E7EB' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="h-8 bg-slate-200 rounded w-64 animate-pulse mb-2"></div>
+                <div className="h-4 bg-slate-100 rounded w-48 animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Metrics Section - Loading skeleton */}
+          <section className="mb-10">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-slate-900 mb-1">Podstawowe Metryki</h2>
+              <p className="text-sm text-slate-600">Ładowanie danych...</p>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="bg-white border border-slate-200 rounded-lg p-5">
+                  <div className="h-4 bg-slate-100 rounded w-24 animate-pulse mb-3"></div>
+                  <div className="h-8 bg-slate-200 rounded w-32 animate-pulse mb-2"></div>
+                  <div className="h-3 bg-slate-100 rounded w-20 animate-pulse"></div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
     );
   }
