@@ -3764,119 +3764,115 @@ function ReportsPageContent() {
           </div>
         )}
 
+        {/* 🔧 PROGRESSIVE LOADING: Always show content structure, sections handle their own loading */}
+        {/* Loading indicator - non-blocking overlay */}
         {loadingPeriod && (
-          <div className="flex justify-center items-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">
-                Ładowanie danych {
-                  viewType === 'monthly' ? 'miesięcznych' :
-                  viewType === 'weekly' ? 'tygodniowych' :
-                  viewType === 'all-time' ? 'całego okresu' :
-                  'własnego zakresu'
-                }...
-              </p>
-            </div>
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            <p className="text-blue-700 text-sm font-medium">
+              Aktualizuję dane {
+                viewType === 'monthly' ? 'miesięczne' :
+                viewType === 'weekly' ? 'tygodniowe' :
+                viewType === 'all-time' ? 'całego okresu' :
+                'własnego zakresu'
+              }...
+            </p>
           </div>
         )}
 
-        {!loadingPeriod && (
-          <>
-            {/* 🔧 DATA SOURCE INDICATOR: Show which data source is being used */}
-            <DataSourceIndicator 
-              validation={dataSourceInfo.validation} 
-              debug={dataSourceInfo.debug} 
+        {/* 🔧 DATA SOURCE INDICATOR: Show which data source is being used */}
+        <DataSourceIndicator 
+          validation={dataSourceInfo.validation} 
+          debug={dataSourceInfo.debug} 
+        />
+        
+        {(() => {
+          const totals = getSelectedPeriodTotals();
+          
+          // Use the real report data regardless of provider
+          // 🔧 FIX: If no report, create empty report with 0s to avoid "Brak danych"
+          const reportData = selectedReport || {
+            id: selectedPeriod || 'empty',
+            date_range_start: '',
+            date_range_end: '',
+            generated_at: new Date().toISOString(),
+            campaigns: []
+          };
+          
+          return (
+            <WeeklyReportView
+              reports={{ 
+                [viewType === 'all-time' ? 'all-time' : 
+                 viewType === 'custom' ? 'custom' : 
+                 `${viewType}-${selectedPeriod}`]: reportData 
+              }}
+              viewType={viewType}
+              clientData={selectedClient ? {
+                id: selectedClient.id,
+                name: selectedClient.name,
+                email: selectedClient.email
+              } : undefined}
+              platform={activeAdsProvider}
+              isLoading={!!loadingPeriod}
             />
-            
-            {(() => {
-              const totals = getSelectedPeriodTotals();
-              
-              // Use the real report data regardless of provider
-              // 🔧 FIX: If no report, create empty report with 0s to avoid "Brak danych"
-              const reportData = selectedReport || {
-                id: selectedPeriod || 'empty',
-                date_range_start: '',
-                date_range_end: '',
-                generated_at: new Date().toISOString(),
-                campaigns: []
-              };
-              
-              return (
-                <WeeklyReportView
-                  reports={{ 
-                    [viewType === 'all-time' ? 'all-time' : 
-                     viewType === 'custom' ? 'custom' : 
-                     `${viewType}-${selectedPeriod}`]: reportData 
+          );
+        })()}
+        
+        {/* Conditional Ads Tables Section */}
+        {selectedReport && selectedReport.date_range_start && selectedReport.date_range_end && (
+          <div className="mt-8">
+            {activeAdsProvider === 'meta' ? (
+              <MetaAdsTables
+                key={`meta-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                dateStart={selectedReport.date_range_start}
+                dateEnd={selectedReport.date_range_end}
+                clientId={client?.id || ''}
+                onDataLoaded={(data) => {
+                  setMetaTablesData(data);
+                  console.log('Meta Ads tables data loaded:', data);
+                }}
+              />
+            ) : (
+              <>
+                <GoogleAdsTables
+                  key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                  dateStart={selectedReport.date_range_start}
+                  dateEnd={selectedReport.date_range_end}
+                  clientId={client?.id || ''}
+                  // 🔧 FIX: Pass preloaded tables data to avoid duplicate API calls
+                  preloadedTablesData={(selectedReport as any)?.googleAdsTables || null}
+                  onDataLoaded={(data) => {
+                    console.log('Google Ads tables data loaded:', data);
                   }}
-                  viewType={viewType}
-                  clientData={selectedClient ? {
-                    id: selectedClient.id,
-                    name: selectedClient.name,
-                    email: selectedClient.email
-                  } : undefined}
-                  platform={activeAdsProvider}
                 />
-              );
-            })()}
-            
-            {/* Conditional Ads Tables Section */}
-            {selectedReport && selectedReport.date_range_start && selectedReport.date_range_end && (
-              <div className="mt-8">
-                {activeAdsProvider === 'meta' ? (
-                  <MetaAdsTables
-                    key={`meta-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
-                    dateStart={selectedReport.date_range_start}
-                    dateEnd={selectedReport.date_range_end}
-                    clientId={client?.id || ''}
-                    onDataLoaded={(data) => {
-                      setMetaTablesData(data);
-                      console.log('Meta Ads tables data loaded:', data);
-                    }}
-                  />
-                ) : (
-                  <>
-                    <GoogleAdsTables
-                      key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                
+                {/* RMF R.20, R.30, R.40: Campaign Hierarchy with Ad Groups and Ads */}
+                {selectedReport && selectedReport.campaigns && selectedReport.campaigns.length > 0 && (
+                  <div className="mt-8">
+                    <GoogleAdsExpandableCampaignTable
+                      campaigns={selectedReport.campaigns.map((campaign: any) => ({
+                        campaignId: campaign.campaign_id || '',
+                        campaignName: campaign.campaign_name || 'Unknown Campaign',
+                        status: campaign.status || 'ACTIVE',
+                        spend: campaign.spend || 0,
+                        impressions: campaign.impressions || 0,
+                        clicks: campaign.clicks || 0,
+                        ctr: campaign.ctr || 0,
+                        cpc: campaign.cpc || 0,
+                        conversions: campaign.conversions || campaign.reservations || 0,
+                        reservation_value: campaign.reservation_value || 0,
+                        roas: campaign.roas || 0
+                      }))}
+                      clientId={client?.id || ''}
                       dateStart={selectedReport.date_range_start}
                       dateEnd={selectedReport.date_range_end}
-                      clientId={client?.id || ''}
-                      // 🔧 FIX: Pass preloaded tables data to avoid duplicate API calls
-                      preloadedTablesData={(selectedReport as any)?.googleAdsTables || null}
-                      onDataLoaded={(data) => {
-                        console.log('Google Ads tables data loaded:', data);
-                      }}
+                      currency="PLN"
                     />
-                    
-                    {/* RMF R.20, R.30, R.40: Campaign Hierarchy with Ad Groups and Ads */}
-                    {selectedReport && selectedReport.campaigns && selectedReport.campaigns.length > 0 && (
-                      <div className="mt-8">
-                        <GoogleAdsExpandableCampaignTable
-                          campaigns={selectedReport.campaigns.map((campaign: any) => ({
-                            campaignId: campaign.campaign_id || '',
-                            campaignName: campaign.campaign_name || 'Unknown Campaign',
-                            status: campaign.status || 'ACTIVE',
-                            spend: campaign.spend || 0,
-                            impressions: campaign.impressions || 0,
-                            clicks: campaign.clicks || 0,
-                            ctr: campaign.ctr || 0,
-                            cpc: campaign.cpc || 0,
-                            conversions: campaign.conversions || campaign.reservations || 0,
-                            reservation_value: campaign.reservation_value || 0,
-                            roas: campaign.roas || 0
-                          }))}
-                          clientId={client?.id || ''}
-                          dateStart={selectedReport.date_range_start}
-                          dateEnd={selectedReport.date_range_end}
-                          currency="PLN"
-                        />
-                      </div>
-                    )}
-                  </>
+                  </div>
                 )}
-              </div>
+              </>
             )}
-
-          </>
+          </div>
         )}
 
         {/* 🔧 REMOVED: "Brak danych" screen - now showing 0s instead when no data */}

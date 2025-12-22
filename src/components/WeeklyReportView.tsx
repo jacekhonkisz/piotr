@@ -70,6 +70,7 @@ interface WeeklyReportViewProps {
     email: string;
   };
   platform?: 'meta' | 'google';
+  isLoading?: boolean; // 🔧 Progressive loading: parent is still fetching main data
 }
 
 const formatCurrency = (amount: number) => {
@@ -201,7 +202,8 @@ const MetricCard = ({
   tooltip,
   icon,
   change,
-  miniSpark
+  miniSpark,
+  isComparisonLoading = false
 }: {
   title: string;
   value: string | number;
@@ -214,6 +216,7 @@ const MetricCard = ({
     type: 'increase' | 'decrease';
   };
   miniSpark?: number[];
+  isComparisonLoading?: boolean; // 🔧 Progressive loading: YoY comparison is loading
 }) => {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -240,15 +243,20 @@ const MetricCard = ({
         </p>
       </div>
 
-      {/* Change Indicator - minimal, inline */}
-      {change && (
+      {/* Change Indicator - minimal, inline - with loading state */}
+      {isComparisonLoading ? (
+        <div className="text-xs text-slate-400 flex items-center gap-1">
+          <div className="animate-spin h-3 w-3 border border-slate-300 border-t-slate-500 rounded-full"></div>
+          <span>Ładuję porównanie...</span>
+        </div>
+      ) : change ? (
         <div className="text-xs font-medium tabular-nums">
           <span className={change.type === 'increase' ? 'text-green-600' : 'text-red-600'}>
             {change.type === 'increase' ? '+' : '−'}{Math.abs(change.value).toFixed(1)}%
           </span>
           <span className="text-slate-400 ml-1">vs {change.period}</span>
         </div>
-      )}
+      ) : null}
     </div>
   );
 
@@ -257,7 +265,7 @@ const MetricCard = ({
 
 
 
-export default function WeeklyReportView({ reports, viewType = 'weekly', clientData, platform = 'meta' }: WeeklyReportViewProps) {
+export default function WeeklyReportView({ reports, viewType = 'weekly', clientData, platform = 'meta', isLoading = false }: WeeklyReportViewProps) {
   console.log('🚨 YOY DEBUG - WeeklyReportView component rendered at:', new Date().toISOString());
   console.log('🚨 YOY DEBUG - Component props:', { 
     hasReports: !!reports, 
@@ -834,6 +842,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     value={formatCurrency(campaignTotals.spend)}
                     tooltip="Łączna kwota wydana na reklamy"
                     change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                   
                   <MetricCard
@@ -841,6 +850,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     value={formatNumber(campaignTotals.impressions)}
                     tooltip="Całkowita liczba wyświetleń reklam"
                     change={formatComparisonChange(effectiveYoYData?.changes?.impressions || 0)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                   
                   <MetricCard
@@ -848,6 +858,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     value={formatNumber(campaignTotals.clicks)}
                     tooltip="Całkowita liczba kliknięć w linki"
                     change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                   
                   <MetricCard
@@ -867,6 +878,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     value={getConversionMetric(report, 'reservations', campaigns).toString()}
                     tooltip="Liczba zakończonych konwersji"
                     change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                 </div>
               </div>
@@ -999,6 +1011,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   value={getConversionMetric(report, 'reservations', campaigns).toString()}
                   tooltip="Liczba zakończonych rezerwacji"
                   change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
+                  isComparisonLoading={yoyLoading && viewType !== 'custom'}
                 />
                 
                 <MetricCard
@@ -1094,6 +1107,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   tooltip="Procentowy koszt pozyskania w stosunku do łącznej wartości konwersji"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
                   change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
+                  isComparisonLoading={yoyLoading && viewType !== 'custom'}
                 />
                 
                 <MetricCard
@@ -1121,6 +1135,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   tooltip="Łączna wartość wszystkich konwersji (online + potencjalne offline)"
                   icon={<DollarSign className="w-5 h-5 text-slate-600" />}
                   change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)} // Using clicks as proxy
+                  isComparisonLoading={yoyLoading && viewType !== 'custom'}
                 />
               </div>
               
