@@ -153,7 +153,8 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       booking_step_2: realConversionMetrics.booking_step_2,
       booking_step_3: realConversionMetrics.booking_step_3,
       reservations: realConversionMetrics.reservations,
-      reservation_value: realConversionMetrics.reservation_value
+      reservation_value: realConversionMetrics.reservation_value,
+      total_conversion_value: realConversionMetrics.total_conversion_value
     });
 
     // Fetch Google Ads tables data for current month cache

@@ -896,7 +896,8 @@ export class GoogleAdsAPIService {
         const conversionName = row.segments?.conversion_action_name || '';
         // 🔧 CRITICAL FIX: Parse string values to numbers - Google Ads API returns strings!
         const conversions = parseFloat(row.metrics.conversions || '0') || 0;
-        const conversionValue = (parseFloat(row.metrics.conversions_value || '0') || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        const conversionValue = parseFloat(row.metrics.conversions_value || '0') || 0;
         
         // Create unique key for campaign + conversion action
         const key = `${campaignId}:${conversionName}`;
@@ -1073,7 +1074,8 @@ export class GoogleAdsAPIService {
         networkStats[networkName].impressions += metrics.impressions || 0;
         networkStats[networkName].clicks += metrics.clicks || 0;
         networkStats[networkName].conversions += metrics.conversions || 0;
-        networkStats[networkName].conversion_value += (metrics.conversions_value || metrics.conversionsValue || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        networkStats[networkName].conversion_value += metrics.conversions_value || metrics.conversionsValue || 0;
       });
 
       const networks: GoogleAdsNetworkPerformance[] = Object.entries(networkStats).map(([network, stats]) => ({
@@ -1146,7 +1148,8 @@ export class GoogleAdsAPIService {
         deviceStats[deviceName].impressions += metrics.impressions || 0;
         deviceStats[deviceName].clicks += metrics.clicks || 0;
         deviceStats[deviceName].conversions += metrics.conversions || 0;
-        deviceStats[deviceName].conversion_value += (metrics.conversions_value || metrics.conversionsValue || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        deviceStats[deviceName].conversion_value += metrics.conversions_value || metrics.conversionsValue || 0;
       });
 
       const devices: GoogleAdsDevicePerformance[] = Object.entries(deviceStats).map(([device, stats]) => ({
@@ -1333,7 +1336,8 @@ export class GoogleAdsAPIService {
             
             const spend = (metrics.cost_micros || metrics.costMicros || 0) / 1000000;
             const conversions = metrics.conversions || 0;
-            const conversionValue = (metrics.conversions_value || metrics.conversionsValue || 0) / 1000000;
+            // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+            const conversionValue = metrics.conversions_value || metrics.conversionsValue || 0;
             
             return {
               keyword: segments.search_term || 'Unknown Search Term',
@@ -1368,7 +1372,8 @@ export class GoogleAdsAPIService {
         
         const spend = (metrics.cost_micros || metrics.costMicros || 0) / 1000000;
         const conversions = metrics.conversions || 0;
-        const conversionValue = (metrics.conversions_value || metrics.conversionsValue || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        const conversionValue = metrics.conversions_value || metrics.conversionsValue || 0;
         
         return {
           keyword: keyword.text || 'Unknown Keyword',
@@ -1418,7 +1423,8 @@ export class GoogleAdsAPIService {
           
           const spend = (metrics.cost_micros || metrics.costMicros || 0) / 1000000;
           const conversions = metrics.conversions || 0;
-          const conversionValue = (metrics.conversions_value || metrics.conversionsValue || 0) / 1000000;
+          // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+          const conversionValue = metrics.conversions_value || metrics.conversionsValue || 0;
           
           return {
             keyword: `${campaign.name || 'Unknown Campaign'} (Campaign)`,
@@ -1845,7 +1851,8 @@ export class GoogleAdsAPIService {
         adGroupStats[adGroupId].impressions += metrics.impressions || 0;
         adGroupStats[adGroupId].clicks += metrics.clicks || 0;
         adGroupStats[adGroupId].conversions += metrics.conversions || 0;
-        adGroupStats[adGroupId].conversion_value += (metrics.conversions_value || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        adGroupStats[adGroupId].conversion_value += metrics.conversions_value || 0;
       });
 
       const adGroups: GoogleAdsAdGroupPerformance[] = Object.values(adGroupStats).map((stats: any) => ({
@@ -1942,7 +1949,8 @@ export class GoogleAdsAPIService {
         adStats[adId].impressions += metrics.impressions || 0;
         adStats[adId].clicks += metrics.clicks || 0;
         adStats[adId].conversions += metrics.conversions || 0;
-        adStats[adId].conversion_value += (metrics.conversions_value || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        adStats[adId].conversion_value += metrics.conversions_value || 0;
       });
 
       const ads: GoogleAdsAdPerformance[] = Object.values(adStats).map((stats: any) => ({
@@ -1999,7 +2007,8 @@ export class GoogleAdsAPIService {
         
         const spend = (metrics.cost_micros || 0) / 1000000;
         const conversions = metrics.conversions || 0;
-        const conversionValue = (metrics.conversions_value || 0) / 1000000;
+        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
+        const conversionValue = metrics.conversions_value || 0;
         
         return {
           search_term: segments.search_term || 'Unknown',

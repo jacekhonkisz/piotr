@@ -537,8 +537,8 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Ilość rezerwacji</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość rezerwacji</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość konwersji</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
                     </tr>
                   </thead>
@@ -590,8 +590,8 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Ilość rezerwacji</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość rezerwacji</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość konwersji</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
                     </tr>
                   </thead>
