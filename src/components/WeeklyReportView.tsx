@@ -94,23 +94,36 @@ const formatNumber = (num: number) => {
 /**
  * 🎯 STANDARDIZED METHOD: Get conversion metric
  * 
- * ALWAYS prioritizes conversionMetrics object (from daily_kpi_data) over campaigns array
- * This ensures consistent data across all UI components
+ * Priority: 
+ *   1. conversionMetrics (if non-zero) → from aggregated API data
+ *   2. campaigns.reduce() → fallback to individual campaign data
+ *   3. 0 → if no data available
  * 
- * Priority: conversionMetrics → campaigns.reduce() → 0
+ * 🔧 FIX: Now prefers campaign data if conversionMetrics has 0
+ * This handles cases where conversionMetrics wasn't properly populated
  */
 const getConversionMetric = (
   report: WeeklyReport | undefined,
-  metric: 'booking_step_1' | 'booking_step_2' | 'booking_step_3' | 'reservations' | 'reservation_value' | 'click_to_call' | 'email_contacts',
+  metric: 'booking_step_1' | 'booking_step_2' | 'booking_step_3' | 'reservations' | 'reservation_value' | 'click_to_call' | 'email_contacts' | 'conversion_value' | 'total_conversion_value',
   campaigns: Campaign[]
 ): number => {
-  // 🥇 PRIORITY 1: Use conversionMetrics (from daily_kpi_data)
-  if (report?.conversionMetrics && report.conversionMetrics[metric] !== undefined) {
-    return report.conversionMetrics[metric];
+  // 🥇 PRIORITY 1: Use conversionMetrics if it has a non-zero value
+  const conversionValue = report?.conversionMetrics?.[metric];
+  if (conversionValue !== undefined && conversionValue > 0) {
+    return conversionValue;
   }
   
-  // 🥈 PRIORITY 2: Calculate from campaigns array (fallback)
-  return campaigns.reduce((sum, c) => sum + (c[metric] || 0), 0);
+  // 🥈 PRIORITY 2: Calculate from campaigns array
+  // This is more reliable as each campaign has its own conversion data from the API
+  const campaignTotal = campaigns.reduce((sum, c) => sum + ((c as any)[metric] || 0), 0);
+  
+  // 🥉 PRIORITY 3: If campaigns also have 0, return conversionMetrics value (which may be 0)
+  // This preserves the case where conversionMetrics explicitly has 0
+  if (campaignTotal > 0) {
+    return campaignTotal;
+  }
+  
+  return conversionValue ?? 0;
 };
 
 const formatDate = (dateString: string) => {

@@ -113,17 +113,29 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
-    // Fetch real conversion metrics from daily_kpi_data for current month
-    logger.info('📊 Fetching real conversion metrics from daily_kpi_data...');
-    const { data: dailyKpiData, error: kpiError } = await supabase
-      .from('daily_kpi_data')
-      .select('*')
-      .eq('client_id', client.id)
-      .gte('date', currentMonth.startDate)
-      .lte('date', currentMonth.endDate);
-
-    let realConversionMetrics = {
+    // 🔧 FIX: Aggregate conversion metrics FROM the campaign data we just fetched
+    // NOT from daily_kpi_data (which is mainly for Meta data)
+    // The getCampaignData() function already parses Google Ads conversion actions
+    logger.info('📊 Aggregating conversion metrics from Google Ads API campaign data...');
+    
+    // ✅ UNIFIED: Use same field names as Meta for consistency
+    const realConversionMetrics = campaignData.reduce((acc, campaign: any) => {
+      acc.click_to_call += campaign.click_to_call || 0;
+      acc.email_contacts += campaign.email_contacts || campaign.form_submissions || 0;
+      acc.form_submissions += campaign.form_submissions || 0;
+      acc.phone_calls += campaign.phone_calls || 0;
+      acc.email_clicks += campaign.email_clicks || 0;
+      acc.phone_clicks += campaign.phone_clicks || 0;
+      acc.booking_step_1 += campaign.booking_step_1 || 0;
+      acc.booking_step_2 += campaign.booking_step_2 || 0;
+      acc.booking_step_3 += campaign.booking_step_3 || 0;
+      acc.reservations += campaign.reservations || 0;
+      acc.reservation_value += campaign.reservation_value || 0;
+      acc.total_conversion_value += campaign.total_conversion_value || 0;
+      return acc;
+    }, {
       click_to_call: 0,
+      email_contacts: 0,
       form_submissions: 0,
       phone_calls: 0,
       email_clicks: 0,
@@ -132,25 +144,17 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       booking_step_2: 0,
       booking_step_3: 0,
       reservations: 0,
-      reservation_value: 0
-    };
-
-    if (!kpiError && dailyKpiData) {
-      // Aggregate conversion metrics from daily KPI data
-      realConversionMetrics = dailyKpiData.reduce((acc, day) => {
-        acc.click_to_call += day.click_to_call || 0;
-        acc.form_submissions += day.form_submissions || 0;
-        acc.phone_calls += day.phone_calls || 0;
-        acc.email_clicks += day.email_clicks || 0;
-        acc.phone_clicks += day.phone_clicks || 0;
-        acc.booking_step_1 += day.booking_step_1 || 0;
-        acc.booking_step_2 += day.booking_step_2 || 0;
-        acc.booking_step_3 += day.booking_step_3 || 0;
-        acc.reservations += day.reservations || 0;
-        acc.reservation_value += day.reservation_value || 0;
-        return acc;
-      }, realConversionMetrics);
-    }
+      reservation_value: 0,
+      total_conversion_value: 0
+    });
+    
+    logger.info('📊 Aggregated conversion metrics from Google Ads API:', {
+      booking_step_1: realConversionMetrics.booking_step_1,
+      booking_step_2: realConversionMetrics.booking_step_2,
+      booking_step_3: realConversionMetrics.booking_step_3,
+      reservations: realConversionMetrics.reservations,
+      reservation_value: realConversionMetrics.reservation_value
+    });
 
     // Fetch Google Ads tables data for current month cache
     let googleAdsTables = null;
@@ -204,7 +208,8 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       logger.info('💾 Saving Google Ads campaigns to database for PDF generation...');
       
       // Prepare campaign data for database insertion
-      const campaignsToInsert = campaignData.map(campaign => ({
+      // 🔧 FIX: Use each campaign's INDIVIDUAL conversion data, not aggregated totals
+      const campaignsToInsert = campaignData.map((campaign: any) => ({
         client_id: client.id,
         campaign_id: campaign.campaignId,
         campaign_name: campaign.campaignName,
@@ -216,15 +221,16 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
         clicks: campaign.clicks || 0,
         cpc: campaign.cpc || 0,
         ctr: campaign.ctr || 0,
-        form_submissions: realConversionMetrics.form_submissions || 0,
-        phone_calls: realConversionMetrics.phone_calls || 0,
-        email_clicks: realConversionMetrics.email_clicks || 0,
-        phone_clicks: realConversionMetrics.phone_clicks || 0,
-        booking_step_1: realConversionMetrics.booking_step_1 || 0,
-        booking_step_2: realConversionMetrics.booking_step_2 || 0,
-        booking_step_3: realConversionMetrics.booking_step_3 || 0,
-        reservations: realConversionMetrics.reservations || 0,
-        reservation_value: realConversionMetrics.reservation_value || 0,
+        form_submissions: campaign.form_submissions || 0,
+        phone_calls: campaign.phone_calls || 0,
+        email_clicks: campaign.email_clicks || 0,
+        phone_clicks: campaign.phone_clicks || 0,
+        booking_step_1: campaign.booking_step_1 || 0,
+        booking_step_2: campaign.booking_step_2 || 0,
+        booking_step_3: campaign.booking_step_3 || 0,
+        reservations: campaign.reservations || 0,
+        reservation_value: campaign.reservation_value || 0,
+        total_conversion_value: campaign.total_conversion_value || 0,
         roas: campaign.roas || 0
       }));
 
@@ -342,16 +348,28 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
-    // Fetch real conversion metrics from daily_kpi_data for current week
-    const { data: dailyKpiData, error: kpiError } = await supabase
-      .from('daily_kpi_data')
-      .select('*')
-      .eq('client_id', client.id)
-      .gte('date', currentWeek.startDate)
-      .lte('date', currentWeek.endDate);
-
-    let realConversionMetrics = {
+    // 🔧 FIX: Aggregate conversion metrics FROM the campaign data we just fetched
+    // NOT from daily_kpi_data (which is mainly for Meta data)
+    logger.info('📊 Aggregating weekly conversion metrics from Google Ads API campaign data...');
+    
+    // ✅ UNIFIED: Use same field names as Meta for consistency (weekly)
+    const realConversionMetrics = campaignData.reduce((acc, campaign: any) => {
+      acc.click_to_call += campaign.click_to_call || 0;
+      acc.email_contacts += campaign.email_contacts || campaign.form_submissions || 0;
+      acc.form_submissions += campaign.form_submissions || 0;
+      acc.phone_calls += campaign.phone_calls || 0;
+      acc.email_clicks += campaign.email_clicks || 0;
+      acc.phone_clicks += campaign.phone_clicks || 0;
+      acc.booking_step_1 += campaign.booking_step_1 || 0;
+      acc.booking_step_2 += campaign.booking_step_2 || 0;
+      acc.booking_step_3 += campaign.booking_step_3 || 0;
+      acc.reservations += campaign.reservations || 0;
+      acc.reservation_value += campaign.reservation_value || 0;
+      acc.total_conversion_value += campaign.total_conversion_value || 0;
+      return acc;
+    }, {
       click_to_call: 0,
+      email_contacts: 0,
       form_submissions: 0,
       phone_calls: 0,
       email_clicks: 0,
@@ -360,24 +378,16 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
       booking_step_2: 0,
       booking_step_3: 0,
       reservations: 0,
-      reservation_value: 0
-    };
-
-    if (!kpiError && dailyKpiData) {
-      realConversionMetrics = dailyKpiData.reduce((acc, day) => {
-        acc.click_to_call += day.click_to_call || 0;
-        acc.form_submissions += day.form_submissions || 0;
-        acc.phone_calls += day.phone_calls || 0;
-        acc.email_clicks += day.email_clicks || 0;
-        acc.phone_clicks += day.phone_clicks || 0;
-        acc.booking_step_1 += day.booking_step_1 || 0;
-        acc.booking_step_2 += day.booking_step_2 || 0;
-        acc.booking_step_3 += day.booking_step_3 || 0;
-        acc.reservations += day.reservations || 0;
-        acc.reservation_value += day.reservation_value || 0;
-        return acc;
-      }, realConversionMetrics);
-    }
+      reservation_value: 0,
+      total_conversion_value: 0
+    });
+    
+    logger.info('📊 Aggregated weekly conversion metrics from Google Ads API:', {
+      booking_step_1: realConversionMetrics.booking_step_1,
+      booking_step_2: realConversionMetrics.booking_step_2,
+      booking_step_3: realConversionMetrics.booking_step_3,
+      reservations: realConversionMetrics.reservations
+    });
 
     const cacheData = {
       client: {
@@ -405,7 +415,8 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
       logger.info('💾 Saving weekly Google Ads campaigns to database for PDF generation...');
       
       // Prepare campaign data for database insertion
-      const campaignsToInsert = campaignData.map(campaign => ({
+      // 🔧 FIX: Use each campaign's INDIVIDUAL conversion data, not aggregated totals
+      const campaignsToInsert = campaignData.map((campaign: any) => ({
         client_id: client.id,
         campaign_id: campaign.campaignId,
         campaign_name: campaign.campaignName,
@@ -417,15 +428,16 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
         clicks: campaign.clicks || 0,
         cpc: campaign.cpc || 0,
         ctr: campaign.ctr || 0,
-        form_submissions: realConversionMetrics.form_submissions || 0,
-        phone_calls: realConversionMetrics.phone_calls || 0,
-        email_clicks: realConversionMetrics.email_clicks || 0,
-        phone_clicks: realConversionMetrics.phone_clicks || 0,
-        booking_step_1: realConversionMetrics.booking_step_1 || 0,
-        booking_step_2: realConversionMetrics.booking_step_2 || 0,
-        booking_step_3: realConversionMetrics.booking_step_3 || 0,
-        reservations: realConversionMetrics.reservations || 0,
-        reservation_value: realConversionMetrics.reservation_value || 0,
+        form_submissions: campaign.form_submissions || 0,
+        phone_calls: campaign.phone_calls || 0,
+        email_clicks: campaign.email_clicks || 0,
+        phone_clicks: campaign.phone_clicks || 0,
+        booking_step_1: campaign.booking_step_1 || 0,
+        booking_step_2: campaign.booking_step_2 || 0,
+        booking_step_3: campaign.booking_step_3 || 0,
+        reservations: campaign.reservations || 0,
+        reservation_value: campaign.reservation_value || 0,
+        total_conversion_value: campaign.total_conversion_value || 0,
         roas: campaign.roas || 0
       }));
 
