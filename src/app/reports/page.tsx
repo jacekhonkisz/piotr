@@ -553,12 +553,22 @@ function ReportsPageContent() {
       clientId: currentClient?.id
     });
 
+    // 🔧 UX FIX: Set loading state IMMEDIATELY before clearing data
+    // This prevents "Brak danych" from flashing while data loads
+    const loadingTarget = currentViewType === 'custom' 
+      ? 'custom' 
+      : currentViewType === 'all-time' 
+        ? 'all-time' 
+        : currentPeriod || 'loading';
+    
+    console.log(`🔄 Provider switching: showing loading state for ${loadingTarget}`);
+    setLoadingPeriod(loadingTarget);
+    
     // 🔧 CRITICAL FIX: Clear ALL reports when switching providers
     // This forces fresh data fetch for the new provider
     setReports({});
     
-    // Clear any existing loading state first
-    setLoadingPeriod(null);
+    // Reset API state to allow fresh calls
     setApiCallInProgress(false);
     loadingRef.current = false;
     
@@ -568,23 +578,19 @@ function ReportsPageContent() {
       console.log('🧹 Cleared ALL API call trackers for provider switch');
     }
 
-    // 🔧 CRITICAL FIX: Use setTimeout to ensure state updates are processed
+    // 🔧 CRITICAL FIX: Capture provider at this exact moment
+    const currentProvider = activeAdsProvider;
+
+    // 🔧 FIX: Execute data loading immediately (removed 100ms delay that caused UI flash)
     const switchProvider = async () => {
-      // Wait for state updates to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // 🔧 CRITICAL FIX: Capture provider at this exact moment to avoid stale closure
-      const currentProvider = activeAdsProvider;
       console.log(`🔄 Provider switch executing with currentProvider: ${currentProvider}`);
       
       // Handle different view types
       if (currentViewType === 'custom' && customDateRange.start && customDateRange.end) {
         console.log(`🔄 Provider changed to ${currentProvider}, refreshing custom date data`);
-        setLoadingPeriod('custom');
         await loadCustomDateData(customDateRange.start, customDateRange.end);
       } else if (currentPeriod && (currentViewType === 'monthly' || currentViewType === 'weekly')) {
         console.log(`🔄 Provider changed to ${currentProvider}, refreshing data for period: ${currentPeriod}`);
-        setLoadingPeriod(currentPeriod);
         
         // Force fresh data load with new provider
         // 🔧 FIX: Pass provider explicitly to avoid stale closure issues
