@@ -14,7 +14,6 @@ interface Campaign {
   cpc: number;
   conversions: number;
   reservation_value: number;
-  roas: number;
 }
 
 interface AdGroup {
@@ -28,7 +27,6 @@ interface AdGroup {
   cpc: number;
   conversions: number;
   conversion_value: number;
-  roas: number;
 }
 
 interface Ad {
@@ -44,7 +42,6 @@ interface Ad {
   cpc: number;
   conversions: number;
   conversion_value: number;
-  roas: number;
 }
 
 interface GoogleAdsExpandableCampaignTableProps {
@@ -222,7 +219,6 @@ export default function GoogleAdsExpandableCampaignTable({
               <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
               <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
               <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
-              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
             </tr>
           </thead>
           <tbody className="bg-white">
@@ -255,13 +251,12 @@ export default function GoogleAdsExpandableCampaignTable({
                   <td className="px-6 py-4 text-right text-slate-900">{formatPercentage(campaign.ctr)}</td>
                   <td className="px-6 py-4 text-right text-slate-900">{formatCurrency(campaign.cpc)}</td>
                   <td className="px-6 py-4 text-right text-slate-900">{formatNumber(campaign.conversions)}</td>
-                  <td className="px-6 py-4 text-right text-slate-900">{campaign.roas.toFixed(2)}x</td>
                 </tr>
 
                 {/* Ad Groups (R.30) */}
                 {expandedCampaigns.has(campaign.campaignId) && (
                   <tr>
-                    <td colSpan={9} className="px-0 py-0">
+                    <td colSpan={8} className="px-0 py-0">
                       <div className="bg-purple-50/30">
                         {loading[`campaign-${campaign.campaignId}`] ? (
                           <div className="flex items-center justify-center py-8">
@@ -300,13 +295,12 @@ export default function GoogleAdsExpandableCampaignTable({
                                     <td className="px-6 py-3 text-right text-sm text-slate-800">{formatPercentage(adGroup.ctr)}</td>
                                     <td className="px-6 py-3 text-right text-sm text-slate-800">{formatCurrency(adGroup.cpc)}</td>
                                     <td className="px-6 py-3 text-right text-sm text-slate-800">{formatNumber(adGroup.conversions)}</td>
-                                    <td className="px-6 py-3 text-right text-sm text-slate-800">{adGroup.roas.toFixed(2)}x</td>
                                   </tr>
 
                                   {/* Ads (R.40) */}
                                   {expandedAdGroups.has(adGroup.adGroupId) && (
                                     <tr>
-                                      <td colSpan={9} className="px-0 py-0">
+                                      <td colSpan={8} className="px-0 py-0">
                                         <div className="bg-green-50/30">
                                           {loading[`adgroup-${adGroup.adGroupId}`] ? (
                                             <div className="flex items-center justify-center py-6">
@@ -335,7 +329,6 @@ export default function GoogleAdsExpandableCampaignTable({
                                                     <td className="px-6 py-3 text-right text-sm text-slate-700">{formatPercentage(ad.ctr)}</td>
                                                     <td className="px-6 py-3 text-right text-sm text-slate-700">{formatCurrency(ad.cpc)}</td>
                                                     <td className="px-6 py-3 text-right text-sm text-slate-700">{formatNumber(ad.conversions)}</td>
-                                                    <td className="px-6 py-3 text-right text-sm text-slate-700">{ad.roas.toFixed(2)}x</td>
                                                   </tr>
                                                 ))}
                                               </tbody>

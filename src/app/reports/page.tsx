@@ -3953,8 +3953,7 @@ function ReportsPageContent() {
                         ctr: campaign.ctr || 0,
                         cpc: campaign.cpc || 0,
                         conversions: campaign.conversions || campaign.reservations || 0,
-                        reservation_value: campaign.reservation_value || 0,
-                        roas: campaign.roas || 0
+                        reservation_value: campaign.reservation_value || 0
                       }))}
                       clientId={client?.id || ''}
                       dateStart={selectedReport.date_range_start}
