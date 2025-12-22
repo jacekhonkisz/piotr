@@ -17,6 +17,8 @@ interface ConversionFunnelProps {
   step3: number;
   reservations: number;
   reservationValue: number;
+  conversionValue?: number; // conversions_value - "Wartość konwersji" in Google Ads
+  totalConversionValue?: number; // all_conversions_value - "Łączna wartość konwersji" (includes view-through, cross-device)
   roas: number;
   className?: string;
   // Previous year data for comparison
@@ -41,11 +43,18 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
   step3,
   reservations,
   reservationValue,
+  conversionValue,
+  totalConversionValue,
   roas,
   className = "",
   previousYear,
   yoyChanges
 }) => {
+  // "Wartość konwersji" = conversions_value (cross-platform comparable)
+  const displayConversionValue = conversionValue !== undefined ? conversionValue : reservationValue;
+  // "Łączna wartość konwersji" = all_conversions_value (includes view-through, cross-device)
+  const displayTotalConversionValue = totalConversionValue !== undefined ? totalConversionValue : displayConversionValue;
+  
   // Calculate conversion rates
   const step1ToStep2Rate = step1 > 0 ? (step2 / step1) * 100 : 0;
   const step2ToStep3Rate = step2 > 0 ? (step3 / step2) * 100 : 0;
@@ -92,18 +101,18 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
 
   const bottomCards = [
     {
-      label: "Wartość rezerwacji online",
-      value: `${reservationValue.toLocaleString()} zł`,
+      label: "Łączna wartość konwersji",
+      value: `${displayTotalConversionValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`,
       icon: <Calendar className="w-6 h-6" />,
       color: "text-white",
-      bgColor: "bg-gradient-to-r from-slate-600 to-slate-500" // Separate metric below funnel
+      bgColor: "bg-gradient-to-r from-slate-600 to-slate-500" // all_conversions_value from Google Ads
     },
     {
       label: "ROAS",
       value: `${roas.toFixed(2)}x`,
       icon: <Calendar className="w-6 h-6" />,
       color: "text-white",
-      bgColor: "bg-gradient-to-r from-slate-700 to-slate-600" // Slightly darker for ROAS
+      bgColor: "bg-gradient-to-r from-slate-700 to-slate-600" // ROAS (calculated using total_conversion_value)
     }
   ];
 

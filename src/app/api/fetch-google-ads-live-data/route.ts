@@ -236,32 +236,36 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         storedSummary.reservation_value !== null &&
         storedSummary.booking_step_2 !== null) {
       
+      // ✅ CRITICAL FIX: Round all conversion counts to integers for consistency with live API
       conversionMetrics = {
-        click_to_call: storedSummary.click_to_call || 0,
-        email_contacts: storedSummary.email_contacts || 0,
-        booking_step_1: storedSummary.booking_step_1 || 0,
-        reservations: storedSummary.reservations || 0,
-        reservation_value: storedSummary.reservation_value || 0,
-        booking_step_2: storedSummary.booking_step_2 || 0,
-        booking_step_3: storedSummary.booking_step_3 || 0,
-        roas: storedSummary.roas || 0,
-        cost_per_reservation: storedSummary.cost_per_reservation || 0
+        click_to_call: Math.round(storedSummary.click_to_call || 0),
+        email_contacts: Math.round(storedSummary.email_contacts || 0),
+        booking_step_1: Math.round(storedSummary.booking_step_1 || 0),
+        reservations: Math.round(storedSummary.reservations || 0),
+        reservation_value: Math.round((storedSummary.reservation_value || 0) * 100) / 100,
+        booking_step_2: Math.round(storedSummary.booking_step_2 || 0),
+        booking_step_3: Math.round(storedSummary.booking_step_3 || 0),
+        roas: Math.round((storedSummary.roas || 0) * 100) / 100,
+        cost_per_reservation: Math.round((storedSummary.cost_per_reservation || 0) * 100) / 100
       };
       
       console.log(`📊 Using aggregated conversion metrics from database:`, conversionMetrics);
     } else {
       // Fallback: Calculate from campaign data (legacy support)
+      // ✅ CRITICAL FIX: Round all conversion counts to integers (Google Ads returns floats)
+      const totalReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+      const totalReservations = Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
+      
       conversionMetrics = {
-        click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
-        email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
-        booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
-        reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
-        reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
-        booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
-        booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
-        roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
-        cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
-          totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
+        click_to_call: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0)),
+        email_contacts: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0)),
+        booking_step_1: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0)),
+        reservations: totalReservations,
+        reservation_value: Math.round(totalReservationValue * 100) / 100, // Round to 2 decimal places
+        booking_step_2: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0)),
+        booking_step_3: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0)),
+        roas: totals.totalSpend > 0 ? Math.round((totalReservationValue / totals.totalSpend) * 100) / 100 : 0,
+        cost_per_reservation: totalReservations > 0 ? Math.round((totals.totalSpend / totalReservations) * 100) / 100 : 0
       };
       
       console.log(`📊 Calculated conversion metrics from campaign data (fallback):`, conversionMetrics);
@@ -382,7 +386,7 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Invalid JSON in request body', 400);
     }
     
-    const { dateRange, clientId, clearCache, forceFresh } = requestBody;
+    const { dateRange, clientId, clearCache, forceFresh, bypassAllCache } = requestBody;
     
     // Validate required fields
     if (!clientId) {
@@ -545,8 +549,15 @@ export async function POST(request: NextRequest) {
     } else {
       console.log('🔄 CURRENT PERIOD OR FORCE FRESH - SKIPPING DATABASE CHECK');
       
+      // 🔧 BYPASS ALL CACHE: Log when bypassing all caching layers
+      if (bypassAllCache) {
+        console.log('🚀 BYPASS ALL CACHE MODE: Skipping all caching layers for custom date range');
+        logger.info('🚀 BYPASS ALL CACHE: Direct Google Ads API call for custom date range');
+      }
+      
       // ✅ NEW: Check smart cache for current period (same as Meta)
-      if (isCurrentPeriod && !forceFresh) {
+      // 🔧 BYPASS ALL CACHE: Skip smart cache if bypassAllCache is set (for custom date ranges)
+      if (isCurrentPeriod && !forceFresh && !bypassAllCache) {
         console.log('📊 🔴 CURRENT PERIOD DETECTED - CHECKING GOOGLE ADS SMART CACHE...');
         logger.info('📊 🔴 CURRENT PERIOD DETECTED - USING GOOGLE ADS SMART CACHE SYSTEM...');
         
@@ -815,7 +826,9 @@ export async function POST(request: NextRequest) {
     const totalSpend = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
     const totalImpressions = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
     const totalClicks = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
-    const totalConversions = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0);
+    // ✅ CRITICAL FIX: Round totalConversions to integer
+    // Google Ads uses attribution models that return fractional conversions (e.g., 2846.228)
+    const totalConversions = Math.round(freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0));
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -836,6 +849,8 @@ export async function POST(request: NextRequest) {
       booking_step_1: 0,
       reservations: 0,
       reservation_value: 0,
+      conversion_value: 0, // conversions_value - "Wartość konwersji" in Google Ads
+      total_conversion_value: 0, // all_conversions_value - "Łączna wartość konwersji"
       booking_step_2: 0,
       booking_step_3: 0,
       roas: 0,
@@ -845,39 +860,73 @@ export async function POST(request: NextRequest) {
     if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
       console.log(`✅ Found ${dailyKpiData.length} Google Ads KPI records for conversion metrics`);
       
+      // ✅ Round values for consistency (daily_kpi_data should have integers, but be safe)
+      const totalReservationValue = dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservation_value || 0), 0);
+      const totalReservations = Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservations || 0), 0));
+      
       realConversionMetrics = {
-        click_to_call: dailyKpiData.reduce((sum: number, day: any) => sum + (day.click_to_call || 0), 0),
-        email_contacts: dailyKpiData.reduce((sum: number, day: any) => sum + (day.email_contacts || 0), 0),
-        booking_step_1: dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_1 || 0), 0),
-        reservations: dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservations || 0), 0),
-        reservation_value: dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservation_value || 0), 0),
-        booking_step_2: dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_2 || 0), 0),
-        booking_step_3: dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_3 || 0), 0),
+        click_to_call: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.click_to_call || 0), 0)),
+        email_contacts: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.email_contacts || 0), 0)),
+        booking_step_1: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_1 || 0), 0)),
+        reservations: totalReservations,
+        reservation_value: Math.round(totalReservationValue * 100) / 100, // Round to 2 decimal places
+        total_conversion_value: 0, // Will be set below
+        booking_step_2: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_2 || 0), 0)),
+        booking_step_3: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_3 || 0), 0)),
         roas: 0, // Will be calculated below
         cost_per_reservation: 0 // Will be calculated below
       };
       
-      // Calculate derived metrics
-      realConversionMetrics.roas = totalSpend > 0 ? realConversionMetrics.reservation_value / totalSpend : 0;
-      realConversionMetrics.cost_per_reservation = realConversionMetrics.reservations > 0 ? 
-        totalSpend / realConversionMetrics.reservations : 0;
+      // Calculate derived metrics with rounding
+      // ✅ Two conversion value metrics:
+      // - conversion_value = conversions_value = "Wartość konwersji" in Google Ads (cross-platform)
+      // - total_conversion_value = all_conversions_value = "Łączna wartość konwersji" (includes view-through)
+      const conversionValue = dailyKpiData.some((day: any) => day.conversion_value !== undefined)
+        ? dailyKpiData.reduce((sum: number, day: any) => sum + (day.conversion_value || 0), 0)
+        : totalReservationValue;
+      const totalConversionValue = dailyKpiData.some((day: any) => day.total_conversion_value !== undefined)
+        ? dailyKpiData.reduce((sum: number, day: any) => sum + (day.total_conversion_value || 0), 0)
+        : conversionValue; // Fallback to conversion_value if total not available
+      
+      realConversionMetrics.conversion_value = Math.round(conversionValue * 100) / 100; // "Wartość konwersji"
+      realConversionMetrics.total_conversion_value = Math.round(totalConversionValue * 100) / 100; // "Łączna wartość konwersji"
+      // ✅ ROAS calculated using "Łączna wartość konwersji" (total_conversion_value)
+      realConversionMetrics.roas = totalSpend > 0 ? Math.round((totalConversionValue / totalSpend) * 100) / 100 : 0;
+      realConversionMetrics.cost_per_reservation = totalReservations > 0 ? 
+        Math.round((totalSpend / totalReservations) * 100) / 100 : 0;
         
       console.log('📊 REAL GOOGLE ADS CONVERSION METRICS:', realConversionMetrics);
     } else {
       console.log('⚠️ No Google Ads KPI data found, using campaign-level conversions as fallback');
       
       // Fallback to campaign-level conversion data
+      // ✅ Two separate conversion value metrics:
+      // - conversion_value = conversions_value = "Wartość konwersji" in Google Ads
+      // - total_conversion_value = all_conversions_value = "Łączna wartość konwersji"
+      const totalReservationValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+      const conversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0);
+      const totalConversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
+      const totalReservations = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
+      
+      console.log(`📊 ROAS CALCULATION DEBUG:
+        - conversionValue (Wartość konwersji): ${conversionValue.toFixed(2)} PLN
+        - totalConversionValue (Łączna wartość konwersji): ${totalConversionValue.toFixed(2)} PLN  
+        - totalSpend: ${totalSpend.toFixed(2)} PLN
+        - ROAS (using conversionValue): ${(conversionValue / totalSpend).toFixed(2)}x`);
+      
       realConversionMetrics = {
-        click_to_call: freshCampaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
-        email_contacts: freshCampaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
-        booking_step_1: freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
-        reservations: freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
-        reservation_value: freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
-        booking_step_2: freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
-        booking_step_3: freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
-        roas: totalSpend > 0 ? freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totalSpend : 0,
-        cost_per_reservation: freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
-          totalSpend / freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0
+        click_to_call: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0)),
+        email_contacts: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0)),
+        booking_step_1: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0)),
+        reservations: totalReservations,
+        reservation_value: Math.round(totalReservationValue * 100) / 100,
+        conversion_value: Math.round(conversionValue * 100) / 100, // "Wartość konwersji" (107,231 PLN)
+        total_conversion_value: Math.round(totalConversionValue * 100) / 100, // "Łączna wartość konwersji" (110,302 PLN)
+        booking_step_2: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0)),
+        booking_step_3: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0)),
+        // ✅ ROAS calculated using "Łączna wartość konwersji" (total_conversion_value)
+        roas: totalSpend > 0 ? Math.round((totalConversionValue / totalSpend) * 100) / 100 : 0,
+        cost_per_reservation: totalReservations > 0 ? Math.round((totalSpend / totalReservations) * 100) / 100 : 0
       };
     }
 

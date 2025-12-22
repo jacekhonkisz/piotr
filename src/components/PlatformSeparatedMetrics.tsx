@@ -204,6 +204,8 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             step3={metaData.conversionMetrics.booking_step_3}
             reservations={metaData.conversionMetrics.reservations}
             reservationValue={metaData.conversionMetrics.reservation_value}
+            conversionValue={metaData.conversionMetrics.conversion_value}
+            totalConversionValue={metaData.conversionMetrics.total_conversion_value}
             roas={metaData.conversionMetrics.roas}
             className="mb-4"
           />
@@ -337,6 +339,8 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             step3={googleData.conversionMetrics.booking_step_3}
             reservations={googleData.conversionMetrics.reservations}
             reservationValue={googleData.conversionMetrics.reservation_value}
+            conversionValue={googleData.conversionMetrics.conversion_value}
+            totalConversionValue={googleData.conversionMetrics.total_conversion_value}
             roas={googleData.conversionMetrics.roas}
             className="mb-4"
           />
@@ -432,6 +436,8 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
           step3={combinedData.conversionMetrics.booking_step_3}
           reservations={combinedData.conversionMetrics.reservations}
           reservationValue={combinedData.conversionMetrics.reservation_value}
+          conversionValue={combinedData.conversionMetrics.conversion_value}
+          totalConversionValue={combinedData.conversionMetrics.total_conversion_value}
           roas={combinedData.conversionMetrics.roas}
           className="mb-4"
         />

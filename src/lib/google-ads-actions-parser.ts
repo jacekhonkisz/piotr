@@ -77,7 +77,10 @@ export function parseGoogleAdsConversions(
       }
       
       // Email contact conversions
+      // ✅ FIXED: Added 'e-mail', 'mail', 'kliknięcie w e-mail', 'klik w mail' patterns
       if (conversionName.includes('email') || 
+          conversionName.includes('e-mail') ||
+          conversionName.includes('mail') ||
           conversionName.includes('contact') ||
           conversionName.includes('kontakt') ||
           conversionName.includes('formularz')) {
@@ -112,13 +115,26 @@ export function parseGoogleAdsConversions(
       }
       
       // ✅ RESERVATIONS (Final Purchase)
-      // Matches: "Rezerwacja", "Zakup", "Purchase", "Booking", "Reservation"
-      if (conversionName.includes('rezerwacja') ||
-          conversionName.includes('reservation') ||
-          conversionName.includes('zakup') ||
-          conversionName.includes('purchase') ||
-          conversionName.includes('booking') ||
-          conversionName.includes('complete')) {
+      // Matches: "Rezerwacja", "Zakup", "Purchase", "Reservation"
+      // ⚠️ CRITICAL: Do NOT match generic "booking" - it matches "Booking Engine - krok 1/2/3"!
+      // Only match specific reservation/purchase patterns
+      const isReservation = (
+        conversionName.includes('rezerwacja') ||
+        conversionName.includes('reservation') ||
+        conversionName.includes('zakup') ||
+        conversionName.includes('purchase') ||
+        conversionName.includes('complete')
+      );
+      
+      // ⚠️ EXCLUDE booking engine steps from reservations
+      const isBookingStep = (
+        conversionName.includes('krok') ||
+        conversionName.includes('step') ||
+        conversionName.includes('booking engine') ||
+        conversionName.includes('booking_step')
+      );
+      
+      if (isReservation && !isBookingStep) {
         metrics.reservations += conversions;
         
         // Add monetary value if available
@@ -135,6 +151,18 @@ export function parseGoogleAdsConversions(
       });
     }
   });
+
+  // ✅ CRITICAL FIX: Round all conversion counts to integers
+  // Google Ads uses attribution models that can assign fractional conversions (e.g., 0.5)
+  // But for display purposes, we round to whole numbers
+  metrics.click_to_call = Math.round(metrics.click_to_call);
+  metrics.email_contacts = Math.round(metrics.email_contacts);
+  metrics.booking_step_1 = Math.round(metrics.booking_step_1);
+  metrics.booking_step_2 = Math.round(metrics.booking_step_2);
+  metrics.booking_step_3 = Math.round(metrics.booking_step_3);
+  metrics.reservations = Math.round(metrics.reservations);
+  // Note: reservation_value is monetary, keep as-is (with decimals)
+  metrics.reservation_value = Math.round(metrics.reservation_value * 100) / 100; // Round to 2 decimal places
 
   // Validation: Check for funnel inversions (debugging aid)
   if (metrics.booking_step_2 > metrics.booking_step_1 && metrics.booking_step_1 > 0) {
@@ -217,7 +245,21 @@ export function aggregateConversionMetrics(campaigns: any[]): ParsedConversionMe
     totals.reservation_value += campaign.reservation_value || 0;
   });
   
+  // ✅ CRITICAL FIX: Round aggregated conversion counts to integers
+  // Floating point arithmetic can create values like 1162.892644
+  totals.click_to_call = Math.round(totals.click_to_call);
+  totals.email_contacts = Math.round(totals.email_contacts);
+  totals.booking_step_1 = Math.round(totals.booking_step_1);
+  totals.booking_step_2 = Math.round(totals.booking_step_2);
+  totals.booking_step_3 = Math.round(totals.booking_step_3);
+  totals.reservations = Math.round(totals.reservations);
+  totals.reservation_value = Math.round(totals.reservation_value * 100) / 100; // Round to 2 decimal places
+  
   return totals;
 }
+
+
+
+
 
 

@@ -878,9 +878,11 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 step3={getConversionMetric(report, 'booking_step_3', campaigns)}
                 reservations={getConversionMetric(report, 'reservations', campaigns)}
                 reservationValue={getConversionMetric(report, 'reservation_value', campaigns)}
+                conversionValue={getConversionMetric(report, 'conversion_value', campaigns)}
+                totalConversionValue={getConversionMetric(report, 'total_conversion_value', campaigns)}
                 roas={(() => {
                   const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                  const totalValue = getConversionMetric(report, 'reservation_value', campaigns);
+                  const totalValue = getConversionMetric(report, 'conversion_value', campaigns) || getConversionMetric(report, 'reservation_value', campaigns);
                   return totalSpend > 0 ? totalValue / totalSpend : 0;
                 })()}
                 previousYear={yoyData ? {
@@ -1000,9 +1002,9 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 />
                 
                 <MetricCard
-                  title="Wartość rezerwacji"
-                  value={formatCurrency(getConversionMetric(report, 'reservation_value', campaigns))}
-                  tooltip="Łączna wartość rezerwacji"
+                  title="Łączna wartość konwersji"
+                  value={formatCurrency(getConversionMetric(report, 'total_conversion_value', campaigns))}
+                  tooltip="Łączna wartość wszystkich konwersji (all_conversions_value)"
                 />
               </div>
 
@@ -1028,10 +1030,10 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
                         const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                         const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                        const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
                         const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                        const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                        const totalPotentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+                        const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
+                        const totalPotentialOfflineValue = averageConversionValue * potentialOfflineReservations;
                         return formatCurrency(totalPotentialOfflineValue);
                       })()}
                     </div>
@@ -1043,12 +1045,12 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
                         const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                         const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                        const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
                         const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                        const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-                        const onlineReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
-                        return formatCurrency(potentialOfflineValue + onlineReservationValue);
+                        const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
+                        const potentialOfflineValue = averageConversionValue * potentialOfflineReservations;
+                        const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
+                        return formatCurrency(potentialOfflineValue + onlineConversionValue);
                       })()}
                     </div>
                   </div>
@@ -1069,18 +1071,18 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                       const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                       const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
                       
-                      const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                      const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
                       const totalReservations = getConversionMetric(report, 'reservations', campaigns);
                       
-                      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                      potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
+                      const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
+                      potentialOfflineValue = potentialOfflineReservations * averageConversionValue;
                     }
                     
-                    // Calculate online value
-                    const onlineReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                    // Calculate online value using total_conversion_value
+                    const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
                     
                     // Total potential value
-                    const totalPotentialValue = potentialOfflineValue + onlineReservationValue;
+                    const totalPotentialValue = potentialOfflineValue + onlineConversionValue;
                     
                     // Calculate cost percentage
                     const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
@@ -1088,35 +1090,35 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     
                     return `${costPercentage.toFixed(1)}%`;
                   })()}
-                  subtitle="(wydana kwota / łączna wartość potencjalnych rezerwacji) × 100"
-                  tooltip="Procentowy koszt pozyskania rezerwacji w stosunku do ich wartości"
+                  subtitle="(wydana kwota / łączna wartość konwersji) × 100"
+                  tooltip="Procentowy koszt pozyskania w stosunku do łącznej wartości konwersji"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
                   change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
                 />
                 
                 <MetricCard
-                  title="Łączna wartość potencjalnych rezerwacji online + offline"
+                  title="Łączna wartość konwersji online + offline"
                   value={(() => {
                     // Calculate offline value
                     const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
                     const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
                     const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
                     
-                    const totalReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                    const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
                     const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-                    const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
+                    const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
+                    const potentialOfflineValue = averageConversionValue * potentialOfflineReservations;
                     
-                    // Calculate online value
-                    const onlineReservationValue = getConversionMetric(report, 'reservation_value', campaigns);
+                    // Calculate online value using total_conversion_value
+                    const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
                     
                     // Total potential value (offline + online)
-                    const totalPotentialValue = potentialOfflineValue + onlineReservationValue;
+                    const totalPotentialValue = potentialOfflineValue + onlineConversionValue;
                     
                     return formatCurrency(totalPotentialValue);
                   })()}
-                  subtitle="Suma wartości rezerwacji online i offline"
-                  tooltip="Łączna wartość wszystkich potencjalnych rezerwacji"
+                  subtitle="Suma łącznej wartości konwersji online i offline"
+                  tooltip="Łączna wartość wszystkich konwersji (online + potencjalne offline)"
                   icon={<DollarSign className="w-5 h-5 text-slate-600" />}
                   change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)} // Using clicks as proxy
                 />
