@@ -323,6 +323,11 @@ export async function fetchFreshCurrentMonthData(client: any) {
         ? realConversionMetrics.reservation_value 
         : metaConversionMetrics.reservation_value, // Real Meta API data or 0
 
+      // ✅ NEW: Include conversion_value and total_conversion_value (calculated from purchase_roas × spend)
+      // These are analogous to Google Ads "Wartość konwersji" and "Łączna wartość konwersji"
+      conversion_value: metaConversionMetrics.conversion_value || 0,
+      total_conversion_value: metaConversionMetrics.total_conversion_value || 0,
+
       roas: 0, // Will be calculated below
       cost_per_reservation: 0 // Will be calculated below
     };
@@ -331,10 +336,12 @@ export async function fetchFreshCurrentMonthData(client: any) {
       source: realConversionMetrics.click_to_call > 0 ? 'daily_kpi_data' : metaConversionMetrics.click_to_call > 0 ? 'meta_api_actions' : 'no_data',
       click_to_call: conversionMetrics.click_to_call,
       reservations: conversionMetrics.reservations,
-      reservation_value: conversionMetrics.reservation_value
+      reservation_value: conversionMetrics.reservation_value,
+      conversion_value: conversionMetrics.conversion_value,
+      total_conversion_value: conversionMetrics.total_conversion_value
     });
 
-    // Calculate derived metrics
+    // ✅ Calculate ROAS from direct API values (reservation_value = "Zakupy w witrynie - wartość konwersji")
     conversionMetrics.roas = totalSpend > 0 && conversionMetrics.reservation_value > 0 
       ? conversionMetrics.reservation_value / totalSpend 
       : 0;
@@ -408,45 +415,55 @@ export async function fetchFreshCurrentMonthData(client: any) {
       // - spend, impressions, clicks (from Meta API)
       // - booking_step_1, booking_step_2, booking_step_3 (parsed from actions array)
       // - reservations, reservation_value (parsed from actions/action_values)
-      campaignsForCache = campaignInsights.map(campaign => ({
-        campaign_id: campaign.campaign_id || campaign.id,
-        campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
-        status: campaign.status || 'ACTIVE',
+      // - reservation_value = "Zakupy w witrynie - wartość konwersji" (direct from API)
+      campaignsForCache = campaignInsights.map(campaign => {
+        const campaignSpend = parseFloat(campaign.spend) || 0;
+        const campaignReservationValue = campaign.reservation_value || 0;
         
-        // ✅ Use REAL per-campaign metrics from Meta API
-        spend: parseFloat(campaign.spend) || 0,
-        impressions: parseInt(campaign.impressions) || 0,
-        clicks: parseInt(campaign.clicks) || 0,
-        conversions: parseInt(campaign.conversions) || 0,
-        
-        // ✅ Use calculated metrics from Meta API
-        ctr: parseFloat(campaign.ctr) || 0,
-        cpc: parseFloat(campaign.cpc) || 0,
-        cpp: parseFloat(campaign.cpp) || 0,
-        cpm: parseFloat(campaign.cpm) || 0,
-        frequency: parseFloat(campaign.frequency) || 0,
-        reach: parseInt(campaign.reach) || 0,
-        
-        // ✅ CRITICAL: Use PARSED conversion funnel metrics (real per-campaign data!)
-        click_to_call: campaign.click_to_call || 0,
-        email_contacts: campaign.email_contacts || 0,
-        booking_step_1: campaign.booking_step_1 || 0,
-        booking_step_2: campaign.booking_step_2 || 0,
-        booking_step_3: campaign.booking_step_3 || 0,
-        reservations: campaign.reservations || 0,
-        reservation_value: campaign.reservation_value || 0,
-        
-        // Calculate ROAS per campaign
-        roas: (campaign.spend > 0 && campaign.reservation_value > 0) 
-          ? campaign.reservation_value / campaign.spend 
-          : 0,
-        cost_per_reservation: (campaign.reservations > 0 && campaign.spend > 0)
-          ? campaign.spend / campaign.reservations
-          : 0,
-        
-        date_start: campaign.date_start || currentMonth.startDate!,
-        date_stop: campaign.date_stop || currentMonth.endDate!
-      }));
+        return {
+          campaign_id: campaign.campaign_id || campaign.id,
+          campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
+          status: campaign.status || 'ACTIVE',
+          
+          // ✅ Use REAL per-campaign metrics from Meta API
+          spend: campaignSpend,
+          impressions: parseInt(campaign.impressions) || 0,
+          clicks: parseInt(campaign.clicks) || 0,
+          conversions: parseInt(campaign.conversions) || 0,
+          
+          // ✅ Use calculated metrics from Meta API
+          ctr: parseFloat(campaign.ctr) || 0,
+          cpc: parseFloat(campaign.cpc) || 0,
+          cpp: parseFloat(campaign.cpp) || 0,
+          cpm: parseFloat(campaign.cpm) || 0,
+          frequency: parseFloat(campaign.frequency) || 0,
+          reach: parseInt(campaign.reach) || 0,
+          
+          // ✅ CRITICAL: Use PARSED conversion funnel metrics (real per-campaign data!)
+          click_to_call: campaign.click_to_call || 0,
+          email_contacts: campaign.email_contacts || 0,
+          booking_step_1: campaign.booking_step_1 || 0,
+          booking_step_2: campaign.booking_step_2 || 0,
+          booking_step_3: campaign.booking_step_3 || 0,
+          reservations: campaign.reservations || 0,
+          reservation_value: campaignReservationValue,
+          
+          // ✅ Direct from API action_values - "Zakupy w witrynie - wartość konwersji"
+          conversion_value: campaignReservationValue,
+          total_conversion_value: campaignReservationValue,
+          
+          // ✅ Calculate ROAS per campaign from direct API values
+          roas: (campaignSpend > 0 && campaignReservationValue > 0) 
+            ? campaignReservationValue / campaignSpend 
+            : 0,
+          cost_per_reservation: (campaign.reservations > 0 && campaignSpend > 0)
+            ? campaignSpend / campaign.reservations
+            : 0,
+          
+          date_start: campaign.date_start || currentMonth.startDate!,
+          date_stop: campaign.date_stop || currentMonth.endDate!
+        };
+      });
       
       logger.info('✅ Using REAL per-campaign data (NOT distributed averages)');
       
@@ -487,6 +504,9 @@ export async function fetchFreshCurrentMonthData(client: any) {
         booking_step_3: conversionMetrics.booking_step_3,
         reservations: conversionMetrics.reservations,
         reservation_value: conversionMetrics.reservation_value,
+        // ✅ NEW: Include conversion_value and total_conversion_value
+        conversion_value: conversionMetrics.conversion_value,
+        total_conversion_value: conversionMetrics.total_conversion_value,
         roas: conversionMetrics.roas,
         cost_per_reservation: conversionMetrics.cost_per_reservation,
         
@@ -1241,6 +1261,7 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
                        realConversionMetrics.reservations > 0;
 
     // ✅ PRODUCTION FIX: Use ONLY real data - NO ESTIMATES for weekly metrics
+    // reservation_value = "Zakupy w witrynie - wartość konwersji" (direct from API)
     const conversionMetrics = {
       click_to_call: realConversionMetrics.click_to_call, // Real data or 0
       email_contacts: realConversionMetrics.email_contacts, // Real data or 0
@@ -1251,6 +1272,9 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         ? realConversionMetrics.reservations 
         : totalConversionsSum, // Use raw total conversions as fallback
       reservation_value: realConversionMetrics.reservation_value, // Real data or 0
+      // ✅ Direct from API action_values - "Zakupy w witrynie - wartość konwersji"
+      conversion_value: realConversionMetrics.reservation_value || 0,
+      total_conversion_value: realConversionMetrics.reservation_value || 0,
       roas: totalSpend > 0 && realConversionMetrics.reservation_value > 0 
         ? realConversionMetrics.reservation_value / totalSpend 
         : 0,

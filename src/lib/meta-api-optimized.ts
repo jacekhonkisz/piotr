@@ -444,6 +444,7 @@ export class MetaAPIServiceOptimized {
     const endpoint = `act_${adAccountId}/insights`;
     const timeIncrementParam = timeIncrement ? `&time_increment=${timeIncrement}` : '';
     // ✅ FIX: Use time_range JSON format (same as placement/demographic functions)
+    // action_values contains "Zakupy w witrynie - wartość konwersji" (website purchase conversion value)
     const params = `level=campaign&time_range={"since":"${dateStart}","until":"${dateEnd}"}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
     const cacheKey = this.getCacheKey(endpoint, params);
 

@@ -34,6 +34,10 @@ interface PlatformData {
     booking_step_3: number;
     reservations: number;
     reservation_value: number;
+    // ✅ NEW: conversion_value and total_conversion_value (from purchase_roas × spend for Meta)
+    // These are analogous to Google Ads "Wartość konwersji" and "Łączna wartość konwersji"
+    conversion_value?: number;
+    total_conversion_value?: number;
     roas: number;
     cost_per_reservation: number;
   };
@@ -207,6 +211,7 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             conversionValue={metaData.conversionMetrics.conversion_value}
             totalConversionValue={metaData.conversionMetrics.total_conversion_value}
             roas={metaData.conversionMetrics.roas}
+            platform="meta"
             className="mb-4"
           />
 
@@ -342,6 +347,7 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             conversionValue={googleData.conversionMetrics.conversion_value}
             totalConversionValue={googleData.conversionMetrics.total_conversion_value}
             roas={googleData.conversionMetrics.roas}
+            platform="google"
             className="mb-4"
           />
 
@@ -439,6 +445,7 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
           conversionValue={combinedData.conversionMetrics.conversion_value}
           totalConversionValue={combinedData.conversionMetrics.total_conversion_value}
           roas={combinedData.conversionMetrics.roas}
+          platform="combined"
           className="mb-4"
         />
       </div>

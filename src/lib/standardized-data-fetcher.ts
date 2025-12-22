@@ -962,6 +962,7 @@ export class StandardizedDataFetcher {
 
   /**
    * NEW: Fetch from Live API with Smart Cache Storage
+   * 🔧 FIX: Server-side calls Meta API directly instead of using HTTP fetch with relative URLs
    */
   private static async fetchFromLiveAPIWithCaching(
     clientId: string,
@@ -973,6 +974,86 @@ export class StandardizedDataFetcher {
     console.log(`🚀 LIVE API + CACHE STORAGE for ${platform}...`);
     
     try {
+      // ✅ FIX: Server-side must call Meta API directly (relative URLs don't work)
+      if (typeof window === 'undefined' && platform === 'meta') {
+        console.log(`🖥️ Server-side: Calling Meta API directly (not via HTTP)...`);
+        
+        // Get client data and token from database
+        const dbClient = supabaseAdmin || supabase;
+        const { data: client, error: clientError } = await dbClient
+          .from('clients')
+          .select('*')
+          .eq('id', clientId)
+          .single();
+        
+        if (clientError || !client) {
+          console.log(`⚠️ Could not find client ${clientId}`);
+          return { success: false };
+        }
+        
+        const metaToken = client.system_user_token || client.meta_access_token;
+        if (!metaToken || !client.ad_account_id) {
+          console.log(`⚠️ Missing Meta token or ad account for ${client.name}`);
+          return { success: false };
+        }
+        
+        // Import and call Meta API directly
+        const { MetaAPIServiceOptimized } = await import('./meta-api-optimized');
+        const metaService = new MetaAPIServiceOptimized(metaToken);
+        
+        console.log(`📡 Calling Meta API for ${client.name}: ${dateRange.start} to ${dateRange.end}`);
+        const apiResult = await metaService.getMonthlyReport(client.ad_account_id, dateRange.start, dateRange.end);
+        
+        if (apiResult && apiResult.length > 0) {
+          // Transform campaigns
+          const campaigns = apiResult.map((campaign: any) => ({
+            campaign_id: campaign.campaign_id || campaign.id,
+            campaign_name: campaign.campaign_name || campaign.name,
+            status: campaign.status || 'ACTIVE',
+            spend: parseFloat(campaign.spend || '0'),
+            impressions: parseInt(campaign.impressions || '0'),
+            clicks: parseInt(campaign.clicks || '0'),
+            conversions: parseInt(campaign.conversions || '0'),
+            ctr: parseFloat(campaign.ctr || '0'),
+            cpc: parseFloat(campaign.cpc || '0'),
+            cpa: parseFloat(campaign.cpa || '0')
+          }));
+          
+          // Calculate totals
+          const totalSpend = campaigns.reduce((sum: number, c: any) => sum + c.spend, 0);
+          const totalImpressions = campaigns.reduce((sum: number, c: any) => sum + c.impressions, 0);
+          const totalClicks = campaigns.reduce((sum: number, c: any) => sum + c.clicks, 0);
+          const totalConversions = campaigns.reduce((sum: number, c: any) => sum + c.conversions, 0);
+          
+          console.log(`✅ Meta API returned ${campaigns.length} campaigns, total spend: ${totalSpend}`);
+          
+          return {
+            success: true,
+            data: {
+              stats: {
+                totalSpend,
+                totalImpressions,
+                totalClicks,
+                totalConversions,
+                averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+                averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+              },
+              conversionMetrics: this.getZeroData().conversionMetrics,
+              campaigns
+            }
+          };
+        } else {
+          console.log(`⚠️ Meta API returned no campaigns`);
+          return { success: false };
+        }
+      }
+      
+      // Client-side or Google: use HTTP fetch (only works client-side)
+      if (typeof window === 'undefined') {
+        console.log(`⚠️ Server-side live API fallback not supported for ${platform}`);
+        return { success: false };
+      }
+      
       // Determine API endpoint based on platform
       const apiEndpoint = platform === 'meta' 
         ? '/api/fetch-live-data'
@@ -986,16 +1067,13 @@ export class StandardizedDataFetcher {
         reason: 'standardized-data-fetcher-with-caching'
       };
       
-      // Use relative URL for same-origin requests (works in both dev and production)
-      const fullUrl = apiEndpoint;
-      
-      console.log(`🚀 Calling live API with caching: ${fullUrl}`);
+      console.log(`🚀 Calling live API with caching: ${apiEndpoint}`);
       
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
       
-      const response = await fetch(fullUrl, {
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody)

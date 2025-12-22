@@ -78,46 +78,70 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     let storedSummary, error;
     
     if (summaryType === 'weekly') {
-      console.log(`📅 Searching for weekly Google Ads data between ${startDate} and ${endDate}`);
+      // ✅ FIX: Use exact Monday matching (same as StandardizedDataFetcher and BackgroundDataCollector)
+      // Weekly data is always stored with summary_date = Monday of that week
+      const { getMondayOfWeek, formatDateISO } = await import('../../../lib/week-helpers');
       
+      const requestedStartDate = new Date(startDate);
+      const weekMonday = getMondayOfWeek(requestedStartDate);
+      const weekMondayStr = formatDateISO(weekMonday);
+      
+      console.log(`📅 Searching for weekly Google Ads data:`, {
+        requestedRange: `${startDate} to ${endDate}`,
+        calculatedMonday: weekMondayStr,
+        note: 'Weekly data is stored with summary_date = Monday (ISO 8601)'
+      });
+      
+      // First try exact Monday match (most accurate)
       const { data: weeklyResults, error: weeklyError } = await supabase
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
         .eq('summary_type', 'weekly')
         .eq('platform', 'google')
-        .gte('summary_date', startDate)
-        .lte('summary_date', endDate)
-        .order('summary_date', { ascending: false })
+        .eq('summary_date', weekMondayStr)  // ✅ EXACT MATCH on Monday
         .limit(1);
       
       if (weeklyResults && weeklyResults.length > 0) {
         storedSummary = weeklyResults[0];
         error = null;
+        console.log(`✅ Found weekly Google Ads data for week starting ${weekMondayStr}`);
       } else {
-        // Try broader date range for weekly data (±3 days)
-        const weekBefore = new Date(startDate);
-        weekBefore.setDate(weekBefore.getDate() - 3);
-        const weekAfter = new Date(startDate);
-        weekAfter.setDate(weekAfter.getDate() + 3);
+        // Fallback: Try range query for edge cases (different Monday calculation)
+        console.log(`⚠️ No exact Monday match, trying range query as fallback...`);
         
-        const { data: broadResults, error: broadError } = await supabase
+        const { data: rangeResults, error: rangeError } = await supabase
           .from('campaign_summaries')
           .select('*')
           .eq('client_id', clientId)
           .eq('summary_type', 'weekly')
           .eq('platform', 'google')
-          .gte('summary_date', weekBefore.toISOString().split('T')[0])
-          .lte('summary_date', weekAfter.toISOString().split('T')[0])
+          .gte('summary_date', startDate)
+          .lte('summary_date', endDate)
           .order('summary_date', { ascending: false })
           .limit(1);
         
-        if (broadResults && broadResults.length > 0) {
-          storedSummary = broadResults[0];
+        if (rangeResults && rangeResults.length > 0) {
+          storedSummary = rangeResults[0];
           error = null;
+          console.log(`✅ Found weekly Google Ads data via range query: ${storedSummary.summary_date}`);
         } else {
           storedSummary = null;
-          error = broadError || { message: 'No weekly Google Ads data found in date range' };
+          error = rangeError || { message: `No weekly Google Ads data found for week starting ${weekMondayStr}` };
+          
+          // DEBUG: Show available weeks
+          const { data: debugResults } = await supabase
+            .from('campaign_summaries')
+            .select('summary_date, total_spend')
+            .eq('client_id', clientId)
+            .eq('summary_type', 'weekly')
+            .eq('platform', 'google')
+            .order('summary_date', { ascending: false })
+            .limit(5);
+          
+          if (debugResults && debugResults.length > 0) {
+            console.log(`🔍 DEBUG: Available Google Ads weekly summaries:`, debugResults);
+          }
         }
       }
     } else {
@@ -482,10 +506,43 @@ export async function POST(request: NextRequest) {
     console.log('🎯 ABOUT TO CHECK DATABASE/LIVE API DECISION...');
 
     // Check if we should use database for historical data (not current month/week)
-    // Dynamic database usage decision based on current period
+    // ✅ FIX: Properly detect if this is the CURRENT week, not just current month
     const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const isCurrentPeriod = new Date(startDate) >= currentMonthStart;
+    const today = now.toISOString().split('T')[0];
+    const requestStart = new Date(startDate);
+    const requestEnd = new Date(endDate);
+    const daysDiff = Math.ceil((requestEnd.getTime() - requestStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const isWeeklyRequest = daysDiff <= 7;
+    
+    let isCurrentPeriod = false;
+    
+    if (isWeeklyRequest) {
+      // For weekly requests: Check if the request includes TODAY
+      // If endDate < today, it's a PAST week (historical) - use database
+      // If endDate >= today, it's CURRENT week - use smart cache
+      isCurrentPeriod = endDate >= today;
+      
+      console.log('📅 WEEKLY PERIOD DETECTION:', {
+        startDate,
+        endDate,
+        today,
+        isCurrentPeriod,
+        reason: isCurrentPeriod 
+          ? '✅ Current week (endDate >= today) - use smart cache'
+          : '📚 Historical week (endDate < today) - use DATABASE'
+      });
+    } else {
+      // For monthly requests: Check if start is in current month
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      isCurrentPeriod = requestStart >= currentMonthStart;
+      
+      console.log('📅 MONTHLY PERIOD DETECTION:', {
+        startDate,
+        endDate,
+        currentMonthStart: currentMonthStart.toISOString().split('T')[0],
+        isCurrentPeriod
+      });
+    }
     
     // Use database for historical periods, live API for current period
     const shouldUseDatabase = !isCurrentPeriod;
@@ -493,6 +550,8 @@ export async function POST(request: NextRequest) {
     console.log('🎯 DATABASE USAGE DECISION:', {
       startDate,
       endDate,
+      daysDiff,
+      isWeeklyRequest,
       isCurrentPeriod,
       shouldUseDatabase,
       forceFresh
@@ -514,26 +573,39 @@ export async function POST(request: NextRequest) {
           const responseTime = Date.now() - startTime;
           logger.info('🚀 Google Ads API response completed', {
             responseTime: `${responseTime}ms`,
-            source: 'database',
+            source: 'campaign-summaries-database',
             campaignCount: databaseResult.campaigns?.length || 0
           });
           
-              // 🔍 DEBUG: Log the exact response being sent to UI
-    console.log('📡 SENDING RESPONSE TO UI:', {
-      success: true,
-      hasData: !!databaseResult,
-      campaignCount: databaseResult?.campaigns?.length || 0,
-      totalSpend: databaseResult?.stats?.totalSpend || 0,
-      clientId: databaseResult?.client?.id,
-      dateRange: databaseResult?.dateRange,
-      source: 'database'
+          // 🔍 DEBUG: Log the exact response being sent to UI
+          console.log('📡 SENDING RESPONSE TO UI:', {
+            success: true,
+            hasData: !!databaseResult,
+            campaignCount: databaseResult?.campaigns?.length || 0,
+            totalSpend: databaseResult?.stats?.totalSpend || 0,
+            clientId: databaseResult?.client?.id,
+            dateRange: databaseResult?.dateRange,
+            source: 'campaign-summaries-database'
           });
           
+          // ✅ FIX: Include debug info that UI expects (same format as Meta)
           return NextResponse.json({
             success: true,
             data: databaseResult,
             responseTime,
-            source: 'database'
+            source: 'database',
+            debug: {
+              source: 'campaign-summaries-database',
+              cachePolicy: 'database-first-historical',
+              responseTime,
+              reason: 'historical-week-google-ads',
+              periodType: 'historical'
+            },
+            validation: {
+              actualSource: 'campaign_summaries',
+              expectedSource: 'campaign_summaries',
+              isConsistent: true
+            }
           });
         } else {
           // IMPROVED: Allow live API fallback for historical periods when database is empty
@@ -702,94 +774,51 @@ export async function POST(request: NextRequest) {
       console.log('❌ CREDENTIALS VALIDATION FAILED:', validation.error);
       logger.error('❌ Google Ads credentials validation failed:', validation.error);
       
-      // 🔧 TEMPORARY FIX: Return sample data when token is expired
+      // ❌ REMOVED: No more sample/mockup data fallback!
+      // Instead, try to load historical data from database when token is expired
       if (validation.error?.includes('invalid_grant') || validation.error?.includes('expired')) {
-        console.log('🔄 RETURNING SAMPLE DATA DUE TO TOKEN ISSUE');
-        logger.info('🔄 Returning sample Google Ads data due to token issue');
+        console.log('⚠️ TOKEN EXPIRED - Attempting to load historical data from database');
+        logger.warn('⚠️ Google Ads token expired, falling back to database for historical data');
         
-        const sampleStats = {
-          totalSpend: 1566.00,
-          totalImpressions: 45230,
-          totalClicks: 4005,
-          totalConversions: 89,
-          ctr: 8.86,
-          cpc: 0.39,
-          conversionRate: 2.22,
-          costPerConversion: 17.60
-        };
-
-        const sampleConversionMetrics = {
-          click_to_call: 27, // ~30% of conversions
-          email_contacts: 18, // ~20% of conversions  
-          booking_step_1: 71, // ~80% of conversions
-          reservations: 89,
-          reservation_value: 26700,
-          roas: 17.05,
-          cost_per_reservation: 17.60,
-          booking_step_2: 62,
-          booking_step_3: 53
-        };
-
-        const sampleCampaigns = [
-          {
-            campaignId: 'sample_1',
-            campaignName: 'Kampania Google Ads #1',
-            status: 'ENABLED',
-            spend: 856.00,
-            impressions: 24500,
-            clicks: 2180,
-            conversions: 48,
-            ctr: 8.90,
-            cpc: 0.39,
-            click_to_call: 14,
-            email_contacts: 10,
-            booking_step_1: 38,
-            reservations: 48,
-            reservation_value: 14400,
-            roas: 16.82,
-            cost_per_reservation: 17.83,
-            booking_step_2: 33,
-            booking_step_3: 29
-          },
-          {
-            campaignId: 'sample_2', 
-            campaignName: 'Kampania Google Ads #2',
-            status: 'ENABLED',
-            spend: 710.00,
-            impressions: 20730,
-            clicks: 1825,
-            conversions: 41,
-            ctr: 8.81,
-            cpc: 0.39,
-            click_to_call: 13,
-            email_contacts: 8,
-            booking_step_1: 33,
-            reservations: 41,
-            reservation_value: 12300,
-            roas: 17.32,
-            cost_per_reservation: 17.32,
-            booking_step_2: 29,
-            booking_step_3: 24
+        // Try to load from database even for current period if token is expired
+        try {
+          const databaseResult = await loadFromDatabase(client.id, startDate, endDate);
+          
+          if (databaseResult) {
+            console.log('✅ Loaded Google Ads data from database despite token issue');
+            logger.info('✅ Loaded Google Ads historical data from database (token expired)');
+            
+            const responseTime = Date.now() - startTime;
+            return NextResponse.json({
+              success: true,
+              data: {
+                ...databaseResult,
+                debug: {
+                  source: 'database_fallback_token_expired',
+                  tokenError: validation.error,
+                  message: 'Data loaded from database. Google Ads token needs refresh for live data.',
+                  instructions: 'Run: node scripts/generate-new-refresh-token.js'
+                }
+              },
+              responseTime,
+              source: 'database_token_expired'
+            });
           }
-        ];
-
+        } catch (dbError) {
+          console.log('⚠️ Database fallback also failed:', dbError);
+        }
+        
+        // If database also has no data, return error with instructions
         return NextResponse.json({
-          success: true,
-          data: {
-            stats: sampleStats,
-            conversionMetrics: sampleConversionMetrics,
-            campaigns: sampleCampaigns,
-            lastUpdated: new Date().toISOString(),
-            dataSource: 'sample_data_token_expired',
-            cacheAge: 0,
-            debug: {
-              source: 'sample_data_due_to_token_issue',
-              tokenError: validation.error,
-              message: 'Showing sample data because Google Ads token needs refresh. Please regenerate your Google Ads refresh token.',
-              instructions: 'Run: node scripts/generate-new-refresh-token.js'
-            }
+          success: false,
+          error: 'Google Ads token expired and no historical data available in database',
+          debug: {
+            tokenError: validation.error,
+            message: 'Google Ads refresh token needs to be regenerated. No cached data available.',
+            instructions: 'Run: node scripts/generate-new-refresh-token.js',
+            note: 'Run background data collection after fixing the token to populate historical data.'
           }
-        });
+        }, { status: 401 });
       }
       
       return createErrorResponse(`Google Ads credentials invalid: ${validation.error}`, 400);

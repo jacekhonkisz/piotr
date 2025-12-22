@@ -950,6 +950,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   const totalValue = getConversionMetric(report, 'conversion_value', campaigns) || getConversionMetric(report, 'reservation_value', campaigns);
                   return totalSpend > 0 ? totalValue / totalSpend : 0;
                 })()}
+                platform={platform}
                 previousYear={yoyData ? {
                   // Use real booking step data from hook
                   step1: yoyData.previous.booking_step_1,

@@ -18,6 +18,7 @@ interface Client {
   name: string;
   email: string;
   meta_access_token?: string;
+  system_user_token?: string; // ✅ Added: Permanent system user token (preferred)
   ad_account_id?: string;
   google_ads_customer_id?: string;
   google_ads_refresh_token?: string;
@@ -271,16 +272,21 @@ export class BackgroundDataCollector {
     logger.info(`📊 Collecting Meta Ads monthly summary for ${client.name}...`);
 
     // Initialize Meta API service
-    if (!client.meta_access_token || !client.ad_account_id) {
+    // ✅ FIX: Use system_user_token if available (permanent), otherwise use meta_access_token (60-day)
+    const metaToken = client.system_user_token || client.meta_access_token;
+    const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+    
+    if (!metaToken || !client.ad_account_id) {
       logger.warn(`⚠️ Missing Meta token or ad account ID for ${client.name}, skipping Meta collection`);
       return;
     }
+    
+    logger.info(`🔑 Monthly collection: Using ${tokenType} for ${client.name}`);
 
     // At this point, we know both values are defined
-    const metaAccessToken = client.meta_access_token as string;
     const adAccountId = client.ad_account_id as string;
 
-    const metaService = new MetaAPIServiceOptimized(metaAccessToken);
+    const metaService = new MetaAPIServiceOptimized(metaToken);
     
     // Validate token
     const tokenValidation = await metaService.validateToken();
@@ -534,16 +540,21 @@ export class BackgroundDataCollector {
     logger.info(`📅 Will collect ${weeksToCollect.length} ISO-standard weeks (all start on Monday)`)
 
     // Initialize Meta API service
-    if (!client.meta_access_token || !client.ad_account_id) {
+    // ✅ FIX: Use system_user_token if available (permanent), otherwise use meta_access_token (60-day)
+    const metaToken = client.system_user_token || client.meta_access_token;
+    const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
+    
+    if (!metaToken || !client.ad_account_id) {
       logger.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
       return;
     }
+    
+    logger.info(`🔑 Weekly collection: Using ${tokenType} for ${client.name}`);
 
     // At this point, we know both values are defined
-    const metaAccessToken = client.meta_access_token as string;
     const adAccountId = client.ad_account_id as string;
 
-    const metaService = new MetaAPIServiceOptimized(metaAccessToken);
+    const metaService = new MetaAPIServiceOptimized(metaToken);
     
     // Validate token
     const tokenValidation = await metaService.validateToken();
@@ -956,15 +967,16 @@ export class BackgroundDataCollector {
       source: enhancedConversionMetrics.reservations > 0 ? 'daily_kpi_data_fallback' : 'meta_api'
     });
 
+    // ✅ FIX: Round integer fields to avoid bigint errors
     const summary = {
       client_id: clientId,
       summary_type: 'monthly',
       summary_date: data.summary_date,
       platform: data.platform || 'meta', // Default to 'meta' for backward compatibility
       total_spend: data.totals.spend || 0,
-      total_impressions: data.totals.impressions || 0,
-      total_clicks: data.totals.clicks || 0,
-      total_conversions: data.totals.conversions || 0,
+      total_impressions: Math.round(data.totals.impressions || 0), // Round to integer
+      total_clicks: Math.round(data.totals.clicks || 0), // Round to integer
+      total_conversions: Math.round(data.totals.conversions || 0), // Round to integer
       average_ctr: data.totals.ctr || 0,
       average_cpc: data.totals.cpc || 0,
       average_cpa: cost_per_reservation,
@@ -974,13 +986,13 @@ export class BackgroundDataCollector {
       meta_tables: data.metaTables,
       data_source: 'meta_api',
       // Add enhanced conversion metrics (either from Meta API or daily_kpi_data fallback)
-      click_to_call: enhancedConversionMetrics.click_to_call,
-      email_contacts: enhancedConversionMetrics.email_contacts,
-      booking_step_1: enhancedConversionMetrics.booking_step_1,
-      reservations: enhancedConversionMetrics.reservations,
-      reservation_value: enhancedConversionMetrics.reservation_value,
-      booking_step_2: enhancedConversionMetrics.booking_step_2,
-      booking_step_3: enhancedConversionMetrics.booking_step_3,
+      click_to_call: Math.round(enhancedConversionMetrics.click_to_call || 0), // Round to integer
+      email_contacts: Math.round(enhancedConversionMetrics.email_contacts || 0), // Round to integer
+      booking_step_1: Math.round(enhancedConversionMetrics.booking_step_1 || 0), // Round to integer
+      reservations: Math.round(enhancedConversionMetrics.reservations || 0), // Round to integer
+      reservation_value: enhancedConversionMetrics.reservation_value, // Keep decimal for currency
+      booking_step_2: Math.round(enhancedConversionMetrics.booking_step_2 || 0), // Round to integer
+      booking_step_3: Math.round(enhancedConversionMetrics.booking_step_3 || 0), // Round to integer
       roas: roas,
       cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()
@@ -1011,25 +1023,26 @@ export class BackgroundDataCollector {
     // Calculate cost per reservation if we have reservations
     const cost_per_reservation = totals.reservations > 0 ? totals.spend / totals.reservations : 0;
 
+    // ✅ FIX: Round integer fields - Google Ads all_conversions returns decimals but DB expects bigint
     const summary = {
       client_id: clientId,
       summary_type: 'monthly', // This is correct - monthly is allowed
       summary_date: data.summary_date,
       platform: 'google', // Important: Mark as Google Ads data
       total_spend: totals.spend || 0,
-      total_impressions: totals.impressions || 0,
-      total_clicks: totals.clicks || 0,
-      total_conversions: totals.conversions || 0,
+      total_impressions: Math.round(totals.impressions || 0), // Round to integer
+      total_clicks: Math.round(totals.clicks || 0), // Round to integer
+      total_conversions: Math.round(totals.conversions || 0), // ✅ FIX: Round - Google Ads all_conversions is decimal!
       average_ctr: totals.ctr || 0,
       average_cpc: totals.cpc || 0,
       // Google Ads specific conversion fields
-      click_to_call: totals.click_to_call || 0,
-      email_contacts: totals.email_contacts || 0,
-      booking_step_1: totals.booking_step_1 || 0,
-      booking_step_2: totals.booking_step_2 || 0,
-      booking_step_3: totals.booking_step_3 || 0,
-      reservations: totals.reservations || 0,
-      reservation_value: totals.reservation_value || 0,
+      click_to_call: Math.round(totals.click_to_call || 0), // Round to integer
+      email_contacts: Math.round(totals.email_contacts || 0), // Round to integer
+      booking_step_1: Math.round(totals.booking_step_1 || 0), // Round to integer
+      booking_step_2: Math.round(totals.booking_step_2 || 0), // Round to integer
+      booking_step_3: Math.round(totals.booking_step_3 || 0), // Round to integer
+      reservations: Math.round(totals.reservations || 0), // Round to integer
+      reservation_value: totals.reservation_value || 0, // Keep decimal for currency
       cost_per_reservation: cost_per_reservation,
       campaign_data: campaigns, // Store raw campaign data for detailed analysis
       google_ads_tables: data.googleAdsTables || null, // ✅ FIX: Store Google Ads tables data
@@ -1114,15 +1127,16 @@ export class BackgroundDataCollector {
     const tablesField = platform === 'google' ? 'google_ads_tables' : 'meta_tables';
     const tablesData = platform === 'google' ? data.googleAdsTables : data.metaTables;
 
+    // ✅ FIX: Round integer fields - Google Ads all_conversions returns decimals but DB expects bigint
     const summary = {
       client_id: clientId,
       summary_type: 'weekly',
       summary_date: data.summary_date,
       platform: platform, // ✅ FIX: Add platform field
       total_spend: data.totals.spend || 0,
-      total_impressions: data.totals.impressions || 0,
-      total_clicks: data.totals.clicks || 0,
-      total_conversions: data.totals.conversions || 0,
+      total_impressions: Math.round(data.totals.impressions || 0), // Round to integer
+      total_clicks: Math.round(data.totals.clicks || 0), // Round to integer
+      total_conversions: Math.round(data.totals.conversions || 0), // ✅ FIX: Round - Google Ads all_conversions is decimal!
       average_ctr: data.totals.ctr || 0,
       average_cpc: data.totals.cpc || 0,
       average_cpa: cost_per_reservation,
@@ -1132,13 +1146,13 @@ export class BackgroundDataCollector {
       [tablesField]: tablesData, // ✅ FIX: Use correct field name based on platform
       data_source: dataSource, // ✅ Set correct data source
       // Add conversion metrics from Meta API campaigns only (matches monthly behavior)
-      click_to_call: conversionTotals.click_to_call,
-      email_contacts: conversionTotals.email_contacts,
-      booking_step_1: conversionTotals.booking_step_1,
-      reservations: conversionTotals.reservations,
-      reservation_value: conversionTotals.reservation_value,
-      booking_step_2: conversionTotals.booking_step_2,
-      booking_step_3: conversionTotals.booking_step_3,
+      click_to_call: Math.round(conversionTotals.click_to_call || 0), // Round to integer
+      email_contacts: Math.round(conversionTotals.email_contacts || 0), // Round to integer
+      booking_step_1: Math.round(conversionTotals.booking_step_1 || 0), // Round to integer
+      reservations: Math.round(conversionTotals.reservations || 0), // Round to integer
+      reservation_value: conversionTotals.reservation_value, // Keep decimal for currency
+      booking_step_2: Math.round(conversionTotals.booking_step_2 || 0), // Round to integer
+      booking_step_3: Math.round(conversionTotals.booking_step_3 || 0), // Round to integer
       roas: roas,
       cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()

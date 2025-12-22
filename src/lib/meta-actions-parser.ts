@@ -20,6 +20,12 @@ export interface ParsedConversionMetrics {
   booking_step_3: number;
   reservations: number;
   reservation_value: number;
+  // ✅ Added for consistency with Google Ads metrics:
+  // - conversion_value = reservation_value (from action_values)
+  // - total_conversion_value = calculated from purchase_roas × spend if ROAS is available
+  conversion_value: number;
+  total_conversion_value: number;
+  roas: number;
 }
 
 /**
@@ -27,6 +33,7 @@ export interface ParsedConversionMetrics {
  * 
  * @param actions - The actions array from Meta API campaign insights
  * @param actionValues - The action_values array from Meta API (for monetary values)
+ *                       This contains "Zakupy w witrynie - wartość konwersji" (website purchase conversion value)
  * @param campaignName - Optional campaign name for logging
  * @returns Parsed conversion metrics
  */
@@ -44,6 +51,10 @@ export function parseMetaActions(
     booking_step_3: 0,
     reservations: 0,
     reservation_value: 0,
+    // ✅ Direct from Meta API action_values - "Zakupy w witrynie - wartość konwersji"
+    conversion_value: 0,
+    total_conversion_value: 0,
+    roas: 0,
   };
 
   // Validate inputs
@@ -216,6 +227,21 @@ export function parseMetaActions(
     logger.warn(`⚠️ Funnel inversion detected for campaign "${campaignName || 'unknown'}": Reservations (${metrics.reservations}) > Step 3 (${metrics.booking_step_3})`);
   }
 
+  // ✅ DIRECT FROM API: Use reservation_value from action_values
+  // This is "Zakupy w witrynie - wartość konwersji" in Meta Ads Manager
+  // No calculation needed - Meta API provides the value directly
+  metrics.conversion_value = metrics.reservation_value;
+  metrics.total_conversion_value = metrics.reservation_value;
+  
+  // Log if we have conversion value from API
+  if (metrics.reservation_value > 0) {
+    logger.debug(`📊 Meta conversion value from API (action_values) for "${campaignName}":`, {
+      reservation_value: metrics.reservation_value,
+      conversion_value: metrics.conversion_value,
+      total_conversion_value: metrics.total_conversion_value
+    });
+  }
+
   return metrics;
 }
 
@@ -226,6 +252,7 @@ export function parseMetaActions(
  * @returns Campaign with added conversion metrics
  */
 export function enhanceCampaignWithConversions(campaign: any): any {
+  // ✅ Parse action_values to get "Zakupy w witrynie - wartość konwersji" directly from API
   const parsed = parseMetaActions(
     campaign.actions || [],
     campaign.action_values || [],
@@ -268,6 +295,9 @@ export function aggregateConversionMetrics(campaigns: any[]): ParsedConversionMe
     booking_step_3: 0,
     reservations: 0,
     reservation_value: 0,
+    conversion_value: 0,
+    total_conversion_value: 0,
+    roas: 0, // Will be calculated after aggregation
   };
   
   if (!Array.isArray(campaigns)) {
@@ -287,6 +317,8 @@ export function aggregateConversionMetrics(campaigns: any[]): ParsedConversionMe
     return Number.isFinite(num) ? num : 0;
   };
 
+  let totalSpend = 0;
+
   campaigns.forEach((campaign) => {
     totals.click_to_call += sanitizeNumber(campaign.click_to_call);
     totals.email_contacts += sanitizeNumber(campaign.email_contacts);
@@ -295,7 +327,15 @@ export function aggregateConversionMetrics(campaigns: any[]): ParsedConversionMe
     totals.booking_step_3 += sanitizeNumber(campaign.booking_step_3);
     totals.reservations += sanitizeNumber(campaign.reservations);
     totals.reservation_value += sanitizeNumber(campaign.reservation_value);
+    totals.conversion_value += sanitizeNumber(campaign.conversion_value);
+    totals.total_conversion_value += sanitizeNumber(campaign.total_conversion_value);
+    totalSpend += sanitizeNumber(campaign.spend);
   });
+  
+  // ✅ Calculate aggregated ROAS from total_conversion_value / totalSpend
+  if (totalSpend > 0 && totals.total_conversion_value > 0) {
+    totals.roas = totals.total_conversion_value / totalSpend;
+  }
   
   return totals;
 }

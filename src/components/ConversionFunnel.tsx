@@ -21,6 +21,10 @@ interface ConversionFunnelProps {
   totalConversionValue?: number; // all_conversions_value - "Łączna wartość konwersji" (includes view-through, cross-device)
   roas: number;
   className?: string;
+  // Platform-specific label for conversion value card
+  // - 'meta': "Wartość rezerwacji (zakupy w witrynie)"
+  // - 'google': "Łączna wartość konwersji"
+  platform?: 'meta' | 'google' | 'combined';
   // Previous year data for comparison
   previousYear?: {
     step1: number;
@@ -47,6 +51,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
   totalConversionValue,
   roas,
   className = "",
+  platform,
   previousYear,
   yoyChanges
 }) => {
@@ -54,6 +59,13 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
   const displayConversionValue = conversionValue !== undefined ? conversionValue : reservationValue;
   // "Łączna wartość konwersji" = all_conversions_value (includes view-through, cross-device)
   const displayTotalConversionValue = totalConversionValue !== undefined ? totalConversionValue : displayConversionValue;
+  
+  // ✅ Platform-specific label for conversion value card
+  // Meta: "Wartość rezerwacji (zakupy w witrynie)" - direct from action_values
+  // Google: "Łączna wartość konwersji" - all_conversions_value
+  const conversionValueLabel = platform === 'meta' 
+    ? "Wartość rezerwacji (zakupy w witrynie)"
+    : "Łączna wartość konwersji";
   
   // Calculate conversion rates
   const step1ToStep2Rate = step1 > 0 ? (step2 / step1) * 100 : 0;
@@ -101,18 +113,19 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
 
   const bottomCards = [
     {
-      label: "Łączna wartość konwersji",
+      // ✅ Platform-specific label: Meta = "Wartość rezerwacji (zakupy w witrynie)", Google = "Łączna wartość konwersji"
+      label: conversionValueLabel,
       value: `${displayTotalConversionValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`,
       icon: <Calendar className="w-6 h-6" />,
       color: "text-white",
-      bgColor: "bg-gradient-to-r from-slate-600 to-slate-500" // all_conversions_value from Google Ads
+      bgColor: "bg-gradient-to-r from-slate-600 to-slate-500"
     },
     {
       label: "ROAS",
       value: `${roas.toFixed(2)}x`,
       icon: <Calendar className="w-6 h-6" />,
       color: "text-white",
-      bgColor: "bg-gradient-to-r from-slate-700 to-slate-600" // ROAS (calculated using total_conversion_value)
+      bgColor: "bg-gradient-to-r from-slate-700 to-slate-600"
     }
   ];
 

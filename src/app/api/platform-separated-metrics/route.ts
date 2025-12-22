@@ -4,6 +4,7 @@ import { authenticateRequest, canAccessClient, createErrorResponse } from '../..
 import logger from '../../../lib/logger';
 import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { GoogleAdsAPIService } from '../../../lib/google-ads-api';
+import { enhanceCampaignsWithConversions } from '../../../lib/meta-actions-parser';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,34 +79,51 @@ export async function POST(request: NextRequest) {
             : clientData.ad_account_id;
           
           // Fetch campaign insights
-          const campaigns = await metaService.getCampaignInsights(
+          const rawCampaigns = await metaService.getCampaignInsights(
             adAccountId,
             startDate,
             endDate,
             0 // No time increment
           );
           
+          // ✅ Parse campaigns with conversion metrics from action_values
+          // This extracts "Zakupy w witrynie - wartość konwersji" directly from API
+          const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
+          
           // Calculate stats
-          const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-          const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0);
-          const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
-          const totalConversions = campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
+          const totalSpend = campaigns.reduce((sum: number, c: any) => sum + parseFloat(c.spend || 0), 0);
+          const totalImpressions = campaigns.reduce((sum: number, c: any) => sum + parseInt(c.impressions || 0), 0);
+          const totalClicks = campaigns.reduce((sum: number, c: any) => sum + parseInt(c.clicks || 0), 0);
+          const totalConversions = campaigns.reduce((sum: number, c: any) => sum + parseFloat(c.conversions || 0), 0);
           const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
           const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
           
-          // Calculate conversion metrics
+          // ✅ Conversion metrics - direct from API action_values (no calculation)
+          const totalReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+          const totalReservations = campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0);
+          
           const conversionMetrics = {
-            click_to_call: campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0),
-            email_contacts: campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0),
-            booking_step_1: campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0),
-            booking_step_2: campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0),
-            booking_step_3: campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0),
-            reservations: campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
-            reservation_value: campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0),
-            roas: totalSpend > 0 ? campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0) / totalSpend : 0,
-            cost_per_reservation: campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) > 0 ? 
-              totalSpend / campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) : 0
+            click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
+            email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
+            booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
+            booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
+            booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
+            reservations: totalReservations,
+            reservation_value: totalReservationValue,
+            // ✅ Direct from API - "Zakupy w witrynie - wartość konwersji"
+            conversion_value: totalReservationValue,
+            total_conversion_value: totalReservationValue,
+            roas: totalSpend > 0 && totalReservationValue > 0 ? totalReservationValue / totalSpend : 0,
+            cost_per_reservation: totalReservations > 0 ? totalSpend / totalReservations : 0
           };
+          
+          logger.info('📊 Meta conversion metrics from API (action_values):', {
+            totalSpend,
+            totalReservationValue,
+            totalReservations,
+            roas: conversionMetrics.roas,
+            source: 'action_values_direct'
+          });
           
           metaData = {
             campaigns,

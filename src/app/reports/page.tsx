@@ -1734,6 +1734,8 @@ function ReportsPageContent() {
       loadingRef.current = true;
       setApiCallInProgress(true);
       setLoadingPeriod(periodId);
+      // ✅ FIX: Clear dataSourceInfo to prevent showing stale source info while loading
+      setDataSourceInfo({});
       console.log(`📡 Loading data for ${activeViewType} period: ${periodId}`);
       console.log(`👤 Using explicit client:`, clientData);
       console.log(`🎯 Data source: ${isCurrentPeriod ? 'LIVE API (current period)' : 'API (previous period)'}`);
@@ -2266,41 +2268,25 @@ function ReportsPageContent() {
           setError(`API Error for current month: ${errorMessage}. Please try again or contact support.`);
         }
       } else {
-        // For previous months, show fallback data if API fails
-        console.log('🔄 Previous month API failed - showing fallback data');
-        const fallbackCampaigns: Campaign[] = [
-          {
-            id: `fallback-1-${periodId}`,
-            campaign_id: 'fallback-1',
-            campaign_name: 'Fallback Campaign (API Error)',
-            spend: 1000.00,
-            impressions: 50000,
-            clicks: 1000,
-            conversions: 50,
-            ctr: 2.0,
-            cpc: 1.0,
-            cpa: 20.0,
-            frequency: 1.5,
-            reach: 33333,
-            landing_page_view: 800,
-            ad_type: 'IMAGE',
-            objective: 'CONVERSIONS'
-          }
-        ];
-
-        const fallbackReport: MonthlyReport | WeeklyReport = {
+        // ❌ REMOVED: No more mockup fallback data!
+        // For previous periods, show empty state with clear message
+        console.log('⚠️ Previous period API failed - showing empty state (NO MOCKUP DATA)');
+        
+        // Create empty report structure (no fake campaigns)
+        const emptyReport: MonthlyReport | WeeklyReport = {
           id: periodId,
           date_range_start: periodStartDate || '',
           date_range_end: periodEndDate || '',
           generated_at: new Date().toISOString(),
-          campaigns: fallbackCampaigns
+          campaigns: [] // Empty - no fake data
         };
 
-        console.log('💾 Setting fallback report for previous month:', fallbackReport);
-        setReports(prev => ({ ...prev, [periodId]: fallbackReport }));
-        setLoadingPeriod(null); // Clear loading after setting fallback state
+        console.log('💾 Setting empty report for previous period:', { periodId, reason: 'No data in database - run background collection' });
+        setReports(prev => ({ ...prev, [periodId]: emptyReport }));
+        setLoadingPeriod(null);
         
-        setError(`API Error: ${error instanceof Error ? error.message : 'Unknown error'}. Showing fallback data.`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setError(`No data available for ${periodId}. Historical data needs to be collected. (${errorMessage})`);
       }
     } finally {
       // 🔧 FIX: Only reset refs and API state, NOT loading period
@@ -2896,40 +2882,23 @@ function ReportsPageContent() {
             
             setError(`API Error for current month: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support.`);
           } else {
-            // For previous months, show fallback data if API fails (same logic as original)
-            console.log('🔄 Previous month API failed - showing fallback data');
-            const fallbackCampaigns: Campaign[] = [
-              {
-                id: `fallback-1-${periodId}`,
-                campaign_id: 'fallback-1',
-                campaign_name: 'Fallback Campaign (API Error)',
-                spend: 1000.00,
-                impressions: 50000,
-                clicks: 1000,
-                conversions: 50,
-                ctr: 2.0,
-                cpc: 1.0,
-                cpa: 20.0,
-                frequency: 1.5,
-                reach: 33333,
-                landing_page_view: 800,
-                ad_type: 'IMAGE',
-                objective: 'CONVERSIONS'
-              }
-            ];
-
-            const fallbackReport: MonthlyReport | WeeklyReport = {
+            // ❌ REMOVED: No more mockup fallback data!
+            // For previous periods, show empty state with clear message
+            console.log('⚠️ Previous period API failed - showing empty state (NO MOCKUP DATA)');
+            
+            const emptyReport: MonthlyReport | WeeklyReport = {
               id: periodId,
               date_range_start: periodStartDate || '',
               date_range_end: periodEndDate || '',
               generated_at: new Date().toISOString(),
-              campaigns: fallbackCampaigns
+              campaigns: [] // Empty - no fake data
             };
 
-            console.log('💾 Setting fallback report for previous month:', fallbackReport);
-            setReports(prev => ({ ...prev, [periodId]: fallbackReport }));
+            console.log('💾 Setting empty report for previous period:', { periodId, reason: 'No data in database - run background collection' });
+            setReports(prev => ({ ...prev, [periodId]: emptyReport }));
             
-            setError(`API Error: ${error instanceof Error ? error.message : 'Unknown error'}. Showing fallback data.`);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            setError(`No data available for ${periodId}. Historical data needs to be collected. (${errorMessage})`);
           }
         } finally {
           loadingRef.current = false;
@@ -2950,11 +2919,17 @@ function ReportsPageContent() {
     console.log('📅 Period changed to:', newPeriod);
     setSelectedPeriod(newPeriod);
     
-    // Only load data if we don't already have it and selectedClient is loaded
-    if (newPeriod && !reports[newPeriod] && selectedClient) {
-      console.log('📊 Loading data for new period:', newPeriod);
+    // ✅ FIX: Always clear dataSourceInfo when changing periods to prevent stale data
+    setDataSourceInfo({});
+    
+    // ✅ FIX: Always reload weekly data to ensure fresh database fetch
+    const isWeeklyPeriod = newPeriod.includes('-W');
+    const shouldReload = !reports[newPeriod] || isWeeklyPeriod;
+    
+    if (newPeriod && shouldReload && selectedClient) {
+      console.log(`📊 Loading data for ${isWeeklyPeriod ? 'weekly' : 'new'} period:`, newPeriod);
       loadPeriodData(newPeriod);
-    } else if (newPeriod && reports[newPeriod]) {
+    } else if (newPeriod && reports[newPeriod] && !isWeeklyPeriod) {
       console.log('✅ Data already available for period:', newPeriod);
     } else if (newPeriod && !selectedClient) {
       console.log('⚠️ Selected client not loaded yet, cannot load period data');
