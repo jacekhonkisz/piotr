@@ -2125,12 +2125,15 @@ function ReportsPageContent() {
           reach: 0,
           offline_reservations: 0,
           offline_value: 0
-        }
+        },
+        // 🔧 FIX: Include Google Ads tables data to avoid duplicate API calls
+        googleAdsTables: data.data?.googleAdsTables || null
       };
 
       console.log(`💾 Setting successful report for ${periodId}:`, report);
       console.log(`💾 Report campaigns count:`, report.campaigns.length);
       console.log(`💾 Report conversionMetrics:`, report.conversionMetrics);
+      console.log(`💾 Report googleAdsTables:`, !!report.googleAdsTables);
       if (report.campaigns.length > 0) {
         console.log(`💾 Sample campaign:`, report.campaigns[0]);
       }
@@ -3834,10 +3837,10 @@ function ReportsPageContent() {
                       dateStart={selectedReport.date_range_start}
                       dateEnd={selectedReport.date_range_end}
                       clientId={client?.id || ''}
+                      // 🔧 FIX: Pass preloaded tables data to avoid duplicate API calls
+                      preloadedTablesData={(selectedReport as any)?.googleAdsTables || null}
                       onDataLoaded={(data) => {
                         console.log('Google Ads tables data loaded:', data);
-                        // 🔧 FIX: Don't clear loading here - main component handles it
-                        // This was causing premature loading state clear
                       }}
                     />
                     

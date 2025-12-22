@@ -74,6 +74,14 @@ interface GoogleAdsTablesProps {
   dateEnd: string;
   clientId: string;
   onDataLoaded?: (tablesData: any) => void;
+  // 🔧 NEW: Accept pre-loaded tables data to avoid duplicate API calls
+  preloadedTablesData?: {
+    networkPerformance?: any[];
+    devicePerformance?: any[];
+    keywordPerformance?: any[];
+    searchTermPerformance?: any[];
+    qualityMetrics?: any[];
+  } | null;
 }
 
 interface SearchTermPerformance {
@@ -91,7 +99,7 @@ interface SearchTermPerformance {
   roas: number;
 }
 
-const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded }) => {
+const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded, preloadedTablesData }) => {
   const [placementData, setPlacementData] = useState<GoogleAdsPlacementPerformance[]>([]);
   const [deviceData, setDeviceData] = useState<GoogleAdsDevicePerformance[]>([]);
   const [keywordData, setKeywordData] = useState<GoogleAdsKeywordPerformance[]>([]);
@@ -102,6 +110,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
   const [retryKey, setRetryKey] = useState(0);
   const [isRequestInProgress, setIsRequestInProgress] = useState(false);
+  const [usedPreloadedData, setUsedPreloadedData] = useState(false);
 
   // Transform Google Ads API data into table format
   const transformGoogleAdsDataToTables = (apiData: any) => {
@@ -201,7 +210,33 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
   };
 
   useEffect(() => {
-    console.log('🔄 useEffect triggered with:', { dateStart, dateEnd, clientId, retryKey });
+    console.log('🔄 useEffect triggered with:', { dateStart, dateEnd, clientId, retryKey, hasPreloadedData: !!preloadedTablesData });
+
+    // 🔧 FIX: Use preloaded data if available to avoid duplicate API calls
+    if (preloadedTablesData && !usedPreloadedData) {
+      console.log('⚡ Using preloaded Google Ads tables data (no API call needed)');
+      setUsedPreloadedData(true);
+      
+      // Transform preloaded data to table format
+      const transformedData = transformGoogleAdsDataToTables({ googleAdsTables: preloadedTablesData });
+      
+      setPlacementData(transformedData.placementPerformance);
+      setDeviceData(transformedData.devicePerformance);
+      setKeywordData(transformedData.keywordPerformance);
+      setSearchTermData(transformedData.searchTermPerformance);
+      setLoading(false);
+      setError(null);
+      
+      if (onDataLoaded) {
+        onDataLoaded({
+          placementPerformance: transformedData.placementPerformance,
+          devicePerformance: transformedData.devicePerformance,
+          keywordPerformance: transformedData.keywordPerformance,
+          searchTermPerformance: transformedData.searchTermPerformance
+        });
+      }
+      return;
+    }
 
   const fetchGoogleAdsTablesData = async () => {
     try {
@@ -211,7 +246,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         return;
       }
       
-      console.log('🚀 Starting Google Ads tables data fetch...');
+      console.log('🚀 Starting Google Ads tables data fetch (no preloaded data available)...');
       setIsRequestInProgress(true);
       setLoading(true);
       setError(null);
@@ -325,8 +360,11 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     setDeviceData([]);
     setKeywordData([]);
     
-    fetchGoogleAdsTablesData();
-  }, [dateStart, dateEnd, clientId, retryKey]);
+    // Only fetch if no preloaded data
+    if (!preloadedTablesData) {
+      fetchGoogleAdsTablesData();
+    }
+  }, [dateStart, dateEnd, clientId, retryKey, preloadedTablesData]);
 
   const retryFetch = () => {
     setRetryKey(prev => prev + 1); // This will trigger useEffect to re-run
