@@ -523,80 +523,87 @@ function ReportsPageContent() {
   }, [selectedClient]);
 
   // Refresh data when provider changes
+  // 🔧 FIX: Store previous provider to detect actual changes
+  const prevProviderRef = useRef(activeAdsProvider);
+  
   useEffect(() => {
-    if (!selectedClient) return;
-
-    // Only refresh if there's data to refresh (selectedPeriod, custom dates, or all-time view)
-    const hasDataToRefresh = selectedPeriod || 
-                             (viewType === 'custom' && customDateRange.start && customDateRange.end) ||
-                             (viewType === 'all-time' && Object.keys(reports).length > 0);
-    
-    if (!hasDataToRefresh) {
-      console.log('⏭️ No data to refresh on provider change');
+    // Skip if provider hasn't actually changed
+    if (prevProviderRef.current === activeAdsProvider) {
       return;
+    }
+    
+    console.log(`🔄 PROVIDER CHANGED: ${prevProviderRef.current} → ${activeAdsProvider}`);
+    prevProviderRef.current = activeAdsProvider;
+    
+    if (!selectedClient) {
+      console.log('⏭️ No client selected, skipping provider change refresh');
+      return;
+    }
+
+    // 🔧 FIX: Always refresh for monthly/weekly views - don't check if data exists
+    // The old data is for the PREVIOUS provider, so we need fresh data for the NEW provider
+    const currentViewType = viewType;
+    const currentPeriod = selectedPeriod;
+    const currentClient = selectedClient;
+    
+    console.log('🔄 Provider change state:', {
+      activeAdsProvider,
+      currentViewType,
+      currentPeriod,
+      clientId: currentClient?.id
+    });
+
+    // 🔧 CRITICAL FIX: Clear ALL reports when switching providers
+    // This forces fresh data fetch for the new provider
+    setReports({});
+    
+    // Clear any existing loading state first
+    setLoadingPeriod(null);
+    setApiCallInProgress(false);
+    loadingRef.current = false;
+    
+    // Clear ALL API call trackers for this client to allow fresh calls
+    if ((window as any).apiCallTracker) {
+      (window as any).apiCallTracker = {};
+      console.log('🧹 Cleared ALL API call trackers for provider switch');
     }
 
     // 🔧 CRITICAL FIX: Use setTimeout to ensure state updates are processed
     const switchProvider = async () => {
-      // Clear any existing loading state first
-      setLoadingPeriod(null);
-      setApiCallInProgress(false);
-      loadingRef.current = false;
-      
-      // Clear ALL API call trackers for this client to allow fresh calls
-      if ((window as any).apiCallTracker) {
-        Object.keys((window as any).apiCallTracker).forEach(key => {
-          if (key.includes(selectedClient.id)) {
-            delete (window as any).apiCallTracker[key];
-          }
-        });
-        console.log('🧹 Cleared ALL API call trackers for client:', selectedClient.id);
-      }
-      
       // Wait for state updates to complete
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Handle different view types
-      if (viewType === 'custom' && customDateRange.start && customDateRange.end) {
-        // For custom date range, reload with new provider
+      if (currentViewType === 'custom' && customDateRange.start && customDateRange.end) {
         console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing custom date data`);
-        
-        // Clear custom report
-        setReports(prev => {
-          const newReports = { ...prev };
-          delete newReports['custom'];
-          return newReports;
-        });
-        
-        // Reload custom date data with new provider
         setLoadingPeriod('custom');
         await loadCustomDateData(customDateRange.start, customDateRange.end);
-      } else if (selectedPeriod) {
-        // For monthly/weekly periods, use existing logic
-        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing data for period: ${selectedPeriod}`);
-        
-        // Clear current report to force refresh
-        setReports(prev => {
-          const newReports = { ...prev };
-          delete newReports[selectedPeriod];
-          return newReports;
-        });
-        
-        // Set loading state after clearing
-        setLoadingPeriod(selectedPeriod);
+      } else if (currentPeriod && (currentViewType === 'monthly' || currentViewType === 'weekly')) {
+        console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing data for period: ${currentPeriod}`);
+        setLoadingPeriod(currentPeriod);
         
         // Force fresh data load with new provider
         console.log(`🔄 FORCING FRESH DATA LOAD for ${activeAdsProvider} provider`);
-        await loadPeriodDataWithClient(selectedPeriod, selectedClient, true); // Force clear cache
-      } else if (viewType === 'all-time') {
-        // For all-time, reload with new provider
+        await loadPeriodDataWithClient(currentPeriod, currentClient, true);
+      } else if (currentViewType === 'all-time') {
         console.log(`🔄 Provider changed to ${activeAdsProvider}, refreshing all-time data`);
         await loadAllTimeData();
+      } else {
+        // 🔧 FIX: Generate periods and load initial data if no period is selected
+        console.log(`🔧 No period selected, generating periods for ${currentViewType} view`);
+        const periods = generatePeriodOptions(currentViewType);
+        if (periods.length > 0) {
+          const initialPeriod = periods[0];
+          setAvailablePeriods(periods);
+          setSelectedPeriod(initialPeriod);
+          setLoadingPeriod(initialPeriod);
+          await loadPeriodDataWithClient(initialPeriod, currentClient, true);
+        }
       }
     };
     
     switchProvider();
-  }, [activeAdsProvider]);
+  }, [activeAdsProvider, selectedClient?.id, viewType, selectedPeriod]);
 
   // Note: Mock Google Ads data removed - now using real API calls
 
@@ -637,10 +644,11 @@ function ReportsPageContent() {
     }
     
     // Reload data for the current period with the new client
-    // 🔧 FIX: Use forceClearCache=true to bypass all blocking layers
+    // 🔧 FIX: Use smart cache when switching clients for consistent data sources
+    // Changed from forceClearCache=true to false to use same data source as initial load
     if (selectedPeriod) {
-      console.log('📊 Reloading data for new client:', newClient.name, '(forceClearCache=true)');
-      await loadPeriodDataWithClient(selectedPeriod, newClient, true);
+      console.log('📊 Reloading data for new client:', newClient.name, '(using smart cache)');
+      await loadPeriodDataWithClient(selectedPeriod, newClient, false);
     }
   };
 
@@ -3174,13 +3182,10 @@ function ReportsPageContent() {
       const initialPeriod = periods[0];
       if (initialPeriod) {
         setSelectedPeriod(initialPeriod);
-        // Only load data if we don't already have it
-        if (!reports[initialPeriod]) {
-          console.log('📊 Loading data for new view type period:', initialPeriod);
-          loadPeriodData(initialPeriod);
-        } else {
-          console.log('✅ Data already available for new view type period:', initialPeriod);
-        }
+        // 🔧 FIX: Always load data for the new period when view type changes
+        // The existing data might be for a different provider or stale
+        console.log('📊 Loading data for new view type period:', initialPeriod);
+        loadPeriodData(initialPeriod);
       }
     }
   }, [viewType, selectedClient]);
