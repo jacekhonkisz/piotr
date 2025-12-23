@@ -226,7 +226,8 @@ const CampaignTable: React.FC<{
   title: string; 
   currency: string;
   platformColor: string;
-}> = ({ campaigns, title, currency, platformColor }) => {
+  platform?: 'meta' | 'google';
+}> = ({ campaigns, title, currency, platformColor, platform = 'google' }) => {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pl-PL', {
       style: 'currency',
@@ -243,6 +244,10 @@ const CampaignTable: React.FC<{
     return null;
   }
 
+  // Use Polish full names for Meta, abbreviations for Google
+  const ctrLabel = platform === 'meta' ? 'Współczynnik kliknięć' : 'CTR';
+  const cpcLabel = platform === 'meta' ? 'Koszt kliknięcia' : 'CPC';
+
   return (
     <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
       <h3 className={`text-xl font-bold mb-4 ${platformColor}`}>{title}</h3>
@@ -255,8 +260,8 @@ const CampaignTable: React.FC<{
               <th className="text-right py-3 px-2">Wydano</th>
               <th className="text-right py-3 px-2">Wyświetlenia</th>
               <th className="text-right py-3 px-2">Kliknięcia</th>
-              <th className="text-right py-3 px-2">CTR</th>
-              <th className="text-right py-3 px-2">CPC</th>
+              <th className="text-right py-3 px-2">{ctrLabel}</th>
+              <th className="text-right py-3 px-2">{cpcLabel}</th>
               <th className="text-right py-3 px-2">Rezerwacje</th>
               <th className="text-right py-3 px-2">Wartość Rezerwacji</th>
               <th className="text-right py-3 px-2">ROAS</th>
@@ -342,11 +347,40 @@ export default function UnifiedReportView({
 
       // Download the PDF
       const blob = await response.blob();
+      
+      // Extract filename from Content-Disposition header or construct it
+      let filename = '';
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = decodeURIComponent(filenameMatch[1].replace(/['"]/g, ''));
+        }
+      }
+      
+      // If header extraction failed, construct filename
+      if (!filename) {
+        // Format date range for filename (DD.MM.YYYY-DD.MM.YYYY)
+        const formatDateForFilename = (dateString: string) => {
+          const date = new Date(dateString);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${day}.${month}.${year}`;
+        };
+        
+        const startDate = formatDateForFilename(report.date_range_start);
+        const endDate = formatDateForFilename(report.date_range_end);
+        const okresRaportu = `${startDate}-${endDate}`;
+        const sanitizedClientName = clientName?.replace(/[^\w\s-]/g, '').trim() || 'Klient';
+        filename = `Raport Reklamowy PBM - ${sanitizedClientName} - ${okresRaportu}.pdf`;
+      }
+      
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = `unified-report-${clientName?.replace(/[^a-zA-Z0-9]/g, '-')}-${report.date_range_start}-${report.date_range_end}.pdf`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -440,6 +474,7 @@ export default function UnifiedReportView({
         title="Kampanie Meta Ads"
         currency={currency}
         platformColor="text-blue-600"
+        platform="meta"
       />
 
       <CampaignTable
@@ -447,6 +482,7 @@ export default function UnifiedReportView({
         title="Kampanie Google Ads"
         currency={currency}
         platformColor="text-green-600"
+        platform="google"
       />
 
       {/* Performance Insights */}

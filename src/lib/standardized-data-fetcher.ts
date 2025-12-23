@@ -1013,16 +1013,18 @@ export class StandardizedDataFetcher {
         
         if (apiResult && apiResult.length > 0) {
           // Transform campaigns
+          // ✅ CRITICAL: Use inline_link_clicks and cost_per_inline_link_click to match Meta Business Suite
           const campaigns = apiResult.map((campaign: any) => ({
             campaign_id: campaign.campaign_id || campaign.id,
             campaign_name: campaign.campaign_name || campaign.name,
             status: campaign.status || 'ACTIVE',
             spend: parseFloat(campaign.spend || '0'),
             impressions: parseInt(campaign.impressions || '0'),
-            clicks: parseInt(campaign.clicks || '0'),
+            clicks: parseInt(campaign.inline_link_clicks || campaign.clicks || '0'),
             conversions: parseInt(campaign.conversions || '0'),
-            ctr: parseFloat(campaign.ctr || '0'),
-            cpc: parseFloat(campaign.cpc || '0'),
+            // ✅ Use inline_link_click_ctr and cost_per_inline_link_click from Meta API (matches Business Suite)
+            ctr: parseFloat(campaign.inline_link_click_ctr || campaign.ctr || '0'),
+            cpc: parseFloat(campaign.cost_per_inline_link_click || campaign.cpc || '0'),
             cpa: parseFloat(campaign.cpa || '0')
           }));
           
@@ -1280,10 +1282,18 @@ export class StandardizedDataFetcher {
       hasCampaignData: !!storedSummary.campaign_data
     });
     
-    // ✅ FIX: Ensure campaigns is always an array
-    const campaigns = Array.isArray(storedSummary.campaign_data) 
+    // ✅ FIX: Ensure campaigns is always an array and add conversion_value to each campaign
+    const rawCampaigns = Array.isArray(storedSummary.campaign_data) 
       ? storedSummary.campaign_data 
       : (storedSummary.campaign_data ? [storedSummary.campaign_data] : []);
+    
+    // ✅ FIX: Transform campaigns to add conversion_value (for Meta, same as reservation_value)
+    const campaigns = rawCampaigns.map((campaign: any) => ({
+      ...campaign,
+      // For Meta Ads, conversion_value = reservation_value (from omni_purchase action)
+      conversion_value: campaign.conversion_value ?? campaign.reservation_value ?? 0,
+      total_conversion_value: campaign.total_conversion_value ?? campaign.reservation_value ?? 0
+    }));
     
     // ✅ CRITICAL FIX: Convert all database values to numbers to prevent string concatenation
     const sanitizeNumber = (value: any): number => {
@@ -1316,6 +1326,8 @@ export class StandardizedDataFetcher {
           averageCpc: sanitizeNumber(storedSummary.average_cpc)
         },
         // ✅ CRITICAL FIX: Round conversion counts to integers for consistent display
+        // ✅ FIX: Add conversion_value and total_conversion_value (same as reservation_value for Meta)
+        // This ensures ConversionFunnel displays the value correctly for historical periods
         conversionMetrics: {
           click_to_call: Math.round(sanitizeNumber((storedSummary as any).click_to_call)),
           email_contacts: Math.round(sanitizeNumber((storedSummary as any).email_contacts)),
@@ -1324,6 +1336,9 @@ export class StandardizedDataFetcher {
           booking_step_3: Math.round(sanitizeNumber((storedSummary as any).booking_step_3)),
           reservations: Math.round(reservations),
           reservation_value: Math.round(reservationValue * 100) / 100, // Round to 2 decimal places
+          // ✅ FIX: For Meta, conversion_value = reservation_value (from action_values omni_purchase)
+          conversion_value: Math.round(reservationValue * 100) / 100,
+          total_conversion_value: Math.round(reservationValue * 100) / 100,
           roas: reservationValue && totalSpend ? Math.round((reservationValue / totalSpend) * 100) / 100 : 0,
           cost_per_reservation: reservations && totalSpend ? Math.round((totalSpend / reservations) * 100) / 100 : 0,
           reach: Math.round(sanitizeNumber((storedSummary as any).reach))

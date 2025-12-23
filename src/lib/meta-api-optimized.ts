@@ -445,7 +445,9 @@ export class MetaAPIServiceOptimized {
     const timeIncrementParam = timeIncrement ? `&time_increment=${timeIncrement}` : '';
     // ✅ FIX: Use time_range JSON format (same as placement/demographic functions)
     // action_values contains "Zakupy w witrynie - wartość konwersji" (website purchase conversion value)
-    const params = `level=campaign&time_range={"since":"${dateStart}","until":"${dateEnd}"}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
+    // ✅ CRITICAL: Request inline_link_clicks and inline_link_click_ctr to match Meta Business Suite
+    // Meta Business Suite uses "link clicks" not "all clicks" for CTR/CPC calculations
+    const params = `level=campaign&time_range={"since":"${dateStart}","until":"${dateEnd}"}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,ctr,inline_link_click_ctr,cpc,cost_per_inline_link_click,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
     const cacheKey = this.getCacheKey(endpoint, params);
 
     // Check cache first

@@ -124,14 +124,18 @@ export function parseMetaActions(
         metrics.email_contacts += value;
       }
       
-      // ✅ BOOKING STEP 1 - Search (Booking Engine Search)
-      // Use ONLY omni_search as the single source of truth
-      // Meta duplicates this as: omni_search, offsite_conversion.fb_pixel_search, search
-      if (actionType === 'omni_search') {
+      // ✅ BOOKING STEP 1 - Link Click (Ad Click to Website)
+      // CORRECTED: Use link_click as Step 1 (matches Meta Business Suite "Kliknięcia linku")
+      // This represents when someone clicks the ad to visit the booking engine
+      if (actionType === 'link_click') {
         metrics.booking_step_1 = value; // Use assignment, not +=
       }
+      // Fallback: use omni_search if link_click not present
+      else if (actionType === 'omni_search' && !actionMap.has('link_click')) {
+        metrics.booking_step_1 = value;
+      }
       // Fallback if omni_search not present but fb_pixel_search is
-      else if (actionType === 'offsite_conversion.fb_pixel_search' && !actionMap.has('omni_search')) {
+      else if (actionType === 'offsite_conversion.fb_pixel_search' && !actionMap.has('link_click') && !actionMap.has('omni_search')) {
         metrics.booking_step_1 = value;
       }
       

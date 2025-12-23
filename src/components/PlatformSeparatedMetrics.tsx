@@ -143,14 +143,14 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
               color="bg-blue-50"
             />
             <MetricCard
-              title="CTR"
+              title="Współczynnik kliknięć z linku"
               value={`${metaData.stats.averageCtr.toFixed(2)}%`}
               subtitle="Meta Ads"
               icon={<Target className="w-5 h-5 text-blue-600" />}
               color="bg-blue-50"
             />
             <MetricCard
-              title="CPC"
+              title="Koszt kliknięcia linku"
               value={formatCurrency(metaData.stats.averageCpc)}
               subtitle="Meta Ads"
               icon={<DollarSign className="w-5 h-5 text-blue-600" />}

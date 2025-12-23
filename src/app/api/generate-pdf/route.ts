@@ -451,8 +451,8 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
           ${renderMetricCard('Wydatki', formatCurrency(metrics.totalSpend), getMetricChange('totalSpend'))}
           ${renderMetricCard('Wyświetlenia', formatNumber(metrics.totalImpressions), getMetricChange('totalImpressions'))}
           ${renderMetricCard('Kliknięcia', formatNumber(metrics.totalClicks), getMetricChange('totalClicks'))}
-          ${renderMetricCard('CTR', `${ctr.toFixed(2)}%`, null)}
-          ${renderMetricCard('CPC', formatCurrency(cpc), null)}
+          ${renderMetricCard('Współczynnik kliknięć z linku', `${ctr.toFixed(2)}%`, null)}
+          ${renderMetricCard('Koszt kliknięcia linku', formatCurrency(cpc), null)}
           ${renderMetricCard('Konwersje', formatNumber(metrics.totalConversions), getMetricChange('totalConversions'))}
       </div>
         
@@ -723,8 +723,8 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
           ${renderMetricCard('Wydatki', formatCurrency(metrics.totalSpend), getMetricChange('totalSpend'))}
           ${renderMetricCard('Wyświetlenia', formatNumber(metrics.totalImpressions), getMetricChange('totalImpressions'))}
           ${renderMetricCard('Kliknięcia', formatNumber(metrics.totalClicks), getMetricChange('totalClicks'))}
-          ${renderMetricCard('CTR', `${ctr.toFixed(2)}%`, null)}
-          ${renderMetricCard('CPC', formatCurrency(cpc), null)}
+          ${renderMetricCard('Współczynnik kliknięć z linku', `${ctr.toFixed(2)}%`, null)}
+          ${renderMetricCard('Koszt kliknięcia linku', formatCurrency(cpc), null)}
           ${renderMetricCard('Konwersje', formatNumber(metrics.totalConversions), getMetricChange('totalConversions'))}
         </div>
         
@@ -1018,27 +1018,16 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
   // Don't generate section if no campaigns with spend
   if (campaignsWithSpend.length === 0) return '';
   
-  // Sort by spend (descending) and take top 5 for premium display
+  // Sort by spend (descending) - display all campaigns
   const sortedCampaigns = [...campaignsWithSpend].sort((a, b) => (b.spend || 0) - (a.spend || 0));
-  const topCampaigns = sortedCampaigns.slice(0, 5);
-  const remainingCount = sortedCampaigns.length - 5;
-  
-  // Calculate totals for remaining campaigns
-  const remainingTotals = remainingCount > 0 ? sortedCampaigns.slice(5).reduce((acc, campaign) => ({
-    spend: acc.spend + (campaign.spend || 0),
-    impressions: acc.impressions + (campaign.impressions || 0),
-    clicks: acc.clicks + (campaign.clicks || 0),
-    reservations: acc.reservations + (campaign.reservations || 0),
-    reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-  }), { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 }) : null;
   
   return `
     <div class="campaign-details-section" style="padding: 0 2mm;">
       <h2 class="section-title">Meta Ads - Szczegóły Kampanii</h2>
         
-        <!-- Top 5 Campaigns Table (Premium Agency Style) -->
+        <!-- All Campaigns Table (Premium Agency Style) -->
         <div class="campaigns-table">
-          <h3 class="table-title">Top 5 Kampanii wg Wydatków ${remainingCount > 0 ? `<span style="font-size: 11px; font-weight: 400; color: #6B7280;">(+${remainingCount} więcej)</span>` : ''}</h3>
+          <h3 class="table-title">Kampanie wg Wydatków</h3>
           <table class="data-table">
             <thead>
               <tr>
@@ -1052,7 +1041,7 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
               </tr>
             </thead>
             <tbody>
-              ${topCampaigns.map(campaign => `
+              ${sortedCampaigns.map(campaign => `
                 <tr>
                   <td class="campaign-name">${campaign.campaign_name || 'Nieznana kampania'}</td>
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
@@ -1063,17 +1052,6 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                   <td class="number">${(campaign.roas || 0).toFixed(2)}x</td>
                 </tr>
               `).join('')}
-              ${remainingTotals ? `
-                <tr style="background: #F9FAFB; border-top: 2px solid #E5E7EB;">
-                  <td class="campaign-name" style="font-style: italic; color: #6B7280;">Pozostałe ${remainingCount} kampanii</td>
-                  <td class="number" style="font-weight: 600;">${formatCurrency(remainingTotals.spend)}</td>
-                  <td class="number">${formatNumber(remainingTotals.impressions)}</td>
-                  <td class="number">${formatNumber(remainingTotals.clicks)}</td>
-                  <td class="number">${formatNumber(remainingTotals.reservations)}</td>
-                  <td class="number">${formatCurrency(remainingTotals.reservation_value)}</td>
-                  <td class="number">${remainingTotals.spend > 0 ? (remainingTotals.reservation_value / remainingTotals.spend).toFixed(2) : '0.00'}x</td>
-                </tr>
-              ` : ''}
             </tbody>
           </table>
         </div>
@@ -1130,7 +1108,7 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
                   <th>Wydatki</th>
                   <th>Wyświetlenia</th>
                   <th>Kliknięcia</th>
-                  <th>CPC</th>
+                  <th>Koszt kliknięcia linku</th>
                   <th>Ilość Rezerwacji</th>
                   <th>Wartość Rezerwacji</th>
                 </tr>
@@ -1520,8 +1498,8 @@ const generateKPIScoreboard = (reportData: ReportData) => {
           ${renderKPICard('Wydatki', `${formatNumber(totalSpend)} zł`, spendDelta)}
           ${renderKPICard('ROAS', roas.toFixed(2), null)}
           ${renderKPICard('Konwersje', formatNumber(totalConversions), conversionsDelta)}
-          ${renderKPICard('CTR', `${ctr.toFixed(2)}%`, null)}
-          ${renderKPICard('CPC', `${cpc.toFixed(2)} zł`, null)}
+          ${renderKPICard('Współczynnik kliknięć z linku', `${ctr.toFixed(2)}%`, null)}
+          ${renderKPICard('Koszt kliknięcia linku', `${cpc.toFixed(2)} zł`, null)}
           ${renderKPICard('Przychód', `${formatNumber(totalRevenue)} zł`, null)}
         </div>
       </div>
@@ -1836,7 +1814,7 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .clean-title-header {
-                margin-bottom: var(--space-xl);
+                margin-bottom: var(--space-lg);
             }
             
             .clean-main-title {
@@ -1867,23 +1845,31 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .clean-ai-summary-section {
-                margin-top: var(--space-xl);
-                padding: var(--space-xl) 0;
+                margin-top: var(--space-xxl);
+                padding: var(--space-xxl) 0 var(--space-xl) 0;
                 border-top: 2px solid var(--color-primary-navy);
                 text-align: left;
+                max-width: 100%;
             }
             
             .clean-summary-title {
-                font-size: var(--font-h2);
+                font-size: 30px;
                 font-weight: 600;
                 color: var(--color-primary-navy);
-                margin-bottom: var(--space-lg);
+                margin-bottom: var(--space-xl);
+                margin-top: 0;
+                line-height: 1.3;
+                letter-spacing: -0.02em;
             }
             
             .clean-summary-content {
-                font-size: var(--font-body);
-                line-height: 1.6;
+                font-size: 17px;
+                line-height: 1.75;
                 color: var(--gray-700);
+                margin: 0;
+                padding: 0;
+                text-align: justify;
+                text-justify: inter-word;
             }
             
             
@@ -2173,6 +2159,8 @@ function generatePDFHTML(reportData: ReportData): string {
                 margin: var(--space-xxl) 0;
                 padding: var(--space-xl) 0;
                 border-top: 1px solid var(--border-light);
+                page-break-before: always;
+                page-break-inside: avoid;
             }
             
             .demographics-title {
@@ -3840,10 +3828,24 @@ export async function POST(request: NextRequest) {
       // Encode filename to handle non-ASCII characters
       const sanitizedClientName = reportData.clientName
         .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
         .substring(0, 50);
+      
+      // Format date range for filename (DD.MM.YYYY-DD.MM.YYYY)
+      const formatDateForFilename = (dateString: string) => {
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}.${month}.${year}`;
+      };
+      
+      const startDate = formatDateForFilename(reportData.dateRange.start);
+      const endDate = formatDateForFilename(reportData.dateRange.end);
+      const okresRaportu = `${startDate}-${endDate}`;
     
-      const filename = `raport_kampanii_${sanitizedClientName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = `Raport Reklamowy PBM - ${sanitizedClientName} - ${okresRaportu}.pdf`;
       const encodedFilename = encodeURIComponent(filename);
       
       // 🔒 CRITICAL: Cleanup browser resources before returning response

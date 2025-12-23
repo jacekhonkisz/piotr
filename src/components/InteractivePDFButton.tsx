@@ -174,11 +174,39 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       // Get the PDF blob
       const pdfBlob = await response.blob();
       
+      // Extract filename from Content-Disposition header or construct it
+      let filename = '';
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = decodeURIComponent(filenameMatch[1].replace(/['"]/g, ''));
+        }
+      }
+      
+      // If header extraction failed, construct filename
+      if (!filename) {
+        // Format date range for filename (DD.MM.YYYY-DD.MM.YYYY)
+        const formatDateForFilename = (dateString: string) => {
+          const date = new Date(dateString);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${day}.${month}.${year}`;
+        };
+        
+        const startDate = formatDateForFilename(dateStart);
+        const endDate = formatDateForFilename(dateEnd);
+        const okresRaportu = `${startDate}-${endDate}`;
+        const clientName = client?.name?.replace(/[^\w\s-]/g, '').trim() || 'Klient';
+        filename = `Raport Reklamowy PBM - ${clientName} - ${okresRaportu}.pdf`;
+      }
+      
       // Create download link
       const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `raport-reklamowy-${dateStart}-${dateEnd}.pdf`;
+      link.download = filename;
       
       // Trigger download
       document.body.appendChild(link);

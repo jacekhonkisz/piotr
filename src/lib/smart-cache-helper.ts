@@ -206,9 +206,11 @@ export async function fetchFreshCurrentMonthData(client: any) {
     };
 
     // Calculate stats from Meta API insights with sanitized numbers
+    // ✅ CRITICAL: Use inline_link_clicks instead of clicks to match Meta Business Suite
+    // Meta Business Suite displays "Link Click CTR" and "Cost per Link Click", not all clicks
     const totalSpend = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.spend), 0);
     const totalImpressions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.impressions), 0);
-    const totalClicks = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.clicks), 0);
+    const totalClicks = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.inline_link_clicks || insight.clicks), 0);
     const metaTotalConversions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.conversions), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
@@ -420,6 +422,14 @@ export async function fetchFreshCurrentMonthData(client: any) {
         const campaignSpend = parseFloat(campaign.spend) || 0;
         const campaignReservationValue = campaign.reservation_value || 0;
         
+        // ✅ CRITICAL: Use inline_link_clicks (link clicks only) instead of all clicks
+        const linkClicks = parseInt(campaign.inline_link_clicks || campaign.clicks) || 0;
+        const impressions = parseInt(campaign.impressions) || 0;
+        
+        // ✅ Recalculate CTR and CPC from link clicks (match Meta Business Suite)
+        const calculatedCtr = impressions > 0 ? (linkClicks / impressions) * 100 : 0;
+        const calculatedCpc = linkClicks > 0 ? campaignSpend / linkClicks : 0;
+        
         return {
           campaign_id: campaign.campaign_id || campaign.id,
           campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
@@ -427,13 +437,13 @@ export async function fetchFreshCurrentMonthData(client: any) {
           
           // ✅ Use REAL per-campaign metrics from Meta API
           spend: campaignSpend,
-          impressions: parseInt(campaign.impressions) || 0,
-          clicks: parseInt(campaign.clicks) || 0,
+          impressions: impressions,
+          clicks: linkClicks, // ✅ Now using inline_link_clicks (link clicks only)
           conversions: parseInt(campaign.conversions) || 0,
           
-          // ✅ Use calculated metrics from Meta API
-          ctr: parseFloat(campaign.ctr) || 0,
-          cpc: parseFloat(campaign.cpc) || 0,
+          // ✅ Use recalculated metrics from link clicks (matches Business Suite)
+          ctr: calculatedCtr,
+          cpc: calculatedCpc,
           cpp: parseFloat(campaign.cpp) || 0,
           cpm: parseFloat(campaign.cpm) || 0,
           frequency: parseFloat(campaign.frequency) || 0,
@@ -862,9 +872,9 @@ async function refreshCacheInBackground(clientId: string, periodId: string, plat
       clientId, 
       periodId,
       campaignsCount: freshData?.campaigns?.length || 0,
-      metaTablesRefreshed: !!freshData?.metaTables,
-      demographicsRefreshed: freshData?.metaTables?.demographicPerformance?.length || 0,
-      placementRefreshed: freshData?.metaTables?.placementPerformance?.length || 0
+      metaTablesRefreshed: !!(freshData as any)?.metaTables,
+      demographicsRefreshed: (freshData as any)?.metaTables?.demographicPerformance?.length || 0,
+      placementRefreshed: (freshData as any)?.metaTables?.placementPerformance?.length || 0
     });
     
   } catch (error) {
@@ -1193,9 +1203,10 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     };
     
     // Calculate stats with sanitized numbers
+    // ✅ CRITICAL: Use inline_link_clicks instead of clicks to match Meta Business Suite
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.spend), 0);
     const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.impressions), 0);
-    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.clicks), 0);
+    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.inline_link_clicks || campaign.clicks), 0);
     const totalConversions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.conversions), 0);
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;

@@ -55,10 +55,29 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
   previousYear,
   yoyChanges
 }) => {
+  // 🔍 DEBUG: Log props to see what's being passed
+  console.log('🎯 ConversionFunnel Props:', {
+    step1,
+    step2,
+    step3,
+    reservations,
+    reservationValue,
+    conversionValue,
+    totalConversionValue,
+    roas,
+    platform
+  });
+  
   // "Wartość konwersji" = conversions_value (cross-platform comparable)
   const displayConversionValue = conversionValue !== undefined ? conversionValue : reservationValue;
   // "Łączna wartość konwersji" = all_conversions_value (includes view-through, cross-device)
   const displayTotalConversionValue = totalConversionValue !== undefined ? totalConversionValue : displayConversionValue;
+  
+  console.log('🎯 Display Values:', {
+    displayConversionValue,
+    displayTotalConversionValue,
+    willDisplay: `${displayTotalConversionValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+  });
   
   // ✅ Platform-specific label for conversion value card
   // Meta: "Wartość rezerwacji (zakupy w witrynie)" - direct from action_values
@@ -78,7 +97,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
 
   const funnelSteps: FunnelStepData[] = [
     {
-      label: "Krok 1 w BE",
+      label: "Kliknięcia linku",
       value: step1,
       percentage: 100,
       icon: <ShoppingCart className="w-6 h-6" />,
@@ -86,7 +105,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
       bgColor: "bg-gradient-to-r from-slate-900 to-slate-800" // Darkest - very dark navy
     },
     {
-      label: "Krok 2 w BE",
+      label: "Wyświetlenia zawartości",
       value: step2,
       percentage: step1ToStep2Rate,
       icon: <CreditCard className="w-6 h-6" />,
@@ -94,7 +113,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
       bgColor: "bg-gradient-to-r from-slate-700 to-slate-600" // Medium dark
     },
     {
-      label: "Krok 3 w BE",
+      label: "Zainicjowane przejścia do kasy",
       value: step3,
       percentage: step2ToStep3Rate,
       icon: <CheckCircle className="w-6 h-6" />,

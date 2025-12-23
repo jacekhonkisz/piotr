@@ -915,13 +915,13 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   />
                   
                   <MetricCard
-                    title="CTR"
+                    title={platform === 'meta' ? 'Współczynnik kliknięć z linku' : 'CTR'}
                     value={`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}
                     tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń"
                   />
                   
                   <MetricCard
-                    title="CPC"
+                    title={platform === 'meta' ? 'Koszt kliknięcia linku' : 'CPC'}
                     value={formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}
                     tooltip="Cost Per Click: średni koszt kliknięcia"
                   />

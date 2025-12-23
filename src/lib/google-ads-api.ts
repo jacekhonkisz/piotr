@@ -689,8 +689,10 @@ export class GoogleAdsAPIService {
           spend,
           impressions,
           clicks,
-          ctr: metrics.ctr || 0,
-          cpc: (metrics.average_cpc || metrics.average_cpc || metrics.averageCpc || 0) / 1000000,
+          // ✅ FIX: Calculate CTR and CPC from aggregated values, don't use raw API metrics
+          // After aggregating multiple daily rows, we must recalculate percentages/averages
+          ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+          cpc: clicks > 0 ? spend / clicks : 0,
           conversions: conversions,  // ✅ Uses all_conversions (includes view-through, cross-device)
 
           search_impression_share: metrics.searchImpressionShare || 0,
@@ -848,7 +850,10 @@ export class GoogleAdsAPIService {
         'email_contacts': [
           'email', 'contact_form', 'email_click', 'mailto', 'form_submit', 
           'form submit', 'form_submit_success', 'contact', 'email_contact',
-          'lead_form', 'contact_us', 'inquiry', 'request_info'
+          'lead_form', 'contact_us', 'inquiry', 'request_info',
+          // Polish email actions
+          'kliknięcie w e-mail', 'klikniecie w e-mail', 'kliknięcie w email',
+          'kliknięcie w adres e-mail', 'klikniecie w adres e-mail'
         ],
         // Booking funnel - comprehensive patterns
         'booking_step_1': [

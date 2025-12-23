@@ -485,10 +485,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                           Kliknięcia
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          CTR
+                          Współczynnik kliknięć z linku
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          CPC
+                          Koszt kliknięcia linku
                         </th>
                         <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
                           Ilość rezerwacji
@@ -819,7 +819,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                           Kliknięcia
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          CPC
+                          Koszt kliknięcia linku
                         </th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                           Ilość rezerwacji
