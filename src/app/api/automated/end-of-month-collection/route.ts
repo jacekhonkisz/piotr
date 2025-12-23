@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIService } from '../../../../lib/meta-api-optimized';
+import { GoogleAdsAPIService } from '../../../../lib/google-ads-api';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
@@ -291,9 +292,248 @@ export async function POST(request: NextRequest) {
         skippedCount++;
       }
 
-      // TODO: Add Google Ads processing here (similar structure)
-      // For now, skip Google
-      logger.info(`⏭️  Skipping Google Ads (not implemented yet)`);
+      // PROCESS GOOGLE ADS
+      const googleAdsAvailable = client.google_ads_customer_id;
+      if (googleAdsAvailable) {
+        try {
+          logger.info(`🔵 Processing Google Ads for ${clientName}...`);
+          
+          // STEP 1: Check if RICH Google Ads data already exists
+          const { data: existingGoogleData } = await supabaseAdmin
+            .from('campaign_summaries')
+            .select('id, campaign_data, platform, total_spend')
+            .eq('client_id', client.id)
+            .eq('summary_date', startDate)
+            .eq('summary_type', 'monthly')
+            .eq('platform', 'google')
+            .single();
+
+          if (existingGoogleData) {
+            // Check if data is RICH (has campaigns)
+            const hasRichData = existingGoogleData.campaign_data && 
+                                Array.isArray(existingGoogleData.campaign_data) &&
+                                existingGoogleData.campaign_data.length > 0;
+            
+            if (hasRichData) {
+              logger.info(`⏭️  Rich Google Ads data already exists (${existingGoogleData.campaign_data.length} campaigns), skipping...`);
+              results.push({
+                clientId: client.id,
+                clientName,
+                month: targetMonthStr,
+                platform: 'google',
+                status: 'skipped',
+                reason: `Rich data exists (${existingGoogleData.campaign_data.length} campaigns, ${existingGoogleData.total_spend} PLN)`
+              });
+              skippedCount++;
+            } else {
+              logger.info(`⚠️  Found poor quality Google Ads data (no campaigns), will re-fetch...`);
+            }
+          }
+
+          // STEP 2: Fetch RICH data from Google Ads API (if not skipped)
+          if (!dryRun && !(existingGoogleData?.campaign_data?.length > 0)) {
+            logger.info(`📡 Fetching Google Ads data from API for ${startDate} to ${endDate}...`);
+            
+            // Get Google Ads system settings
+            const { data: settingsData, error: settingsError } = await supabaseAdmin
+              .from('system_settings')
+              .select('key, value')
+              .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
+
+            if (settingsError) {
+              logger.error(`❌ Failed to get Google Ads system settings:`, settingsError);
+              results.push({
+                clientId: client.id,
+                clientName,
+                month: targetMonthStr,
+                platform: 'google',
+                status: 'failed',
+                reason: `System settings error: ${settingsError.message}`
+              });
+              failedCount++;
+            } else {
+              const settings = settingsData?.reduce((acc: any, setting: any) => {
+                acc[setting.key] = setting.value;
+                return acc;
+              }, {}) || {};
+
+              // Determine refresh token (manager token takes priority)
+              let refreshToken = settings.google_ads_manager_refresh_token || client.google_ads_access_token;
+
+              if (!refreshToken) {
+                logger.warn(`⚠️ No Google Ads refresh token available for ${clientName}`);
+                results.push({
+                  clientId: client.id,
+                  clientName,
+                  month: targetMonthStr,
+                  platform: 'google',
+                  status: 'skipped',
+                  reason: 'No Google Ads refresh token'
+                });
+                skippedCount++;
+              } else {
+                const googleAdsCredentials = {
+                  refreshToken,
+                  clientId: settings.google_ads_client_id,
+                  clientSecret: settings.google_ads_client_secret,
+                  developmentToken: settings.google_ads_developer_token,
+                  customerId: client.google_ads_customer_id,
+                  managerCustomerId: settings.google_ads_manager_customer_id,
+                };
+
+                // Initialize Google Ads API service
+                const googleAdsService = new GoogleAdsAPIService(googleAdsCredentials);
+
+                // Fetch campaign data
+                const campaigns = await googleAdsService.getCampaignData(startDate, endDate);
+
+                if (!campaigns || campaigns.length === 0) {
+                  logger.warn(`⚠️  No Google Ads campaigns returned for ${clientName}`);
+                  results.push({
+                    clientId: client.id,
+                    clientName,
+                    month: targetMonthStr,
+                    platform: 'google',
+                    status: 'failed',
+                    reason: 'No campaigns from API'
+                  });
+                  failedCount++;
+                } else {
+                  logger.info(`  Found ${campaigns.length} Google Ads campaigns`);
+
+                  // Calculate totals from campaigns
+                  const googleTotals = campaigns.reduce((acc: any, campaign: any) => ({
+                    spend: acc.spend + (campaign.spend || 0),
+                    impressions: acc.impressions + (campaign.impressions || 0),
+                    clicks: acc.clicks + (campaign.clicks || 0),
+                    conversions: acc.conversions + (campaign.conversions || 0),
+                    click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+                    email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+                    booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+                    booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+                    booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+                    reservations: acc.reservations + (campaign.reservations || 0),
+                    reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+                  }), { 
+                    spend: 0, impressions: 0, clicks: 0, conversions: 0,
+                    click_to_call: 0, email_contacts: 0, booking_step_1: 0,
+                    booking_step_2: 0, booking_step_3: 0, reservations: 0, reservation_value: 0
+                  });
+
+                  const averageCtr = googleTotals.impressions > 0 ? (googleTotals.clicks / googleTotals.impressions) * 100 : 0;
+                  const averageCpc = googleTotals.clicks > 0 ? googleTotals.spend / googleTotals.clicks : 0;
+                  const roas = googleTotals.spend > 0 ? googleTotals.reservation_value / googleTotals.spend : 0;
+                  const costPerReservation = googleTotals.reservations > 0 ? googleTotals.spend / googleTotals.reservations : 0;
+
+                  // Fetch Google Ads tables (network, demographic, quality score)
+                  let googleAdsTables = null;
+                  try {
+                    googleAdsTables = await googleAdsService.getGoogleAdsTables(startDate, endDate);
+                    logger.info(`📊 Fetched Google Ads tables data`);
+                  } catch (tablesError) {
+                    logger.warn(`⚠️ Failed to fetch Google Ads tables:`, tablesError);
+                  }
+
+                  // STEP 3: Save to database
+                  const { error: saveError } = await supabaseAdmin
+                    .from('campaign_summaries')
+                    .upsert({
+                      client_id: client.id,
+                      platform: 'google',
+                      summary_type: 'monthly',
+                      summary_date: startDate,
+                      total_spend: googleTotals.spend,
+                      total_impressions: Math.round(googleTotals.impressions),
+                      total_clicks: Math.round(googleTotals.clicks),
+                      total_conversions: Math.round(googleTotals.conversions),
+                      average_ctr: averageCtr,
+                      average_cpc: averageCpc,
+                      // Conversion metrics
+                      click_to_call: Math.round(googleTotals.click_to_call),
+                      email_contacts: Math.round(googleTotals.email_contacts),
+                      booking_step_1: Math.round(googleTotals.booking_step_1),
+                      booking_step_2: Math.round(googleTotals.booking_step_2),
+                      booking_step_3: Math.round(googleTotals.booking_step_3),
+                      reservations: Math.round(googleTotals.reservations),
+                      reservation_value: googleTotals.reservation_value,
+                      roas: roas,
+                      cost_per_reservation: costPerReservation,
+                      campaign_data: campaigns,
+                      google_ads_tables: googleAdsTables,
+                      data_source: 'google_ads_api',
+                      last_updated: new Date().toISOString()
+                    }, {
+                      onConflict: 'client_id,summary_type,summary_date,platform'
+                    });
+
+                  if (saveError) {
+                    logger.error(`❌ Failed to save Google Ads data:`, saveError);
+                    results.push({
+                      clientId: client.id,
+                      clientName,
+                      month: targetMonthStr,
+                      platform: 'google',
+                      status: 'failed',
+                      reason: saveError.message
+                    });
+                    failedCount++;
+                  } else {
+                    logger.info(`✅ Google Ads data saved: ${campaigns.length} campaigns, ${googleTotals.spend.toFixed(2)} PLN`);
+                    results.push({
+                      clientId: client.id,
+                      clientName,
+                      month: targetMonthStr,
+                      platform: 'google',
+                      status: 'success',
+                      metrics: {
+                        spend: googleTotals.spend,
+                        impressions: googleTotals.impressions,
+                        campaigns: campaigns.length,
+                        reservations: googleTotals.reservations
+                      }
+                    });
+                    successCount++;
+                  }
+                }
+              }
+            }
+          } else if (dryRun) {
+            logger.info(`🔧 DRY RUN: Would fetch Google Ads data from API`);
+            results.push({
+              clientId: client.id,
+              clientName,
+              month: targetMonthStr,
+              platform: 'google',
+              status: 'skipped',
+              reason: 'Dry run mode'
+            });
+            skippedCount++;
+          }
+
+        } catch (error) {
+          logger.error(`❌ Google Ads processing failed for ${clientName}:`, error);
+          results.push({
+            clientId: client.id,
+            clientName,
+            month: targetMonthStr,
+            platform: 'google',
+            status: 'failed',
+            reason: error instanceof Error ? error.message : 'Unknown error'
+          });
+          failedCount++;
+        }
+      } else {
+        logger.info(`⏭️  Skipping Google Ads (no customer ID)`);
+        results.push({
+          clientId: client.id,
+          clientName,
+          month: targetMonthStr,
+          platform: 'google',
+          status: 'skipped',
+          reason: 'No Google Ads customer ID'
+        });
+        skippedCount++;
+      }
 
       // Small delay to prevent API rate limiting
       await new Promise(resolve => setTimeout(resolve, 500));

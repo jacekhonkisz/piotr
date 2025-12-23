@@ -570,16 +570,36 @@ async function executeGoogleAdsSmartCacheRequest(clientId: string, currentMonth:
     .single();
 
   if (clientError || !client) {
+    logger.error('❌ GOOGLE ADS MONTHLY: Client not found', { clientId });
     throw new Error('Client not found');
   }
 
-  // Check if client has Google Ads enabled
-  if (!client.google_ads_enabled || !client.google_ads_customer_id) {
-    throw new Error('Google Ads not enabled for this client');
+  // 🔧 FIX: Only require google_ads_customer_id - google_ads_enabled can be implicit
+  // This matches the cron job validation logic
+  if (!client.google_ads_customer_id) {
+    logger.error('❌ GOOGLE ADS MONTHLY: No customer_id for client', { clientId, clientName: client.name });
+    throw new Error('Google Ads customer_id not configured for this client');
   }
 
-  // Only try to fetch fresh data if we have a refresh token
-  if (client.google_ads_refresh_token) {
+  // 🔧 FIX: Check for manager refresh token in system settings first
+  let hasRefreshToken = !!client.google_ads_refresh_token;
+  
+  if (!hasRefreshToken) {
+    // Check for manager token in system settings
+    const { data: managerTokenSetting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'google_ads_manager_refresh_token')
+      .single();
+    
+    hasRefreshToken = !!(managerTokenSetting?.value);
+    if (hasRefreshToken) {
+      logger.info('📊 Using manager refresh token for Google Ads (client has no individual token)');
+    }
+  }
+
+  // Try to fetch fresh data if we have ANY refresh token (client or manager)
+  if (hasRefreshToken) {
     try {
       const freshData = await fetchFreshGoogleAdsCurrentMonthData(client);
       
@@ -597,7 +617,7 @@ async function executeGoogleAdsSmartCacheRequest(clientId: string, currentMonth:
       };
     }
   } else {
-    logger.warn('⚠️ No Google Ads refresh token available, cannot fetch fresh data');
+    logger.warn('⚠️ No Google Ads refresh token available (neither client nor manager), cannot fetch fresh data');
     return {
       success: false,
       data: null,
@@ -608,6 +628,12 @@ async function executeGoogleAdsSmartCacheRequest(clientId: string, currentMonth:
 
 // Extracted Google Ads smart cache logic for weekly data
 async function executeGoogleAdsSmartWeeklyCacheRequest(clientId: string, targetWeek: any, forceRefresh: boolean) {
+  logger.info('📊 GOOGLE ADS WEEKLY: executeGoogleAdsSmartWeeklyCacheRequest called', {
+    clientId,
+    targetWeek: targetWeek.periodId,
+    forceRefresh
+  });
+
   // Check if we have fresh cached data (unless force refresh)
   if (!forceRefresh) {
     try {
@@ -651,22 +677,84 @@ async function executeGoogleAdsSmartWeeklyCacheRequest(clientId: string, targetW
     .single();
 
   if (clientError || !client) {
+    logger.error('❌ GOOGLE ADS WEEKLY: Client not found', { clientId });
     throw new Error('Client not found');
   }
 
-  // Check if client has Google Ads enabled
-  if (!client.google_ads_enabled || !client.google_ads_customer_id) {
-    throw new Error('Google Ads not enabled for this client');
+  // 🔧 FIX: Only require google_ads_customer_id - google_ads_enabled can be implicit
+  // This matches the cron job validation logic
+  if (!client.google_ads_customer_id) {
+    logger.error('❌ GOOGLE ADS WEEKLY: No customer_id for client', { clientId, clientName: client.name });
+    throw new Error('Google Ads customer_id not configured for this client');
   }
 
-  // Fetch fresh weekly data
-  const freshData = await fetchFreshGoogleAdsCurrentWeekData(client);
+  // 🔧 FIX: Check for manager refresh token in system settings first (same as monthly)
+  let hasRefreshToken = !!client.google_ads_refresh_token;
   
-  return {
-    success: true,
-    data: freshData,
-    source: 'google-ads-weekly-live-api'
-  };
+  if (!hasRefreshToken) {
+    // Check for manager token in system settings
+    const { data: managerTokenSetting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'google_ads_manager_refresh_token')
+      .single();
+    
+    hasRefreshToken = !!(managerTokenSetting?.value);
+    if (hasRefreshToken) {
+      logger.info('📊 GOOGLE ADS WEEKLY: Using manager refresh token (client has no individual token)');
+    }
+  }
+
+  // Try to fetch fresh data if we have ANY refresh token (client or manager)
+  if (hasRefreshToken) {
+    try {
+      logger.info('🔄 GOOGLE ADS WEEKLY: Fetching fresh data for', { clientName: client.name, periodId: targetWeek.periodId });
+      const freshData = await fetchFreshGoogleAdsCurrentWeekData(client);
+      logger.info('✅ GOOGLE ADS WEEKLY: Successfully fetched fresh data for', { clientName: client.name });
+      
+      return {
+        success: true,
+        data: freshData,
+        source: 'google-ads-weekly-live-api'
+      };
+    } catch (error) {
+      logger.error('❌ GOOGLE ADS WEEKLY: Failed to fetch fresh data', { 
+        clientName: client.name, 
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      // 🔧 FIX: Try to return stale cache if available
+      try {
+        const { data: staleCachedData } = await supabase
+          .from('google_ads_current_week_cache')
+          .select('*')
+          .eq('client_id', clientId)
+          .eq('period_id', targetWeek.periodId)
+          .single();
+        
+        if (staleCachedData?.cache_data) {
+          logger.warn('⚠️ GOOGLE ADS WEEKLY: Returning stale cache after fetch failure');
+          return {
+            success: true,
+            data: {
+              ...staleCachedData.cache_data,
+              fromCache: true,
+              isStale: true,
+              cacheAge: Date.now() - new Date(staleCachedData.last_updated).getTime()
+            },
+            source: 'google-ads-weekly-cache-stale'
+          };
+        }
+      } catch {
+        // No stale cache available
+      }
+      
+      throw error; // Re-throw if no stale cache
+    }
+  }
+
+  logger.error('❌ GOOGLE ADS WEEKLY: No refresh token available', { clientName: client.name });
+  throw new Error('No Google Ads refresh token available (neither client nor manager)');
 }
 
 // ============================================================================

@@ -800,6 +800,13 @@ export class StandardizedDataFetcher {
           console.warn(`⚠️ Cache period mismatch: Cache has ${result.data.periodId}, expected ${currentMonth.periodId}`);
         }
         
+        // 🔧 FIX: Determine cache policy based on actual source, not fromCache flag
+        // result.source tells us if data is 'cache' (fresh), 'stale-cache', or 'force-refresh'
+        const actualSource = result.source || 'smart-cache-direct';
+        const cachePolicy = actualSource.includes('stale') ? 'smart-cache-stale' : 
+                           actualSource === 'force-refresh' ? 'smart-cache-refresh' : 
+                           'smart-cache-fresh';
+        
         return {
           success: true,
           data: {
@@ -808,8 +815,8 @@ export class StandardizedDataFetcher {
             campaigns: result.data.campaigns || []
           },
           debug: {
-            source: result.source || 'smart-cache-direct',
-            cachePolicy: result.data.fromCache ? 'smart-cache-fresh' : 'smart-cache-stale',
+            source: actualSource,
+            cachePolicy: cachePolicy,
             responseTime: 0,
             reason: 'direct-smart-cache-access',
             dataSourcePriority: ['smart-cache-direct'],

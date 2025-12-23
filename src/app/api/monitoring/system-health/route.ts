@@ -156,28 +156,38 @@ async function collectSystemHealthMetrics(): Promise<SystemHealthMetrics> {
     };
   }
   
-  // 2. Data Freshness Check
+  // 2. Data Freshness Check - Check cache tables for actual data freshness
   let dataFreshness: SystemHealthMetrics['dataFreshness'];
   try {
-    const { data: latestKpi, error: kpiError } = await supabase
-      .from('daily_kpi_data')
-      .select('date, last_updated')
-      .order('date', { ascending: false })
-      .limit(1);
+    // Check the newest entry across all cache tables
+    const [monthlyCache, weeklyCache, googleMonthly, googleWeekly] = await Promise.all([
+      supabase.from('current_month_cache').select('last_updated').order('last_updated', { ascending: false }).limit(1),
+      supabase.from('current_week_cache').select('last_updated').order('last_updated', { ascending: false }).limit(1),
+      supabase.from('google_ads_current_month_cache').select('last_updated').order('last_updated', { ascending: false }).limit(1),
+      supabase.from('google_ads_current_week_cache').select('last_updated').order('last_updated', { ascending: false }).limit(1)
+    ]);
     
-    if (kpiError || !latestKpi || latestKpi.length === 0) {
+    // Find the most recent update across all caches
+    const allUpdates: Date[] = [];
+    if (monthlyCache.data?.[0]?.last_updated) allUpdates.push(new Date(monthlyCache.data[0].last_updated));
+    if (weeklyCache.data?.[0]?.last_updated) allUpdates.push(new Date(weeklyCache.data[0].last_updated));
+    if (googleMonthly.data?.[0]?.last_updated) allUpdates.push(new Date(googleMonthly.data[0].last_updated));
+    if (googleWeekly.data?.[0]?.last_updated) allUpdates.push(new Date(googleWeekly.data[0].last_updated));
+    
+    if (allUpdates.length === 0) {
       dataFreshness = {
         status: 'critical',
         lastKpiUpdate: 'Never',
         hoursSinceUpdate: 999
       };
     } else {
-      const lastUpdate = new Date(latestKpi[0]?.last_updated || latestKpi[0]?.date || new Date());
-      const hoursSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60);
+      const mostRecentUpdate = new Date(Math.max(...allUpdates.map(d => d.getTime())));
+      const hoursSinceUpdate = (Date.now() - mostRecentUpdate.getTime()) / (1000 * 60 * 60);
       
+      // For cache, 3 hours is the threshold (matches cache TTL)
       dataFreshness = {
-        status: hoursSinceUpdate > 48 ? 'critical' : hoursSinceUpdate > 24 ? 'warning' : 'healthy',
-        lastKpiUpdate: lastUpdate.toISOString(),
+        status: hoursSinceUpdate > 6 ? 'critical' : hoursSinceUpdate > 3 ? 'warning' : 'healthy',
+        lastKpiUpdate: mostRecentUpdate.toISOString(),
         hoursSinceUpdate: Math.round(hoursSinceUpdate * 10) / 10
       };
     }

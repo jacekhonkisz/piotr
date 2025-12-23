@@ -108,7 +108,9 @@ export async function POST(request: NextRequest) {
           const now = Date.now();
           const cacheAge = cachedData ? (now - new Date(cachedData.last_updated).getTime()) / (1000 * 60 * 60) : 999;
           
-          if (cacheAge < 2.5) {
+          // 🔧 FIX: Reduced skip threshold from 2.5h to 1.5h to prevent stale cache gaps
+          // With 3-hour cron schedule, this ensures proactive refresh before TTL expires
+          if (cacheAge < 1.5) {
             metaMonthlySkipped++;
             continue;
           }
@@ -138,32 +140,65 @@ export async function POST(request: NextRequest) {
     try {
       logger.info('📊 Refreshing Meta weekly cache...');
       let metaWeeklySuccess = 0, metaWeeklySkipped = 0, metaWeeklyError = 0;
+      const weeklyErrors: any[] = [];
+      
+      // 🔧 FIX: Import week utils to log current week info
+      const { getCurrentWeekInfo } = await import('../../../../lib/week-utils');
+      const currentWeekInfo = getCurrentWeekInfo();
+      logger.info('📅 Current week info for refresh:', {
+        periodId: currentWeekInfo.periodId,
+        startDate: currentWeekInfo.startDate,
+        endDate: currentWeekInfo.endDate
+      });
       
       for (const client of clients) {
         const metaToken = client.system_user_token || client.meta_access_token;
         if (!metaToken || !client.ad_account_id) {
+          logger.info(`⏭️ Skipping ${client.name} - no Meta token or ad account`);
           metaWeeklySkipped++;
           continue;
         }
         
         try {
+          logger.info(`🔄 Refreshing weekly cache for ${client.name}...`);
           const result = await getSmartWeekCacheData(client.id, true);
+          
           if (result.success) {
             metaWeeklySuccess++;
+            logger.info(`✅ Weekly cache refreshed for ${client.name}`, {
+              source: result.source,
+              hasCampaigns: !!(result.data?.campaigns?.length)
+            });
           } else {
+            // 🔧 FIX: Log WHY it wasn't successful
             metaWeeklySkipped++;
+            const reason = (result as any).shouldUseDatabase 
+              ? 'shouldUseDatabase flag set (not current week?)' 
+              : 'Unknown reason';
+            logger.warn(`⚠️ Weekly cache returned success=false for ${client.name}:`, {
+              reason,
+              periodId: (result as any).periodId,
+              shouldUseDatabase: (result as any).shouldUseDatabase
+            });
+            weeklyErrors.push({ client: client.name, reason });
           }
         } catch (e) {
           metaWeeklyError++;
-          logger.error(`Meta weekly error for ${client.name}:`, e);
+          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+          logger.error(`❌ Meta weekly error for ${client.name}:`, errorMsg);
+          weeklyErrors.push({ client: client.name, error: errorMsg });
         }
       }
       
       results.metaWeekly = { 
-        status: 'success', 
-        summary: { success: metaWeeklySuccess, skipped: metaWeeklySkipped, errors: metaWeeklyError }
+        status: metaWeeklyError > 0 || metaWeeklySkipped === clients.length ? 'warning' : 'success', 
+        summary: { success: metaWeeklySuccess, skipped: metaWeeklySkipped, errors: metaWeeklyError },
+        weeklyErrors: weeklyErrors.length > 0 ? weeklyErrors : undefined
       };
       logger.info('✅ Meta weekly cache completed', results.metaWeekly.summary);
+      if (weeklyErrors.length > 0) {
+        logger.warn('⚠️ Weekly cache had issues:', weeklyErrors);
+      }
     } catch (error) {
       results.metaWeekly = { status: 'error', error: error instanceof Error ? error.message : 'Unknown' };
       logger.error('❌ Meta weekly cache failed:', error);
@@ -176,25 +211,58 @@ export async function POST(request: NextRequest) {
     try {
       logger.info('📊 Refreshing Google Ads monthly cache...');
       let googleMonthlySuccess = 0, googleMonthlySkipped = 0, googleMonthlyError = 0;
+      const googleMonthlyErrors: any[] = [];
+      
+      // 🔧 FIX: Check if manager refresh token exists in system settings
+      // This allows clients without individual refresh tokens to still use Google Ads
+      const { data: managerTokenSetting } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'google_ads_manager_refresh_token')
+        .single();
+      
+      const hasManagerToken = !!(managerTokenSetting?.value);
+      logger.info('📊 Google Ads manager token status:', { hasManagerToken });
       
       for (const client of clients) {
-        if (!client.google_ads_customer_id || !client.google_ads_refresh_token) {
+        // 🔧 FIX: Only require customer_id - refresh token can come from manager or client
+        if (!client.google_ads_customer_id) {
+          googleMonthlySkipped++;
+          continue;
+        }
+        
+        // Check if we have ANY valid refresh token (manager OR client)
+        const hasRefreshToken = hasManagerToken || !!client.google_ads_refresh_token;
+        if (!hasRefreshToken) {
+          logger.info(`⏭️ Skipping ${client.name} - no Google Ads refresh token available`);
           googleMonthlySkipped++;
           continue;
         }
         
         try {
-          await getGoogleAdsSmartCacheData(client.id, true);
-          googleMonthlySuccess++;
+          logger.info(`🔄 Refreshing Google Ads monthly cache for ${client.name}...`);
+          const result = await getGoogleAdsSmartCacheData(client.id, true);
+          if (result.success) {
+            googleMonthlySuccess++;
+            logger.info(`✅ Google Ads monthly cache refreshed for ${client.name}`);
+          } else {
+            googleMonthlySkipped++;
+            logger.warn(`⚠️ Google Ads monthly cache returned success=false for ${client.name}`);
+            googleMonthlyErrors.push({ client: client.name, reason: 'success=false' });
+          }
         } catch (e) {
           googleMonthlyError++;
-          logger.error(`Google monthly error for ${client.name}:`, e);
+          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+          logger.error(`❌ Google monthly error for ${client.name}:`, errorMsg);
+          googleMonthlyErrors.push({ client: client.name, error: errorMsg });
         }
       }
       
       results.googleAdsMonthly = { 
-        status: 'success', 
-        summary: { success: googleMonthlySuccess, skipped: googleMonthlySkipped, errors: googleMonthlyError }
+        status: googleMonthlyError > 0 ? 'warning' : 'success', 
+        summary: { success: googleMonthlySuccess, skipped: googleMonthlySkipped, errors: googleMonthlyError },
+        hasManagerToken,
+        errors: googleMonthlyErrors.length > 0 ? googleMonthlyErrors : undefined
       };
       logger.info('✅ Google Ads monthly cache completed', results.googleAdsMonthly.summary);
     } catch (error) {
@@ -209,25 +277,58 @@ export async function POST(request: NextRequest) {
     try {
       logger.info('📊 Refreshing Google Ads weekly cache...');
       let googleWeeklySuccess = 0, googleWeeklySkipped = 0, googleWeeklyError = 0;
+      const googleWeeklyErrors: any[] = [];
+      
+      // 🔧 FIX: Re-use the manager token status from monthly refresh (already checked above)
+      // If we don't have it yet (shouldn't happen), check again
+      let hasManagerTokenForWeekly = (results.googleAdsMonthly as any)?.hasManagerToken;
+      if (hasManagerTokenForWeekly === undefined) {
+        const { data: managerTokenSetting } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'google_ads_manager_refresh_token')
+          .single();
+        hasManagerTokenForWeekly = !!(managerTokenSetting?.value);
+      }
       
       for (const client of clients) {
-        if (!client.google_ads_customer_id || !client.google_ads_refresh_token) {
+        // 🔧 FIX: Only require customer_id - refresh token can come from manager or client
+        if (!client.google_ads_customer_id) {
+          googleWeeklySkipped++;
+          continue;
+        }
+        
+        // Check if we have ANY valid refresh token (manager OR client)
+        const hasRefreshToken = hasManagerTokenForWeekly || !!client.google_ads_refresh_token;
+        if (!hasRefreshToken) {
+          logger.info(`⏭️ Skipping ${client.name} weekly - no Google Ads refresh token available`);
           googleWeeklySkipped++;
           continue;
         }
         
         try {
-          await getGoogleAdsSmartWeekCacheData(client.id, true);
-          googleWeeklySuccess++;
+          logger.info(`🔄 Refreshing Google Ads weekly cache for ${client.name}...`);
+          const result = await getGoogleAdsSmartWeekCacheData(client.id, true);
+          if (result.success) {
+            googleWeeklySuccess++;
+            logger.info(`✅ Google Ads weekly cache refreshed for ${client.name}`);
+          } else {
+            googleWeeklySkipped++;
+            logger.warn(`⚠️ Google Ads weekly cache returned success=false for ${client.name}`);
+            googleWeeklyErrors.push({ client: client.name, reason: 'success=false' });
+          }
         } catch (e) {
           googleWeeklyError++;
-          logger.error(`Google weekly error for ${client.name}:`, e);
+          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+          logger.error(`❌ Google weekly error for ${client.name}:`, errorMsg);
+          googleWeeklyErrors.push({ client: client.name, error: errorMsg });
         }
       }
       
       results.googleAdsWeekly = { 
-        status: 'success', 
-        summary: { success: googleWeeklySuccess, skipped: googleWeeklySkipped, errors: googleWeeklyError }
+        status: googleWeeklyError > 0 ? 'warning' : 'success', 
+        summary: { success: googleWeeklySuccess, skipped: googleWeeklySkipped, errors: googleWeeklyError },
+        errors: googleWeeklyErrors.length > 0 ? googleWeeklyErrors : undefined
       };
       logger.info('✅ Google Ads weekly cache completed', results.googleAdsWeekly.summary);
     } catch (error) {

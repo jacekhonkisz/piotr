@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/automated/refresh-all-caches",
-      "schedule": "0 */3 * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/automated/refresh-social-media-cache",
@@ -50,7 +50,7 @@
     },
     {
       "path": "/api/automated/archive-completed-weeks",
-      "schedule": "0 3 * * 1"
+      "schedule": "30 2 * * 1"
     },
     {
       "path": "/api/automated/collect-monthly-summaries",

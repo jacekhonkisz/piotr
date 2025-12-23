@@ -796,21 +796,24 @@ export async function fetchFreshCurrentMonthData(client: any) {
 }
 
 // Rate limiting for background refresh
+// ⚠️ NOTE: This Map resets on serverless cold starts - consider database-based tracking for production
 const lastRefreshTime = new Map<string, number>();
-const REFRESH_COOLDOWN = 5 * 60 * 1000; // 5 minutes cooldown
+const REFRESH_COOLDOWN = 2 * 60 * 1000; // 🔧 FIX: Reduced from 5 to 2 minutes for faster recovery
 
 // Background refresh function (non-blocking)
 async function refreshCacheInBackground(clientId: string, periodId: string, platform: string = 'meta') {
-  const key = `${clientId}_${periodId}`;
+  const key = `${clientId}_${periodId}_${platform}`;
   const now = Date.now();
   const lastRefresh = lastRefreshTime.get(key) || 0;
   
   if (now - lastRefresh < REFRESH_COOLDOWN) {
-    logger.info('🚫 Background refresh cooldown active, skipping (last refresh:', new Date(lastRefresh).toLocaleTimeString(), ')');
+    const remainingCooldown = Math.ceil((REFRESH_COOLDOWN - (now - lastRefresh)) / 1000);
+    logger.info(`🚫 Background refresh cooldown active for ${platform}, ${remainingCooldown}s remaining`);
     return;
   }
   
   lastRefreshTime.set(key, now);
+  logger.info(`🔄 Background refresh initiated for ${platform}:`, { clientId, periodId, key });
   
   try {
     logger.info('🔄 Starting background cache refresh for:', { clientId, periodId });
