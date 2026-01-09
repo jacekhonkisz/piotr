@@ -398,6 +398,15 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Get monthly report (alias for getCampaignInsights for date range)
+   * Used by standardized-data-fetcher for consistency
+   */
+  async getMonthlyReport(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {
+    logger.info(`Meta API: Fetching monthly report for ${dateStart} to ${dateEnd}`);
+    return this.getCampaignInsights(adAccountId, dateStart, dateEnd, 0);
+  }
+
+  /**
    * Get campaigns with optimized caching
    */
   async getCampaigns(adAccountId: string, dateRange?: { start: string; end: string }): Promise<any[]> {

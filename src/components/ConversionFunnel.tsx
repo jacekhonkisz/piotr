@@ -18,12 +18,12 @@ interface ConversionFunnelProps {
   reservations: number;
   reservationValue: number;
   conversionValue?: number; // conversions_value - "Wartość konwersji" in Google Ads
-  totalConversionValue?: number; // all_conversions_value - "Łączna wartość konwersji" (includes view-through, cross-device)
+  totalConversionValue?: number; // all_conversions_value - "Łączna wartość rezerwacji" for Google Ads (includes view-through, cross-device)
   roas: number;
   className?: string;
   // Platform-specific label for conversion value card
   // - 'meta': "Wartość rezerwacji (zakupy w witrynie)"
-  // - 'google': "Łączna wartość konwersji"
+  // - 'google': "Łączna wartość rezerwacji"
   platform?: 'meta' | 'google' | 'combined';
   // Previous year data for comparison
   previousYear?: {
@@ -70,7 +70,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
   
   // "Wartość konwersji" = conversions_value (cross-platform comparable)
   const displayConversionValue = conversionValue !== undefined ? conversionValue : reservationValue;
-  // "Łączna wartość konwersji" = all_conversions_value (includes view-through, cross-device)
+  // "Łączna wartość rezerwacji" for Google Ads = all_conversions_value (includes view-through, cross-device)
   const displayTotalConversionValue = totalConversionValue !== undefined ? totalConversionValue : displayConversionValue;
   
   console.log('🎯 Display Values:', {
@@ -81,10 +81,17 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
   
   // ✅ Platform-specific label for conversion value card
   // Meta: "Wartość rezerwacji (zakupy w witrynie)" - direct from action_values
-  // Google: "Łączna wartość konwersji" - all_conversions_value
+  // Google: "Łączna wartość rezerwacji" - all_conversions_value from "PBM - Rezerwacja" action
   const conversionValueLabel = platform === 'meta' 
     ? "Wartość rezerwacji (zakupy w witrynie)"
-    : "Łączna wartość konwersji";
+    : "Łączna wartość rezerwacji";
+  
+  // ✅ Platform-specific funnel labels
+  // Meta: Generic funnel labels (Polish Meta Ads standard names)
+  // Google: Booking step labels (matches Google Ads conversion action names)
+  const step1Label = platform === 'google' ? "Booking step 1" : "Wyszukiwania";
+  const step2Label = platform === 'google' ? "Booking step 2" : "Wyświetlenia zawartości";
+  const step3Label = platform === 'google' ? "Booking step 3" : "Zainicjowane przejścia do kasy";
   
   // Calculate conversion rates
   const step1ToStep2Rate = step1 > 0 ? (step2 / step1) * 100 : 0;
@@ -97,7 +104,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
 
   const funnelSteps: FunnelStepData[] = [
     {
-      label: "Kliknięcia linku",
+      label: step1Label,
       value: step1,
       percentage: 100,
       icon: <ShoppingCart className="w-6 h-6" />,
@@ -105,7 +112,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
       bgColor: "bg-gradient-to-r from-slate-900 to-slate-800" // Darkest - very dark navy
     },
     {
-      label: "Wyświetlenia zawartości",
+      label: step2Label,
       value: step2,
       percentage: step1ToStep2Rate,
       icon: <CreditCard className="w-6 h-6" />,
@@ -113,7 +120,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
       bgColor: "bg-gradient-to-r from-slate-700 to-slate-600" // Medium dark
     },
     {
-      label: "Zainicjowane przejścia do kasy",
+      label: step3Label,
       value: step3,
       percentage: step2ToStep3Rate,
       icon: <CheckCircle className="w-6 h-6" />,
@@ -132,7 +139,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
 
   const bottomCards = [
     {
-      // ✅ Platform-specific label: Meta = "Wartość rezerwacji (zakupy w witrynie)", Google = "Łączna wartość konwersji"
+      // ✅ Platform-specific label: Meta = "Wartość rezerwacji (zakupy w witrynie)", Google = "Łączna wartość rezerwacji"
       label: conversionValueLabel,
       value: `${displayTotalConversionValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`,
       icon: <Calendar className="w-6 h-6" />,

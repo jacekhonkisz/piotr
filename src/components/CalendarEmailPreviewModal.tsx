@@ -231,8 +231,9 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
         impressions: metaResult.data.stats.totalImpressions,
         clicks: metaResult.data.stats.totalClicks,
         conversions: metaResult.data.stats.totalConversions,
-        cpc: metaResult.data.stats.averageCpc,
-        ctr: metaResult.data.stats.averageCtr,
+        // ✅ FIX: Calculate Meta Ads CPC/CTR from totals to match Business Suite
+        cpc: metaResult.data.stats.totalClicks > 0 ? metaResult.data.stats.totalSpend / metaResult.data.stats.totalClicks : 0,
+        ctr: metaResult.data.stats.totalImpressions > 0 ? (metaResult.data.stats.totalClicks / metaResult.data.stats.totalImpressions) * 100 : 0,
         form_submissions: 0,
         email_contacts: metaResult.data.conversionMetrics.email_contacts,
         click_to_call: metaResult.data.conversionMetrics.click_to_call,

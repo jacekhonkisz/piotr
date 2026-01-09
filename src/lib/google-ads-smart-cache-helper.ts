@@ -105,6 +105,17 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
 
     logger.info(`✅ Fetched ${campaignData.length} Google Ads campaigns for caching`);
 
+    // 🔍 DEBUG: Verify campaigns have booking steps before aggregation
+    const campaignsWithSteps = campaignData.filter((c: any) => (c.booking_step_1 || 0) > 0);
+    logger.info(`🔍 DEBUG: Campaigns with booking_step_1 > 0: ${campaignsWithSteps.length}`);
+    
+    if (campaignsWithSteps.length > 0) {
+      const topCampaign = campaignsWithSteps[0];
+      logger.info(`🔍 DEBUG: Top campaign in campaignData: ${topCampaign.campaignName}, Step 1: ${topCampaign.booking_step_1}`);
+    } else {
+      logger.warn(`⚠️ WARNING: No campaigns have booking_step_1 > 0! This indicates a problem.`);
+    }
+
     // Calculate stats from Google Ads API (matching Meta structure)
     const totalSpend = campaignData.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
     const totalImpressions = campaignData.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
@@ -156,6 +167,17 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       reservation_value: realConversionMetrics.reservation_value,
       total_conversion_value: realConversionMetrics.total_conversion_value
     });
+
+    // 🔍 DEBUG: Verify campaigns still have booking steps before cache creation
+    const campaignsWithStepsAfterAgg = campaignData.filter((c: any) => (c.booking_step_1 || 0) > 0);
+    logger.info(`🔍 DEBUG: Campaigns with booking_step_1 > 0 (after aggregation): ${campaignsWithStepsAfterAgg.length}`);
+    
+    if (campaignsWithStepsAfterAgg.length > 0) {
+      const topCampaignAfter = campaignsWithStepsAfterAgg[0];
+      logger.info(`🔍 DEBUG: Top campaign before cache (after aggregation): ${topCampaignAfter.campaignName}, Step 1: ${topCampaignAfter.booking_step_1}`);
+    } else {
+      logger.error(`❌ ERROR: Campaigns lost booking steps after aggregation! This is the bug.`);
+    }
 
     // Fetch Google Ads tables data for current month cache
     let googleAdsTables = null;

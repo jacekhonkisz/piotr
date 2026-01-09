@@ -2824,6 +2824,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           logger.info('✅ Google Ads data fetched successfully via API endpoint:', {
             totalSpend: googleData.stats?.totalSpend || 0,
             totalReservations: googleData.stats?.totalConversions || 0,
+            // reservation_value now includes form conversion values
             totalReservationValue: googleData.conversionMetrics?.reservation_value || 0,
             source: googleSource,
             hasStats: !!googleData.stats,
@@ -3380,6 +3381,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       const googleTotalConversions = stats.totalConversions || 0;
       const googleEmailContacts = conversionMetrics.email_contacts || 0;
       const googlePhoneContacts = conversionMetrics.click_to_call || 0;
+      // ✅ FIX: reservation_value now includes form conversion values from "Wartość konwersji"
       const googleTotalReservationValue = conversionMetrics.reservation_value || 0;
       const googleTotalReservations = conversionMetrics.reservations || 0;
       const googleTotalSpend = stats.totalSpend || 0;
@@ -3410,6 +3412,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           booking_step_2: conversionMetrics.booking_step_2 || 0,
           booking_step_3: conversionMetrics.booking_step_3 || 0,
           reservations: conversionMetrics.reservations || 0,
+          // ✅ FIX: reservation_value now includes form conversion values
           reservation_value: conversionMetrics.reservation_value || 0,
           roas: conversionMetrics.roas || 0
         },

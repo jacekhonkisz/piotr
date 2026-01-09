@@ -72,6 +72,9 @@ export default function GoogleAdsExpandableCampaignTable({
   const [ads, setAds] = useState<{ [adGroupId: string]: Ad[] }>({});
   const [loading, setLoading] = useState<{ [key: string]: boolean }>({});
 
+  // 🔧 FIX: Filter out campaigns with no spend - only show real campaigns with data
+  const campaignsWithSpend = campaigns.filter(campaign => (campaign.spend || 0) > 0);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pl-PL', {
       style: 'currency',
@@ -191,6 +194,11 @@ export default function GoogleAdsExpandableCampaignTable({
     }
   };
 
+  // 🔧 FIX: Don't render table if no campaigns with spend
+  if (campaignsWithSpend.length === 0) {
+    return null; // Return null instead of showing empty table
+  }
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="p-6 border-b border-slate-100">
@@ -222,8 +230,8 @@ export default function GoogleAdsExpandableCampaignTable({
             </tr>
           </thead>
           <tbody className="bg-white">
-            {campaigns.map((campaign, campaignIndex) => (
-              <React.Fragment key={campaign.campaignId}>
+            {campaignsWithSpend.map((campaign, campaignIndex) => (
+              <React.Fragment key={campaign.campaignId || `campaign-${campaignIndex}`}>
                 {/* Campaign Row (R.20) */}
                 <tr
                   className={`${campaignIndex % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-blue-50 cursor-pointer transition-colors`}

@@ -245,7 +245,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       totalSpend: storedSummary.total_spend || 0,
       totalImpressions: storedSummary.total_impressions || 0,
       totalClicks: storedSummary.total_clicks || 0,
-      totalConversions: storedSummary.total_conversions || 0,
+      totalConversions: 0, // Conversions removed
       averageCtr: storedSummary.average_ctr || 0,
       averageCpc: storedSummary.average_cpc || 0
     };
@@ -261,12 +261,17 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         storedSummary.booking_step_2 !== null) {
       
       // ✅ CRITICAL FIX: Round all conversion counts to integers for consistency with live API
+      const reservationValue = Math.round((storedSummary.reservation_value || 0) * 100) / 100;
       conversionMetrics = {
         click_to_call: Math.round(storedSummary.click_to_call || 0),
         email_contacts: Math.round(storedSummary.email_contacts || 0),
         booking_step_1: Math.round(storedSummary.booking_step_1 || 0),
         reservations: Math.round(storedSummary.reservations || 0),
-        reservation_value: Math.round((storedSummary.reservation_value || 0) * 100) / 100,
+        reservation_value: reservationValue,
+        // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value for Google Ads)
+        // reservation_value contains "Wartość konwersji" which includes all conversion values
+        conversion_value: reservationValue,
+        total_conversion_value: reservationValue, // This is what UI displays as "łączna wartość rezerwacji"
         booking_step_2: Math.round(storedSummary.booking_step_2 || 0),
         booking_step_3: Math.round(storedSummary.booking_step_3 || 0),
         roas: Math.round((storedSummary.roas || 0) * 100) / 100,
@@ -280,15 +285,22 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const totalReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
       const totalReservations = Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
       
+      const reservationValue = Math.round(totalReservationValue * 100) / 100;
+      const conversionValue = Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0) * 100) / 100;
+      const totalConversionValueRaw = campaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
+      const totalConversionValue = totalConversionValueRaw > 0 ? Math.round(totalConversionValueRaw * 100) / 100 : reservationValue;
       conversionMetrics = {
         click_to_call: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0)),
         email_contacts: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0)),
         booking_step_1: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0)),
         reservations: totalReservations,
-        reservation_value: Math.round(totalReservationValue * 100) / 100, // Round to 2 decimal places
+        reservation_value: reservationValue, // Round to 2 decimal places
+        // ✅ FIX: Add conversion_value and total_conversion_value from campaigns
+        conversion_value: conversionValue || reservationValue,
+        total_conversion_value: totalConversionValue || reservationValue, // This is what UI displays as "łączna wartość rezerwacji"
         booking_step_2: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0)),
         booking_step_3: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0)),
-        roas: totals.totalSpend > 0 ? Math.round((totalReservationValue / totals.totalSpend) * 100) / 100 : 0,
+        roas: totals.totalSpend > 0 ? Math.round((totalConversionValue || reservationValue) / totals.totalSpend * 100) / 100 : 0,
         cost_per_reservation: totalReservations > 0 ? Math.round((totals.totalSpend / totalReservations) * 100) / 100 : 0
       };
       
@@ -296,10 +308,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     }
 
     // Transform database campaigns to API format (if needed)
+    // 🔧 FIX: Handle both snake_case and camelCase campaign names from database
     const transformedCampaigns = campaigns.map((campaign: any) => ({
-      id: campaign.id,
-      campaign_id: campaign.campaign_id,
-      campaign_name: campaign.campaign_name,
+      id: campaign.id || campaign.campaignId,
+      campaign_id: campaign.campaign_id || campaign.campaignId || '',
+      campaign_name: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
       spend: parseFloat(campaign.spend || 0),
       impressions: parseInt(campaign.impressions || 0),
       clicks: parseInt(campaign.clicks || 0),
@@ -410,7 +423,20 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Invalid JSON in request body', 400);
     }
     
-    const { dateRange, clientId, clearCache, forceFresh, bypassAllCache } = requestBody;
+    const { dateRange, clientId, clearCache, forceFresh, bypassAllCache, reason } = requestBody;
+    
+    // ✅ LOG REFRESH REQUESTS
+    if (reason?.includes('refresh') || reason?.includes('dashboard-refresh')) {
+      console.log('🔄 REFRESH BUTTON REQUEST DETECTED:', {
+        reason,
+        forceFresh,
+        bypassAllCache,
+        clearCache,
+        clientId,
+        dateRange
+      });
+      logger.info('🔄 REFRESH BUTTON REQUEST:', { reason, forceFresh, bypassAllCache });
+    }
     
     // Validate required fields
     if (!clientId) {
@@ -622,13 +648,19 @@ export async function POST(request: NextRequest) {
       console.log('🔄 CURRENT PERIOD OR FORCE FRESH - SKIPPING DATABASE CHECK');
       
       // 🔧 BYPASS ALL CACHE: Log when bypassing all caching layers
-      if (bypassAllCache) {
-        console.log('🚀 BYPASS ALL CACHE MODE: Skipping all caching layers for custom date range');
-        logger.info('🚀 BYPASS ALL CACHE: Direct Google Ads API call for custom date range');
+      if (bypassAllCache || forceFresh) {
+        console.log('🚀 BYPASSING CACHE MODE:', {
+          bypassAllCache,
+          forceFresh,
+          reason,
+          isCurrentPeriod,
+          note: 'Will call live Google Ads API directly'
+        });
+        logger.info('🚀 BYPASSING CACHE: Direct Google Ads API call', { bypassAllCache, forceFresh, reason });
       }
-      
+
       // ✅ NEW: Check smart cache for current period (same as Meta)
-      // 🔧 BYPASS ALL CACHE: Skip smart cache if bypassAllCache is set (for custom date ranges)
+      // 🔧 BYPASS ALL CACHE: Skip smart cache if bypassAllCache is set OR forceFresh is true (for refresh button)
       if (isCurrentPeriod && !forceFresh && !bypassAllCache) {
         console.log('📊 🔴 CURRENT PERIOD DETECTED - CHECKING GOOGLE ADS SMART CACHE...');
         logger.info('📊 🔴 CURRENT PERIOD DETECTED - USING GOOGLE ADS SMART CACHE SYSTEM...');
@@ -855,9 +887,9 @@ export async function POST(request: NextRequest) {
     const totalSpend = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
     const totalImpressions = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
     const totalClicks = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
-    // ✅ CRITICAL FIX: Round totalConversions to integer
-    // Google Ads uses attribution models that return fractional conversions (e.g., 2846.228)
-    const totalConversions = Math.round(freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.conversions || 0), 0));
+    
+    // Conversions removed - set to 0
+    const totalConversions = 0;
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -1026,7 +1058,7 @@ export async function POST(request: NextRequest) {
         totalSpend,
         totalImpressions,
         totalClicks,
-        totalConversions,
+        totalConversions: 0, // Conversions removed
         averageCtr,
         averageCpc
       },
@@ -1050,8 +1082,148 @@ export async function POST(request: NextRequest) {
       source: 'live_api',
       campaignCount: freshCampaigns.length,
       totalSpend,
-      totalConversions: conversionMetrics.reservations
+      totalConversions: 0 // Conversions removed
     });
+
+    // ✅ NEW: Update database immediately if this is a refresh request
+    // This ensures hard refresh shows correct data instead of waiting for cron job
+    // Works for all users in production mode - dynamically handles any client and date range
+    if (forceFresh || bypassAllCache || reason?.includes('refresh')) {
+      console.log('💾 REFRESH REQUEST: Updating database with fresh data for client:', client.id);
+      
+      try {
+        // ✅ DYNAMIC: Determine if this is monthly or weekly based on date range
+        // Works for any date range - automatically detects type
+        const daysDiff = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const summaryType = daysDiff <= 7 ? 'weekly' : 'monthly';
+        
+        // ✅ DYNAMIC: Calculate summary_date based on date range type
+        // For monthly: use first day of month (e.g., 2026-01-01)
+        // For weekly: use Monday of the week (ISO 8601 standard)
+        let summaryDate: string;
+        try {
+          if (summaryType === 'monthly') {
+            // Extract year and month from start date (handles any month/year)
+            const startDateObj = new Date(startDate + 'T00:00:00.000Z'); // Use UTC to avoid timezone issues
+            if (isNaN(startDateObj.getTime())) {
+              throw new Error(`Invalid start date: ${startDate}`);
+            }
+            const year = startDateObj.getFullYear();
+            const month = String(startDateObj.getMonth() + 1).padStart(2, '0');
+            summaryDate = `${year}-${month}-01`;
+          } else {
+            // For weekly, use Monday of the week (same logic as BackgroundDataCollector)
+            const { getMondayOfWeek, formatDateISO } = await import('../../../lib/week-helpers');
+            const startDateObj = new Date(startDate + 'T00:00:00.000Z');
+            if (isNaN(startDateObj.getTime())) {
+              throw new Error(`Invalid start date: ${startDate}`);
+            }
+            const weekMonday = getMondayOfWeek(startDateObj);
+            summaryDate = formatDateISO(weekMonday);
+          }
+        } catch (dateError: any) {
+          console.error('❌ Error calculating summary_date:', dateError);
+          logger.error('❌ Error calculating summary_date:', dateError);
+          throw dateError; // Re-throw to be caught by outer catch
+        }
+        
+        // ✅ DYNAMIC: Calculate derived metrics
+        const cost_per_reservation = conversionMetrics.reservations > 0 ? totalSpend / conversionMetrics.reservations : 0;
+        const activeCampaigns = freshCampaigns.filter((c: any) => c.status === 'ENABLED' || c.status === 'ACTIVE').length;
+        
+        // ✅ DYNAMIC: Prepare summary data for any client and date range
+        const summary = {
+          client_id: client.id,
+          summary_type: summaryType,
+          summary_date: summaryDate,
+          platform: 'google',
+          total_spend: totalSpend,
+          total_impressions: Math.round(totalImpressions),
+          total_clicks: Math.round(totalClicks),
+          total_conversions: 0, // Conversions removed
+          average_ctr: averageCtr,
+          average_cpc: averageCpc,
+          click_to_call: Math.round(conversionMetrics.click_to_call || 0),
+          email_contacts: Math.round(conversionMetrics.email_contacts || 0),
+          booking_step_1: Math.round(conversionMetrics.booking_step_1 || 0),
+          booking_step_2: Math.round(conversionMetrics.booking_step_2 || 0),
+          booking_step_3: Math.round(conversionMetrics.booking_step_3 || 0),
+          reservations: Math.round(conversionMetrics.reservations || 0),
+          reservation_value: conversionMetrics.reservation_value || 0,
+          cost_per_reservation: cost_per_reservation,
+          roas: conversionMetrics.roas || 0,
+          campaign_data: freshCampaigns,
+          google_ads_tables: googleAdsTables,
+          active_campaign_count: activeCampaigns,
+          total_campaigns: freshCampaigns.length,
+          data_source: 'live_api_refresh', // ✅ Track that this was updated via refresh button
+          last_updated: new Date().toISOString()
+        };
+        
+        console.log('💾 Upserting to database:', {
+          clientId: client.id,
+          summaryType,
+          summaryDate,
+          totalConversions: 0, // Conversions removed
+          campaignCount: freshCampaigns.length,
+          dateRange: `${startDate} to ${endDate}`
+        });
+        
+        // ✅ DYNAMIC: Upsert to database (works for any client, any date range)
+        const { error: dbError } = await supabase
+          .from('campaign_summaries')
+          .upsert(summary, {
+            onConflict: 'client_id,summary_type,summary_date,platform'
+          });
+        
+        if (dbError) {
+          console.error('❌ Failed to update database after refresh:', {
+            error: dbError.message,
+            clientId: client.id,
+            summaryType,
+            summaryDate
+          });
+          logger.error('❌ Failed to update database after refresh:', {
+            error: dbError,
+            clientId: client.id,
+            summaryType,
+            summaryDate
+          });
+        } else {
+          console.log('✅ Database updated with fresh data:', {
+            clientId: client.id,
+            clientName: client.name,
+            summaryType,
+            summaryDate,
+            totalConversions: 0, // Conversions removed
+            totalSpend: totalSpend.toFixed(2),
+            campaignCount: freshCampaigns.length,
+            note: 'Hard refresh will now show correct value from database'
+          });
+          logger.info('✅ Database updated with fresh data after refresh', {
+            clientId: client.id,
+            summaryType,
+            summaryDate,
+            totalConversions: 0, // Conversions removed
+            totalSpend,
+            campaignCount: freshCampaigns.length
+          });
+        }
+      } catch (updateError: any) {
+        console.error('❌ Error updating database after refresh:', {
+          error: updateError?.message || updateError,
+          clientId: client.id,
+          dateRange: `${startDate} to ${endDate}`,
+          stack: updateError?.stack
+        });
+        logger.error('❌ Error updating database after refresh:', {
+          error: updateError,
+          clientId: client.id,
+          dateRange: `${startDate} to ${endDate}`
+        });
+        // ✅ Don't fail the request - just log the error so UI still works
+      }
+    }
 
     return NextResponse.json({
       success: true,

@@ -49,7 +49,7 @@ interface GoogleAdsCampaignData {
   booking_step_1: number;       // Booking initiation
   reservations: number;         // Completed bookings
   reservation_value: number;    // Booking revenue value (only from "PBM - Rezerwacja" actions)
-  total_conversion_value?: number; // ✅ Total conversion value (all_conversions_value) - matches Google Ads "Wartość konwersji"
+  total_conversion_value?: number; // ✅ Total conversion value (all_conversions_value) - matches "Łączna wartość rezerwacji" for Google Ads
   roas: number;                 // Return on ad spend
   cost_per_reservation: number; // Cost per booking
   booking_step_2: number;       // Booking step 2
@@ -503,16 +503,12 @@ export class GoogleAdsAPIService {
           metrics.interactions,
           metrics.interaction_rate,
           
-          -- Conversion metrics
-          metrics.conversions,
-          metrics.all_conversions,
+          -- Conversion metrics (removed conversions)
           metrics.cost_per_conversion,
           metrics.search_impression_share,
           metrics.view_through_conversions,
           
-          -- Conversion values
-          metrics.conversions_value,
-          metrics.all_conversions_value,
+          -- Conversion values (removed)
           
           -- Quality metrics
           metrics.search_budget_lost_impression_share
@@ -524,20 +520,7 @@ export class GoogleAdsAPIService {
 
       const response = await this.executeQuery(query);
       
-      // 🔧 DEBUG: Log raw response sample to check data types
-      if (response && response.length > 0) {
-        const sample = response[0];
-        logger.info(`🔧 DEBUG RAW: First row metrics types: all_conversions=${typeof sample.metrics?.all_conversions} value="${sample.metrics?.all_conversions}"`);
-        logger.info(`🔧 DEBUG RAW: Total rows from API: ${response.length}`);
-        
-        // Calculate raw total before aggregation
-        let rawTotal = 0;
-        response.forEach((row: any) => {
-          const val = parseFloat(row.metrics?.all_conversions || '0') || 0;
-          rawTotal += val;
-        });
-        logger.info(`🔧 DEBUG RAW: Raw sum of all_conversions (all ${response.length} rows): ${rawTotal.toFixed(2)}`);
-      }
+      // Conversions removed - debug logging removed
       
       // 🔧 FIX: Aggregate rows by campaign.id since date segmentation returns multiple rows
       // Group by campaign and sum metrics to get one result per campaign
@@ -555,10 +538,7 @@ export class GoogleAdsAPIService {
           metrics.impressions = parseFloat(metrics.impressions || '0') || 0;
           metrics.clicks = parseFloat(metrics.clicks || '0') || 0;
           metrics.interactions = parseFloat(metrics.interactions || '0') || 0;
-          metrics.conversions = parseFloat(metrics.conversions || '0') || 0;
-          metrics.all_conversions = parseFloat(metrics.all_conversions || '0') || 0;
-          metrics.conversions_value = parseFloat(metrics.conversions_value || '0') || 0;
-          metrics.all_conversions_value = parseFloat(metrics.all_conversions_value || '0') || 0;
+          // Conversions removed
           metrics.view_through_conversions = parseFloat(metrics.view_through_conversions || '0') || 0;
           campaignMap.set(campaignId, row);
         } else {
@@ -572,10 +552,7 @@ export class GoogleAdsAPIService {
           metrics.impressions = metrics.impressions + (parseFloat(newMetrics.impressions || '0') || 0);
           metrics.clicks = metrics.clicks + (parseFloat(newMetrics.clicks || '0') || 0);
           metrics.interactions = metrics.interactions + (parseFloat(newMetrics.interactions || '0') || 0);
-          metrics.conversions = metrics.conversions + (parseFloat(newMetrics.conversions || '0') || 0);
-          metrics.all_conversions = metrics.all_conversions + (parseFloat(newMetrics.all_conversions || '0') || 0);
-          metrics.conversions_value = metrics.conversions_value + (parseFloat(newMetrics.conversions_value || '0') || 0);
-          metrics.all_conversions_value = metrics.all_conversions_value + (parseFloat(newMetrics.all_conversions_value || '0') || 0);
+          // Conversions removed
           metrics.view_through_conversions = metrics.view_through_conversions + (parseFloat(newMetrics.view_through_conversions || '0') || 0);
           
           // For averages like ctr, cpc - recalculate after aggregation
@@ -586,11 +563,7 @@ export class GoogleAdsAPIService {
       const aggregatedResponse = Array.from(campaignMap.values());
       logger.info(`📊 Aggregated ${response?.length || 0} rows into ${aggregatedResponse.length} campaigns`);
       
-      // 🔧 DEBUG: Log total all_conversions after aggregation
-      const debugTotalAllConversions = aggregatedResponse.reduce((sum, row) => {
-        return sum + (row.metrics.all_conversions || 0);
-      }, 0);
-      logger.info(`🔧 DEBUG: Total all_conversions after aggregation: ${debugTotalAllConversions.toFixed(2)}`);
+      // Conversions removed - debug logging removed
       logger.info(`🔧 DEBUG: Expected ~998 based on Google Console data`);
       
       // Get conversion breakdown for proper mapping
@@ -600,47 +573,31 @@ export class GoogleAdsAPIService {
         const campaign = row.campaign;
         const metrics = row.metrics;
         
+        // 🔍 DEBUG: Log campaign name structure for first campaign
+        if (index === 0) {
+          logger.info(`🔍 DEBUG Campaign Name Structure:
+            - row.campaign: ${JSON.stringify(campaign ? Object.keys(campaign) : 'null')}
+            - campaign.name: ${campaign?.name}
+            - campaign.resourceName: ${campaign?.resourceName}
+            - Full campaign object: ${JSON.stringify(campaign).substring(0, 200)}`);
+        }
+        
         const spend = (metrics.cost_micros || metrics.cost_micros || metrics.costMicros || 0) / 1000000;
         const impressions = metrics.impressions || 0;
         const clicks = metrics.clicks || 0;
         
-        // ✅ PRODUCTION FIX: Use ALL conversions from Google Ads API
-        // metrics.conversions = cross-platform comparable (often 0 or low)
-        // metrics.all_conversions = ALL conversion types including view-through, cross-device
-        const reportedConversions = metrics.conversions || 0;
-        const allConversions = metrics.all_conversions || metrics.allConversions || 0;
-        
-        // 🔧 FIX: Prefer all_conversions over cross-platform conversions
-        // Cross-platform conversions are stricter and often show 0 when conversions exist
-        let conversions = allConversions > 0 ? allConversions : reportedConversions;
+        // Conversions removed - set to 0
+        const conversions = 0;
+        const conversionValue = 0;
         
         // Log attribution info for debugging
         const interactions = metrics.interactions || clicks;
-        if (allConversions !== reportedConversions) {
-          logger.info(`📊 Campaign ${campaign.name}: all_conversions=${allConversions.toFixed(1)}, cross-platform=${reportedConversions.toFixed(1)} (using all_conversions)`);
-        }
-        
-        // 🔧 FIX: Use conversions_value to match Google Ads "Wartość konwersji"
-        // Google Ads has two metrics:
-        // - conversions_value = "Wartość konwersji" (cross-platform comparable) ← USE THIS
-        // - all_conversions_value = "Wartość wszystkich konw." (includes view-through, cross-device)
-        // Values are already in PLN (not micros)
-        const crossPlatformValue = metrics.conversions_value || metrics.conversionsValue || 0;
-        const allConversionsValue = metrics.all_conversions_value || metrics.allConversionsValue || 0;
-        // ✅ FIXED: Use conversions_value to match Google Ads "Wartość konwersji" (107,231 PLN)
-        // Previously used all_conversions_value which was higher (110,302 PLN)
-        const conversionValue = crossPlatformValue > 0 ? crossPlatformValue : allConversionsValue;
-        
-        // 🔍 DEBUG: Log conversion value details for first campaign only
-        if (index === 0) {
-          logger.info(`🔍 DEBUG First Campaign Conversion Values:
-            - metrics.conversions_value (Wartość konwersji): ${metrics.conversions_value}
-            - metrics.all_conversions_value (Wartość wszystkich konw.): ${metrics.all_conversions_value}
-            - Using: ${conversionValue.toFixed(2)} PLN (conversions_value)`);
-        }
         
         // Get conversion breakdown for this campaign - REAL DATA ONLY
-        let campaignConversions = conversionBreakdown[campaign.id] || {
+        // ✅ FIX: Convert campaign ID to string for consistent key matching
+        // breakdown keys are stored as strings (from String(campaignId))
+        const campaignIdKey = String(campaign.id);
+        let campaignConversions = conversionBreakdown[campaignIdKey] || {
           click_to_call: 0,
           email_contacts: 0,
           booking_step_1: 0,
@@ -650,41 +607,24 @@ export class GoogleAdsAPIService {
           reservation_value: 0
         };
         
-        // ✅ PRODUCTION FIX: Use ONLY real conversion data from Google Ads API
-        // NO ESTIMATES - if no conversion breakdown data exists, keep zeros
-        const hasConversionData = Object.values(campaignConversions).some((val: unknown) => Number(val) > 0);
-        
-        if (!hasConversionData && allConversions > 0) {
-          // No breakdown data available - keep zeros for specific metrics
-          // ⚠️ CRITICAL: Do NOT use all_conversions as reservations!
-          // all_conversions includes ALL types (micro-conversions, booking steps, etc.)
-          // reservations should ONLY count actual "Rezerwacja"/"Purchase" conversions
-          logger.info(`⚠️ Campaign ${campaign.name}: No conversion breakdown available, keeping zeros`);
-          logger.info(`   Raw all_conversions: ${allConversions.toFixed(0)} (NOT used as reservations)`);
-          
-          // Keep all zeros - we don't know what types these conversions are
-          // The all_conversions total is available in the campaign.conversions field
-          campaignConversions = {
-            click_to_call: 0, // Unknown - needs proper conversion tracking
-            email_contacts: 0, // Unknown - needs proper conversion tracking
-            booking_step_1: 0, // Unknown - needs proper conversion tracking
-            booking_step_2: 0, // Unknown - needs proper conversion tracking
-            booking_step_3: 0, // Unknown - needs proper conversion tracking
-            reservations: 0, // ⚠️ FIXED: Do NOT use all_conversions here!
-            reservation_value: 0 // Only set when we have actual reservation data
-          };
-          
-          logger.info(`⚠️ Campaign ${campaign.name}: No specific conversion actions found, all metrics set to 0`);
-        }
+        // Conversions removed - keep zeros for all conversion metrics
         
         logger.info(`📊 Using conversion data for campaign ${campaign.name}: ${JSON.stringify(campaignConversions)}`);
         
         const finalConversions = campaignConversions;
         
+        // 🔍 DEBUG: Check if campaign.name exists before using it
+        const campaignName = campaign?.name || campaign?.resourceName?.split('/').pop() || 'Unknown Campaign';
+        
+        if (!campaign?.name && index < 3) {
+          logger.warn(`⚠️ Campaign ${campaign?.id} missing name field. Using fallback: "${campaignName}"`);
+          logger.warn(`   Campaign object keys: ${campaign ? Object.keys(campaign).join(', ') : 'null'}`);
+        }
+        
         return {
           // Core metrics (matching Meta exactly)
           campaignId: campaign.id,
-          campaignName: campaign.name,
+          campaignName: campaignName,
           status: campaign.status,
           spend,
           impressions,
@@ -693,7 +633,7 @@ export class GoogleAdsAPIService {
           // After aggregating multiple daily rows, we must recalculate percentages/averages
           ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
           cpc: clicks > 0 ? spend / clicks : 0,
-          conversions: conversions,  // ✅ Uses all_conversions (includes view-through, cross-device)
+          conversions: 0,  // Conversions removed
 
           search_impression_share: metrics.searchImpressionShare || 0,
           view_through_conversions: metrics.viewThroughConversions || 0,
@@ -704,13 +644,11 @@ export class GoogleAdsAPIService {
           booking_step_1: finalConversions.booking_step_1 || 0,
           reservations: finalConversions.reservations || 0,
           reservation_value: finalConversions.reservation_value || 0,
-          // ✅ Two separate conversion value metrics:
-          // - conversion_value = "Wartość konwersji" in Google Ads (cross-platform comparable)
-          // - total_conversion_value = "Łączna wartość konwersji" (all_conversions_value, includes view-through, cross-device)
-          conversion_value: conversionValue, // conversions_value - "Wartość konwersji" (107,231 PLN)
-          total_conversion_value: allConversionsValue, // all_conversions_value - "Łączna wartość konwersji" (110,302 PLN)
-          // ✅ ROAS calculated using "Łączna wartość konwersji" (total_conversion_value)
-          roas: spend > 0 ? allConversionsValue / spend : 0,
+          // Conversion values removed
+          conversion_value: 0,
+          total_conversion_value: 0,
+          // ROAS calculated using reservation value only
+          roas: spend > 0 ? (finalConversions.reservation_value > 0 ? finalConversions.reservation_value / spend : 0) : 0,
           cost_per_reservation: (finalConversions.reservations || 0) > 0 ? spend / (finalConversions.reservations || 0) : 0,
           booking_step_2: finalConversions.booking_step_2 || 0,
           booking_step_3: finalConversions.booking_step_3 || 0,
@@ -804,17 +742,20 @@ export class GoogleAdsAPIService {
       }
       
       // Now get conversion data by campaign - include segments for date filtering
+      // ✅ CRITICAL FIX: Use all_conversions to match Google Ads Console "Wszystkie konwersje"
+      // metrics.conversions = cross-device only (lower numbers)
+      // metrics.all_conversions = all conversion types including view-through (matches console)
       const query = `
         SELECT
           campaign.id,
           campaign.name,
           segments.conversion_action_name,
           segments.date,
-          metrics.conversions,
-          metrics.conversions_value
+          metrics.all_conversions,
+          metrics.all_conversions_value
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
-          AND metrics.conversions > 0
+          AND metrics.all_conversions > 0
         ORDER BY campaign.id, segments.conversion_action_name
       `;
       
@@ -899,10 +840,11 @@ export class GoogleAdsAPIService {
         const campaignId = row.campaign.id;
         const campaignName = row.campaign.name;
         const conversionName = row.segments?.conversion_action_name || '';
-        // 🔧 CRITICAL FIX: Parse string values to numbers - Google Ads API returns strings!
-        const conversions = parseFloat(row.metrics.conversions || '0') || 0;
-        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
-        const conversionValue = parseFloat(row.metrics.conversions_value || '0') || 0;
+        // ✅ CRITICAL FIX: Use all_conversions to match Google Ads Console
+        // Parse string values to numbers - Google Ads API returns strings!
+        const conversions = parseFloat(row.metrics.all_conversions || '0') || 0;
+        // ✅ Use all_conversions_value to match "Wszystkie konwersje" in Google Ads
+        const conversionValue = parseFloat(row.metrics.all_conversions_value || '0') || 0;
         
         // Create unique key for campaign + conversion action
         const key = `${campaignId}:${conversionName}`;
@@ -954,7 +896,10 @@ export class GoogleAdsAPIService {
         // Parse conversions using our new parser
         const parsed = parseGoogleAdsConversions(conversions, campaignName);
         
-        breakdown[campaignId] = parsed;
+        // ✅ FIX: Convert campaign ID to string for consistent key matching
+        // JavaScript object keys are strings, but campaign IDs from API are numbers
+        // This ensures lookup works correctly: breakdown[String(campaign.id)]
+        breakdown[String(campaignId)] = parsed;
         
         logger.info(`✅ Parsed conversions for campaign ${campaignName}:`, {
           booking_step_1: parsed.booking_step_1,
@@ -1048,8 +993,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1078,9 +1022,9 @@ export class GoogleAdsAPIService {
         networkStats[networkName].spend += (metrics.cost_micros || metrics.costMicros || 0) / 1000000;
         networkStats[networkName].impressions += metrics.impressions || 0;
         networkStats[networkName].clicks += metrics.clicks || 0;
-        networkStats[networkName].conversions += metrics.conversions || 0;
-        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
-        networkStats[networkName].conversion_value += metrics.conversions_value || metrics.conversionsValue || 0;
+        // Conversions removed
+        networkStats[networkName].conversions = 0;
+        networkStats[networkName].conversion_value = 0;
       });
 
       const networks: GoogleAdsNetworkPerformance[] = Object.entries(networkStats).map(([network, stats]) => ({
@@ -1090,9 +1034,9 @@ export class GoogleAdsAPIService {
         clicks: stats.clicks,
         ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
         cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
-        conversions: stats.conversions,
-        conversion_value: stats.conversion_value,
-        roas: stats.spend > 0 ? stats.conversion_value / stats.spend : 0,
+        conversions: 0, // Conversions removed
+        conversion_value: 0, // Conversions removed
+        roas: 0, // Conversions removed
         search_impression_share: 0, // Not available in aggregated data
         display_impression_share: 0, // Not available in aggregated data
       }));
@@ -1121,8 +1065,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1152,9 +1095,9 @@ export class GoogleAdsAPIService {
         deviceStats[deviceName].spend += (metrics.cost_micros || metrics.costMicros || 0) / 1000000;
         deviceStats[deviceName].impressions += metrics.impressions || 0;
         deviceStats[deviceName].clicks += metrics.clicks || 0;
-        deviceStats[deviceName].conversions += metrics.conversions || 0;
-        // 🔧 FIX: conversions_value is already in currency units (NOT micros), no division needed
-        deviceStats[deviceName].conversion_value += metrics.conversions_value || metrics.conversionsValue || 0;
+        // Conversions removed
+        deviceStats[deviceName].conversions = 0;
+        deviceStats[deviceName].conversion_value = 0;
       });
 
       const devices: GoogleAdsDevicePerformance[] = Object.entries(deviceStats).map(([device, stats]) => ({
@@ -1164,9 +1107,9 @@ export class GoogleAdsAPIService {
         clicks: stats.clicks,
         ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
         cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
-        conversions: stats.conversions,
-        conversion_value: stats.conversion_value,
-        roas: stats.spend > 0 ? stats.conversion_value / stats.spend : 0,
+        conversions: 0, // Conversions removed
+        conversion_value: 0, // Conversions removed
+        roas: 0, // Conversions removed
       }));
 
       logger.info(`✅ Fetched ${devices.length} real device performance segments from Google Ads`);
@@ -1174,6 +1117,38 @@ export class GoogleAdsAPIService {
     } catch (error) {
       logger.error('❌ Error fetching device performance:', error);
       logger.info('ℹ️ No device data available - returning empty array');
+      return [];
+    }
+  }
+
+  /**
+   * Get demographic performance data (age and gender breakdown)
+   * 
+   * ⚠️ IMPORTANT LIMITATION: Google Ads API does NOT provide demographic performance data
+   * (performance broken down by age/gender) through the standard reporting API.
+   * 
+   * Demographic performance data is only available in the Google Ads UI, not via API.
+   * The API only allows you to:
+   * 1. See demographic targeting criteria (what demographics you're targeting)
+   * 2. Get audience insights through the Insights API (requires special access)
+   * 
+   * This method returns an empty array to indicate that demographic performance data
+   * is not available via the standard Google Ads Reporting API.
+   * 
+   * Alternative: Use Google Analytics API which provides demographic data for website visitors.
+   */
+  async getDemographicPerformance(dateStart: string, dateEnd: string): Promise<GoogleAdsDemographicPerformance[]> {
+    try {
+      logger.info(`📊 Attempting to fetch demographic performance from ${dateStart} to ${dateEnd}`);
+      logger.warn('⚠️  Google Ads API LIMITATION: Demographic performance data is NOT available via standard reporting API');
+      logger.warn('⚠️  This data is only available in Google Ads UI, not programmatically');
+      logger.warn('⚠️  Alternative: Use Google Analytics API for demographic insights on website visitors');
+      
+      // Return empty array - demographic performance data is not available via API
+      logger.info('ℹ️ Returning empty array - demographic performance data not available via Google Ads API');
+      return [];
+    } catch (error) {
+      logger.error('❌ Error in demographic performance method:', error);
       return [];
     }
   }
@@ -1296,8 +1271,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM keyword_view
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1410,8 +1384,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1734,8 +1707,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value,
+          -- Conversions removed,
           metrics.cost_per_conversion
         FROM customer
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
@@ -1819,8 +1791,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM ad_group
         WHERE campaign.id = ${campaignId}
         AND segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
@@ -1900,8 +1871,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM ad_group_ad
         WHERE ad_group.id = ${adGroupId}
         AND segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
@@ -1993,8 +1963,7 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          metrics.conversions,
-          metrics.conversions_value
+          -- Conversions removed
         FROM search_term_view
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0

@@ -27,6 +27,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Parse command line args
 const args = process.argv.slice(2);
 const isDryRun = args.includes('--dry-run');
+const forceReCollect = args.includes('--force');
 const clientArg = args.find(a => a.startsWith('--client='));
 const specificClientId = clientArg ? clientArg.split('=')[1] : null;
 
@@ -261,7 +262,9 @@ async function directCollectGoogleAdsData(
       booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
       booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
       reservations: acc.reservations + (campaign.reservations || 0),
-      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+      // ✅ FIX: Use total_conversion_value (includes form conversions) for reservation_value
+      // total_conversion_value comes from "Wartość konwersji" which includes form conversion values
+      reservation_value: acc.reservation_value + (campaign.total_conversion_value || campaign.conversion_value || campaign.reservation_value || 0),
     }), {
       spend: 0, impressions: 0, clicks: 0, conversions: 0,
       click_to_call: 0, email_contacts: 0, booking_step_1: 0,
@@ -272,6 +275,11 @@ async function directCollectGoogleAdsData(
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
     const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
     const cost_per_reservation = totals.reservations > 0 ? totals.spend / totals.reservations : 0;
+    
+    // Calculate ROAS using reservation_value (which now includes form conversions from Wartość konwersji)
+    const roas = totals.spend > 0 && totals.reservation_value > 0 
+      ? totals.reservation_value / totals.spend 
+      : 0;
     
     // Store in database
     const summary = {
@@ -291,7 +299,9 @@ async function directCollectGoogleAdsData(
       booking_step_2: Math.round(totals.booking_step_2),
       booking_step_3: Math.round(totals.booking_step_3),
       reservations: Math.round(totals.reservations),
-      reservation_value: totals.reservation_value,
+      // ✅ FIX: reservation_value now includes form conversion values from "Wartość konwersji"
+      reservation_value: Math.round(totals.reservation_value * 100) / 100,
+      roas: Math.round(roas * 100) / 100,
       cost_per_reservation: cost_per_reservation,
       campaign_data: campaigns,
       active_campaign_count: campaigns.filter((c: any) => c.status === 'ENABLED').length,
@@ -352,6 +362,10 @@ async function main() {
   
   if (isDryRun) {
     console.log('⚠️  DRY RUN MODE - No data will be written\n');
+  }
+  
+  if (forceReCollect) {
+    console.log('🔄 FORCE MODE - Will re-collect existing periods with updated form conversion values\n');
   }
   
   // Get Google Ads settings
@@ -429,10 +443,14 @@ async function main() {
     console.log(`\n📅 MONTHLY DATA (${months.length} months):`);
     
     for (const month of months) {
-      if (existingMonths.has(month.startDate)) {
+      if (!forceReCollect && existingMonths.has(month.startDate)) {
         console.log(`   ⏭️  ${month.label} - Already exists`);
         totalSkipped++;
         continue;
+      }
+      
+      if (forceReCollect && existingMonths.has(month.startDate)) {
+        console.log(`   🔄 ${month.label} - Force re-collecting (with form conversion values)...`);
       }
       
       console.log(`   📊 ${month.label} - Fetching...`);
@@ -465,10 +483,17 @@ async function main() {
     let weekErrors = 0;
     
     for (const week of weeks) {
-      if (existingWeeks.has(week.startDate)) {
+      if (!forceReCollect && existingWeeks.has(week.startDate)) {
         weekSkipped++;
         totalSkipped++;
         continue;
+      }
+      
+      if (forceReCollect && existingWeeks.has(week.startDate)) {
+        // Log only first few to avoid spam
+        if (weekSuccess + weekSkipped + weekErrors < 3) {
+          console.log(`   🔄 ${week.label} - Force re-collecting (with form conversion values)...`);
+        }
       }
       
       const success = await directCollectGoogleAdsData(

@@ -292,12 +292,15 @@ export async function fetchFreshCurrentMonthData(client: any) {
     logger.info('📊 Aggregated Meta conversion metrics from parsed campaigns:', metaConversionMetrics);
 
     // ✅ PRODUCTION FIX: Use ONLY real data - NO ESTIMATES
-    // Priority: 1. daily_kpi_data (most accurate), 2. Meta API parsed actions, 3. Zero (no fake data)
+    // ✅ CRITICAL FIX: For current month, prioritize fresh parser (with PBM fix) over old daily_kpi_data
+    // Priority: 1. Meta API parsed actions (fresh, with PBM fix), 2. daily_kpi_data (may be stale), 3. Zero
     const conversionMetrics = {
-      // Use real data from daily_kpi_data first, then Meta API parsed actions, then 0
-      click_to_call: realConversionMetrics.click_to_call > 0 
-        ? realConversionMetrics.click_to_call 
-        : metaConversionMetrics.click_to_call, // Real Meta API data or 0
+      // ✅ FIX: Use fresh parser result first (has PBM-only fix), fallback to daily_kpi_data if parser returns 0
+      click_to_call: metaConversionMetrics.click_to_call > 0
+        ? metaConversionMetrics.click_to_call // ✅ Fresh parser with PBM fix
+        : realConversionMetrics.click_to_call > 0 
+          ? realConversionMetrics.click_to_call // Fallback to daily_kpi_data
+          : 0,
 
       email_contacts: realConversionMetrics.email_contacts > 0 
         ? realConversionMetrics.email_contacts 
@@ -426,9 +429,9 @@ export async function fetchFreshCurrentMonthData(client: any) {
         const linkClicks = parseInt(campaign.inline_link_clicks || campaign.clicks) || 0;
         const impressions = parseInt(campaign.impressions) || 0;
         
-        // ✅ Recalculate CTR and CPC from link clicks (match Meta Business Suite)
-        const calculatedCtr = impressions > 0 ? (linkClicks / impressions) * 100 : 0;
-        const calculatedCpc = linkClicks > 0 ? campaignSpend / linkClicks : 0;
+        // ✅ Use Meta API's inline_link_click_ctr and cost_per_inline_link_click DIRECTLY (matches Meta Business Suite exactly!)
+        const apiCtr = parseFloat(campaign.inline_link_click_ctr) || parseFloat(campaign.ctr) || 0;
+        const apiCpc = parseFloat(campaign.cost_per_inline_link_click) || parseFloat(campaign.cpc) || 0;
         
         return {
           campaign_id: campaign.campaign_id || campaign.id,
@@ -441,9 +444,9 @@ export async function fetchFreshCurrentMonthData(client: any) {
           clicks: linkClicks, // ✅ Now using inline_link_clicks (link clicks only)
           conversions: parseInt(campaign.conversions) || 0,
           
-          // ✅ Use recalculated metrics from link clicks (matches Business Suite)
-          ctr: calculatedCtr,
-          cpc: calculatedCpc,
+          // ✅ Use API values DIRECTLY (inline_link_click_ctr and cost_per_inline_link_click from Meta API)
+          ctr: apiCtr,
+          cpc: apiCpc,
           cpp: parseFloat(campaign.cpp) || 0,
           cpm: parseFloat(campaign.cpm) || 0,
           frequency: parseFloat(campaign.frequency) || 0,

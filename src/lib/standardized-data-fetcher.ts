@@ -620,6 +620,7 @@ export class StandardizedDataFetcher {
     
     // ✅ CRITICAL FIX: Round conversion counts to integers
     // Google Ads uses attribution models that can assign fractional conversions
+    const reservationValue = Math.round(totals.reservation_value * 100) / 100;
     let conversionMetrics = {
       click_to_call: Math.round(totals.click_to_call),
       email_contacts: Math.round(totals.email_contacts),
@@ -627,7 +628,10 @@ export class StandardizedDataFetcher {
       booking_step_2: Math.round(totals.booking_step_2),
       booking_step_3: Math.round(totals.booking_step_3),
       reservations: Math.round(totals.reservations),
-      reservation_value: Math.round(totals.reservation_value * 100) / 100, // Round to 2 decimal places
+      reservation_value: reservationValue, // Round to 2 decimal places
+      // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value)
+      conversion_value: reservationValue,
+      total_conversion_value: reservationValue,
       roas: 0,
       cost_per_reservation: 0,
       reach: Math.round(totals.reach)
@@ -651,6 +655,7 @@ export class StandardizedDataFetcher {
       const summary = campaignSummary[0] as any; // Type assertion for conversion data
       console.log(`✅ Found campaign summary with conversion data: ${summary?.reservations || 0} reservations, ${summary?.reservation_value || 0} PLN`);
       
+      const summaryReservationValue = summary.reservation_value || 0;
       conversionMetrics = {
         click_to_call: summary.click_to_call || 0,
         email_contacts: summary.email_contacts || 0,
@@ -658,14 +663,18 @@ export class StandardizedDataFetcher {
         booking_step_2: summary.booking_step_2 || 0,
         booking_step_3: (summary as any).booking_step_3 || 0,
         reservations: summary.reservations || 0,
-        reservation_value: summary.reservation_value || 0,
-        roas: summary.roas || (summary.reservation_value && totals.totalSpend ? summary.reservation_value / totals.totalSpend : 0),
+        reservation_value: summaryReservationValue,
+        // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value)
+        conversion_value: summaryReservationValue,
+        total_conversion_value: summaryReservationValue,
+        roas: summary.roas || (summaryReservationValue && totals.totalSpend ? summaryReservationValue / totals.totalSpend : 0),
         cost_per_reservation: summary.cost_per_reservation || (summary.reservations && totals.totalSpend ? totals.totalSpend / summary.reservations : 0),
         reach: (summary as any).reach || 0
       } as any;
     } else {
       console.log(`⚠️ No campaign summary found for conversion data, using daily totals`);
       // Calculate conversion metrics from daily data totals
+      const dailyReservationValue = totals.reservation_value || 0;
       conversionMetrics = {
         click_to_call: totals.click_to_call,
         email_contacts: totals.email_contacts,
@@ -673,8 +682,11 @@ export class StandardizedDataFetcher {
         booking_step_2: totals.booking_step_2,
         booking_step_3: totals.booking_step_3,
         reservations: totals.reservations,
-        reservation_value: totals.reservation_value,
-        roas: totals.reservation_value && totals.totalSpend ? totals.reservation_value / totals.totalSpend : 0,
+        reservation_value: dailyReservationValue,
+        // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value)
+        conversion_value: dailyReservationValue,
+        total_conversion_value: dailyReservationValue,
+        roas: dailyReservationValue && totals.totalSpend ? dailyReservationValue / totals.totalSpend : 0,
         cost_per_reservation: totals.reservations && totals.totalSpend ? totals.totalSpend / totals.reservations : 0,
         reach: totals.reach
       };
@@ -1014,6 +1026,7 @@ export class StandardizedDataFetcher {
         if (apiResult && apiResult.length > 0) {
           // Transform campaigns
           // ✅ CRITICAL: Use inline_link_clicks and cost_per_inline_link_click to match Meta Business Suite
+          // ✅ Use inline_link_click_ctr and cost_per_inline_link_click directly from Meta API (matches Business Suite)
           const campaigns = apiResult.map((campaign: any) => ({
             campaign_id: campaign.campaign_id || campaign.id,
             campaign_name: campaign.campaign_name || campaign.name,
@@ -1022,7 +1035,7 @@ export class StandardizedDataFetcher {
             impressions: parseInt(campaign.impressions || '0'),
             clicks: parseInt(campaign.inline_link_clicks || campaign.clicks || '0'),
             conversions: parseInt(campaign.conversions || '0'),
-            // ✅ Use inline_link_click_ctr and cost_per_inline_link_click from Meta API (matches Business Suite)
+            // ✅ Use inline_link_click_ctr and cost_per_inline_link_click directly from Meta API (matches Business Suite)
             ctr: parseFloat(campaign.inline_link_click_ctr || campaign.ctr || '0'),
             cpc: parseFloat(campaign.cost_per_inline_link_click || campaign.cpc || '0'),
             cpa: parseFloat(campaign.cpa || '0')
@@ -1237,6 +1250,17 @@ export class StandardizedDataFetcher {
         .eq('summary_date', dateRange.start)
         .limit(1);
       
+      console.log(`🔍 DATABASE QUERY RESULT:`, {
+        resultsCount: monthlyResults?.length || 0,
+        requestedPlatform: platform,
+        dateRange: dateRange.start,
+        results: monthlyResults?.map(r => ({
+          platform: r.platform,
+          click_to_call: (r as any).click_to_call,
+          summary_date: r.summary_date
+        }))
+      });
+      
       if (monthlyResults && monthlyResults.length > 0) {
         storedSummary = monthlyResults[0];
         console.log(`✅ Found monthly summary for ${dateRange.start}:`, {
@@ -1245,11 +1269,14 @@ export class StandardizedDataFetcher {
           totalImpressions: storedSummary?.total_impressions,
           totalClicks: storedSummary?.total_clicks,
           reservations: (storedSummary as any)?.reservations,
+          click_to_call: (storedSummary as any)?.click_to_call,
           campaignCount: storedSummary?.campaign_data ? (storedSummary.campaign_data as any[]).length : 0,
           periodMatch: storedSummary?.summary_date === dateRange.start,
           requestedPeriod: dateRange.start,
           actualPeriod: storedSummary?.summary_date,
-          platform: storedSummary?.platform
+          requestedPlatform: platform,
+          actualPlatform: storedSummary?.platform,
+          platformMatch: storedSummary?.platform === platform
         });
       } else {
         error = monthlyError;

@@ -39,6 +39,8 @@ export interface GoogleAdsStandardizedDataResult {
       booking_step_3: number;
       reservations: number;
       reservation_value: number;
+      conversion_value: number;
+      total_conversion_value: number;
       roas: number;
       cost_per_reservation: number;
       reach: number;
@@ -71,9 +73,10 @@ export class GoogleAdsStandardizedDataFetcher {
     dateRange: { start: string; end: string };
     reason?: string;
     sessionToken?: string;
+    forceRefresh?: boolean; // ✅ NEW: Allow bypassing cache
   }): Promise<GoogleAdsStandardizedDataResult> {
     
-    const { clientId, dateRange, reason = 'google-ads-standardized-fetch', sessionToken } = params;
+    const { clientId, dateRange, reason = 'google-ads-standardized-fetch', sessionToken, forceRefresh = false } = params;
     const startTime = Date.now();
     
     logger.info('🎯 GOOGLE ADS STANDARDIZED FETCH:', {
@@ -112,7 +115,8 @@ export class GoogleAdsStandardizedDataFetcher {
 
     try {
       // ✅ FIXED Priority 1: Smart cache for CURRENT periods (matches Meta system)
-      if (needsLiveData) {
+      // ✅ NEW: Skip cache if forceRefresh is true
+      if (needsLiveData && !forceRefresh) {
         console.log('1️⃣ CURRENT PERIOD: Checking Google Ads smart cache...');
         dataSources.push('google_ads_smart_cache');
         
@@ -309,6 +313,8 @@ export class GoogleAdsStandardizedDataFetcher {
               booking_step_3: 0,
               reservations: 0,
               reservation_value: 0,
+              conversion_value: 0,
+              total_conversion_value: 0,
               roas: 0,
               cost_per_reservation: 0,
               reach: 0
@@ -350,6 +356,31 @@ export class GoogleAdsStandardizedDataFetcher {
     }
     
     console.log(`✅ Found ${summaries.length} Google Ads database summaries, aggregating...`);
+    
+    // Extract campaigns from campaign_data JSONB field
+    const allCampaigns: any[] = [];
+    summaries.forEach(summary => {
+      if (summary.campaign_data && Array.isArray(summary.campaign_data)) {
+        console.log(`📊 Extracting ${summary.campaign_data.length} campaigns from summary ${summary.summary_date}`);
+        // Log first campaign to debug
+        if (summary.campaign_data.length > 0) {
+          const firstCampaign = summary.campaign_data[0];
+          console.log(`   First campaign keys: ${Object.keys(firstCampaign).join(', ')}`);
+          console.log(`   Campaign name fields: campaignName="${firstCampaign.campaignName}", campaign_name="${firstCampaign.campaign_name}", name="${firstCampaign.name}"`);
+        }
+        allCampaigns.push(...summary.campaign_data);
+      }
+    });
+    
+    console.log(`📊 Total extracted ${allCampaigns.length} campaigns from campaign_data JSONB`);
+    if (allCampaigns.length > 0) {
+      console.log(`📊 Sample campaign from extracted data:`, {
+        campaignName: allCampaigns[0].campaignName,
+        campaign_name: allCampaigns[0].campaign_name,
+        name: allCampaigns[0].name,
+        allKeys: Object.keys(allCampaigns[0])
+      });
+    }
     
     // Aggregate summaries
     const aggregated = summaries.reduce((acc, summary) => {
@@ -403,11 +434,15 @@ export class GoogleAdsStandardizedDataFetcher {
           booking_step_3: aggregated.booking_step_3,
           reservations: aggregated.reservations,
           reservation_value: aggregated.reservation_value,
+          // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value for Google Ads)
+          // reservation_value contains "Wartość konwersji" which includes all conversion values
+          conversion_value: aggregated.reservation_value,
+          total_conversion_value: aggregated.reservation_value, // This is what UI displays as "łączna wartość rezerwacji"
           roas,
           cost_per_reservation,
           reach: 0 // Database summaries don't track reach
         },
-        campaigns: [] // Database summaries don't include campaign details
+        campaigns: allCampaigns // ✅ FIXED: Extract campaigns from campaign_data JSONB
       }
     };
   }
@@ -477,6 +512,8 @@ export class GoogleAdsStandardizedDataFetcher {
               booking_step_3: 0,
               reservations: 0,
               reservation_value: 0,
+              conversion_value: 0,
+              total_conversion_value: 0,
               roas: 0,
               cost_per_reservation: 0,
               reach: 0
@@ -516,6 +553,8 @@ export class GoogleAdsStandardizedDataFetcher {
         booking_step_3: 0,
         reservations: 0,
         reservation_value: 0,
+        conversion_value: 0,
+        total_conversion_value: 0,
         roas: 0,
         cost_per_reservation: 0,
         reach: 0

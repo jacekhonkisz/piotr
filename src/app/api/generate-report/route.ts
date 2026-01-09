@@ -214,6 +214,7 @@ export async function POST(request: NextRequest) {
       booking_step_2: (metaData?.conversionMetrics?.booking_step_2 || 0) + (googleData?.conversionMetrics?.booking_step_2 || 0),
       booking_step_3: (metaData?.conversionMetrics?.booking_step_3 || 0) + (googleData?.conversionMetrics?.booking_step_3 || 0),
       reservations: (metaData?.conversionMetrics?.reservations || 0) + (googleData?.conversionMetrics?.reservations || 0),
+      // ✅ FIX: reservation_value now includes form conversion values
       reservation_value: (metaData?.conversionMetrics?.reservation_value || 0) + (googleData?.conversionMetrics?.reservation_value || 0),
       roas: 0, // Will be calculated below
       cost_per_reservation: 0 // Will be calculated below

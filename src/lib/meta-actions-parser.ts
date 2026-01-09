@@ -40,7 +40,8 @@ export interface ParsedConversionMetrics {
 export function parseMetaActions(
   actions: any[] = [],
   actionValues: any[] = [],
-  campaignName?: string
+  campaignName?: string,
+  forcePBMOnly: boolean = false // ✅ NEW: Force PBM-only logic if account has PBM
 ): ParsedConversionMetrics {
   
   const metrics: ParsedConversionMetrics = {
@@ -103,15 +104,41 @@ export function parseMetaActions(
       }
       
       // ✅ CLICK TO CALL (PHONE)
-      // Priority 1: Known PBM custom events (Havet-specific)
-      // Priority 2: Standard click_to_call_call_confirm (all other clients)
-      if (actionType === 'offsite_conversion.custom.1470262077092668') {  // Havet PBM phone
+      // 🔧 CRITICAL: Use ONLY PBM custom events for phone clicks
+      // 
+      // Requirement: ONLY count PBM custom event (offsite_conversion.custom.1470262077092668)
+      // - This is the authoritative source for phone clicks
+      // - Meta also sends standard click_to_call events, but these are duplicates
+      // - We MUST ignore all standard events to prevent double-counting
+      // 
+      // Strategy:
+      // - Check if PBM event exists in the actions array
+      // - If PBM exists → ONLY count PBM events, IGNORE all standard events
+      // - If NO PBM events → count standard events (for non-PBM clients)
+      
+      // ✅ Check if PBM event exists (actionMap uses lowercase keys)
+      const pbmEventKey = 'offsite_conversion.custom.1470262077092668'.toLowerCase();
+      const hasPBMPhoneEvent = actionMap.has(pbmEventKey) || forcePBMOnly;
+      
+      // ✅ CRITICAL: actionType is already lowercase (line 92), so compare with lowercase
+      if (actionType === pbmEventKey) {
+        // ✅ PBM phone event - ONLY source for phone clicks
+        // This is the authoritative event from PBM tracking
         metrics.click_to_call += value;
       }
-      else if (actionType === 'click_to_call_call_confirm' && 
-               !actionMap.has('offsite_conversion.custom.1470262077092668')) {
-        metrics.click_to_call = value;
+      else if (!hasPBMPhoneEvent && !forcePBMOnly) {
+        // ✅ Only count standard phone clicks if:
+        // 1. NO PBM events exist in this campaign's actions, AND
+        // 2. Account-level PBM detection is false (forcePBMOnly = false)
+        // This ensures PBM events take absolute priority
+        // Standard events are only used for clients that don't have PBM tracking
+        if (actionType === 'click_to_call_call_confirm' || 
+            (actionType.startsWith('click_to_call_') && !actionType.includes('offsite_conversion')) ||
+            actionType.includes('phone_number_clicks')) {
+          metrics.click_to_call += value;
+        }
       }
+      // ✅ If PBM event exists OR forcePBMOnly is true → completely ignore standard click_to_call events (they are duplicates)
       
       // ✅ EMAIL CONTACTS
       // Priority 1: Known PBM custom events (Havet-specific)
@@ -124,18 +151,18 @@ export function parseMetaActions(
         metrics.email_contacts += value;
       }
       
-      // ✅ BOOKING STEP 1 - Link Click (Ad Click to Website)
-      // CORRECTED: Use link_click as Step 1 (matches Meta Business Suite "Kliknięcia linku")
-      // This represents when someone clicks the ad to visit the booking engine
-      if (actionType === 'link_click') {
+      // ✅ BOOKING STEP 1 - Search (Wyszukiwania)
+      // UPDATED: Use omni_search as Step 1 (searches in booking engine)
+      // This represents when someone searches for availability/dates
+      if (actionType === 'omni_search') {
         metrics.booking_step_1 = value; // Use assignment, not +=
       }
-      // Fallback: use omni_search if link_click not present
-      else if (actionType === 'omni_search' && !actionMap.has('link_click')) {
+      // Fallback: use offsite_conversion.fb_pixel_search if omni_search not present
+      else if (actionType === 'offsite_conversion.fb_pixel_search' && !actionMap.has('omni_search')) {
         metrics.booking_step_1 = value;
       }
-      // Fallback if omni_search not present but fb_pixel_search is
-      else if (actionType === 'offsite_conversion.fb_pixel_search' && !actionMap.has('link_click') && !actionMap.has('omni_search')) {
+      // Fallback: use base 'search' if others not present
+      else if (actionType === 'search' && !actionMap.has('omni_search') && !actionMap.has('offsite_conversion.fb_pixel_search')) {
         metrics.booking_step_1 = value;
       }
       
@@ -281,7 +308,43 @@ export function enhanceCampaignsWithConversions(campaigns: any[]): any[] {
     return [];
   }
   
-  return campaigns.map(campaign => enhanceCampaignWithConversions(campaign));
+  // ✅ CRITICAL FIX: Check if ANY campaign has PBM events at account level
+  // If ANY campaign uses PBM, ALL campaigns should use PBM-only logic
+  // This prevents mixing PBM and standard events (which causes double-counting)
+  const pbmEventKey = 'offsite_conversion.custom.1470262077092668'.toLowerCase();
+  let accountHasPBM = false;
+  
+  // First pass: Check if any campaign has PBM events
+  for (const campaign of campaigns) {
+    const actions = campaign.actions || [];
+    for (const action of actions) {
+      const actionType = String(action.action_type || '').toLowerCase();
+      if (actionType === pbmEventKey) {
+        accountHasPBM = true;
+        break;
+      }
+    }
+    if (accountHasPBM) break;
+  }
+  
+  if (accountHasPBM) {
+    logger.info(`✅ Account-level PBM detection: Found PBM events in at least one campaign. All campaigns will use PBM-only logic.`);
+  }
+  
+  // Second pass: Parse each campaign, but force PBM-only if account has PBM
+  return campaigns.map(campaign => {
+    const parsed = parseMetaActions(
+      campaign.actions || [],
+      campaign.action_values || [],
+      campaign.campaign_name || campaign.name,
+      accountHasPBM // ✅ Pass account-level PBM flag
+    );
+    
+    return {
+      ...campaign,
+      ...parsed
+    };
+  });
 }
 
 /**

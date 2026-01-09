@@ -1261,18 +1261,315 @@ export default function DashboardPage() {
   };
 
   const refreshLiveData = async () => {
-    if (!user || loadingRef.current || refreshingData) return;
+    console.log('🔄🔄🔄 REFRESH FUNCTION CALLED - FIRST LINE 🔄🔄🔄');
+    console.log('🔄 REFRESH BUTTON CLICKED:', {
+      hasUser: !!user,
+      loadingRef: loadingRef.current,
+      refreshingData,
+      hasSelectedClient: !!selectedClient,
+      selectedClientId: selectedClient?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!user || loadingRef.current || refreshingData || !selectedClient) {
+      console.log('❌ REFRESH BLOCKED:', {
+        noUser: !user,
+        loading: loadingRef.current,
+        alreadyRefreshing: refreshingData,
+        noClient: !selectedClient
+      });
+      return;
+    }
     
     setRefreshingData(true);
-    setLoadingMessage('Odświeżanie danych...');
+    setLoadingMessage('Odświeżanie danych z API...');
     setLoadingProgress(25);
+    console.log('✅ REFRESH STARTED');
     
     try {
-      // Clear localStorage cache to force fresh data
+      // Clear localStorage cache
       clearCache();
       
-      // Reload dashboard data
+      setLoadingProgress(50);
+      setLoadingMessage('Pobieranie świeżych danych z API...');
+      
+      // Get current month date range
+      const currentMonthInfo = getCurrentMonthInfo();
+      const dateRange = {
+        start: currentMonthInfo.startDate as string,
+        end: (currentMonthInfo.endDate || new Date().toISOString().split('T')[0]) as string
+      };
+      
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Force live API fetch and database update for both platforms
+      const hasMetaAds = selectedClient.meta_access_token && selectedClient.ad_account_id;
+      const hasGoogleAds = selectedClient.google_ads_enabled && selectedClient.google_ads_customer_id;
+      
+      const refreshPromises: Promise<any>[] = [];
+      
+      // Force refresh Google Ads if configured
+      if (hasGoogleAds) {
+        console.log('🔄 REFRESH: Calling Google Ads API with:', {
+          clientId: selectedClient.id,
+          dateRange,
+          hasSessionToken: !!session?.access_token
+        });
+        setLoadingMessage('Pobieranie danych Google Ads z API...');
+        const googleRefreshPromise = fetch('/api/fetch-google-ads-live-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({
+            clientId: selectedClient.id,
+            dateRange,
+            forceFresh: true, // Force live API fetch (bypasses database and cache)
+            bypassAllCache: true, // Bypass all caches
+            clearCache: true, // Clear cache before fetching
+            reason: 'dashboard-refresh-button' // ✅ Mark as refresh button request
+          })
+        }).then(async response => {
+          console.log('📡 Google Ads API Response:', {
+            status: response.status,
+            ok: response.ok,
+            statusText: response.statusText
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Google Ads API Error:', errorText);
+            throw new Error(`Google Ads refresh failed: ${response.status} - ${errorText}`);
+          }
+          const json = await response.json();
+          console.log('✅ Google Ads API Success:', {
+            success: json.success,
+            hasData: !!json.data,
+            campaignCount: json.data?.campaigns?.length || 0,
+            totalConversions: json.data?.stats?.totalConversions || 0
+          });
+          return json;
+        }).catch(error => {
+          console.error('❌ Google Ads Refresh Error:', error);
+          throw error;
+        });
+        refreshPromises.push(googleRefreshPromise);
+      }
+      
+      // Force refresh Meta Ads if configured
+      if (hasMetaAds) {
+        console.log('🔄 REFRESH: Calling Meta Ads API with:', {
+          clientId: selectedClient.id,
+          dateRange,
+          hasSessionToken: !!session?.access_token
+        });
+        setLoadingMessage('Pobieranie danych Meta Ads z API...');
+        const metaRefreshPromise = fetch('/api/fetch-live-data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({
+            clientId: selectedClient.id,
+            dateRange,
+            forceFresh: true, // Force live API fetch
+            bypassAllCache: true, // Bypass all caches
+            clearCache: true, // Clear cache before fetching
+            reason: 'dashboard-refresh-button' // ✅ Mark as refresh button request
+          })
+        }).then(async response => {
+          console.log('📡 Meta Ads API Response:', {
+            status: response.status,
+            ok: response.ok,
+            statusText: response.statusText
+          });
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Meta Ads API Error:', errorText);
+            throw new Error(`Meta Ads refresh failed: ${response.status} - ${errorText}`);
+          }
+          const json = await response.json();
+          console.log('✅ Meta Ads API Success:', {
+            success: json.success,
+            hasData: !!json.data,
+            campaignCount: json.data?.campaigns?.length || 0
+          });
+          return json;
+        }).catch(error => {
+          console.error('❌ Meta Ads Refresh Error:', error);
+          throw error;
+        });
+        refreshPromises.push(metaRefreshPromise);
+      }
+      
+      // Wait for all API calls to complete
+      console.log('⏳ REFRESH: Waiting for API calls to complete...', {
+        promiseCount: refreshPromises.length
+      });
+      const refreshResults = await Promise.allSettled(refreshPromises);
+      
+      console.log('📊 REFRESH: API calls completed:', {
+        total: refreshResults.length,
+        fulfilled: refreshResults.filter(r => r.status === 'fulfilled').length,
+        rejected: refreshResults.filter(r => r.status === 'rejected').length
+      });
+      
+      // Check if any refresh failed
+      const failedRefreshes = refreshResults.filter(r => r.status === 'rejected');
+      if (failedRefreshes.length > 0) {
+        console.error('❌ REFRESH: Some refresh calls failed:', failedRefreshes);
+        failedRefreshes.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(`  Failed ${index}:`, result.reason);
+          }
+        });
+        // Don't zero out data - just show warning
+        setLoadingMessage('Część danych nie została odświeżona');
+      } else {
+        console.log('✅ REFRESH: All API calls succeeded');
+      }
+      
+      setLoadingProgress(75);
+      setLoadingMessage('Aktualizowanie dashboardu...');
+      
+      // Wait a moment for database/cache to update after API calls
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Clear localStorage cache to force fresh load
+      clearCache();
+      
+      // Reload dashboard data - use loadMainDashboardData with cacheFirst=false to bypass cache
+      if (selectedClient) {
+        try {
+          // ✅ FIX: After API refresh, we need to bypass smart cache
+          // Call the API directly with forceFresh instead of using standardized fetcher
+          console.log('🔄 REFRESH: Reloading dashboard data after API refresh...');
+          
+          // Get fresh data directly from API with forceFresh to bypass cache
+          const { data: { session: reloadSession } } = await supabase.auth.getSession();
+          const currentMonthInfo = getCurrentMonthInfo();
+          const reloadDateRange = {
+            start: currentMonthInfo.startDate as string,
+            end: (currentMonthInfo.endDate || new Date().toISOString().split('T')[0]) as string
+          };
+          
+          // Call API directly with forceFresh to bypass all caches
+          const reloadResponse = await fetch('/api/fetch-google-ads-live-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${reloadSession?.access_token}`
+            },
+            body: JSON.stringify({
+              clientId: selectedClient.id,
+              dateRange: reloadDateRange,
+              forceFresh: true, // Force live API fetch
+              bypassAllCache: true, // Bypass all caches
+              reason: 'dashboard-refresh-button-reload' // ✅ Mark as refresh button request
+            })
+          });
+          
+          if (reloadResponse.ok) {
+            const reloadResult = await reloadResponse.json();
+            console.log('✅ REFRESH: Reload API success:', {
+              success: reloadResult.success,
+              hasData: !!reloadResult.data,
+              campaignCount: reloadResult.data?.campaigns?.length || 0,
+              totalConversions: reloadResult.data?.stats?.totalConversions || 0
+            });
+            
+            if (reloadResult.success && reloadResult.data) {
+              // Use the API response data directly
+              const apiData = reloadResult.data;
+              const freshData = {
+                campaigns: apiData.campaigns || [],
+                stats: apiData.stats || {
+                  totalSpend: 0,
+                  totalImpressions: 0,
+                  totalClicks: 0,
+                  totalConversions: 0,
+                  averageCtr: 0,
+                  averageCpc: 0
+                },
+                conversionMetrics: apiData.conversionMetrics || {
+                  click_to_call: 0,
+                  email_contacts: 0,
+                  booking_step_1: 0,
+                  booking_step_2: 0,
+                  booking_step_3: 0,
+                  reservations: 0,
+                  reservation_value: 0,
+                  roas: 0,
+                  cost_per_reservation: 0
+                }
+              };
+              
+              // Update the dashboard with fresh data
+              setClientData(prev => {
+                const updated = {
+                  ...prev!,
+                  campaigns: freshData.campaigns,
+                  stats: freshData.stats,
+                  conversionMetrics: freshData.conversionMetrics
+                };
+                console.log('📊 REFRESH: Updated clientData from API:', {
+                  campaignCount: updated.campaigns?.length || 0,
+                  totalSpend: updated.stats?.totalSpend || 0,
+                  totalConversions: updated.stats?.totalConversions || 0
+                });
+                return updated;
+              });
+              // Force re-render
+              setRenderKey(prev => prev + 1);
+            } else {
+              // Fallback to loadMainDashboardData
+              console.log('⚠️ REFRESH: Reload API returned no data, using loadMainDashboardData');
+              const freshData = await loadMainDashboardData(selectedClient, activeAdsProvider, false);
+          
+          console.log('📊 REFRESH: Fresh data received:', {
+            hasFreshData: !!freshData,
+            campaignCount: freshData?.campaigns?.length || 0,
+            totalSpend: freshData?.stats?.totalSpend || 0,
+            totalConversions: freshData?.stats?.totalConversions || 0,
+            reservations: freshData?.conversionMetrics?.reservations || 0
+          });
+          
+          // Only update if we got valid data (has campaigns or stats)
+          if (freshData && (freshData.campaigns?.length > 0 || freshData.stats?.totalSpend > 0)) {
+            console.log('✅ REFRESH: Updating dashboard with fresh data');
+            // Update the dashboard with fresh data
+            setClientData(prev => {
+              const updated = {
+                ...prev!,
+                campaigns: freshData.campaigns || prev?.campaigns || [],
+                stats: freshData.stats || prev?.stats,
+                conversionMetrics: freshData.conversionMetrics || prev?.conversionMetrics
+              };
+              console.log('📊 REFRESH: Updated clientData:', {
+                campaignCount: updated.campaigns?.length || 0,
+                totalSpend: updated.stats?.totalSpend || 0,
+                totalConversions: updated.stats?.totalConversions || 0
+              });
+              return updated;
+            });
+            // Force re-render
+            setRenderKey(prev => prev + 1);
+          } else {
+            // If no fresh data, just reload normally (preserves existing data)
+            console.log('⚠️ REFRESH: Fresh data empty, reloading dashboard normally');
       await loadClientDashboard();
+          }
+        } catch (reloadError) {
+          console.error('Error reloading dashboard after refresh:', reloadError);
+          // Don't zero out - just reload normally
+          await loadClientDashboard();
+        }
+      } else {
+        // Fallback to standard load
+        await loadClientDashboard();
+      }
       
       setLoadingMessage('Dane odświeżone pomyślnie');
       setLoadingProgress(100);
@@ -1284,9 +1581,13 @@ export default function DashboardPage() {
       }, 1000);
     } catch (error) {
       console.error('Error refreshing data:', error);
+      // Don't zero out data on error - keep existing data
+      setLoadingMessage('Błąd podczas odświeżania - dane nie zostały zmienione');
       setRefreshingData(false);
+      setTimeout(() => {
       setLoadingMessage('');
       setLoadingProgress(0);
+      }, 2000);
     }
   };
 
@@ -1379,7 +1680,18 @@ export default function DashboardPage() {
 
             {/* Refresh Data Button */}
             <button
-              onClick={refreshLiveData}
+              type="button"
+              onClick={(e) => {
+                console.log('🔴 BUTTON CLICKED - STARTING REFRESH');
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔴 CALLING refreshLiveData function');
+                if (typeof refreshLiveData === 'function') {
+                  refreshLiveData();
+                } else {
+                  console.error('❌ refreshLiveData is not a function!', typeof refreshLiveData);
+                }
+              }}
               disabled={refreshingData}
               className="flex items-center justify-center space-x-2 bg-white hover:bg-gray-50 disabled:bg-gray-100 text-gray-700 disabled:text-gray-400 px-4 sm:px-6 md:px-8 py-3 sm:py-3 md:py-4 min-h-[44px] rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 font-medium text-sm sm:text-base"
             >
@@ -1541,41 +1853,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               
-              <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" role="article" aria-labelledby="conversions-metric" key={`conversions-card-${renderKey}-${activeAdsProvider}`}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="text-sm font-semibold text-slate-600 uppercase tracking-wide" id="conversions-metric">
-                    Konwersje {activeAdsProvider === 'google' && <span className="text-xs">(Google)</span>}
-                  </div>
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <Target className="h-5 w-5 text-orange-600" />
-                  </div>
-                </div>
-                <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums" key={`conversions-value-${renderKey}-${activeAdsProvider}`}>
-                  {(() => {
-                    const allBookingSteps = 
-                      (clientData.conversionMetrics.click_to_call || 0) + 
-                      (clientData.conversionMetrics.email_contacts || 0) + 
-                      (clientData.conversionMetrics.booking_step_1 || 0) + 
-                      (clientData.conversionMetrics.booking_step_2 || 0) + 
-                      (clientData.conversionMetrics.booking_step_3 || 0) + 
-                      (clientData.conversionMetrics.reservations || 0);
-                    
-                    console.log('🎯 DASHBOARD DISPLAY: Rendering conversions:', {
-                      provider: activeAdsProvider,
-                      allBookingSteps,
-                      formatted: formatNumber(allBookingSteps),
-                      renderKey,
-                      timestamp: Date.now(),
-                      conversionMetrics: clientData.conversionMetrics
-                    });
-                    
-                    return formatNumber(allBookingSteps);
-                  })()}
-                </div>
-                <div className="text-xs text-slate-500 mt-2">
-                  Bieżący miesiąc
-                </div>
-              </div>
+              {/* Conversions metric card removed */}
               </div>
             </div>
 
@@ -1692,7 +1970,13 @@ export default function DashboardPage() {
               Nie znaleziono danych dla wybranego klienta lub okresu.
             </p>
             <button
-              onClick={refreshLiveData}
+              type="button"
+              onClick={(e) => {
+                console.log('🔴 RETRY BUTTON CLICKED');
+                e.preventDefault();
+                e.stopPropagation();
+                refreshLiveData();
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-colors"
             >
               Spróbuj ponownie

@@ -49,6 +49,7 @@ Google Ads funnel metrics are tracked through **conversion action names** that a
 
 ### 3. **Krok 1 w BE** - `booking_step_1`
 **Google Ads Conversion Names Matched:**
+- **"PBM - Booking Engine - krok 1"** (Primary pattern in Google Ads interface)
 - "step 1 w be"
 - "step 1"
 - "step1"
@@ -74,6 +75,7 @@ Google Ads funnel metrics are tracked through **conversion action names** that a
 
 ### 4. **Krok 2 w BE** - `booking_step_2`
 **Google Ads Conversion Names Matched:**
+- **"PBM - Booking Engine - krok 2"** (Primary pattern in Google Ads interface)
 - "step 2 w be"
 - "step 2"
 - "step2"
@@ -98,6 +100,7 @@ Google Ads funnel metrics are tracked through **conversion action names** that a
 
 ### 5. **Krok 3 w BE** - `booking_step_3`
 **Google Ads Conversion Names Matched:**
+- **"PBM - Booking Engine - krok 3"** (Primary pattern in Google Ads interface)
 - "step 3 w be"
 - "step 3"
 - "step3"
@@ -119,6 +122,7 @@ Google Ads funnel metrics are tracked through **conversion action names** that a
 
 ### 6. **Rezerwacje** - `reservations`
 **Google Ads Conversion Names Matched:**
+- **"PBM - Rezerwacja"** (Primary pattern in Google Ads interface)
 - "rezerwacja" (ONLY if it DOESN'T include "krok" or "step" or "booking engine")
 - "reservation"
 - "zakup"

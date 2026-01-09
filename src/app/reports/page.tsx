@@ -220,63 +220,126 @@ const fetchReportDataUnified = async (params: {
         }
       }
     } else if (forceFresh && !isCustomDateRange) {
-      // 🔧 CURRENT PERIOD FORCE REFRESH: Use smart cache (NOT live API)
-      // This happens when switching providers - smart cache is already fresh
-      console.log('🚀 CURRENT PERIOD FORCE REFRESH: Using smart cache (NOT bypassing)...');
+      // ✅ FIX: Check if this is a refresh button request
+      // Only bypass cache for explicit refresh requests, otherwise use smart cache
+      const isRefreshRequest = reason?.includes('refresh') || reason?.includes('dashboard-refresh') || reason?.includes('reports-refresh') || reason?.includes('odśwież');
       
-      if (platform === 'google') {
-        // Use Google Ads smart cache system
-        console.log('🎯 Using GoogleAdsStandardizedDataFetcher for force-refresh (smart cache)...');
+      if (isRefreshRequest) {
+        // ✅ REFRESH BUTTON: Bypass cache and use live API
+        console.log('🚀 REFRESH BUTTON: Bypassing cache, using live API...');
         
-        if (typeof window === 'undefined') {
-          const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
-          result = await GoogleAdsStandardizedDataFetcher.fetchData({
-            clientId,
-            dateRange,
-            reason: reason || 'google-ads-force-refresh-smart-cache',
-            sessionToken: session?.access_token
-          });
-        } else {
-          // Client-side: redirect to API endpoint WITHOUT bypassAllCache
-          const { createClient } = await import('@supabase/supabase-js');
-          const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-          );
-          const { data: { session: clientSession } } = await supabase.auth.getSession();
+        if (platform === 'google') {
+          console.log('🎯 Refresh: Using live Google Ads API (bypassing cache)...');
           
-          const response = await fetch('/api/fetch-google-ads-live-data', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${clientSession?.access_token || ''}`
-            },
-            body: JSON.stringify({
+          if (typeof window === 'undefined') {
+            const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+            result = await GoogleAdsStandardizedDataFetcher.fetchData({
               clientId,
               dateRange,
-              // 🔧 NO bypassAllCache - use smart cache
-              reason: reason || 'google-ads-force-refresh-smart-cache'
-            })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Google Ads API call failed: ${response.status}`);
+              reason: reason || 'google-ads-refresh-live-api',
+              sessionToken: session?.access_token,
+              forceRefresh: true // ✅ Bypass smart cache for refresh
+            });
+          } else {
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(
+              process.env.NEXT_PUBLIC_SUPABASE_URL!,
+              process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            );
+            const { data: { session: clientSession } } = await supabase.auth.getSession();
+            
+            const response = await fetch('/api/fetch-google-ads-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${clientSession?.access_token || ''}`
+              },
+              body: JSON.stringify({
+                clientId,
+                dateRange,
+                forceFresh: true,
+                bypassAllCache: true, // ✅ Bypass all caches for refresh
+                reason: reason || 'google-ads-refresh-live-api'
+              })
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Google Ads API call failed: ${response.status}`);
+            }
+            
+            result = await response.json();
           }
-          
-          result = await response.json();
+        } else {
+          // Meta refresh
+          console.log('🎯 Refresh: Using live Meta API (bypassing cache)...');
+          const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+          result = await StandardizedDataFetcher.fetchData({
+            clientId,
+            dateRange,
+            platform: 'meta',
+            reason: reason || 'meta-refresh-live-api',
+            sessionToken: session?.access_token,
+            forceFresh: true // ✅ Bypass cache for refresh
+          });
         }
       } else {
-        // Use Meta smart cache system
-        console.log('🎯 Using StandardizedDataFetcher for Meta force-refresh (smart cache)...');
-        const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+        // ✅ DEFAULT: Use smart cache (fast, 3-hour refresh)
+        // This happens when switching providers or normal operations
+        console.log('🚀 CURRENT PERIOD: Using smart cache (default behavior)...');
         
-        result = await StandardizedDataFetcher.fetchData({
-          clientId,
-          dateRange,
-          platform: 'meta',
-          reason: reason || 'meta-force-refresh-smart-cache',
-          sessionToken: session?.access_token
-        });
+        if (platform === 'google') {
+          console.log('🎯 Using GoogleAdsStandardizedDataFetcher (smart cache)...');
+          
+          if (typeof window === 'undefined') {
+            const { GoogleAdsStandardizedDataFetcher } = await import('../../lib/google-ads-standardized-data-fetcher');
+            result = await GoogleAdsStandardizedDataFetcher.fetchData({
+              clientId,
+              dateRange,
+              reason: reason || 'google-ads-smart-cache',
+              sessionToken: session?.access_token,
+              forceRefresh: false // ✅ Use smart cache by default
+            });
+          } else {
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(
+              process.env.NEXT_PUBLIC_SUPABASE_URL!,
+              process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            );
+            const { data: { session: clientSession } } = await supabase.auth.getSession();
+            
+            const response = await fetch('/api/fetch-google-ads-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${clientSession?.access_token || ''}`
+              },
+              body: JSON.stringify({
+                clientId,
+                dateRange,
+                // ✅ NO forceFresh/bypassAllCache - use smart cache
+                reason: reason || 'google-ads-smart-cache'
+              })
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Google Ads API call failed: ${response.status}`);
+            }
+            
+            result = await response.json();
+          }
+        } else {
+          // Use Meta smart cache system
+          console.log('🎯 Using StandardizedDataFetcher for Meta (smart cache)...');
+          const { StandardizedDataFetcher } = await import('../../lib/standardized-data-fetcher');
+          
+          result = await StandardizedDataFetcher.fetchData({
+            clientId,
+            dateRange,
+            platform: 'meta',
+            reason: reason || 'meta-smart-cache',
+            sessionToken: session?.access_token
+          });
+        }
       }
     } else {
       // Normal mode: Use StandardizedDataFetcher with smart caching
@@ -434,6 +497,14 @@ interface MonthlyReport {
     offline_reservations: number;
     offline_value: number;
   };
+  stats?: {
+    totalSpend: number;
+    totalImpressions: number;
+    totalClicks: number;
+    totalConversions: number; // ✅ For Google Ads: use this instead of summing campaign.conversions
+    averageCtr: number;
+    averageCpc: number;
+  };
 }
 
 interface WeeklyReport {
@@ -455,6 +526,14 @@ interface WeeklyReport {
     reach: number;
     offline_reservations: number;
     offline_value: number;
+  };
+  stats?: {
+    totalSpend: number;
+    totalImpressions: number;
+    totalClicks: number;
+    totalConversions: number; // ✅ For Google Ads: use this instead of summing campaign.conversions
+    averageCtr: number;
+    averageCpc: number;
   };
 }
 
@@ -1140,7 +1219,7 @@ function ReportsPageContent() {
           return {
             id: campaign.campaign_id || `campaign-${index}`,
             campaign_id: campaign.campaign_id || '',
-            campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
+            campaign_name: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
             spend: parseFloat(campaign.spend || '0'),
             impressions: parseInt(campaign.impressions || '0'),
             clicks: parseInt(campaign.clicks || '0'),
@@ -1346,7 +1425,7 @@ function ReportsPageContent() {
         return {
           id: campaign.campaign_id || `campaign-${index}`,
           campaign_id: campaign.campaign_id || '',
-          campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
+          campaign_name: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
           spend: parseFloat(campaign.spend || '0'),
           impressions: parseInt(campaign.impressions || '0'),
           clicks: parseInt(campaign.clicks || '0'),
@@ -1566,7 +1645,7 @@ function ReportsPageContent() {
 
   // Load data for a specific period with explicit client data
   // 🔧 FIX: Added optional `platform` parameter to avoid stale closure issues when switching providers
-  const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false, platform?: string) => {
+  const loadPeriodDataWithClient = async (periodId: string, clientData: Client, forceClearCache: boolean = false, platform?: string, reason?: string) => {
     // 🔧 CRITICAL FIX: Use explicit platform if provided, otherwise use current state
     // This avoids stale closure issues when provider changes
     const effectivePlatform = platform || activeAdsProvider;
@@ -1578,6 +1657,14 @@ function ReportsPageContent() {
       explicitPlatform: platform,
       effectivePlatform,
       stateAdsProvider: activeAdsProvider
+    });
+    
+    console.log(`🎯 PLATFORM CHECK:`, {
+      platform: effectivePlatform,
+      willFetchMetaData: effectivePlatform === 'meta',
+      willFetchGoogleData: effectivePlatform === 'google',
+      expectedPhoneClicks: effectivePlatform === 'meta' ? 21 : 18,
+      note: 'If you see 39, the platform filter is NOT being applied!'
     });
     
     // 🔧 FORCE CORRECT VIEW TYPE: Auto-fix view type mismatch to prevent January dates
@@ -1914,12 +2001,24 @@ function ReportsPageContent() {
       // 🎯 USE STANDARDIZED DATA FETCHER (loadPeriodDataWithClient)
       console.log('🎯 Using StandardizedDataFetcher for period data...', { effectivePlatform, forceClearCache });
       
+      // ✅ DEBUG: Log refresh request details
+      if (forceClearCache || reason?.includes('refresh')) {
+        console.log('🔄 REFRESH REQUEST DETAILS:', {
+          forceClearCache,
+          reason,
+          effectivePlatform,
+          periodId,
+          dateRange,
+          note: 'This should bypass all caches and fetch live data'
+        });
+      }
+      
       const response = await fetchReportDataUnified({
         dateRange,
         clientId: clientData.id,
         platform: effectivePlatform, // 🔧 FIX: Use effectivePlatform to avoid stale closure
         forceFresh: forceClearCache,
-        reason: `period-${periodId}-standardized-${effectivePlatform}`,
+        reason: reason || `period-${periodId}-standardized-${effectivePlatform}`, // ✅ Use provided reason or default
         session
       });
       
@@ -1928,7 +2027,9 @@ function ReportsPageContent() {
       console.log('✅ StandardizedDataFetcher response:', {
         success: response.success,
         source: response.debug?.source,
-        cachePolicy: response.debug?.cachePolicy
+        cachePolicy: response.debug?.cachePolicy,
+        statsTotalConversions: response.data?.stats?.totalConversions,
+        note: 'For Google Ads, this should be 52 for Havet January 2026'
       });
 
       if (!response.success) {
@@ -2020,6 +2121,18 @@ function ReportsPageContent() {
       // Transform API response to our report format  
       const rawCampaigns = data.data?.campaigns || [];
       console.log(`📊 Campaigns count: ${rawCampaigns.length}`);
+      
+      // 🔍 DEBUG: Log campaign field names
+      if (rawCampaigns.length > 0) {
+        console.log(`🔍 RAW CAMPAIGN FIELDS DEBUG:`, {
+          firstCampaignKeys: Object.keys(rawCampaigns[0]),
+          campaignName: rawCampaigns[0]?.campaignName,
+          campaign_name: rawCampaigns[0]?.campaign_name,
+          name: rawCampaigns[0]?.name,
+          fullFirstCampaign: rawCampaigns[0]
+        });
+      }
+      
       console.log(`📊 Data structure:`, {
         hasData: !!data,
         hasCampaigns: !!rawCampaigns,
@@ -2184,6 +2297,17 @@ function ReportsPageContent() {
         dateSource: viewType === 'weekly' ? 'calculated' : 'api_or_calculated'
       });
       
+      // ✅ DEBUG: Log stats before creating report
+      if (effectivePlatform === 'google' && data.data?.stats) {
+        console.log('🎯 GOOGLE ADS STATS FROM API:', {
+          totalConversions: data.data.stats.totalConversions,
+          totalSpend: data.data.stats.totalSpend,
+          totalClicks: data.data.stats.totalClicks,
+          source: data.debug?.source,
+          note: 'This should be 52 for Havet January 2026'
+        });
+      }
+      
       const report: MonthlyReport | WeeklyReport = {
         id: periodId,
         date_range_start: correctStartDate,
@@ -2196,14 +2320,42 @@ function ReportsPageContent() {
           offline_reservations: 0,
           offline_value: 0
         },
+        // ✅ FIX: Store stats for Google Ads conversions (use stats.totalConversions instead of summing campaign.conversions)
+        stats: data.data?.stats ? {
+          totalSpend: data.data.stats.totalSpend || 0,
+          totalImpressions: data.data.stats.totalImpressions || 0,
+          totalClicks: data.data.stats.totalClicks || 0,
+          totalConversions: data.data.stats.totalConversions || 0, // ✅ For Google Ads: this is metrics.conversions
+          averageCtr: data.data.stats.averageCtr || 0,
+          averageCpc: data.data.stats.averageCpc || 0
+        } : undefined,
         // 🔧 FIX: Include Google Ads tables data to avoid duplicate API calls
         googleAdsTables: data.data?.googleAdsTables || null
       };
+      
+      // ✅ DEBUG: Log report stats after creation
+      if (effectivePlatform === 'google' && report.stats) {
+        console.log('🎯 GOOGLE ADS REPORT STATS:', {
+          totalConversions: report.stats.totalConversions,
+          note: 'This value will be used for Konwersje display'
+        });
+      }
 
       console.log(`💾 Setting successful report for ${periodId}:`, report);
       console.log(`💾 Report campaigns count:`, report.campaigns.length);
       console.log(`💾 Report conversionMetrics:`, report.conversionMetrics);
       console.log(`💾 Report googleAdsTables:`, !!report.googleAdsTables);
+      console.log(`🔍 PHONE CLICKS DEBUG:`, {
+        periodId,
+        platform: effectivePlatform,
+        conversionMetrics_click_to_call: report.conversionMetrics?.click_to_call,
+        campaigns_length: report.campaigns.length,
+        aggregated_from_campaigns: report.campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0),
+        expectedValue: effectivePlatform === 'meta' ? 21 : 18,
+        actualValue: report.conversionMetrics?.click_to_call,
+        isCorrect: report.conversionMetrics?.click_to_call === (effectivePlatform === 'meta' ? 21 : 18),
+        BUG: report.conversionMetrics?.click_to_call === 39 ? '❌ RETURNING COMBINED DATA!' : 'OK'
+      });
       if (report.campaigns.length > 0) {
         console.log(`💾 Sample campaign:`, report.campaigns[0]);
       }
@@ -2680,10 +2832,23 @@ function ReportsPageContent() {
             const booking_step_2 = campaign.booking_step_2 || 0;
             const booking_step_3 = campaign.booking_step_3 || 0;
 
+            // 🔍 DEBUG: Log campaign name resolution for first 3 campaigns (weekly path)
+            if (index < 3) {
+              console.log(`🔍 WEEKLY CAMPAIGN NAME DEBUG #${index}:`, {
+                'campaign_name': campaign.campaign_name,
+                'campaignName': campaign.campaignName,
+                'name': campaign.name,
+                'campaign_id': campaign.campaign_id,
+                'campaignId': campaign.campaignId,
+                'resolved_name': campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
+                'all_keys': Object.keys(campaign)
+              });
+            }
+
             return {
-              id: campaign.campaign_id || `campaign-${index}`,
-              campaign_id: campaign.campaign_id || '',
-              campaign_name: campaign.campaign_name || campaign.name || 'Unknown Campaign',
+              id: campaign.campaign_id || campaign.campaignId || `campaign-${index}`,
+              campaign_id: campaign.campaign_id || campaign.campaignId || '',
+              campaign_name: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
               spend: parseFloat(campaign.spend || '0'),
               impressions: parseInt(campaign.impressions || '0'),
               clicks: parseInt(campaign.clicks || '0'),
@@ -3008,6 +3173,8 @@ function ReportsPageContent() {
 
   // Handle refresh
   const handleRefresh = () => {
+    console.log('🔴 REFRESH BUTTON CLICKED ON REPORTS PAGE');
+    
     if (!selectedClient) {
       console.log('⚠️ Cannot refresh: selected client not loaded');
       return;
@@ -3036,7 +3203,12 @@ function ReportsPageContent() {
         setError('Proszę wybrać zakres dat przed odświeżeniem');
       }
     } else if (selectedPeriod) {
-      console.log('🔄 Refreshing data for period:', selectedPeriod);
+      console.log('🔄 REFRESH BUTTON: Refreshing data for period:', selectedPeriod);
+      
+      // ✅ Set loading state to show visual feedback
+      setLoadingPeriod(selectedPeriod);
+      setApiCallInProgress(true);
+      loadingRef.current = true;
       
       // Clear existing data for this period
       setReports(prev => {
@@ -3045,9 +3217,15 @@ function ReportsPageContent() {
         return newReports;
       });
       
-      // Reset loading state and load fresh data
-      loadingRef.current = false;
-      loadPeriodData(selectedPeriod);
+      // Reset loading state and load fresh data WITH forceClearCache
+      // ✅ FIX: Pass forceClearCache: true and reason to trigger live API fetch
+      loadPeriodDataWithClient(selectedPeriod, selectedClient, true, activeAdsProvider, 'reports-refresh-button')
+        .catch(error => {
+          console.error('❌ Refresh error:', error);
+          setLoadingPeriod(null);
+          setApiCallInProgress(false);
+          loadingRef.current = false;
+        });
     } else {
       console.log('⚠️ Cannot refresh: no period selected');
     }
@@ -3115,12 +3293,23 @@ function ReportsPageContent() {
 
     console.log('📊 Calculating totals from campaigns:', selectedReport.campaigns);
     
+    // ✅ FIX: For Google Ads, use stats.totalConversions instead of summing campaign.conversions
+    // This ensures we use metrics.conversions (cross-platform comparable) not all_conversions
+    const useStatsConversions = activeAdsProvider === 'google' && selectedReport.stats?.totalConversions !== undefined;
+    
+    if (useStatsConversions) {
+      console.log('🎯 GOOGLE ADS: Using stats.totalConversions instead of summing campaign.conversions:', {
+        statsTotalConversions: selectedReport.stats.totalConversions,
+        summedConversions: selectedReport.campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0)
+      });
+    }
+    
     // 🔧 Calculate all metrics including funnel data
     const totals = selectedReport.campaigns.reduce((acc, campaign) => ({
       spend: acc.spend + (campaign.spend || 0),
       impressions: acc.impressions + (campaign.impressions || 0),
       clicks: acc.clicks + (campaign.clicks || 0),
-      conversions: acc.conversions + (campaign.conversions || 0),
+      conversions: acc.conversions + (campaign.conversions || 0), // Will be overridden for Google Ads below
       reach: acc.reach + (campaign.reach || 0),
       landing_page_view: acc.landing_page_view + (campaign.landing_page_view || 0),
       reservations: acc.reservations + (campaign.reservations || 0),
@@ -3146,6 +3335,28 @@ function ReportsPageContent() {
       booking_step_3: 0
     });
 
+    // ✅ FIX: Override conversions for Google Ads with stats.totalConversions
+    if (useStatsConversions && selectedReport.stats) {
+      const oldValue = totals.conversions;
+      totals.conversions = selectedReport.stats.totalConversions;
+      console.log('✅ GOOGLE ADS: Overriding conversions with stats.totalConversions:', {
+        oldValue: oldValue,
+        newValue: totals.conversions,
+        expectedFromGoogleConsole: 52,
+        matchesExpected: totals.conversions === 52,
+        warning: totals.conversions !== 52 ? `⚠️ MISMATCH: Expected 52, got ${totals.conversions}` : '✅ MATCH: Value matches Google Console'
+      });
+    } else {
+      console.log('⚠️ GOOGLE ADS: NOT using stats.totalConversions:', {
+        useStatsConversions,
+        hasStats: !!selectedReport.stats,
+        hasTotalConversions: !!selectedReport.stats?.totalConversions,
+        activeAdsProvider,
+        summedValue: totals.conversions,
+        note: 'This might be incorrect - should use stats.totalConversions for Google Ads'
+      });
+    }
+    
     // Calculate derived metrics
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
     const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
@@ -3573,12 +3784,22 @@ function ReportsPageContent() {
             {/* Right Group: Actions - All buttons same size/hierarchy */}
             <div className="flex items-center gap-2 lg:ml-auto">
                   <button
-                    onClick={handleRefresh}
+                    type="button"
+                    onClick={(e) => {
+                      console.log('🔴 REFRESH BUTTON CLICKED - REPORTS PAGE');
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleRefresh();
+                    }}
                     disabled={loadingPeriod !== null}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-50 text-sm font-medium"
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
+                      loadingPeriod 
+                        ? 'bg-blue-600 text-white border border-blue-600 cursor-wait' 
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                    } disabled:opacity-50`}
                   >
                     <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
-                    <span>Odśwież</span>
+                    <span>{loadingPeriod ? 'Odświeżanie...' : 'Odśwież'}</span>
                   </button>
                   
                   {selectedReport && selectedReport.campaigns.length > 0 && (
@@ -3946,9 +4167,11 @@ function ReportsPageContent() {
                 {selectedReport && selectedReport.campaigns && selectedReport.campaigns.length > 0 && (
                   <div className="mt-8">
                     <GoogleAdsExpandableCampaignTable
-                      campaigns={selectedReport.campaigns.map((campaign: any) => ({
-                        campaignId: campaign.campaign_id || '',
-                        campaignName: campaign.campaign_name || 'Unknown Campaign',
+                      campaigns={selectedReport.campaigns
+                        .filter((campaign: any) => (campaign.spend || 0) > 0) // 🔧 FIX: Only pass campaigns with spend
+                        .map((campaign: any, idx: number) => ({
+                        campaignId: campaign.campaign_id || campaign.campaignId || String(idx),
+                        campaignName: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
                         status: campaign.status || 'ACTIVE',
                         spend: campaign.spend || 0,
                         impressions: campaign.impressions || 0,

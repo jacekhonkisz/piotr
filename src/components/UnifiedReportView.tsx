@@ -203,7 +203,7 @@ const CombinedSummary: React.FC<{ totals: PlatformTotals; currency: string }> = 
         </div>
 
         <div className="bg-white/10 rounded-lg p-4 text-center">
-          <div className="text-2xl font-bold">{totals.averageCtr.toFixed(2)}%</div>
+          <div className="text-2xl font-bold">{(totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0).toFixed(2)}%</div>
           <div className="text-sm opacity-75">Średni CTR</div>
         </div>
 
@@ -493,7 +493,7 @@ export default function UnifiedReportView({
             <h4 className="font-semibold mb-2 text-blue-600">Meta Ads Performance</h4>
             <ul className="space-y-2 text-sm">
               <li>• {report.metaCampaigns.length} aktywnych kampanii</li>
-              <li>• Średni CTR: {report.totals.meta.averageCtr.toFixed(2)}%</li>
+              <li>• Średni CTR: {(report.totals.meta.totalImpressions > 0 ? (report.totals.meta.totalClicks / report.totals.meta.totalImpressions) * 100 : 0).toFixed(2)}%</li>
               <li>• Łączne wydatki: {new Intl.NumberFormat('pl-PL', { style: 'currency', currency }).format(report.totals.meta.totalSpend)}</li>
               <li>• Rezerwacje: {report.totals.meta.totalReservations}</li>
             </ul>

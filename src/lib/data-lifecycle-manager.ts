@@ -488,45 +488,50 @@ export class DataLifecycleManager {
   /**
    * Archive Google Ads monthly cache data to campaign_summaries
    * NEW METHOD - handles Google Ads specific data structure
+   * ✅ ENHANCED: Automatically falls back to google_ads_campaigns table if cache has zeros
    */
   private async archiveGoogleAdsMonthlyData(cacheEntry: any): Promise<void> {
     const cacheData = cacheEntry.cache_data;
     const summaryDate = `${cacheEntry.period_id}-01`;
     
-    const summary = {
-      client_id: cacheEntry.client_id,
-      summary_type: 'monthly',
-      summary_date: summaryDate,
-      platform: 'google',  // ✅ EXPLICIT PLATFORM
-      total_spend: cacheData?.stats?.totalSpend || 0,
-      total_impressions: cacheData?.stats?.totalImpressions || 0,
-      total_clicks: cacheData?.stats?.totalClicks || 0,
-      total_conversions: cacheData?.stats?.totalConversions || 0,
-      average_ctr: cacheData?.stats?.averageCtr || 0,
-      average_cpc: cacheData?.stats?.averageCpc || 0,
-      // Google Ads specific conversion metrics
-      click_to_call: cacheData?.conversionMetrics?.click_to_call || 0,
-      email_contacts: cacheData?.conversionMetrics?.email_contacts || 0,
-      booking_step_1: cacheData?.conversionMetrics?.booking_step_1 || 0,
-      booking_step_2: cacheData?.conversionMetrics?.booking_step_2 || 0,
-      booking_step_3: cacheData?.conversionMetrics?.booking_step_3 || 0,
-      reservations: cacheData?.conversionMetrics?.reservations || 0,
-      reservation_value: cacheData?.conversionMetrics?.reservation_value || 0,
-      // Calculate CPA and ROAS
-      average_cpa: cacheData?.conversionMetrics?.reservations > 0 
-        ? (cacheData?.stats?.totalSpend || 0) / cacheData.conversionMetrics.reservations 
-        : 0,
-      roas: (cacheData?.stats?.totalSpend || 0) > 0 
-        ? (cacheData?.conversionMetrics?.reservation_value || 0) / cacheData.stats.totalSpend 
-        : 0,
-      active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ENABLED').length || 0,
-      total_campaigns: cacheData?.campaigns?.length || 0,
-      campaign_data: cacheData?.campaigns || [],
-      // Google Ads has googleAdsTables instead of metaTables
-      google_ads_tables: cacheData?.googleAdsTables || null,
-      data_source: 'google_ads_smart_cache_archive',
-      last_updated: new Date().toISOString()
-    };
+    // 🔍 DATA QUALITY CHECK: Detect if cache has zeros but campaigns exist
+    const cacheSpend = cacheData?.stats?.totalSpend || 0;
+    const cacheCampaigns = cacheData?.campaigns || [];
+    const hasCampaigns = cacheCampaigns.length > 0;
+    const cacheHasZeros = cacheSpend === 0 && hasCampaigns;
+    
+    let summary: any;
+    let dataSource = 'google_ads_smart_cache_archive';
+    
+    // ✅ FALLBACK: If cache has zeros, try to get data from google_ads_campaigns table
+    if (cacheHasZeros) {
+      logger.warn(`⚠️ Cache has zeros for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}. Attempting fallback to google_ads_campaigns table...`);
+      
+      try {
+        const fallbackData = await this.getGoogleAdsDataFromCampaignsTable(
+          cacheEntry.client_id,
+          summaryDate,
+          'monthly'
+        );
+        
+        if (fallbackData && fallbackData.total_spend > 0) {
+          logger.info(`✅ Fallback successful: Found ${fallbackData.total_spend} spend in google_ads_campaigns table`);
+          summary = fallbackData;
+          dataSource = 'google_ads_campaigns_fallback_archive';
+        } else {
+          logger.warn(`⚠️ Fallback found no data in google_ads_campaigns table, using cache data (zeros)`);
+          // Continue with cache data (zeros)
+          summary = this.buildGoogleAdsMonthlySummary(cacheEntry, cacheData, summaryDate, dataSource);
+        }
+      } catch (fallbackError) {
+        logger.error(`❌ Fallback failed:`, fallbackError);
+        // Continue with cache data (zeros)
+        summary = this.buildGoogleAdsMonthlySummary(cacheEntry, cacheData, summaryDate, dataSource);
+      }
+    } else {
+      // ✅ Cache has real data, use it
+      summary = this.buildGoogleAdsMonthlySummary(cacheEntry, cacheData, summaryDate, dataSource);
+    }
 
     const { error } = await supabase
       .from('campaign_summaries')
@@ -538,12 +543,224 @@ export class DataLifecycleManager {
       throw new Error(`Failed to archive Google Ads monthly summary: ${error.message}`);
     }
 
-    logger.info(`💾 Archived Google Ads monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Archived Google Ads monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id} (source: ${dataSource})`);
+  }
+
+  /**
+   * Build Google Ads monthly summary from cache data
+   */
+  private buildGoogleAdsMonthlySummary(cacheEntry: any, cacheData: any, summaryDate: string, dataSource: string): any {
+    return {
+      client_id: cacheEntry.client_id,
+      summary_type: 'monthly',
+      summary_date: summaryDate,
+      platform: 'google',
+      total_spend: cacheData?.stats?.totalSpend || 0,
+      total_impressions: cacheData?.stats?.totalImpressions || 0,
+      total_clicks: cacheData?.stats?.totalClicks || 0,
+      total_conversions: cacheData?.stats?.totalConversions || 0,
+      average_ctr: cacheData?.stats?.averageCtr || 0,
+      average_cpc: cacheData?.stats?.averageCpc || 0,
+      click_to_call: cacheData?.conversionMetrics?.click_to_call || 0,
+      email_contacts: cacheData?.conversionMetrics?.email_contacts || 0,
+      booking_step_1: cacheData?.conversionMetrics?.booking_step_1 || 0,
+      booking_step_2: cacheData?.conversionMetrics?.booking_step_2 || 0,
+      booking_step_3: cacheData?.conversionMetrics?.booking_step_3 || 0,
+      reservations: cacheData?.conversionMetrics?.reservations || 0,
+      reservation_value: cacheData?.conversionMetrics?.reservation_value || 0,
+      average_cpa: cacheData?.conversionMetrics?.reservations > 0 
+        ? (cacheData?.stats?.totalSpend || 0) / cacheData.conversionMetrics.reservations 
+        : 0,
+      roas: (cacheData?.stats?.totalSpend || 0) > 0 
+        ? (cacheData?.conversionMetrics?.reservation_value || 0) / cacheData.stats.totalSpend 
+        : 0,
+      active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ENABLED').length || 0,
+      total_campaigns: cacheData?.campaigns?.length || 0,
+      campaign_data: cacheData?.campaigns || [],
+      google_ads_tables: cacheData?.googleAdsTables || null,
+      data_source: dataSource,
+      last_updated: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Get Google Ads data from google_ads_campaigns table as fallback
+   * Used when cache has zeros but campaigns exist
+   */
+  private async getGoogleAdsDataFromCampaignsTable(
+    clientId: string,
+    summaryDate: string,
+    summaryType: 'monthly' | 'weekly'
+  ): Promise<any | null> {
+    // Calculate date range from summary date
+    const startDate = summaryDate; // e.g., '2025-12-01' for monthly, '2025-12-01' for weekly start
+    let endDate: string;
+    
+    if (summaryType === 'monthly') {
+      // Get last day of month
+      const date = new Date(startDate);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const lastDay = new Date(year, month, 0).getDate();
+      endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    } else {
+      // For weekly, calculate week end date (6 days after start)
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + 6);
+      endDate = date.toISOString().split('T')[0];
+    }
+
+    // Query google_ads_campaigns table for spend/impressions/clicks
+    const { data: campaigns, error: campaignsError } = await supabase
+      .from('google_ads_campaigns')
+      .select('*')
+      .eq('client_id', clientId)
+      .gte('date_range_start', startDate)
+      .lte('date_range_start', endDate);
+
+    if (campaignsError) {
+      logger.error(`❌ Failed to query google_ads_campaigns table:`, campaignsError);
+      return null;
+    }
+
+    if (!campaigns || campaigns.length === 0) {
+      logger.info(`📝 No campaigns found in google_ads_campaigns table for period ${startDate} to ${endDate}`);
+      return null;
+    }
+
+    // Query daily_kpi_data for conversion metrics (more reliable source)
+    const { data: dailyKpiData, error: kpiError } = await supabase
+      .from('daily_kpi_data')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('platform', 'google')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (kpiError) {
+      logger.warn(`⚠️ Failed to query daily_kpi_data table:`, kpiError);
+    }
+
+    // Aggregate data from campaigns (for spend, impressions, clicks)
+    const aggregated = campaigns.reduce((acc, campaign: any) => {
+      acc.total_spend += parseFloat(campaign.spend || 0);
+      acc.total_impressions += parseInt(campaign.impressions || 0);
+      acc.total_clicks += parseInt(campaign.clicks || 0);
+      acc.total_conversions += parseInt(campaign.form_submissions || 0) + parseInt(campaign.phone_calls || 0);
+      // Use campaign conversions as fallback if daily_kpi_data not available
+      acc.booking_step_1_campaigns += parseInt(campaign.booking_step_1 || 0);
+      acc.booking_step_2_campaigns += parseInt(campaign.booking_step_2 || 0);
+      acc.booking_step_3_campaigns += parseInt(campaign.booking_step_3 || 0);
+      acc.reservations_campaigns += parseInt(campaign.reservations || 0);
+      acc.reservation_value_campaigns += parseFloat(campaign.reservation_value || 0);
+      return acc;
+    }, {
+      total_spend: 0,
+      total_impressions: 0,
+      total_clicks: 0,
+      total_conversions: 0,
+      booking_step_1_campaigns: 0,
+      booking_step_2_campaigns: 0,
+      booking_step_3_campaigns: 0,
+      reservations_campaigns: 0,
+      reservation_value_campaigns: 0
+    });
+
+    // Aggregate conversion metrics from daily_kpi_data (preferred source)
+    const conversionMetrics = dailyKpiData ? dailyKpiData.reduce((acc, day: any) => {
+      acc.booking_step_1 += parseInt(day.booking_step_1 || 0);
+      acc.booking_step_2 += parseInt(day.booking_step_2 || 0);
+      acc.booking_step_3 += parseInt(day.booking_step_3 || 0);
+      acc.reservations += parseInt(day.reservations || 0);
+      acc.reservation_value += parseFloat(day.reservation_value || 0);
+      acc.click_to_call += parseInt(day.click_to_call || 0);
+      acc.email_contacts += parseInt(day.email_contacts || 0);
+      return acc;
+    }, {
+      booking_step_1: 0,
+      booking_step_2: 0,
+      booking_step_3: 0,
+      reservations: 0,
+      reservation_value: 0,
+      click_to_call: 0,
+      email_contacts: 0
+    }) : null;
+
+    // Use daily_kpi_data if available, otherwise fallback to campaigns
+    const finalConversions = {
+      booking_step_1: conversionMetrics?.booking_step_1 || aggregated.booking_step_1_campaigns,
+      booking_step_2: conversionMetrics?.booking_step_2 || aggregated.booking_step_2_campaigns,
+      booking_step_3: conversionMetrics?.booking_step_3 || aggregated.booking_step_3_campaigns,
+      reservations: conversionMetrics?.reservations || aggregated.reservations_campaigns,
+      reservation_value: conversionMetrics?.reservation_value || aggregated.reservation_value_campaigns,
+      click_to_call: conversionMetrics?.click_to_call || 0,
+      email_contacts: conversionMetrics?.email_contacts || 0
+    };
+
+    // Calculate derived metrics
+    const average_ctr = aggregated.total_impressions > 0 
+      ? (aggregated.total_clicks / aggregated.total_impressions) * 100 
+      : 0;
+    const average_cpc = aggregated.total_clicks > 0 
+      ? aggregated.total_spend / aggregated.total_clicks 
+      : 0;
+    const average_cpa = finalConversions.reservations > 0 
+      ? aggregated.total_spend / finalConversions.reservations 
+      : 0;
+    const roas = aggregated.total_spend > 0 && finalConversions.reservation_value > 0
+      ? finalConversions.reservation_value / aggregated.total_spend
+      : 0;
+
+    // Build campaign data array
+    const campaign_data = campaigns.map((campaign: any) => ({
+      campaignId: campaign.campaign_id,
+      campaignName: campaign.campaign_name,
+      status: campaign.status,
+      spend: parseFloat(campaign.spend || 0),
+      impressions: parseInt(campaign.impressions || 0),
+      clicks: parseInt(campaign.clicks || 0),
+      cpc: parseFloat(campaign.cpc || 0),
+      ctr: parseFloat(campaign.ctr || 0),
+      booking_step_1: parseInt(campaign.booking_step_1 || 0),
+      booking_step_2: parseInt(campaign.booking_step_2 || 0),
+      booking_step_3: parseInt(campaign.booking_step_3 || 0),
+      reservations: parseInt(campaign.reservations || 0),
+      reservation_value: parseFloat(campaign.reservation_value || 0),
+      roas: parseFloat(campaign.roas || 0)
+    }));
+
+    return {
+      client_id: clientId,
+      summary_type: summaryType,
+      summary_date: summaryDate,
+      platform: 'google',
+      total_spend: aggregated.total_spend,
+      total_impressions: aggregated.total_impressions,
+      total_clicks: aggregated.total_clicks,
+      total_conversions: aggregated.total_conversions,
+      average_ctr,
+      average_cpc,
+      average_cpa,
+      booking_step_1: finalConversions.booking_step_1,
+      booking_step_2: finalConversions.booking_step_2,
+      booking_step_3: finalConversions.booking_step_3,
+      reservations: finalConversions.reservations,
+      reservation_value: finalConversions.reservation_value,
+      click_to_call: finalConversions.click_to_call,
+      email_contacts: finalConversions.email_contacts,
+      roas,
+      active_campaigns: campaigns.filter((c: any) => c.status === 'ENABLED').length,
+      total_campaigns: campaigns.length,
+      campaign_data,
+      data_source: 'google_ads_campaigns_fallback_archive',
+      last_updated: new Date().toISOString()
+    };
   }
 
   /**
    * Archive Google Ads weekly cache data to campaign_summaries
    * NEW METHOD - handles Google Ads specific data structure
+   * ✅ ENHANCED: Automatically falls back to google_ads_campaigns table if cache has zeros
    */
   private async archiveGoogleAdsWeeklyData(cacheEntry: any): Promise<void> {
     const cacheData = cacheEntry.cache_data;
@@ -552,6 +769,62 @@ export class DataLifecycleManager {
     const cachedStartDate = cacheData?.period?.startDate;
     const summaryDate: string = typeof cachedStartDate === 'string' ? cachedStartDate : this.getWeekStartDate(cacheEntry.period_id);
     
+    // 🔍 DATA QUALITY CHECK: Detect if cache has zeros but campaigns exist
+    const cacheSpend = cacheData?.stats?.totalSpend || 0;
+    const cacheCampaigns = cacheData?.campaigns || [];
+    const hasCampaigns = cacheCampaigns.length > 0;
+    const cacheHasZeros = cacheSpend === 0 && hasCampaigns;
+    
+    let summary: any;
+    let dataSource = 'google_ads_smart_cache_archive';
+    
+    // ✅ FALLBACK: If cache has zeros, try to get data from google_ads_campaigns table
+    if (cacheHasZeros) {
+      logger.warn(`⚠️ Cache has zeros for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}. Attempting fallback to google_ads_campaigns table...`);
+      
+      try {
+        const fallbackData = await this.getGoogleAdsDataFromCampaignsTable(
+          cacheEntry.client_id,
+          summaryDate,
+          'weekly'
+        );
+        
+        if (fallbackData && fallbackData.total_spend > 0) {
+          logger.info(`✅ Fallback successful: Found ${fallbackData.total_spend} spend in google_ads_campaigns table`);
+          summary = fallbackData;
+          dataSource = 'google_ads_campaigns_fallback_archive';
+        } else {
+          logger.warn(`⚠️ Fallback found no data in google_ads_campaigns table, using cache data (zeros)`);
+          // Continue with cache data (zeros)
+          summary = this.buildGoogleAdsWeeklySummary(cacheEntry, cacheData, summaryDate, dataSource);
+        }
+      } catch (fallbackError) {
+        logger.error(`❌ Fallback failed:`, fallbackError);
+        // Continue with cache data (zeros)
+        summary = this.buildGoogleAdsWeeklySummary(cacheEntry, cacheData, summaryDate, dataSource);
+      }
+    } else {
+      // ✅ Cache has real data, use it
+      summary = this.buildGoogleAdsWeeklySummary(cacheEntry, cacheData, summaryDate, dataSource);
+    }
+
+    const { error } = await supabase
+      .from('campaign_summaries')
+      .upsert(summary, {
+        onConflict: 'client_id,summary_type,summary_date,platform'
+      });
+
+    if (error) {
+      throw new Error(`Failed to archive Google Ads weekly summary: ${error.message}`);
+    }
+
+    logger.info(`💾 Archived Google Ads weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id} (source: ${dataSource})`);
+  }
+
+  /**
+   * Build Google Ads weekly summary from cache data
+   */
+  private buildGoogleAdsWeeklySummary(cacheEntry: any, cacheData: any, summaryDate: string, dataSource: string): any {
     // Calculate conversion metrics from Google Ads campaign data
     const campaigns = cacheData?.campaigns || [];
     const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
@@ -583,19 +856,11 @@ export class DataLifecycleManager {
       ? conversionTotals.total_spend / conversionTotals.reservations 
       : 0;
 
-    logger.info(`📊 Google Ads weekly archive conversion metrics calculated:`, {
-      client_id: cacheEntry.client_id,
-      period: cacheEntry.period_id,
-      conversionTotals,
-      roas,
-      cost_per_reservation
-    });
-    
-    const summary = {
+    return {
       client_id: cacheEntry.client_id,
       summary_type: 'weekly',
       summary_date: summaryDate,
-      platform: 'google',  // ✅ EXPLICIT PLATFORM
+      platform: 'google',
       total_spend: cacheData?.stats?.totalSpend || 0,
       total_impressions: cacheData?.stats?.totalImpressions || 0,
       total_clicks: cacheData?.stats?.totalClicks || 0,
@@ -607,8 +872,7 @@ export class DataLifecycleManager {
       total_campaigns: cacheData?.campaigns?.length || 0,
       campaign_data: cacheData?.campaigns || [],
       google_ads_tables: cacheData?.googleAdsTables || null,
-      data_source: 'google_ads_smart_cache_archive',
-      // Add aggregated conversion metrics
+      data_source: dataSource,
       click_to_call: conversionTotals.click_to_call,
       email_contacts: conversionTotals.email_contacts,
       booking_step_1: conversionTotals.booking_step_1,
@@ -620,19 +884,6 @@ export class DataLifecycleManager {
       cost_per_reservation: cost_per_reservation,
       last_updated: new Date().toISOString()
     };
-
-    const { error } = await supabase
-      .from('campaign_summaries')
-      .upsert(summary, {
-        onConflict: 'client_id,summary_type,summary_date,platform'
-      });
-
-    if (error) {
-      throw new Error(`Failed to archive Google Ads weekly summary: ${error.message}`);
-    }
-
-    logger.info(`💾 Archived Google Ads weekly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
-    logger.info(`💾 Google Ads conversion metrics: ${conversionTotals.reservations} reservations, ${conversionTotals.reservation_value} value, ${roas.toFixed(2)} ROAS`);
   }
 
   /**
