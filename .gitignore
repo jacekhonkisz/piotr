@@ -135,4 +135,5 @@ temp/
 *.ntvs*
 *.njsproj
 *.sln
-*.sw? 
+*.sw? check-all-client-tokens.js
+check-manager-token.js

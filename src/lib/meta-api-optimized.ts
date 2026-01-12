@@ -447,6 +447,41 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Get account-level insights with overall summary metrics
+   * Returns overall CTR/CPC directly from API instead of recalculating
+   */
+  async getAccountInsights(adAccountId: string, dateStart: string, dateEnd: string): Promise<any | null> {
+    const endpoint = `act_${adAccountId}/insights`;
+    // ✅ Fetch account-level insights to get overall CTR/CPC directly from API
+    const params = `level=account&time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=spend,impressions,clicks,inline_link_clicks,ctr,inline_link_click_ctr,cpc,cost_per_inline_link_click,cpm,cpp,reach,frequency,conversions`;
+    const cacheKey = this.getCacheKey(endpoint, params);
+
+    // Check cache first
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for account insights');
+      return cached;
+    }
+
+    logger.info(`Meta API: Fetching account-level insights from API for ${dateStart} to ${dateEnd}`);
+    
+    const url = `${this.baseUrl}/${endpoint}?${params}&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.warn('Meta API: Account insights fetch failed (may not be supported), will use campaign aggregation:', response.error);
+      return null;
+    }
+
+    const insights = response.data?.[0] || null;
+    if (insights) {
+      this.setCachedResponse(cacheKey, insights);
+      logger.info('Meta API: Fetched account-level insights with overall CTR/CPC from API');
+    }
+    return insights;
+  }
+
+  /**
    * Get campaign insights with performance metrics
    */
   async getCampaignInsights(adAccountId: string, dateStart: string, dateEnd: string, timeIncrement?: number): Promise<any[]> {

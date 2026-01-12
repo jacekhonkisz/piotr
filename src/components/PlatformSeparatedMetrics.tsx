@@ -139,15 +139,19 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             />
             <MetricCard
               title="Współczynnik kliknięć z linku"
-              value={`${(metaData.stats.totalImpressions > 0 ? (metaData.stats.totalClicks / metaData.stats.totalImpressions) * 100 : 0).toFixed(2)}%`}
-              subtitle="Meta Ads"
+              value={`${(metaData.stats.averageCtr !== undefined && metaData.stats.averageCtr !== null
+                ? metaData.stats.averageCtr
+                : (metaData.stats.totalImpressions > 0 ? (metaData.stats.totalClicks / metaData.stats.totalImpressions) * 100 : 0)).toFixed(2)}%`}
+              subtitle="Meta Ads (z API)"
               icon={<Target className="w-5 h-5 text-blue-600" />}
               color="bg-blue-50"
             />
             <MetricCard
               title="Koszt kliknięcia linku"
-              value={formatCurrency(metaData.stats.totalClicks > 0 ? metaData.stats.totalSpend / metaData.stats.totalClicks : 0)}
-              subtitle="Meta Ads"
+              value={formatCurrency(metaData.stats.averageCpc !== undefined && metaData.stats.averageCpc !== null
+                ? metaData.stats.averageCpc
+                : (metaData.stats.totalClicks > 0 ? metaData.stats.totalSpend / metaData.stats.totalClicks : 0))}
+              subtitle="Meta Ads (z API)"
               icon={<DollarSign className="w-5 h-5 text-blue-600" />}
               color="bg-blue-50"
             />

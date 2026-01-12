@@ -2321,13 +2321,15 @@ function ReportsPageContent() {
           offline_value: 0
         },
         // ✅ FIX: Store stats for Google Ads conversions (use stats.totalConversions instead of summing campaign.conversions)
+        // ✅ CRITICAL: Preserve undefined for averageCtr/averageCpc so components can check for existence (including 0)
         stats: data.data?.stats ? {
           totalSpend: data.data.stats.totalSpend || 0,
           totalImpressions: data.data.stats.totalImpressions || 0,
           totalClicks: data.data.stats.totalClicks || 0,
           totalConversions: data.data.stats.totalConversions || 0, // ✅ For Google Ads: this is metrics.conversions
-          averageCtr: data.data.stats.averageCtr || 0,
-          averageCpc: data.data.stats.averageCpc || 0
+          // ✅ Preserve API values as-is (including 0) so components can check for existence
+          averageCtr: data.data.stats.averageCtr !== undefined && data.data.stats.averageCtr !== null ? data.data.stats.averageCtr : undefined,
+          averageCpc: data.data.stats.averageCpc !== undefined && data.data.stats.averageCpc !== null ? data.data.stats.averageCpc : undefined
         } : undefined,
         // 🔧 FIX: Include Google Ads tables data to avoid duplicate API calls
         googleAdsTables: data.data?.googleAdsTables || null
@@ -3357,13 +3359,49 @@ function ReportsPageContent() {
       });
     }
     
-    // Calculate derived metrics
-    const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-    const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+    // ✅ USE API VALUES DIRECTLY if available (from account-level insights), otherwise calculate
+    // For Meta Ads: Use stats.averageCtr and stats.averageCpc from API
+    // ✅ FIX: Check for existence (including 0) using !== undefined, not truthiness
+    const hasApiCtr = activeAdsProvider === 'meta' && selectedReport.stats?.averageCtr !== undefined && selectedReport.stats?.averageCtr !== null;
+    const hasApiCpc = activeAdsProvider === 'meta' && selectedReport.stats?.averageCpc !== undefined && selectedReport.stats?.averageCpc !== null;
+    
+    console.log('🔍 CTR/CPC Calculation Debug:', {
+      activeAdsProvider,
+      hasStats: !!selectedReport.stats,
+      averageCtr: selectedReport.stats?.averageCtr,
+      averageCpc: selectedReport.stats?.averageCpc,
+      hasApiCtr,
+      hasApiCpc,
+      calculatedCtr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+      calculatedCpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+      usingApiValues: hasApiCtr && hasApiCpc
+    });
+    
+    const ctr = hasApiCtr 
+      ? selectedReport.stats.averageCtr 
+      : (totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0);
+    const cpc = hasApiCpc 
+      ? selectedReport.stats.averageCpc 
+      : (totals.clicks > 0 ? totals.spend / totals.clicks : 0);
     const cpa = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
 
-    const result = { ...totals, ctr, cpc, cpa };
+    // ✅ CRITICAL: Include averageCtr and averageCpc in result so components can use API values directly
+    const result = { 
+      ...totals, 
+      ctr, 
+      cpc, 
+      cpa,
+      // ✅ Always include API values if available (even if 0), so components can check for existence
+      averageCtr: hasApiCtr ? selectedReport.stats.averageCtr : undefined,
+      averageCpc: hasApiCpc ? selectedReport.stats.averageCpc : undefined,
+      // Also include calculated values for fallback
+      totalSpend: totals.spend,
+      totalImpressions: totals.impressions,
+      totalClicks: totals.clicks,
+      totalConversions: totals.conversions
+    };
     console.log('📊 Calculated totals:', result);
+    console.log('✅ API Values included:', { averageCtr: result.averageCtr, averageCpc: result.averageCpc });
     return result;
   };
 

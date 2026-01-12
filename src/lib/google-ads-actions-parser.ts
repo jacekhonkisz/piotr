@@ -20,6 +20,7 @@ export interface ParsedConversionMetrics {
   booking_step_3: number;
   reservations: number;
   reservation_value: number;
+  total_conversion_value?: number; // ✅ Total conversion value (all_conversions_value) - "Wartość konwersji" from Google Ads
 }
 
 /**
@@ -48,6 +49,7 @@ export function parseGoogleAdsConversions(
     booking_step_3: 0,
     reservations: 0,
     reservation_value: 0,
+    total_conversion_value: 0, // ✅ Will be set from all_conversions_value aggregation
   };
 
   // Validate inputs
@@ -88,28 +90,43 @@ export function parseGoogleAdsConversions(
       }
       
       // ✅ BOOKING STEP 1
-      // Matches: "Step 1 w BE", "step 1 w be", "booking step 1", etc.
+      // Matches: "Step 1 w BE", "step 1 w be", "booking step 1", "pierwszy krok", "1 krok", etc.
       if (conversionName.includes('step 1') || 
           conversionName.includes('step1') ||
           conversionName.includes('krok 1') ||
+          conversionName.includes('1 krok') ||
+          conversionName.includes('pierwszy krok') ||
+          conversionName.includes('pierwszy_krok') ||
+          conversionName.includes('1 krok silnik') ||
+          conversionName.includes('1 krok rezerwacyjny') ||
           conversionName.includes('booking_step_1')) {
         metrics.booking_step_1 += conversions;
       }
       
       // ✅ BOOKING STEP 2
-      // Matches: "Step 2 w BE", "step 2 w be", "booking step 2", etc.
+      // Matches: "Step 2 w BE", "step 2 w be", "booking step 2", "drugi krok", "2 krok", etc.
       if (conversionName.includes('step 2') || 
           conversionName.includes('step2') ||
           conversionName.includes('krok 2') ||
+          conversionName.includes('2 krok') ||
+          conversionName.includes('drugi krok') ||
+          conversionName.includes('drugi_krok') ||
+          conversionName.includes('2 krok silnik') ||
+          conversionName.includes('2 krok rezerwacyjny') ||
           conversionName.includes('booking_step_2')) {
         metrics.booking_step_2 += conversions;
       }
       
       // ✅ BOOKING STEP 3
-      // Matches: "Step 3 w BE", "step 3 w be", "booking step 3", etc.
+      // Matches: "Step 3 w BE", "step 3 w be", "booking step 3", "trzeci krok", "3 krok", etc.
       if (conversionName.includes('step 3') || 
           conversionName.includes('step3') ||
           conversionName.includes('krok 3') ||
+          conversionName.includes('3 krok') ||
+          conversionName.includes('trzeci krok') ||
+          conversionName.includes('trzeci_krok') ||
+          conversionName.includes('3 krok silnik') ||
+          conversionName.includes('3 krok rezerwacyjny') ||
           conversionName.includes('booking_step_3')) {
         metrics.booking_step_3 += conversions;
       }

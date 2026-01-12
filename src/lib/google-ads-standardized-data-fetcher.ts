@@ -96,19 +96,34 @@ export class GoogleAdsStandardizedDataFetcher {
     const startYear = startDate.getFullYear();
     const startMonth = startDate.getMonth() + 1;
     
-    const isCurrentPeriod = startYear === currentYear && startMonth === currentMonth;
-    const includesCurrentDay = dateRange.end >= today;
+    // ✅ FIX: Detect if this is a weekly request (7 days or less)
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const isWeeklyRequest = daysDiff <= 7;
+    
+    // ✅ FIX: Check if current WEEK (not just current month)
+    let isCurrentPeriod = false;
+    if (isWeeklyRequest) {
+      // For weekly: Check if endDate >= today (includes current week)
+      isCurrentPeriod = dateRange.end >= today;
+    } else {
+      // For monthly: Check if it's current month
+      isCurrentPeriod = startYear === currentYear && startMonth === currentMonth;
+    }
     
     // ✅ CRITICAL FIX: Match Meta logic - only current period uses cache
     // Removed isRecentPeriod check to prevent using stale cache for past months
     const needsLiveData = isCurrentPeriod;
     
     console.log('🎯 GOOGLE ADS PERIOD CLASSIFICATION:', {
+      isWeeklyRequest,
       isCurrentPeriod,
       needsLiveData,
+      daysDiff,
       dateRange,
       reason,
-      note: 'Now matches Meta logic - only current period uses cache'
+      note: isWeeklyRequest 
+        ? 'Weekly request - will use weekly cache if current week'
+        : 'Monthly request - will use monthly cache if current month'
     });
 
     const dataSources: string[] = [];
@@ -116,39 +131,143 @@ export class GoogleAdsStandardizedDataFetcher {
     try {
       // ✅ FIXED Priority 1: Smart cache for CURRENT periods (matches Meta system)
       // ✅ NEW: Skip cache if forceRefresh is true
+      // ✅ FIX: Use weekly cache for weekly requests, monthly cache for monthly requests
       if (needsLiveData && !forceRefresh) {
-        console.log('1️⃣ CURRENT PERIOD: Checking Google Ads smart cache...');
-        dataSources.push('google_ads_smart_cache');
-        
-        const cacheResult = await this.fetchFromGoogleAdsSmartCache(clientId);
-        if (cacheResult.success) {
-          const responseTime = Date.now() - startTime;
+        if (isWeeklyRequest) {
+          console.log('1️⃣ CURRENT WEEK: Checking Google Ads weekly smart cache...');
+          dataSources.push('google_ads_weekly_smart_cache');
           
-          console.log(`✅ SUCCESS: Google Ads smart cache returned data in ${responseTime}ms`);
-          console.log('📊 Smart cache data:', {
-            totalSpend: cacheResult.data?.stats?.totalSpend,
-            campaigns: cacheResult.data?.campaigns?.length || 0
-          });
-          
-          return {
-            success: true,
-            data: cacheResult.data!,
-            debug: {
-              source: 'google-ads-smart-cache',
-              cachePolicy: 'smart-cache-3h-refresh',
-              responseTime,
-              reason,
-              dataSourcePriority: dataSources,
-              periodType: 'current'
-            },
-            validation: {
-              actualSource: 'google_ads_smart_cache',
-              expectedSource: 'google_ads_smart_cache',
-              isConsistent: true
+          // Use weekly smart cache
+          if (typeof window === 'undefined') {
+            // Server-side: Use weekly cache directly
+            const { getGoogleAdsSmartWeekCacheData } = await import('./google-ads-smart-cache-helper');
+            const { getCurrentWeekInfo } = await import('./week-helpers');
+            const currentWeek = getCurrentWeekInfo();
+            
+            const cacheResult = await getGoogleAdsSmartWeekCacheData(clientId, false, currentWeek.periodId);
+            if (cacheResult.success && cacheResult.data) {
+              const responseTime = Date.now() - startTime;
+              
+              console.log(`✅ SUCCESS: Google Ads weekly smart cache returned data in ${responseTime}ms`);
+              console.log('📊 Weekly smart cache data:', {
+                totalSpend: cacheResult.data?.stats?.totalSpend,
+                campaigns: cacheResult.data?.campaigns?.length || 0
+              });
+              
+              return {
+                success: true,
+                data: cacheResult.data,
+                debug: {
+                  source: 'google-ads-weekly-smart-cache',
+                  cachePolicy: 'smart-cache-3h-refresh',
+                  responseTime,
+                  reason,
+                  dataSourcePriority: dataSources,
+                  periodType: 'current-week'
+                },
+                validation: {
+                  actualSource: 'google_ads_weekly_smart_cache',
+                  expectedSource: 'google_ads_weekly_smart_cache',
+                  isConsistent: true
+                }
+              };
+            } else {
+              console.log('⚠️ Weekly smart cache failed for current week, falling back to live API...');
             }
-          };
+          } else {
+            // ✅ FIX: Client-side - Call API endpoint which handles weekly cache server-side
+            // DO NOT fall through to monthly cache!
+            console.log('🌐 Client-side: Redirecting weekly request to API endpoint (handles weekly cache server-side)');
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(
+              process.env.NEXT_PUBLIC_SUPABASE_URL!,
+              process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+            );
+            const { data: { session: clientSession } } = await supabase.auth.getSession();
+            
+            const response = await fetch('/api/fetch-google-ads-live-data', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${clientSession?.access_token || ''}`
+              },
+              body: JSON.stringify({
+                clientId,
+                dateRange,
+                reason: reason || 'google-ads-weekly-smart-cache-client'
+              })
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Google Ads API call failed: ${response.status}`);
+            }
+            
+            const apiResult = await response.json();
+            if (apiResult.success && apiResult.data) {
+              const responseTime = Date.now() - startTime;
+              
+              console.log(`✅ SUCCESS: Google Ads weekly API returned data in ${responseTime}ms`);
+              console.log('📊 Weekly API data:', {
+                totalSpend: apiResult.data?.stats?.totalSpend,
+                campaigns: apiResult.data?.campaigns?.length || 0,
+                source: apiResult.source
+              });
+              
+              return {
+                success: true,
+                data: apiResult.data,
+                debug: {
+                  source: apiResult.source || 'google-ads-weekly-api',
+                  cachePolicy: 'smart-cache-3h-refresh',
+                  responseTime,
+                  reason,
+                  dataSourcePriority: dataSources,
+                  periodType: 'current-week'
+                },
+                validation: {
+                  actualSource: apiResult.source || 'google_ads_weekly_api',
+                  expectedSource: 'google_ads_weekly_smart_cache',
+                  isConsistent: true
+                }
+              };
+            } else {
+              console.log('⚠️ Weekly API call failed, will fall through to live API...');
+            }
+          }
         } else {
-          console.log('⚠️ Smart cache failed for current period, falling back to live API...');
+          console.log('1️⃣ CURRENT MONTH: Checking Google Ads monthly smart cache...');
+          dataSources.push('google_ads_smart_cache');
+          
+          const cacheResult = await this.fetchFromGoogleAdsSmartCache(clientId);
+          if (cacheResult.success) {
+            const responseTime = Date.now() - startTime;
+            
+            console.log(`✅ SUCCESS: Google Ads monthly smart cache returned data in ${responseTime}ms`);
+            console.log('📊 Monthly smart cache data:', {
+              totalSpend: cacheResult.data?.stats?.totalSpend,
+              campaigns: cacheResult.data?.campaigns?.length || 0
+            });
+            
+            return {
+              success: true,
+              data: cacheResult.data!,
+              debug: {
+                source: 'google-ads-smart-cache',
+                cachePolicy: 'smart-cache-3h-refresh',
+                responseTime,
+                reason,
+                dataSourcePriority: dataSources,
+                periodType: 'current-month'
+              },
+              validation: {
+                actualSource: 'google_ads_smart_cache',
+                expectedSource: 'google_ads_smart_cache',
+                isConsistent: true
+              }
+            };
+          } else {
+            console.log('⚠️ Monthly smart cache failed for current period, falling back to live API...');
+          }
         }
       }
 
@@ -193,11 +312,44 @@ export class GoogleAdsStandardizedDataFetcher {
               }
             };
           } else {
-            console.log('⚠️ campaign_summaries has no data, trying live API...');
+            // ✅ FIX: For historical periods, if database has no data, return error instead of calling API
+            console.log('⚠️ campaign_summaries has no data for historical period');
+            console.log('📚 Historical data must be collected via background collector first');
+            
+            return {
+              success: false,
+              error: `No historical data available for ${dateRange.start} to ${dateRange.end}. Please run weekly data collection first.`,
+              debug: {
+                source: 'campaign-summaries-database',
+                cachePolicy: 'database-first-historical',
+                responseTime: Date.now() - startTime,
+                reason,
+                dataSourcePriority: dataSources,
+                periodType: 'historical',
+                note: 'Historical data should be collected via background collector'
+              }
+            };
           }
-        } else {
-          console.log('⚠️ No database summaries found for historical period, trying live API...');
-        }
+          } else {
+            // ✅ FIX: For historical periods, if database has no data, return error instead of calling API
+            // Historical data should be collected via background collector, not live API
+            console.log('⚠️ No database summaries found for historical period');
+            console.log('📚 Historical data must be collected via background collector first');
+            
+            return {
+              success: false,
+              error: `No historical data available for ${dateRange.start} to ${dateRange.end}. Please run weekly data collection first.`,
+              debug: {
+                source: 'campaign-summaries-database',
+                cachePolicy: 'database-first-historical',
+                responseTime: Date.now() - startTime,
+                reason,
+                dataSourcePriority: dataSources,
+                periodType: 'historical',
+                note: 'Historical data should be collected via background collector'
+              }
+            };
+          }
       }
 
       // ✅ Priority 3: Live Google Ads API call (fallback for both current and historical)
@@ -341,14 +493,59 @@ export class GoogleAdsStandardizedDataFetcher {
     dateRange: { start: string; end: string }
   ): Promise<Partial<GoogleAdsStandardizedDataResult>> {
     
-    const { data: summaries, error } = await supabase
-      .from('campaign_summaries')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('platform', 'google')
-      .gte('summary_date', dateRange.start)
-      .lte('summary_date', dateRange.end)
-      .order('summary_date', { ascending: true });
+    // ✅ FIX: Detect if this is a weekly request (7 days or less)
+    const startDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const isWeeklyRequest = daysDiff <= 7;
+    
+    let summaries;
+    let error;
+    
+    if (isWeeklyRequest) {
+      // ✅ FIX: For weekly requests, use exact Monday matching (same as other fetchers)
+      const { getMondayOfWeek, formatDateISO } = await import('./week-helpers');
+      const weekMonday = getMondayOfWeek(startDate);
+      const weekMondayStr = formatDateISO(weekMonday);
+      
+      console.log(`📅 Searching for weekly Google Ads data:`, {
+        requestedRange: `${dateRange.start} to ${dateRange.end}`,
+        calculatedMonday: weekMondayStr,
+        note: 'Weekly data is stored with summary_date = Monday (ISO 8601)'
+      });
+      
+      const { data: weeklyResults, error: weeklyError } = await supabase
+        .from('campaign_summaries')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('platform', 'google')
+        .eq('summary_type', 'weekly')
+        .eq('summary_date', weekMondayStr)  // ✅ EXACT MATCH on Monday
+        .limit(1);
+      
+      summaries = weeklyResults;
+      error = weeklyError;
+      
+      if (summaries && summaries.length > 0) {
+        console.log(`✅ Found weekly Google Ads data for week starting ${weekMondayStr}`);
+      } else {
+        console.log(`⚠️ No weekly Google Ads data found for week starting ${weekMondayStr}`);
+      }
+    } else {
+      // For monthly requests, use date range query
+      const { data: monthlyResults, error: monthlyError } = await supabase
+        .from('campaign_summaries')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('platform', 'google')
+        .eq('summary_type', 'monthly')
+        .gte('summary_date', dateRange.start)
+        .lte('summary_date', dateRange.end)
+        .order('summary_date', { ascending: true });
+      
+      summaries = monthlyResults;
+      error = monthlyError;
+    }
       
     if (error || !summaries || summaries.length === 0) {
       console.log('⚠️ No Google Ads database summaries available');
@@ -395,6 +592,7 @@ export class GoogleAdsStandardizedDataFetcher {
       acc.booking_step_3 += (summary as any).booking_step_3 || 0;
       acc.reservations += (summary as any).reservations || 0;
       acc.reservation_value += (summary as any).reservation_value || 0;
+      acc.total_conversion_value += (summary as any).total_conversion_value || 0;
       return acc;
     }, {
       totalSpend: 0,
@@ -407,12 +605,29 @@ export class GoogleAdsStandardizedDataFetcher {
       booking_step_2: 0,
       booking_step_3: 0,
       reservations: 0,
-      reservation_value: 0
+      reservation_value: 0,
+      total_conversion_value: 0
     });
+    
+    // ✅ FIX: Also aggregate total_conversion_value from campaigns if available
+    // This ensures we get "Wartość konwersji" (all_conversions_value) from Google Ads
+    if (allCampaigns.length > 0) {
+      const campaignsTotalConversionValue = allCampaigns.reduce((sum, campaign: any) => {
+        return sum + (campaign.total_conversion_value || 0);
+      }, 0);
+      
+      // Use campaigns' total_conversion_value if it's greater than summary value
+      // (campaigns have the most accurate data from API)
+      if (campaignsTotalConversionValue > aggregated.total_conversion_value) {
+        aggregated.total_conversion_value = campaignsTotalConversionValue;
+      }
+    }
 
     const averageCtr = aggregated.totalImpressions > 0 ? (aggregated.totalClicks / aggregated.totalImpressions) * 100 : 0;
     const averageCpc = aggregated.totalClicks > 0 ? aggregated.totalSpend / aggregated.totalClicks : 0;
-    const roas = aggregated.totalSpend > 0 ? (aggregated.reservation_value / aggregated.totalSpend) * 100 : 0;
+    // ✅ FIX: Use total_conversion_value (wartość konwersji) for ROAS calculation
+    const totalValueForROAS = aggregated.total_conversion_value || aggregated.reservation_value;
+    const roas = aggregated.totalSpend > 0 ? (totalValueForROAS / aggregated.totalSpend) : 0;
     const cost_per_reservation = aggregated.reservations > 0 ? aggregated.totalSpend / aggregated.reservations : 0;
 
     return {
@@ -434,10 +649,10 @@ export class GoogleAdsStandardizedDataFetcher {
           booking_step_3: aggregated.booking_step_3,
           reservations: aggregated.reservations,
           reservation_value: aggregated.reservation_value,
-          // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value for Google Ads)
-          // reservation_value contains "Wartość konwersji" which includes all conversion values
-          conversion_value: aggregated.reservation_value,
-          total_conversion_value: aggregated.reservation_value, // This is what UI displays as "łączna wartość rezerwacji"
+          // ✅ FIX: Use total_conversion_value from campaigns (all_conversions_value from Google Ads)
+          // This is "Wartość konwersji" from Google Ads console - used for "łączna wartość rezerwacji"
+          conversion_value: aggregated.total_conversion_value || aggregated.reservation_value,
+          total_conversion_value: aggregated.total_conversion_value || aggregated.reservation_value, // This is what UI displays as "łączna wartość rezerwacji"
           roas,
           cost_per_reservation,
           reach: 0 // Database summaries don't track reach

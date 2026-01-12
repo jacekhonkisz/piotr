@@ -188,6 +188,33 @@ export async function POST(request: NextRequest) {
               conversions: acc.conversions + (campaign.conversions || 0)
             }), { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
 
+            // ✅ NEW: Try to get account-level insights first to use API values directly
+            let accountInsights: any = null;
+            let averageCtr: number;
+            let averageCpc: number;
+            
+            try {
+              // Clean ad account ID (remove 'act_' prefix if present)
+              const cleanAdAccountId = client.ad_account_id.startsWith('act_') 
+                ? client.ad_account_id.substring(4) 
+                : client.ad_account_id;
+              accountInsights = await metaService.getAccountInsights(cleanAdAccountId, startDate, endDate);
+              if (accountInsights) {
+                logger.info(`✅ Using account-level insights from API for ${client.name} ${monthStr} CTR/CPC`);
+                averageCtr = parseFloat(accountInsights.inline_link_click_ctr || accountInsights.ctr || 0);
+                averageCpc = parseFloat(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
+              } else {
+                // Fallback: Calculate from totals
+                averageCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+                averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+              }
+            } catch (accountError) {
+              logger.warn(`⚠️ Could not fetch account-level insights for ${client.name}, will use calculated values:`, accountError);
+              // Fallback: Calculate from totals
+              averageCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+              averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+            }
+
             // Store in campaign_summaries
             const { error: insertError } = await supabaseAdmin
               .from('campaign_summaries')
@@ -200,8 +227,8 @@ export async function POST(request: NextRequest) {
                 total_impressions: totals.impressions,
                 total_clicks: totals.clicks,
                 total_conversions: totals.conversions,
-                average_ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
-                average_cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+                average_ctr: averageCtr,
+                average_cpc: averageCpc,
                 average_cpa: totals.conversions > 0 ? totals.spend / totals.conversions : 0,
                 active_campaigns: campaigns.filter(c => c.status === 'ACTIVE').length,
                 total_campaigns: campaigns.length,

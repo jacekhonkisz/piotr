@@ -201,8 +201,32 @@ export async function POST(request: NextRequest) {
               reach: acc.reach + (campaign.reach || 0)
             }), { spend: 0, impressions: 0, clicks: 0, conversions: 0, reach: 0 });
 
-            const averageCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-            const averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+            // ✅ NEW: Try to get account-level insights first to use API values directly
+            let accountInsights: any = null;
+            let averageCtr: number;
+            let averageCpc: number;
+            
+            try {
+              // Clean ad account ID (remove 'act_' prefix if present)
+              const adAccountId = client.ad_account_id.startsWith('act_') 
+                ? client.ad_account_id.substring(4) 
+                : client.ad_account_id;
+              accountInsights = await metaService.getAccountInsights(adAccountId, startDate, endDate);
+              if (accountInsights) {
+                logger.info(`✅ Using account-level insights from API for ${clientName} ${targetMonthStr} CTR/CPC`);
+                averageCtr = parseFloat(accountInsights.inline_link_click_ctr || accountInsights.ctr || 0);
+                averageCpc = parseFloat(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
+              } else {
+                // Fallback: Calculate from totals
+                averageCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+                averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+              }
+            } catch (accountError) {
+              logger.warn(`⚠️ Could not fetch account-level insights for ${clientName}, will use calculated values:`, accountError);
+              // Fallback: Calculate from totals
+              averageCtr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+              averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+            }
 
             // STEP 3: Save to database
             // ✅ IMPROVED: Use upsert pattern for consistency with other collection jobs

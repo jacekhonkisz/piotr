@@ -210,7 +210,16 @@ export async function POST(request: NextRequest) {
               const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
               const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
               
-              // Get real conversion metrics from daily_kpi_data
+              // ✅ CRITICAL FIX: Booking steps MUST come ONLY from Google Ads API directly
+              // NO calculations, NO daily_kpi_data, NO estimates - ONLY API data
+              // The campaigns already have booking steps parsed from Google Ads conversion actions
+              const bookingStep1 = Math.round(campaigns.reduce((sum, c) => sum + (c.booking_step_1 || 0), 0));
+              const bookingStep2 = Math.round(campaigns.reduce((sum, c) => sum + (c.booking_step_2 || 0), 0));
+              const bookingStep3 = Math.round(campaigns.reduce((sum, c) => sum + (c.booking_step_3 || 0), 0));
+              const totalReservations = Math.round(campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0));
+              const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
+              
+              // For other metrics, optionally use daily_kpi_data if available (but NOT for booking steps)
               const { data: dailyKpiData } = await supabase
                 .from('daily_kpi_data')
                 .select('*')
@@ -219,32 +228,27 @@ export async function POST(request: NextRequest) {
                 .gte('date', startDate)
                 .lte('date', endDate);
 
-              let conversionMetrics = {
-                click_to_call: 0,
-                email_contacts: 0,
-                booking_step_1: 0,
-                booking_step_2: 0,
-                booking_step_3: 0,
-                reservations: 0,
-                reservation_value: 0,
-                roas: 0,
-                cost_per_reservation: 0
-              };
-
+              let clickToCall = Math.round(campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0));
+              let emailContacts = Math.round(campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0));
+              
+              // Optionally use daily_kpi_data for click_to_call and email_contacts if available (but NOT for booking steps)
               if (dailyKpiData && dailyKpiData.length > 0) {
-                conversionMetrics = {
-                  click_to_call: dailyKpiData.reduce((sum, day) => sum + (day.click_to_call || 0), 0),
-                  email_contacts: dailyKpiData.reduce((sum, day) => sum + (day.email_contacts || 0), 0),
-                  booking_step_1: dailyKpiData.reduce((sum, day) => sum + (day.booking_step_1 || 0), 0),
-                  booking_step_2: dailyKpiData.reduce((sum, day) => sum + (day.booking_step_2 || 0), 0),
-                  booking_step_3: dailyKpiData.reduce((sum, day) => sum + (day.booking_step_3 || 0), 0),
-                  reservations: dailyKpiData.reduce((sum, day) => sum + (day.reservations || 0), 0),
-                  reservation_value: dailyKpiData.reduce((sum, day) => sum + (day.reservation_value || 0), 0),
-                  roas: totalSpend > 0 ? dailyKpiData.reduce((sum, day) => sum + (day.reservation_value || 0), 0) / totalSpend : 0,
-                  cost_per_reservation: dailyKpiData.reduce((sum, day) => sum + (day.reservations || 0), 0) > 0 ? 
-                    totalSpend / dailyKpiData.reduce((sum, day) => sum + (day.reservations || 0), 0) : 0
-                };
+                clickToCall = Math.round(dailyKpiData.reduce((sum, day) => sum + (day.click_to_call || 0), 0)) || clickToCall;
+                emailContacts = Math.round(dailyKpiData.reduce((sum, day) => sum + (day.email_contacts || 0), 0)) || emailContacts;
               }
+              
+              const conversionMetrics = {
+                click_to_call: clickToCall,
+                email_contacts: emailContacts,
+                // ✅ CRITICAL: Booking steps ALWAYS from API only
+                booking_step_1: bookingStep1,
+                booking_step_2: bookingStep2,
+                booking_step_3: bookingStep3,
+                reservations: totalReservations,
+                reservation_value: Math.round(totalReservationValue * 100) / 100,
+                roas: totalSpend > 0 ? Math.round((totalReservationValue / totalSpend) * 100) / 100 : 0,
+                cost_per_reservation: totalReservations > 0 ? Math.round((totalSpend / totalReservations) * 100) / 100 : 0
+              };
               
               googleData = {
                 campaigns,

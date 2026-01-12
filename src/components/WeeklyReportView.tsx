@@ -925,14 +925,18 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   
                   <MetricCard
                     title={platform === 'meta' ? 'Współczynnik kliknięć z linku' : 'CTR'}
-                    value={`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}
-                    tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń"
+                    value={`${(platform === 'meta' && report.stats?.averageCtr !== undefined && report.stats?.averageCtr !== null
+                      ? report.stats.averageCtr
+                      : (campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0)).toFixed(2)}%`}
+                    tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń (z API Meta)"
                   />
                   
                   <MetricCard
                     title={platform === 'meta' ? 'Koszt kliknięcia linku' : 'CPC'}
-                    value={formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}
-                    tooltip="Cost Per Click: średni koszt kliknięcia"
+                    value={formatCurrency(platform === 'meta' && report.stats?.averageCpc !== undefined && report.stats?.averageCpc !== null
+                      ? report.stats.averageCpc
+                      : (campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0))}
+                    tooltip="Cost Per Click: średni koszt kliknięcia (z API Meta)"
                   />
                   
                   {/* Conversions metric removed */}

@@ -317,8 +317,19 @@ export class BackgroundDataCollector {
 
         logger.info(`📊 Retrieved and parsed ${campaignInsights.length} campaigns with conversion data`);
 
+        // ✅ NEW: Try to get account-level insights first to use API values directly
+        let accountInsights: any = null;
+        try {
+          accountInsights = await metaService.getAccountInsights(processedAdAccountId, monthData.startDate, monthData.endDate);
+          if (accountInsights) {
+            logger.info(`✅ Using account-level insights from API for ${monthData.year}-${monthData.month} CTR/CPC`);
+          }
+        } catch (accountError) {
+          logger.warn(`⚠️ Could not fetch account-level insights for ${monthData.year}-${monthData.month}, will use campaign aggregation:`, accountError);
+        }
+
         // Calculate totals from complete campaign data
-        const totals = this.calculateTotals(campaignInsights);
+        const totals = this.calculateTotals(campaignInsights, accountInsights);
 
         // Count active campaigns (all returned campaigns are considered active)
         const activeCampaignCount = campaignInsights.length;
@@ -652,8 +663,19 @@ export class BackgroundDataCollector {
           logger.info(`🔍 Total current week funnel from campaigns: ${aggregatedFunnel.step1}→${aggregatedFunnel.step2}→${aggregatedFunnel.step3}→${aggregatedFunnel.res}`);
         }
 
+        // ✅ NEW: Try to get account-level insights first to use API values directly
+        let accountInsights: any = null;
+        try {
+          accountInsights = await metaService.getAccountInsights(processedAdAccountId, weekData.startDate, weekData.endDate);
+          if (accountInsights) {
+            logger.info(`✅ Using account-level insights from API for week ${weekData.weekNumber} CTR/CPC`);
+          }
+        } catch (accountError) {
+          logger.warn(`⚠️ Could not fetch account-level insights for week ${weekData.weekNumber}, will use campaign aggregation:`, accountError);
+        }
+
         // Calculate totals from complete campaign data
-        const totals = this.calculateTotals(campaignInsights);
+        const totals = this.calculateTotals(campaignInsights, accountInsights);
 
         // Count active campaigns (all returned campaigns are considered active)
         const activeCampaignCount = campaignInsights.length;
@@ -1079,39 +1101,66 @@ export class BackgroundDataCollector {
       throw new Error(`Cannot store weekly summary: ${error.message}`);
     }
 
-    // Aggregate conversion metrics from campaigns
+    // ✅ CRITICAL FIX FOR GOOGLE ADS: Use data.totals if available (already aggregated from API)
+    // For Google Ads, data.totals contains booking steps already aggregated from campaigns via getCampaignData()
+    // Only recalculate from campaigns if totals don't have conversion metrics (Meta fallback)
     const campaigns = data.campaigns || [];
-    const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
-      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-      booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-      booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-      booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0), // ✅ FIX: Added missing booking_step_3
-      reservations: acc.reservations + (campaign.reservations || 0),
-      reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-      total_spend: acc.total_spend + parseFloat(campaign.spend || 0) // ✅ FIX: Parse as float to avoid string concatenation
-    }), {
-      click_to_call: 0,
-      email_contacts: 0,
-      booking_step_1: 0,
-      booking_step_2: 0,
-      booking_step_3: 0, // ✅ FIX: Added missing booking_step_3
-      reservations: 0,
-      reservation_value: 0,
-      total_spend: 0
-    });
-
-    // ✅ EXACTLY MATCH MONTHLY LOGIC: Use ONLY Meta API campaign conversion data (no fallback)
-    // This ensures data consistency - all metrics come from the same source
-    // If Meta API has no conversion data, weekly summary will show zero conversions (same as monthly behavior)
     
-    logger.info(`📊 Weekly conversion metrics from Meta API campaigns:`, {
-      clientId,
-      summary_date: data.summary_date,
-      conversionTotals,
-      source: 'meta_api_only',
-      note: 'Now matches monthly behavior - no daily_kpi_data fallback'
-    });
+    let conversionTotals;
+    if (platform === 'google' && data.totals && (
+      data.totals.booking_step_1 !== undefined ||
+      data.totals.booking_step_2 !== undefined ||
+      data.totals.booking_step_3 !== undefined
+    )) {
+      // ✅ For Google Ads: Use pre-aggregated totals from API (more reliable)
+      // These were already calculated correctly in collectWeeklySummaryForClient (lines 800-817)
+      conversionTotals = {
+        click_to_call: data.totals.click_to_call || 0,
+        email_contacts: data.totals.email_contacts || 0,
+        booking_step_1: data.totals.booking_step_1 || 0,
+        booking_step_2: data.totals.booking_step_2 || 0,
+        booking_step_3: data.totals.booking_step_3 || 0,
+        reservations: data.totals.reservations || 0,
+        reservation_value: data.totals.reservation_value || 0,
+        total_spend: data.totals.spend || 0
+      };
+      
+      logger.info(`✅ GOOGLE ADS WEEKLY: Using pre-aggregated totals from API:`, {
+        booking_step_1: conversionTotals.booking_step_1,
+        booking_step_2: conversionTotals.booking_step_2,
+        booking_step_3: conversionTotals.booking_step_3,
+        reservations: conversionTotals.reservations,
+        source: 'data.totals (from getCampaignData API)'
+      });
+    } else {
+      // For Meta or fallback: Calculate from campaigns
+      conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
+        click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+        email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+        booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+        booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+        booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+        reservations: acc.reservations + (campaign.reservations || 0),
+        reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+        total_spend: acc.total_spend + parseFloat(campaign.spend || 0)
+      }), {
+        click_to_call: 0,
+        email_contacts: 0,
+        booking_step_1: 0,
+        booking_step_2: 0,
+        booking_step_3: 0,
+        reservations: 0,
+        reservation_value: 0,
+        total_spend: 0
+      });
+      
+      logger.info(`📊 ${platform === 'google' ? 'GOOGLE ADS' : 'META'} WEEKLY: Calculated from campaigns:`, {
+        clientId,
+        summary_date: data.summary_date,
+        conversionTotals,
+        source: platform === 'google' ? 'campaigns (fallback)' : 'meta_api_campaigns'
+      });
+    }
 
     // Calculate derived conversion metrics (same logic as monthly)
     const roas = conversionTotals.reservation_value > 0 && (data.totals.spend || 0) > 0 
@@ -1219,7 +1268,7 @@ export class BackgroundDataCollector {
   /**
    * Calculate totals from campaign insights
    */
-  private calculateTotals(campaigns: any[]): any {
+  private calculateTotals(campaigns: any[], accountInsights?: any): any {
     const totals = campaigns.reduce((acc, campaign) => {
       acc.spend += parseFloat(campaign.spend || 0);
       acc.impressions += parseInt(campaign.impressions || 0);
@@ -1228,8 +1277,18 @@ export class BackgroundDataCollector {
       return acc;
     }, { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
 
-    totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-    totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+    // ✅ USE API VALUES DIRECTLY if available, otherwise calculate from totals
+    if (accountInsights) {
+      // ✅ Use account-level CTR/CPC directly from API
+      totals.ctr = parseFloat(accountInsights.inline_link_click_ctr || accountInsights.ctr || 0);
+      totals.cpc = parseFloat(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
+      logger.info('✅ Using CTR/CPC directly from account-level API insights:', { ctr: totals.ctr, cpc: totals.cpc });
+    } else {
+      // Fallback: Calculate from totals
+      totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+      totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+    }
+    
     totals.cpa = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
 
     return totals;

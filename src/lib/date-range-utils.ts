@@ -219,8 +219,9 @@ export function validateDateRange(startDate: string, endDate: string): {
       maxAllowedEnd.setHours(23, 59, 59, 999); // End of today
     }
   } else {
-    // Past month: allow up to end of that month
-    maxAllowedEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+    // Past month/week: allow up to end of the END month (not start month)
+    // This fixes cross-month weeks like 2025-W01 (Dec 30 - Jan 5)
+    maxAllowedEnd = new Date(end.getFullYear(), end.getMonth() + 1, 0);
     maxAllowedEnd.setHours(23, 59, 59, 999); // End of last day of month
   }
   
@@ -235,9 +236,23 @@ export function validateDateRange(startDate: string, endDate: string): {
   });
   
   // Check if end date is in the future relative to what's allowed
-  if (end > maxAllowedEnd) {
-    logger.info('❌ End date is in the future');
-    return { isValid: false, error: `End date cannot be in the future. For ${isCurrentWeek ? 'current week' : currentMonth ? 'current month' : 'past month'}, maximum allowed is ${maxAllowedEnd.toISOString().split('T')[0]}` };
+  // ✅ FIX: For historical periods, simply check if end <= today
+  // For current periods, use maxAllowedEnd (which may allow future dates within the period)
+  const todayEnd = new Date(currentDate);
+  todayEnd.setHours(23, 59, 59, 999);
+  
+  if (isCurrentWeek || currentMonth) {
+    // Current period: use maxAllowedEnd (may allow future dates within period)
+    if (end > maxAllowedEnd) {
+      logger.info('❌ End date is in the future');
+      return { isValid: false, error: `End date cannot be in the future. For ${isCurrentWeek ? 'current week' : 'current month'}, maximum allowed is ${maxAllowedEnd.toISOString().split('T')[0]}` };
+    }
+  } else {
+    // Historical period: just check if end <= today
+    if (end > todayEnd) {
+      logger.info('❌ End date is in the future (historical period)');
+      return { isValid: false, error: `End date cannot be in the future. Historical periods must end on or before today (${todayEnd.toISOString().split('T')[0]})` };
+    }
   }
   
   // Check Meta API limits (typically 37 months back) - use actual current date

@@ -644,11 +644,12 @@ export class GoogleAdsAPIService {
           booking_step_1: finalConversions.booking_step_1 || 0,
           reservations: finalConversions.reservations || 0,
           reservation_value: finalConversions.reservation_value || 0,
-          // Conversion values removed
-          conversion_value: 0,
-          total_conversion_value: 0,
-          // ROAS calculated using reservation value only
-          roas: spend > 0 ? (finalConversions.reservation_value > 0 ? finalConversions.reservation_value / spend : 0) : 0,
+          // ✅ FIX: Use total_conversion_value (all_conversions_value) for "łączna wartość rezerwacji"
+          // This is the "Wartość konwersji" from Google Ads console
+          conversion_value: finalConversions.total_conversion_value || 0,
+          total_conversion_value: finalConversions.total_conversion_value || 0,
+          // ROAS calculated using total conversion value (wartość konwersji) for better accuracy
+          roas: spend > 0 ? (finalConversions.total_conversion_value > 0 ? finalConversions.total_conversion_value / spend : 0) : 0,
           cost_per_reservation: (finalConversions.reservations || 0) > 0 ? spend / (finalConversions.reservations || 0) : 0,
           booking_step_2: finalConversions.booking_step_2 || 0,
           booking_step_3: finalConversions.booking_step_3 || 0,
@@ -802,20 +803,29 @@ export class GoogleAdsAPIService {
           '[mice] - wejście na stronę biznesową', 'step 1 w be', 'search', 
           'booking_step_1', 'page_view', 'view_item', 'begin_checkout',
           'initiate_checkout', 'start_checkout', 'checkout_started',
-          'website_visit', 'landing_page_view', 'page_visit'
+          'website_visit', 'landing_page_view', 'page_visit',
+          // Polish patterns
+          'pierwszy krok', 'pierwszy_krok', '1 krok', '1 krok silnik', 
+          '1 krok rezerwacyjny', 'pierwszy_krok_rezerwacji'
         ],
         'booking_step_2': [
           'pobranie oferty mice', 'form_submit', 
           'www.belmonte.com.pl (web) form_submit_success', 'step 2 w be', 
           'view_content', 'booking_step_2', 'add_to_cart', 'add_payment_info',
           'payment_info', 'checkout_progress', 'form_completion',
-          'download', 'file_download', 'offer_download'
+          'download', 'file_download', 'offer_download',
+          // Polish patterns
+          'drugi krok', 'drugi_krok', '2 krok', '2 krok silnik', 
+          '2 krok rezerwacyjny', 'drugi_krok_rezerwacji'
         ],
         'booking_step_3': [
           'micro-marco conwersje', 'www.belmonte.com.pl (web) micro_conversion', 
           'rezerwacja', 'step 3 w be', 'initiate_checkout', 'booking_step_3',
           'complete_checkout', 'checkout_complete', 'purchase_initiated',
-          'micro_conversion', 'micro_conversions', 'conversion'
+          'micro_conversion', 'micro_conversions', 'conversion',
+          // Polish patterns
+          'trzeci krok', 'trzeci_krok', '3 krok', '3 krok silnik', 
+          '3 krok rezerwacyjny', 'trzeci_krok_rezerwacji'
         ],
         // Final conversions - comprehensive patterns
         'reservations': [
@@ -866,6 +876,8 @@ export class GoogleAdsAPIService {
       
       // Now group aggregated data by campaign for parser
       const campaignConversionData: { [campaignId: string]: any[] } = {};
+      // ✅ NEW: Track total conversion value (all_conversions_value) per campaign
+      const campaignTotalConversionValue: { [campaignId: string]: number } = {};
       
       Object.values(campaignActionTotals).forEach((data) => {
         const { campaignId, campaignName, conversionName, conversions, conversionValue } = data;
@@ -878,7 +890,12 @@ export class GoogleAdsAPIService {
         // Group conversions by campaign
         if (!campaignConversionData[campaignId]) {
           campaignConversionData[campaignId] = [];
+          campaignTotalConversionValue[campaignId] = 0;
         }
+        
+        // ✅ FIX: Sum all_conversions_value across all conversion actions for this campaign
+        // This gives us the total "Wartość konwersji" from Google Ads console
+        campaignTotalConversionValue[campaignId] += conversionValue;
         
         campaignConversionData[campaignId].push({
           conversion_name: conversionName,
@@ -896,6 +913,10 @@ export class GoogleAdsAPIService {
         // Parse conversions using our new parser
         const parsed = parseGoogleAdsConversions(conversions, campaignName);
         
+        // ✅ FIX: Add total_conversion_value (sum of all_conversions_value from all actions)
+        // This is the "Wartość konwersji" from Google Ads console - used for "łączna wartość rezerwacji"
+        parsed.total_conversion_value = campaignTotalConversionValue[campaignId] || 0;
+        
         // ✅ FIX: Convert campaign ID to string for consistent key matching
         // JavaScript object keys are strings, but campaign IDs from API are numbers
         // This ensures lookup works correctly: breakdown[String(campaign.id)]
@@ -906,7 +927,8 @@ export class GoogleAdsAPIService {
           booking_step_2: parsed.booking_step_2,
           booking_step_3: parsed.booking_step_3,
           reservations: parsed.reservations,
-          reservation_value: parsed.reservation_value
+          reservation_value: parsed.reservation_value,
+          total_conversion_value: parsed.total_conversion_value
         });
       });
       

@@ -205,6 +205,17 @@ export async function fetchFreshCurrentMonthData(client: any) {
       return Number.isFinite(num) ? num : 0;
     };
 
+    // ✅ NEW: Try to get account-level insights first to use API values directly
+    let accountInsights: any = null;
+    try {
+      accountInsights = await metaService.getAccountInsights(adAccountId, currentMonth.startDate!, currentMonth.endDate!);
+      if (accountInsights) {
+        logger.info('✅ Using account-level insights from API for overall CTR/CPC');
+      }
+    } catch (accountError) {
+      logger.warn('⚠️ Could not fetch account-level insights, will use campaign aggregation:', accountError);
+    }
+
     // Calculate stats from Meta API insights with sanitized numbers
     // ✅ CRITICAL: Use inline_link_clicks instead of clicks to match Meta Business Suite
     // Meta Business Suite displays "Link Click CTR" and "Cost per Link Click", not all clicks
@@ -212,8 +223,47 @@ export async function fetchFreshCurrentMonthData(client: any) {
     const totalImpressions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.impressions), 0);
     const totalClicks = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.inline_link_clicks || insight.clicks), 0);
     const metaTotalConversions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.conversions), 0);
-    const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    
+    // ✅ USE API VALUES DIRECTLY if available, otherwise calculate from totals
+    let averageCtr: number;
+    let averageCpc: number;
+    
+    if (accountInsights) {
+      // ✅ Use account-level CTR/CPC directly from API
+      averageCtr = sanitizeNumber(accountInsights.inline_link_click_ctr || accountInsights.ctr || 0);
+      averageCpc = sanitizeNumber(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
+      logger.info('✅ Using CTR/CPC directly from account-level API insights:', { averageCtr, averageCpc });
+    } else {
+      // Fallback: Calculate from aggregated totals (weighted by clicks for accuracy)
+      // ✅ Calculate weighted average CTR/CPC from campaign API values
+      let weightedCtrSum = 0;
+      let weightedCpcSum = 0;
+      let totalClickWeight = 0;
+      
+      campaignInsights.forEach(insight => {
+        const campaignClicks = sanitizeNumber(insight.inline_link_clicks || insight.clicks);
+        const campaignCtr = sanitizeNumber(insight.inline_link_click_ctr || insight.ctr || 0);
+        const campaignCpc = sanitizeNumber(insight.cost_per_inline_link_click || insight.cpc || 0);
+        
+        if (campaignClicks > 0) {
+          // Weight by clicks (more clicks = more influence on overall metric)
+          weightedCtrSum += campaignCtr * campaignClicks;
+          weightedCpcSum += campaignCpc * campaignClicks;
+          totalClickWeight += campaignClicks;
+        }
+      });
+      
+      if (totalClickWeight > 0) {
+        averageCtr = weightedCtrSum / totalClickWeight;
+        averageCpc = weightedCpcSum / totalClickWeight;
+        logger.info('✅ Using weighted average CTR/CPC from campaign API values:', { averageCtr, averageCpc });
+      } else {
+        // Final fallback: Calculate from totals
+        averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+        averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+        logger.info('⚠️ Using calculated CTR/CPC from totals (no API values available):', { averageCtr, averageCpc });
+      }
+    }
 
     // 🔍 DIAGNOSTIC: Log aggregated metrics
     logger.info('🔍 DIAGNOSTIC: Aggregated metrics from Meta API:', {
@@ -1205,14 +1255,63 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       return Number.isFinite(num) ? num : 0;
     };
     
+    // ✅ NEW: Try to get account-level insights first to use API values directly
+    let accountInsights: any = null;
+    try {
+      accountInsights = await metaService.getAccountInsights(adAccountId, currentWeek.startDate!, currentWeek.endDate!);
+      if (accountInsights) {
+        logger.info('✅ Using account-level insights from API for weekly overall CTR/CPC');
+      }
+    } catch (accountError) {
+      logger.warn('⚠️ Could not fetch account-level insights for weekly, will use campaign aggregation:', accountError);
+    }
+
     // Calculate stats with sanitized numbers
     // ✅ CRITICAL: Use inline_link_clicks instead of clicks to match Meta Business Suite
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.spend), 0);
     const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.impressions), 0);
     const totalClicks = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.inline_link_clicks || campaign.clicks), 0);
     const totalConversions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.conversions), 0);
-    const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    
+    // ✅ USE API VALUES DIRECTLY if available, otherwise calculate from totals
+    let averageCtr: number;
+    let averageCpc: number;
+    
+    if (accountInsights) {
+      // ✅ Use account-level CTR/CPC directly from API
+      averageCtr = sanitizeNumber(accountInsights.inline_link_click_ctr || accountInsights.ctr || 0);
+      averageCpc = sanitizeNumber(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
+      logger.info('✅ Using CTR/CPC directly from account-level API insights (weekly):', { averageCtr, averageCpc });
+    } else {
+      // Fallback: Calculate weighted average CTR/CPC from campaign API values
+      let weightedCtrSum = 0;
+      let weightedCpcSum = 0;
+      let totalClickWeight = 0;
+      
+      campaignInsights.forEach(insight => {
+        const campaignClicks = sanitizeNumber(insight.inline_link_clicks || insight.clicks);
+        const campaignCtr = sanitizeNumber(insight.inline_link_click_ctr || insight.ctr || 0);
+        const campaignCpc = sanitizeNumber(insight.cost_per_inline_link_click || insight.cpc || 0);
+        
+        if (campaignClicks > 0) {
+          // Weight by clicks (more clicks = more influence on overall metric)
+          weightedCtrSum += campaignCtr * campaignClicks;
+          weightedCpcSum += campaignCpc * campaignClicks;
+          totalClickWeight += campaignClicks;
+        }
+      });
+      
+      if (totalClickWeight > 0) {
+        averageCtr = weightedCtrSum / totalClickWeight;
+        averageCpc = weightedCpcSum / totalClickWeight;
+        logger.info('✅ Using weighted average CTR/CPC from campaign API values (weekly):', { averageCtr, averageCpc });
+      } else {
+        // Final fallback: Calculate from totals
+        averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+        averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+        logger.info('⚠️ Using calculated CTR/CPC from totals (weekly, no API values available):', { averageCtr, averageCpc });
+      }
+    }
 
     // Calculate conversion metrics (same logic as monthly)
     const totalConversionsSum = campaignInsights.reduce((sum, c) => sum + (c.conversions || 0), 0);

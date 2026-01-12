@@ -611,9 +611,39 @@ export class StandardizedDataFetcher {
       reach: 0
     });
     
-    // Calculate derived metrics
-    const averageCtr = totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0;
-    const averageCpc = totals.totalClicks > 0 ? totals.totalSpend / totals.totalClicks : 0;
+    // ✅ CRITICAL FIX: Try to get API values from campaign_summaries first (for Meta Ads)
+    let averageCtr: number;
+    let averageCpc: number;
+    
+    if (platform === 'meta') {
+      // Try to get API values from campaign_summaries for this period
+      const { data: summary } = await dbClient
+        .from('campaign_summaries')
+        .select('average_ctr, average_cpc')
+        .eq('client_id', clientId)
+        .eq('platform', 'meta')
+        .gte('summary_date', dateRange.start)
+        .lte('summary_date', dateRange.end)
+        .order('summary_date', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (summary && summary.average_ctr !== null && summary.average_ctr !== undefined && 
+          summary.average_cpc !== null && summary.average_cpc !== undefined) {
+        averageCtr = summary.average_ctr;
+        averageCpc = summary.average_cpc;
+        console.log('✅ Using API values from campaign_summaries for CTR/CPC:', { averageCtr, averageCpc });
+      } else {
+        // Fallback: Calculate from totals
+        averageCtr = totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0;
+        averageCpc = totals.totalClicks > 0 ? totals.totalSpend / totals.totalClicks : 0;
+        console.log('⚠️ No API values in campaign_summaries, calculating from totals:', { averageCtr, averageCpc });
+      }
+    } else {
+      // For Google Ads, calculate from totals (no account-level insights available)
+      averageCtr = totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0;
+      averageCpc = totals.totalClicks > 0 ? totals.totalSpend / totals.totalClicks : 0;
+    }
     
     // 🔧 ENHANCED: Get conversion data from campaign_summaries (more accurate for conversions)
     console.log(`🎯 Fetching conversion data from campaign_summaries for ${platform}...`);
@@ -1047,6 +1077,41 @@ export class StandardizedDataFetcher {
           const totalClicks = campaigns.reduce((sum: number, c: any) => sum + c.clicks, 0);
           const totalConversions = campaigns.reduce((sum: number, c: any) => sum + c.conversions, 0);
           
+          // ✅ CRITICAL FIX: Fetch account-level insights for CTR/CPC (same as smart cache)
+          let averageCtr: number;
+          let averageCpc: number;
+          
+          try {
+            // Use existing metaService instance (already created above)
+            const adAccountId = client.ad_account_id?.startsWith('act_') 
+              ? client.ad_account_id.substring(4) 
+              : client.ad_account_id || '';
+            
+            if (adAccountId) {
+              const accountInsights = await metaService.getAccountInsights(adAccountId, dateRange.start, dateRange.end);
+              if (accountInsights) {
+                averageCtr = parseFloat(accountInsights.inline_link_click_ctr || accountInsights.ctr || '0');
+                averageCpc = parseFloat(accountInsights.cost_per_inline_link_click || accountInsights.cpc || '0');
+                console.log('✅ Using CTR/CPC directly from account-level API insights (live API fallback):', { averageCtr, averageCpc });
+              } else {
+                // Fallback: Calculate from totals
+                averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+                averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+                console.log('⚠️ Account insights not available, calculating from totals:', { averageCtr, averageCpc });
+              }
+            } else {
+              // Fallback: Calculate from totals
+              averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+              averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+              console.log('⚠️ No ad account ID, calculating from totals:', { averageCtr, averageCpc });
+            }
+          } catch (accountError) {
+            // Fallback: Calculate from totals
+            averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+            averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+            console.warn('⚠️ Failed to fetch account insights, calculating from totals:', accountError);
+          }
+          
           console.log(`✅ Meta API returned ${campaigns.length} campaigns, total spend: ${totalSpend}`);
           
           return {
@@ -1057,8 +1122,8 @@ export class StandardizedDataFetcher {
                 totalImpressions,
                 totalClicks,
                 totalConversions,
-                averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-                averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0
+                averageCtr,
+                averageCpc
               },
               conversionMetrics: this.getZeroData().conversionMetrics,
               campaigns

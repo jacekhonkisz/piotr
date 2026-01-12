@@ -503,6 +503,17 @@ export async function POST(request: NextRequest) {
       // Validate date range
       const validation = validateDateRange(startDate, endDate);
       if (!validation.isValid) {
+        console.error('❌ DATE RANGE VALIDATION FAILED:', {
+          startDate,
+          endDate,
+          error: validation.error,
+          today: new Date().toISOString().split('T')[0]
+        });
+        logger.error('❌ Date range validation failed', {
+          startDate,
+          endDate,
+          error: validation.error
+        });
         return createErrorResponse(validation.error!, 400);
       }
       
@@ -544,18 +555,44 @@ export async function POST(request: NextRequest) {
     
     if (isWeeklyRequest) {
       // For weekly requests: Check if the request includes TODAY
-      // If endDate < today, it's a PAST week (historical) - use database
-      // If endDate >= today, it's CURRENT week - use smart cache
-      isCurrentPeriod = endDate >= today;
+      // ✅ FIX: Check if startDate <= today AND endDate >= today (week contains today)
+      // This properly detects current week even if endDate is capped to today
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      const todayObj = new Date(today);
+      
+      // Current week: start <= today AND end >= today (week contains today)
+      const weekContainsToday = startDateObj <= todayObj && endDateObj >= todayObj;
+      
+      // Also check if this is the current week by comparing week boundaries
+      // Use try-catch to handle any import errors gracefully
+      let isCurrentWeekByBoundary = false;
+      try {
+        const { getCurrentWeekInfo, getMondayOfWeek, formatDateISO } = await import('../../../lib/week-helpers');
+        const currentWeek = getCurrentWeekInfo();
+        const requestedWeekMonday = getMondayOfWeek(startDateObj);
+        const requestedWeekMondayStr = formatDateISO(requestedWeekMonday);
+        const currentWeekMondayStr = currentWeek.startDate;
+        
+        // If the requested week's Monday matches current week's Monday, it's the current week
+        isCurrentWeekByBoundary = requestedWeekMondayStr === currentWeekMondayStr;
+      } catch (importError) {
+        console.warn('⚠️ Failed to import week-helpers for boundary check, using fallback:', importError);
+        // Fallback: just use weekContainsToday
+      }
+      
+      isCurrentPeriod = weekContainsToday || isCurrentWeekByBoundary;
       
       console.log('📅 WEEKLY PERIOD DETECTION:', {
         startDate,
         endDate,
         today,
+        weekContainsToday,
+        isCurrentWeekByBoundary,
         isCurrentPeriod,
         reason: isCurrentPeriod 
-          ? '✅ Current week (endDate >= today) - use smart cache'
-          : '📚 Historical week (endDate < today) - use DATABASE'
+          ? '✅ Current week (contains today or matches current week boundary) - use smart cache'
+          : '📚 Historical week - use DATABASE'
       });
     } else {
       // For monthly requests: Check if start is in current month
@@ -634,10 +671,21 @@ export async function POST(request: NextRequest) {
             }
           });
         } else {
-          // IMPROVED: Allow live API fallback for historical periods when database is empty
-          // This ensures Google Ads data is available even if not stored in database yet
-          console.log('⚠️ NO DATABASE RESULT - PROCEEDING TO LIVE API (Google Ads can fetch historical data)');
-          logger.info('⚠️ Google Ads database lookup failed, proceeding to live API for historical data');
+          // ✅ FIX: For historical periods, if database has no data, return error instead of calling API
+          // Historical data should be collected via background collector, not live API
+          console.log('⚠️ NO DATABASE RESULT FOR HISTORICAL PERIOD - RETURNING ERROR');
+          console.log('📚 Historical data must be collected via background collector first');
+          logger.info('⚠️ Google Ads database lookup returned no data for historical period', {
+            startDate,
+            endDate,
+            clientId: client.id,
+            note: 'Historical data should be collected via background collector'
+          });
+          
+          return createErrorResponse(
+            `No historical data available for ${startDate} to ${endDate}. Please run weekly data collection first.`,
+            404
+          );
         }
       } catch (dbError) {
         console.log('❌ DATABASE LOADING ERROR:', dbError);
@@ -659,53 +707,136 @@ export async function POST(request: NextRequest) {
         logger.info('🚀 BYPASSING CACHE: Direct Google Ads API call', { bypassAllCache, forceFresh, reason });
       }
 
+      // ✅ NEW: Clear cache if requested
+      if (clearCache) {
+        console.log('🗑️ CLEARING GOOGLE ADS CACHE...');
+        const currentPeriodId = generatePeriodIdFromDateRange(startDate, endDate) || 
+          `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        const { error: deleteError } = await supabase
+          .from('google_ads_current_month_cache')
+          .delete()
+          .eq('client_id', client.id)
+          .eq('period_id', currentPeriodId);
+        
+        if (deleteError) {
+          console.warn('⚠️ Failed to clear cache:', deleteError);
+        } else {
+          console.log('✅ Google Ads cache cleared for period:', currentPeriodId);
+        }
+      }
+
       // ✅ NEW: Check smart cache for current period (same as Meta)
       // 🔧 BYPASS ALL CACHE: Skip smart cache if bypassAllCache is set OR forceFresh is true (for refresh button)
+      // ✅ FIX: Use weekly cache for weekly requests, monthly cache for monthly requests
       if (isCurrentPeriod && !forceFresh && !bypassAllCache) {
-        console.log('📊 🔴 CURRENT PERIOD DETECTED - CHECKING GOOGLE ADS SMART CACHE...');
-        logger.info('📊 🔴 CURRENT PERIOD DETECTED - USING GOOGLE ADS SMART CACHE SYSTEM...');
-        
-        try {
-          // Use the Google Ads smart cache system for current period
-          const { getGoogleAdsSmartCacheData } = await import('../../../lib/google-ads-smart-cache-helper');
-          const smartCacheResult = await getGoogleAdsSmartCacheData(client.id, false);
+        if (isWeeklyRequest) {
+          console.log('📊 🔴 CURRENT WEEK DETECTED - CHECKING GOOGLE ADS WEEKLY SMART CACHE...');
+          logger.info('📊 🔴 CURRENT WEEK DETECTED - USING GOOGLE ADS WEEKLY SMART CACHE SYSTEM...');
           
-          if (smartCacheResult.success && smartCacheResult.data) {
-            const responseTime = Date.now() - startTime;
-            console.log(`🚀 ✅ GOOGLE ADS SMART CACHE SUCCESS: Current period data loaded in ${responseTime}ms`);
-            console.log(`📊 Smart cache data structure:`, {
-              hasCampaigns: !!smartCacheResult.data.campaigns,
-              campaignsCount: smartCacheResult.data.campaigns?.length || 0,
-              hasStats: !!smartCacheResult.data.stats,
-              totalSpend: smartCacheResult.data.stats?.totalSpend || 0,
-              hasGoogleAdsTables: !!smartCacheResult.data.googleAdsTables
+          try {
+            // ✅ FIX: Use weekly smart cache for weekly requests
+            const { getGoogleAdsSmartWeekCacheData } = await import('../../../lib/google-ads-smart-cache-helper');
+            const { getCurrentWeekInfo } = await import('../../../lib/week-helpers');
+            const currentWeek = getCurrentWeekInfo();
+            
+            console.log('📅 Current week info for smart cache:', {
+              periodId: currentWeek.periodId,
+              startDate: currentWeek.startDate,
+              endDate: currentWeek.endDate
             });
             
-            logger.info('🚀 Google Ads API response completed', {
-              responseTime: `${responseTime}ms`,
-              source: 'smart_cache',
-              campaignCount: smartCacheResult.data.campaigns?.length || 0,
-              totalSpend: smartCacheResult.data.stats?.totalSpend || 0
-            });
+            const smartCacheResult = await getGoogleAdsSmartWeekCacheData(client.id, false, currentWeek.periodId);
             
-            return NextResponse.json({
-              success: true,
-              data: smartCacheResult.data,
-              responseTime,
-              source: 'smart_cache'
+            if (smartCacheResult.success && smartCacheResult.data) {
+              const responseTime = Date.now() - startTime;
+              console.log(`🚀 ✅ GOOGLE ADS WEEKLY SMART CACHE SUCCESS: Current week data loaded in ${responseTime}ms`);
+              console.log(`📊 Weekly smart cache data structure:`, {
+                hasCampaigns: !!smartCacheResult.data.campaigns,
+                campaignsCount: smartCacheResult.data.campaigns?.length || 0,
+                hasStats: !!smartCacheResult.data.stats,
+                totalSpend: smartCacheResult.data.stats?.totalSpend || 0,
+                periodId: currentWeek.periodId
+              });
+              
+              logger.info('🚀 Google Ads weekly API response completed', {
+                responseTime: `${responseTime}ms`,
+                source: 'smart_week_cache',
+                campaignCount: smartCacheResult.data.campaigns?.length || 0,
+                totalSpend: smartCacheResult.data.stats?.totalSpend || 0
+              });
+              
+              return NextResponse.json({
+                success: true,
+                data: smartCacheResult.data,
+                responseTime,
+                source: 'smart_week_cache'
+              });
+            } else {
+              console.log('⚠️ Weekly smart cache miss or no data, proceeding to live API...');
+              console.log('🔍 Weekly cache result:', {
+                success: smartCacheResult.success,
+                hasData: !!smartCacheResult.data,
+                error: smartCacheResult.error
+              });
+            }
+          } catch (cacheError: any) {
+            console.error('❌ WEEKLY SMART CACHE ERROR:', {
+              message: cacheError.message,
+              stack: cacheError.stack,
+              name: cacheError.name
             });
-          } else {
-            console.log('⚠️ Smart cache miss or no data, proceeding to live API...');
-            console.log('🔍 Cache result:', {
-              success: smartCacheResult.success,
-              hasData: !!smartCacheResult.data,
-              error: smartCacheResult.error
+            console.log('🔄 Proceeding to live API...');
+            logger.error('❌ Weekly smart cache error, falling back to live API:', {
+              error: cacheError.message,
+              stack: cacheError.stack
             });
           }
-        } catch (cacheError: any) {
-          console.log('❌ SMART CACHE ERROR:', cacheError.message);
-          console.log('🔄 Proceeding to live API...');
-          logger.error('❌ Smart cache error, falling back to live API:', cacheError);
+        } else {
+          console.log('📊 🔴 CURRENT MONTH DETECTED - CHECKING GOOGLE ADS MONTHLY SMART CACHE...');
+          logger.info('📊 🔴 CURRENT MONTH DETECTED - USING GOOGLE ADS MONTHLY SMART CACHE SYSTEM...');
+          
+          try {
+            // Use the Google Ads monthly smart cache system for current month
+            const { getGoogleAdsSmartCacheData } = await import('../../../lib/google-ads-smart-cache-helper');
+            const smartCacheResult = await getGoogleAdsSmartCacheData(client.id, false);
+            
+            if (smartCacheResult.success && smartCacheResult.data) {
+              const responseTime = Date.now() - startTime;
+              console.log(`🚀 ✅ GOOGLE ADS MONTHLY SMART CACHE SUCCESS: Current month data loaded in ${responseTime}ms`);
+              console.log(`📊 Monthly smart cache data structure:`, {
+                hasCampaigns: !!smartCacheResult.data.campaigns,
+                campaignsCount: smartCacheResult.data.campaigns?.length || 0,
+                hasStats: !!smartCacheResult.data.stats,
+                totalSpend: smartCacheResult.data.stats?.totalSpend || 0,
+                hasGoogleAdsTables: !!smartCacheResult.data.googleAdsTables
+              });
+              
+              logger.info('🚀 Google Ads monthly API response completed', {
+                responseTime: `${responseTime}ms`,
+                source: 'smart_cache',
+                campaignCount: smartCacheResult.data.campaigns?.length || 0,
+                totalSpend: smartCacheResult.data.stats?.totalSpend || 0
+              });
+              
+              return NextResponse.json({
+                success: true,
+                data: smartCacheResult.data,
+                responseTime,
+                source: 'smart_cache'
+              });
+            } else {
+              console.log('⚠️ Monthly smart cache miss or no data, proceeding to live API...');
+              console.log('🔍 Monthly cache result:', {
+                success: smartCacheResult.success,
+                hasData: !!smartCacheResult.data,
+                error: smartCacheResult.error
+              });
+            }
+          } catch (cacheError: any) {
+            console.log('❌ MONTHLY SMART CACHE ERROR:', cacheError.message);
+            console.log('🔄 Proceeding to live API...');
+            logger.error('❌ Monthly smart cache error, falling back to live API:', cacheError);
+          }
         }
       }
     }
@@ -893,9 +1024,20 @@ export async function POST(request: NextRequest) {
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
-    // Calculate conversion metrics from fresh data
-    // 🔧 ENHANCED: Fetch real conversion metrics from daily_kpi_data for Google Ads
-    console.log('📊 FETCHING REAL GOOGLE ADS CONVERSION METRICS FROM daily_kpi_data...');
+    // ✅ CRITICAL FIX: Booking steps MUST come ONLY from Google Ads API directly
+    // NO calculations, NO daily_kpi_data, NO estimates - ONLY API data
+    console.log('📊 AGGREGATING GOOGLE ADS CONVERSION METRICS FROM API DATA ONLY...');
+    console.log('✅ BOOKING STEPS: Using ONLY Google Ads API data (freshCampaigns) - NO daily_kpi_data, NO calculations');
+    
+    // ✅ ALWAYS use freshCampaigns for booking steps (they come directly from Google Ads API)
+    // The getCampaignData() function already parsed conversion actions via parseGoogleAdsConversions()
+    const bookingStep1 = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0));
+    const bookingStep2 = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0));
+    const bookingStep3 = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0));
+    
+    console.log(`✅ BOOKING STEPS FROM API: Step1=${bookingStep1}, Step2=${bookingStep2}, Step3=${bookingStep3}`);
+    
+    // For other metrics, we can optionally use daily_kpi_data if available, but booking steps are API-only
     const { data: dailyKpiData, error: kpiError } = await supabase
       .from('daily_kpi_data')
       .select('*')
@@ -904,94 +1046,39 @@ export async function POST(request: NextRequest) {
       .gte('date', startDate)
       .lte('date', endDate);
 
-    let realConversionMetrics = {
-      click_to_call: 0,
-      email_contacts: 0,
-      booking_step_1: 0,
-      reservations: 0,
-      reservation_value: 0,
-      conversion_value: 0, // conversions_value - "Wartość konwersji" in Google Ads
-      total_conversion_value: 0, // all_conversions_value - "Łączna wartość konwersji"
-      booking_step_2: 0,
-      booking_step_3: 0,
-      roas: 0,
-      cost_per_reservation: 0
-    };
-
+    // Calculate other conversion metrics (can use daily_kpi_data if available, otherwise from campaigns)
+    const totalReservationValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+    const conversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0);
+    const totalConversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
+    const totalReservations = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
+    
+    let clickToCall = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0));
+    let emailContacts = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0));
+    
+    // Optionally use daily_kpi_data for click_to_call and email_contacts if available (but NOT for booking steps)
     if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
-      console.log(`✅ Found ${dailyKpiData.length} Google Ads KPI records for conversion metrics`);
-      
-      // ✅ Round values for consistency (daily_kpi_data should have integers, but be safe)
-      const totalReservationValue = dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservation_value || 0), 0);
-      const totalReservations = Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.reservations || 0), 0));
-      
-      realConversionMetrics = {
-        click_to_call: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.click_to_call || 0), 0)),
-        email_contacts: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.email_contacts || 0), 0)),
-        booking_step_1: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_1 || 0), 0)),
-        reservations: totalReservations,
-        reservation_value: Math.round(totalReservationValue * 100) / 100, // Round to 2 decimal places
-        total_conversion_value: 0, // Will be set below
-        booking_step_2: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_2 || 0), 0)),
-        booking_step_3: Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.booking_step_3 || 0), 0)),
-        roas: 0, // Will be calculated below
-        cost_per_reservation: 0 // Will be calculated below
-      };
-      
-      // Calculate derived metrics with rounding
-      // ✅ Two conversion value metrics:
-      // - conversion_value = conversions_value = "Wartość konwersji" in Google Ads (cross-platform)
-      // - total_conversion_value = all_conversions_value = "Łączna wartość konwersji" (includes view-through)
-      const conversionValue = dailyKpiData.some((day: any) => day.conversion_value !== undefined)
-        ? dailyKpiData.reduce((sum: number, day: any) => sum + (day.conversion_value || 0), 0)
-        : totalReservationValue;
-      const totalConversionValue = dailyKpiData.some((day: any) => day.total_conversion_value !== undefined)
-        ? dailyKpiData.reduce((sum: number, day: any) => sum + (day.total_conversion_value || 0), 0)
-        : conversionValue; // Fallback to conversion_value if total not available
-      
-      realConversionMetrics.conversion_value = Math.round(conversionValue * 100) / 100; // "Wartość konwersji"
-      realConversionMetrics.total_conversion_value = Math.round(totalConversionValue * 100) / 100; // "Łączna wartość konwersji"
-      // ✅ ROAS calculated using "Łączna wartość konwersji" (total_conversion_value)
-      realConversionMetrics.roas = totalSpend > 0 ? Math.round((totalConversionValue / totalSpend) * 100) / 100 : 0;
-      realConversionMetrics.cost_per_reservation = totalReservations > 0 ? 
-        Math.round((totalSpend / totalReservations) * 100) / 100 : 0;
-        
-      console.log('📊 REAL GOOGLE ADS CONVERSION METRICS:', realConversionMetrics);
-    } else {
-      console.log('⚠️ No Google Ads KPI data found, using campaign-level conversions as fallback');
-      
-      // Fallback to campaign-level conversion data
-      // ✅ Two separate conversion value metrics:
-      // - conversion_value = conversions_value = "Wartość konwersji" in Google Ads
-      // - total_conversion_value = all_conversions_value = "Łączna wartość konwersji"
-      const totalReservationValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
-      const conversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0);
-      const totalConversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
-      const totalReservations = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
-      
-      console.log(`📊 ROAS CALCULATION DEBUG:
-        - conversionValue (Wartość konwersji): ${conversionValue.toFixed(2)} PLN
-        - totalConversionValue (Łączna wartość konwersji): ${totalConversionValue.toFixed(2)} PLN  
-        - totalSpend: ${totalSpend.toFixed(2)} PLN
-        - ROAS (using conversionValue): ${(conversionValue / totalSpend).toFixed(2)}x`);
-      
-      realConversionMetrics = {
-        click_to_call: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0)),
-        email_contacts: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0)),
-        booking_step_1: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0)),
-        reservations: totalReservations,
-        reservation_value: Math.round(totalReservationValue * 100) / 100,
-        conversion_value: Math.round(conversionValue * 100) / 100, // "Wartość konwersji" (107,231 PLN)
-        total_conversion_value: Math.round(totalConversionValue * 100) / 100, // "Łączna wartość konwersji" (110,302 PLN)
-        booking_step_2: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0)),
-        booking_step_3: Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0)),
-        // ✅ ROAS calculated using "Łączna wartość konwersji" (total_conversion_value)
-        roas: totalSpend > 0 ? Math.round((totalConversionValue / totalSpend) * 100) / 100 : 0,
-        cost_per_reservation: totalReservations > 0 ? Math.round((totalSpend / totalReservations) * 100) / 100 : 0
-      };
+      console.log(`✅ Found ${dailyKpiData.length} Google Ads KPI records for other metrics (NOT booking steps)`);
+      // Only use daily_kpi_data for non-booking-step metrics
+      clickToCall = Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.click_to_call || 0), 0)) || clickToCall;
+      emailContacts = Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.email_contacts || 0), 0)) || emailContacts;
     }
-
-    const conversionMetrics = realConversionMetrics;
+    
+    const conversionMetrics = {
+      click_to_call: clickToCall,
+      email_contacts: emailContacts,
+      // ✅ CRITICAL: Booking steps ALWAYS from API only
+      booking_step_1: bookingStep1,
+      booking_step_2: bookingStep2,
+      booking_step_3: bookingStep3,
+      reservations: totalReservations,
+      reservation_value: Math.round(totalReservationValue * 100) / 100,
+      conversion_value: Math.round(conversionValue * 100) / 100, // "Wartość konwersji"
+      total_conversion_value: Math.round(totalConversionValue * 100) / 100, // "Łączna wartość konwersji"
+      roas: totalSpend > 0 ? Math.round((totalConversionValue / totalSpend) * 100) / 100 : 0,
+      cost_per_reservation: totalReservations > 0 ? Math.round((totalSpend / totalReservations) * 100) / 100 : 0
+    };
+    
+    console.log('📊 FINAL GOOGLE ADS CONVERSION METRICS (booking steps from API only):', conversionMetrics);
 
     // Fetch Google Ads tables data from smart cache (performance optimization)
     console.log('📊 FETCHING GOOGLE ADS TABLES DATA...');

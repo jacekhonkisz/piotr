@@ -1,0 +1,229 @@
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║            🔍 FUNNEL METRICS RELIABILITY AUDIT - CRITICAL FINDINGS         ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+📅 ANALYSIS PERIOD: Last 6 months
+🎯 METRICS CHECKED: click_to_call, email_contacts, booking_step_1, 
+                     booking_step_2, booking_step_3, reservations, 
+                     reservation_value
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 OVERALL RELIABILITY SCORES
+
+✅ EXCELLENT (80-100 score): 16 client-platforms
+⚠️ FAIR (60-79 score): 3 client-platforms  
+🔴 POOR (<60 score): 6 client-platforms
+
+Total Issues Found: 240
+Critical Issues: 32 (missing funnel data despite significant spend)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔴 CLIENTS WITH POOR FUNNEL DATA RELIABILITY
+
+1. Sandra SPA Karpacz - GOOGLE ADS
+   Score: 0.0/100 (🔴 POOR)
+   Issues: 53 total (52 warnings, 1 info)
+   Problem: 86.7% of periods have illogical funnel sequences
+   Example: "23 reservations but zero lead generation actions"
+   → Reservations appear without any clicks, emails, or booking steps!
+
+2. Sandra SPA Karpacz - META ADS
+   Score: 0.0/100 (🔴 POOR)
+   Issues: 58 total (4 critical, 54 warnings)
+   Problem: 84.4% illogical funnel + 15.6% missing data
+   Critical: 4 periods with >100 PLN spend but ZERO funnel metrics
+   → Completely unreliable funnel tracking
+
+3. Nickel Resort Grzybowo - GOOGLE ADS
+   Score: 22.7/100 (🔴 POOR)
+   Issues: 26 total (6 critical, 19 warnings)
+   Problem: 24% missing funnel data + 26.7% illogical
+   Critical: 308-1,752 PLN spend with ZERO funnel metrics
+   → Major data collection failures in Aug-Nov 2025
+
+4. Młyn Klekotki - GOOGLE ADS
+   Score: 33.3/100 (🔴 POOR)
+   Issues: 3 total (2 warnings, 1 info)
+   Problem: 50% of periods have illogical funnels
+   Example: "Reservation value 81.90 PLN but 0 reservations"
+   → Conversion values tracked incorrectly
+
+5. Apartamenty Lambert - META ADS
+   Score: 46.9/100 (🔴 POOR)
+   Issues: 30 total (5 critical, 25 warnings)
+   Problem: 15.6% missing data + 18.8% illogical
+   Critical: 5 weeks (Aug-Dec 2025) with 107-650 PLN spend, ZERO metrics
+   → Intermittent tracking failures
+
+6. Belmonte Hotel - GOOGLE ADS
+   Score: 56.9/100 (⚠️ NEEDS IMPROVEMENT)
+   Issues: 23 total (10 critical, 13 warnings)
+   Problem: 37% of periods missing funnel data
+   Critical: 10 weeks with significant spend but NO funnel metrics
+   → Google Ads conversion tracking not working properly
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ FAIR RELIABILITY (NEEDS MONITORING)
+
+7. Hotel Tobaco Łódź - GOOGLE ADS
+   Score: 75.9/100 (⚠️ FAIR)
+   Issues: 7 critical (24.1% missing data)
+   Problem: July 2025 - 7 consecutive weeks with NO funnel data
+   → Systematic tracking failure for 1.5 months
+
+8. Cesarskie Ogrody - GOOGLE ADS
+   Score: 65.5/100 (⚠️ FAIR)
+   Issues: 10 warnings (17.2% illogical funnels)
+   Problem: Reservations appear without prior funnel steps
+   → Attribution or tracking sequence issue
+
+9. Hotel Lambert Ustronie Morskie - GOOGLE ADS
+   Score: 65.5/100 (⚠️ FAIR)
+   Issues: 10 warnings (17.2% illogical funnels)
+   Problem: Similar to Cesarskie - reservations without funnel steps
+   → Pattern suggests systematic Google Ads tracking issue
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ EXCELLENT RELIABILITY (No Action Needed)
+
+The following clients have reliable funnel tracking (80-100 score):
+  • Arche Dwór Uphagena Gdańsk (Meta & Google) - 96.8-100/100
+  • Belmonte Hotel (Meta only) - 100/100
+  • Cesarskie Ogrody (Meta only) - 96.9/100
+  • Havet (Meta & Google) - 96.9-100/100
+  • Hotel Artis Loft (Meta & Google) - 100/100
+  • Hotel Diva SPA Kołobrzeg (Meta & Google) - 100-111/100
+  • Hotel Lambert Ustronie Morskie (Meta only) - 81.3/100
+  • Hotel Tobaco Łódź (Meta only) - 96.9/100
+  • Hotel Zalewski Mrzeżyno (Meta & Google) - 96.9-100/100
+  • Młyn Klekotki (Meta only) - 80.0/100
+  • Nickel Resort Grzybowo (Meta only) - 96.7/100
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 PATTERNS DISCOVERED
+
+1. GOOGLE ADS FUNNEL TRACKING IS PROBLEMATIC ⚠️
+   - 6 out of 13 Google Ads accounts have poor/fair reliability
+   - Only 7 out of 13 have excellent reliability
+   - Common issue: Missing funnel data despite spend
+   - Common issue: Reservations recorded without prior funnel steps
+
+2. META ADS GENERALLY BETTER 👍
+   - 11 out of 13 Meta accounts have excellent reliability
+   - Only 1 has poor reliability (Sandra SPA Karpacz)
+   - Only 1 needs improvement (Apartamenty Lambert)
+
+3. SANDRA SPA KARPACZ HAS SYSTEMIC ISSUES 🚨
+   - BOTH Meta AND Google Ads show 0.0/100 reliability
+   - 84-86% of periods have illogical funnel sequences
+   - Reservations recorded but no prior actions tracked
+   - Recommendation: Complete audit of conversion tracking setup
+
+4. SPECIFIC TIME PERIODS WITH FAILURES 📅
+   - July-August 2025: Multiple clients missing Google Ads data
+   - Suggests possible API changes or system downtime
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔍 TYPES OF ISSUES FOUND
+
+1. 🔴 MISSING ALL FUNNEL DATA (32 critical instances)
+   → Spend exists but ZERO funnel metrics recorded
+   → Impact: Cannot measure campaign effectiveness
+   → Fix: Check API integration, conversion tracking setup
+
+2. ⚠️ ILLOGICAL FUNNEL SEQUENCES (Many warnings)
+   → Example: Reservations without any prior actions
+   → Example: Booking Step 2 > Booking Step 1
+   → Example: Reservation value without reservations
+   → Impact: Data reliability questionable
+   → Fix: Review conversion event mapping, attribution logic
+
+3. ⚠️ PARTIAL FUNNEL DATA (Warnings)
+   → Only 1 metric recorded despite significant spend
+   → Suggests incomplete tracking or attribution
+   → Impact: Limited optimization insights
+   → Fix: Enable all conversion events
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 RECOMMENDED ACTIONS (Priority Order)
+
+1. 🔴 CRITICAL - Fix Sandra SPA Karpacz Tracking
+   Both platforms: Complete conversion tracking audit
+   - Review Meta Pixel events
+   - Review Google Ads conversion actions
+   - Check if events are firing correctly
+   - Verify attribution settings
+
+2. 🔴 CRITICAL - Investigate Google Ads Conversion Tracking
+   Affected clients: Belmonte, Nickel Resort, Młyn Klekotki, Tobaco
+   - July-August 2025 data missing for multiple clients
+   - Check API permissions and conversion import settings
+   - Verify conversion action IDs are correct
+   - Test real-time conversion tracking
+
+3. ⚠️ HIGH - Fix Illogical Funnel Sequences
+   Common issue: "Reservations without prior funnel steps"
+   Possible causes:
+   - Attribution window mismatch
+   - Direct conversions not tracked through funnel
+   - Offline conversions imported without full funnel data
+   
+   Solution:
+   - Review conversion event sequence
+   - Ensure all micro-conversions are tracked
+   - Fix attribution logic to connect funnel steps
+
+4. ⚠️ MEDIUM - Backfill Missing Periods
+   Use historical API data to fill gaps where possible
+   - Focus on high-spend periods first
+   - Document which periods cannot be recovered
+
+5. 📊 LOW - Enable Comprehensive Tracking
+   For clients with "partial funnel data":
+   - Enable all conversion events
+   - Ensure consistent event naming
+   - Set up proper event parameters
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📄 DETAILED REPORTS GENERATED
+
+✅ Markdown Report: FUNNEL_METRICS_AUDIT_2025-12-23T16-10-37.md
+   → Full client-by-client breakdown with all issues
+   → Reliability ranking table
+   → Specific issue examples for each client
+
+✅ Console Output: Full analysis with all metrics
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 CONCLUSION
+
+Your concern about funnel metrics being unreliable is VALID and CONFIRMED:
+
+✅ Main metrics (spend, impressions, clicks) are generally reliable
+❌ Funnel metrics (conversions, booking steps) have significant issues:
+   - 32 critical instances of missing data
+   - 240 total issues across all clients
+   - 6 clients with poor reliability (<60/100)
+   - Google Ads funnel tracking especially problematic
+
+The issue is NOT with December 2024 specifically, but with:
+1. Google Ads conversion tracking (systematic issues)
+2. Sandra SPA Karpacz (complete tracking failure)
+3. Illogical funnel sequences (attribution/tracking logic)
+4. Intermittent data collection failures (July-Aug 2025)
+
+RECOMMENDATION: Focus on fixing Google Ads conversion tracking first,
+then audit Sandra SPA Karpacz setup completely.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

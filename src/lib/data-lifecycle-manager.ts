@@ -666,35 +666,47 @@ export class DataLifecycleManager {
       reservation_value_campaigns: 0
     });
 
-    // Aggregate conversion metrics from daily_kpi_data (preferred source)
-    const conversionMetrics = dailyKpiData ? dailyKpiData.reduce((acc, day: any) => {
-      acc.booking_step_1 += parseInt(day.booking_step_1 || 0);
-      acc.booking_step_2 += parseInt(day.booking_step_2 || 0);
-      acc.booking_step_3 += parseInt(day.booking_step_3 || 0);
-      acc.reservations += parseInt(day.reservations || 0);
-      acc.reservation_value += parseFloat(day.reservation_value || 0);
-      acc.click_to_call += parseInt(day.click_to_call || 0);
-      acc.email_contacts += parseInt(day.email_contacts || 0);
-      return acc;
-    }, {
-      booking_step_1: 0,
-      booking_step_2: 0,
-      booking_step_3: 0,
-      reservations: 0,
-      reservation_value: 0,
-      click_to_call: 0,
-      email_contacts: 0
-    }) : null;
+    // ✅ CRITICAL FIX FOR GOOGLE ADS: Booking steps MUST come ONLY from API (campaigns), NOT daily_kpi_data
+    // For Google Ads, we ALWAYS use campaign data (which comes from API) for booking steps
+    // daily_kpi_data is only used for other metrics (click_to_call, email_contacts) if available
+    let conversionMetrics = null;
+    
+    if (dailyKpiData && dailyKpiData.length > 0) {
+      // For Google Ads, only use daily_kpi_data for non-booking-step metrics
+      // Booking steps MUST come from campaigns (API data)
+      conversionMetrics = dailyKpiData.reduce((acc, day: any) => {
+        // ✅ DO NOT use daily_kpi_data for booking steps for Google Ads
+        // acc.booking_step_1 += parseInt(day.booking_step_1 || 0);  // ❌ REMOVED
+        // acc.booking_step_2 += parseInt(day.booking_step_2 || 0);  // ❌ REMOVED
+        // acc.booking_step_3 += parseInt(day.booking_step_3 || 0);  // ❌ REMOVED
+        // acc.reservations += parseInt(day.reservations || 0);  // ❌ REMOVED
+        // acc.reservation_value += parseFloat(day.reservation_value || 0);  // ❌ REMOVED
+        
+        // Only use daily_kpi_data for other metrics
+        acc.click_to_call += parseInt(day.click_to_call || 0);
+        acc.email_contacts += parseInt(day.email_contacts || 0);
+        return acc;
+      }, {
+        booking_step_1: 0,  // Will be set from campaigns
+        booking_step_2: 0,  // Will be set from campaigns
+        booking_step_3: 0,  // Will be set from campaigns
+        reservations: 0,  // Will be set from campaigns
+        reservation_value: 0,  // Will be set from campaigns
+        click_to_call: 0,
+        email_contacts: 0
+      });
+    }
 
-    // Use daily_kpi_data if available, otherwise fallback to campaigns
+    // ✅ CRITICAL: For Google Ads, ALWAYS use campaign data (API) for booking steps
+    // Campaign data comes directly from Google Ads API via getCampaignData()
     const finalConversions = {
-      booking_step_1: conversionMetrics?.booking_step_1 || aggregated.booking_step_1_campaigns,
-      booking_step_2: conversionMetrics?.booking_step_2 || aggregated.booking_step_2_campaigns,
-      booking_step_3: conversionMetrics?.booking_step_3 || aggregated.booking_step_3_campaigns,
-      reservations: conversionMetrics?.reservations || aggregated.reservations_campaigns,
-      reservation_value: conversionMetrics?.reservation_value || aggregated.reservation_value_campaigns,
-      click_to_call: conversionMetrics?.click_to_call || 0,
-      email_contacts: conversionMetrics?.email_contacts || 0
+      booking_step_1: aggregated.booking_step_1_campaigns,  // ✅ ALWAYS from API
+      booking_step_2: aggregated.booking_step_2_campaigns,  // ✅ ALWAYS from API
+      booking_step_3: aggregated.booking_step_3_campaigns,  // ✅ ALWAYS from API
+      reservations: aggregated.reservations_campaigns,  // ✅ ALWAYS from API
+      reservation_value: aggregated.reservation_value_campaigns,  // ✅ ALWAYS from API
+      click_to_call: conversionMetrics?.click_to_call || 0,  // Can use daily_kpi_data if available
+      email_contacts: conversionMetrics?.email_contacts || 0  // Can use daily_kpi_data if available
     };
 
     // Calculate derived metrics

@@ -165,7 +165,8 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       booking_step_3: realConversionMetrics.booking_step_3,
       reservations: realConversionMetrics.reservations,
       reservation_value: realConversionMetrics.reservation_value,
-      total_conversion_value: realConversionMetrics.total_conversion_value
+      total_conversion_value: realConversionMetrics.total_conversion_value,
+      note: 'total_conversion_value is "Wartość konwersji" from Google Ads (all_conversions_value)'
     });
 
     // 🔍 DEBUG: Verify campaigns still have booking steps before cache creation
@@ -513,24 +514,57 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
 // These functions are now defined at the end of the file for StandardizedDataFetcher integration
 
 // Helper function to parse week period ID
+// ✅ FIX: Use the same implementation as week-helpers.ts for consistency
 function parseWeekPeriodId(periodId: string) {
-  const [year, weekStr] = periodId.split('-W');
-  const week = parseInt(weekStr || '1');
-  
-  // Calculate dates for the requested week
-  const jan4 = new Date(parseInt(year || '2024'), 0, 4);
-  const startOfWeek = new Date(jan4);
-  startOfWeek.setDate(jan4.getDate() + (week - 1) * 7 - (jan4.getDay() + 6) % 7);
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
-  
-  return {
-    year: parseInt(year || '2024'),
-    week,
-    startDate: startOfWeek.toISOString().split('T')[0],
-    endDate: endOfWeek.toISOString().split('T')[0],
-    periodId
-  };
+  try {
+    // Use the standardized week-utils implementation
+    const { parseWeekPeriodId: parseStandardized } = require('./week-utils');
+    return parseStandardized(periodId);
+  } catch (error) {
+    logger.error('❌ Failed to use standardized parseWeekPeriodId, using fallback:', error);
+    // Fallback implementation (should match week-utils.ts)
+    const [year, weekStr] = periodId.split('-W');
+    const yearNum = parseInt(year || '2024');
+    const week = parseInt(weekStr || '1');
+    
+    if (isNaN(yearNum) || isNaN(week)) {
+      throw new Error(`Invalid weekly period ID: ${periodId}`);
+    }
+    
+    // Calculate the start date of the ISO week using CORRECTED algorithm
+    const jan4 = new Date(yearNum, 0, 4);
+    const jan4Day = jan4.getDay();
+    const daysFromMonday = jan4Day === 0 ? 6 : jan4Day - 1; // Sunday = 6, Monday = 0
+    
+    // Find the Monday of week 1 (ISO week 1)
+    const firstMonday = new Date(jan4);
+    firstMonday.setDate(jan4.getDate() - daysFromMonday);
+    
+    // Calculate the Monday of the target week
+    const weekStartDate = new Date(firstMonday);
+    weekStartDate.setDate(firstMonday.getDate() + (week - 1) * 7);
+    weekStartDate.setHours(0, 0, 0, 0);
+    
+    const weekEndDate = new Date(weekStartDate);
+    weekEndDate.setDate(weekStartDate.getDate() + 6);
+    weekEndDate.setHours(23, 59, 59, 999);
+    
+    // Helper function for timezone-safe date formatting
+    const formatDate = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+    
+    return {
+      year: yearNum,
+      week,
+      startDate: formatDate(weekStartDate),
+      endDate: formatDate(weekEndDate),
+      periodId
+    };
+  }
 }
 
 // Extracted Google Ads smart cache logic for monthly data
