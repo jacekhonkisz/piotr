@@ -224,7 +224,8 @@ export async function fetchFreshCurrentMonthData(client: any) {
     const totalClicks = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.inline_link_clicks || insight.clicks), 0);
     const metaTotalConversions = campaignInsights.reduce((sum, insight) => sum + sanitizeNumber(insight.conversions), 0);
     
-    // ✅ USE API VALUES DIRECTLY if available, otherwise calculate from totals
+    // ✅ CRITICAL FIX: Meta CPC/CTR MUST come ONLY from API directly
+    // NO calculations, NO fallbacks - ONLY API data
     let averageCtr: number;
     let averageCpc: number;
     
@@ -234,8 +235,8 @@ export async function fetchFreshCurrentMonthData(client: any) {
       averageCpc = sanitizeNumber(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
       logger.info('✅ Using CTR/CPC directly from account-level API insights:', { averageCtr, averageCpc });
     } else {
-      // Fallback: Calculate from aggregated totals (weighted by clicks for accuracy)
-      // ✅ Calculate weighted average CTR/CPC from campaign API values
+      // ✅ CRITICAL: Use weighted average from campaign API values (NOT calculated from totals)
+      // This ensures we use API values, not calculations
       let weightedCtrSum = 0;
       let weightedCpcSum = 0;
       let totalClickWeight = 0;
@@ -245,8 +246,9 @@ export async function fetchFreshCurrentMonthData(client: any) {
         const campaignCtr = sanitizeNumber(insight.inline_link_click_ctr || insight.ctr || 0);
         const campaignCpc = sanitizeNumber(insight.cost_per_inline_link_click || insight.cpc || 0);
         
-        if (campaignClicks > 0) {
+        if (campaignClicks > 0 && campaignCtr > 0 && campaignCpc > 0) {
           // Weight by clicks (more clicks = more influence on overall metric)
+          // ✅ Using API values from individual campaigns, not calculating from totals
           weightedCtrSum += campaignCtr * campaignClicks;
           weightedCpcSum += campaignCpc * campaignClicks;
           totalClickWeight += campaignClicks;
@@ -256,12 +258,13 @@ export async function fetchFreshCurrentMonthData(client: any) {
       if (totalClickWeight > 0) {
         averageCtr = weightedCtrSum / totalClickWeight;
         averageCpc = weightedCpcSum / totalClickWeight;
-        logger.info('✅ Using weighted average CTR/CPC from campaign API values:', { averageCtr, averageCpc });
+        logger.info('✅ Using weighted average CTR/CPC from campaign API values (NOT calculated):', { averageCtr, averageCpc });
       } else {
-        // Final fallback: Calculate from totals
-        averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-        averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-        logger.info('⚠️ Using calculated CTR/CPC from totals (no API values available):', { averageCtr, averageCpc });
+        // ❌ REMOVED: No calculation fallback - if no API values available, set to 0
+        // This ensures we NEVER calculate, only use API values
+        averageCtr = 0;
+        averageCpc = 0;
+        logger.warn('⚠️ No API CTR/CPC values available from campaigns - setting to 0 (NOT calculating from totals)');
       }
     }
 
@@ -1273,7 +1276,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     const totalClicks = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.inline_link_clicks || campaign.clicks), 0);
     const totalConversions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.conversions), 0);
     
-    // ✅ USE API VALUES DIRECTLY if available, otherwise calculate from totals
+    // ✅ CRITICAL FIX: Meta CPC/CTR MUST come ONLY from API directly
+    // NO calculations, NO fallbacks - ONLY API data
     let averageCtr: number;
     let averageCpc: number;
     
@@ -1283,7 +1287,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       averageCpc = sanitizeNumber(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
       logger.info('✅ Using CTR/CPC directly from account-level API insights (weekly):', { averageCtr, averageCpc });
     } else {
-      // Fallback: Calculate weighted average CTR/CPC from campaign API values
+      // ✅ CRITICAL: Use weighted average from campaign API values (NOT calculated from totals)
+      // This ensures we use API values, not calculations
       let weightedCtrSum = 0;
       let weightedCpcSum = 0;
       let totalClickWeight = 0;
@@ -1293,8 +1298,9 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         const campaignCtr = sanitizeNumber(insight.inline_link_click_ctr || insight.ctr || 0);
         const campaignCpc = sanitizeNumber(insight.cost_per_inline_link_click || insight.cpc || 0);
         
-        if (campaignClicks > 0) {
+        if (campaignClicks > 0 && campaignCtr > 0 && campaignCpc > 0) {
           // Weight by clicks (more clicks = more influence on overall metric)
+          // ✅ Using API values from individual campaigns, not calculating from totals
           weightedCtrSum += campaignCtr * campaignClicks;
           weightedCpcSum += campaignCpc * campaignClicks;
           totalClickWeight += campaignClicks;
@@ -1304,12 +1310,13 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       if (totalClickWeight > 0) {
         averageCtr = weightedCtrSum / totalClickWeight;
         averageCpc = weightedCpcSum / totalClickWeight;
-        logger.info('✅ Using weighted average CTR/CPC from campaign API values (weekly):', { averageCtr, averageCpc });
+        logger.info('✅ Using weighted average CTR/CPC from campaign API values (weekly, NOT calculated):', { averageCtr, averageCpc });
       } else {
-        // Final fallback: Calculate from totals
-        averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-        averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-        logger.info('⚠️ Using calculated CTR/CPC from totals (weekly, no API values available):', { averageCtr, averageCpc });
+        // ❌ REMOVED: No calculation fallback - if no API values available, set to 0
+        // This ensures we NEVER calculate, only use API values
+        averageCtr = 0;
+        averageCpc = 0;
+        logger.warn('⚠️ No API CTR/CPC values available from campaigns (weekly) - setting to 0 (NOT calculating from totals)');
       }
     }
 

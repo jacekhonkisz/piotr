@@ -1277,16 +1277,44 @@ export class BackgroundDataCollector {
       return acc;
     }, { spend: 0, impressions: 0, clicks: 0, conversions: 0 });
 
-    // ✅ USE API VALUES DIRECTLY if available, otherwise calculate from totals
+    // ✅ CRITICAL FIX: Meta CPC/CTR MUST come ONLY from API directly
+    // NO calculations, NO fallbacks - ONLY API data
     if (accountInsights) {
       // ✅ Use account-level CTR/CPC directly from API
       totals.ctr = parseFloat(accountInsights.inline_link_click_ctr || accountInsights.ctr || 0);
       totals.cpc = parseFloat(accountInsights.cost_per_inline_link_click || accountInsights.cpc || 0);
       logger.info('✅ Using CTR/CPC directly from account-level API insights:', { ctr: totals.ctr, cpc: totals.cpc });
     } else {
-      // Fallback: Calculate from totals
-      totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-      totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+      // ✅ CRITICAL: Use weighted average from campaign API values (NOT calculated from totals)
+      // This ensures we use API values, not calculations
+      let weightedCtrSum = 0;
+      let weightedCpcSum = 0;
+      let totalClickWeight = 0;
+      
+      campaigns.forEach((campaign: any) => {
+        const campaignClicks = parseInt(campaign.clicks || campaign.inline_link_clicks || '0');
+        const campaignCtr = parseFloat(campaign.inline_link_click_ctr || campaign.ctr || '0');
+        const campaignCpc = parseFloat(campaign.cost_per_inline_link_click || campaign.cpc || '0');
+        
+        if (campaignClicks > 0 && campaignCtr > 0 && campaignCpc > 0) {
+          // ✅ Using API values from individual campaigns, not calculating from totals
+          weightedCtrSum += campaignCtr * campaignClicks;
+          weightedCpcSum += campaignCpc * campaignClicks;
+          totalClickWeight += campaignClicks;
+        }
+      });
+      
+      if (totalClickWeight > 0) {
+        totals.ctr = weightedCtrSum / totalClickWeight;
+        totals.cpc = weightedCpcSum / totalClickWeight;
+        logger.info('✅ Using weighted average CTR/CPC from campaign API values (NOT calculated):', { ctr: totals.ctr, cpc: totals.cpc });
+      } else {
+        // ❌ REMOVED: No calculation fallback - if no API values available, set to 0
+        // This ensures we NEVER calculate, only use API values
+        totals.ctr = 0;
+        totals.cpc = 0;
+        logger.warn('⚠️ No API CTR/CPC values available from campaigns - setting to 0 (NOT calculating from totals)');
+      }
     }
     
     totals.cpa = totals.conversions > 0 ? totals.spend / totals.conversions : 0;

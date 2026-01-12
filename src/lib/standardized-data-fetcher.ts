@@ -583,6 +583,8 @@ export class StandardizedDataFetcher {
     console.log(`🔍 DEBUG: Sample reservation values:`, dailyRecords.slice(0, 3).map(r => ({ date: r.date, reservation_value: r.reservation_value, data_source: r.data_source })));
     
     // Aggregate daily records INCLUDING reach and booking_step_3
+    // ✅ CRITICAL FIX: For Google Ads, booking steps MUST NOT come from daily_kpi_data
+    // They should ONLY come from API (via campaigns). For Meta, it's OK to use daily_kpi_data.
     const totals = dailyRecords.reduce((acc, record) => ({
       totalSpend: acc.totalSpend + (record.total_spend || 0),
       totalImpressions: acc.totalImpressions + (record.total_impressions || 0),
@@ -590,11 +592,13 @@ export class StandardizedDataFetcher {
       totalConversions: acc.totalConversions + (record.total_conversions || 0),
       click_to_call: acc.click_to_call + (record.click_to_call || 0),
       email_contacts: acc.email_contacts + (record.email_contacts || 0),
-      booking_step_1: acc.booking_step_1 + (record.booking_step_1 || 0),
-      booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
-      booking_step_3: acc.booking_step_3 + ((record as any).booking_step_3 || 0),
-      reservations: acc.reservations + (record.reservations || 0),
-      reservation_value: acc.reservation_value + (record.reservation_value || 0),
+      // ✅ CRITICAL: For Google Ads, booking steps should NOT come from daily_kpi_data
+      // They will be set to 0 here and should come from API via campaign_summaries
+      booking_step_1: platform === 'google' ? 0 : acc.booking_step_1 + (record.booking_step_1 || 0),
+      booking_step_2: platform === 'google' ? 0 : acc.booking_step_2 + (record.booking_step_2 || 0),
+      booking_step_3: platform === 'google' ? 0 : acc.booking_step_3 + ((record as any).booking_step_3 || 0),
+      reservations: platform === 'google' ? 0 : acc.reservations + (record.reservations || 0),
+      reservation_value: platform === 'google' ? 0 : acc.reservation_value + (record.reservation_value || 0),
       reach: acc.reach + ((record as any).reach || 0)
     }), {
       totalSpend: 0,
@@ -634,13 +638,14 @@ export class StandardizedDataFetcher {
         averageCpc = summary.average_cpc;
         console.log('✅ Using API values from campaign_summaries for CTR/CPC:', { averageCtr, averageCpc });
       } else {
-        // Fallback: Calculate from totals
-        averageCtr = totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0;
-        averageCpc = totals.totalClicks > 0 ? totals.totalSpend / totals.totalClicks : 0;
-        console.log('⚠️ No API values in campaign_summaries, calculating from totals:', { averageCtr, averageCpc });
+        // ❌ REMOVED: No calculation fallback for Meta - if no API values, set to 0
+        // This ensures we NEVER calculate Meta CPC/CTR, only use API values
+        averageCtr = 0;
+        averageCpc = 0;
+        console.warn('⚠️ No API values in campaign_summaries for Meta - setting CTR/CPC to 0 (NOT calculating from totals)');
       }
     } else {
-      // For Google Ads, calculate from totals (no account-level insights available)
+      // For Google Ads, calculate from totals (Google Ads doesn't provide account-level CTR/CPC from API)
       averageCtr = totals.totalImpressions > 0 ? (totals.totalClicks / totals.totalImpressions) * 100 : 0;
       averageCpc = totals.totalClicks > 0 ? totals.totalSpend / totals.totalClicks : 0;
     }
@@ -703,24 +708,31 @@ export class StandardizedDataFetcher {
       } as any;
     } else {
       console.log(`⚠️ No campaign summary found for conversion data, using daily totals`);
-      // Calculate conversion metrics from daily data totals
+      // ✅ CRITICAL FIX: For Google Ads, booking steps MUST NOT come from daily_kpi_data
+      // They should ONLY come from API. If no campaign summary is found, set booking steps to 0.
       const dailyReservationValue = totals.reservation_value || 0;
       conversionMetrics = {
         click_to_call: totals.click_to_call,
         email_contacts: totals.email_contacts,
-        booking_step_1: totals.booking_step_1,
-        booking_step_2: totals.booking_step_2,
-        booking_step_3: totals.booking_step_3,
-        reservations: totals.reservations,
-        reservation_value: dailyReservationValue,
+        // ✅ CRITICAL: For Google Ads, booking steps should NEVER come from daily_kpi_data
+        // They must come from API only. If no summary found, set to 0.
+        booking_step_1: platform === 'google' ? 0 : totals.booking_step_1,
+        booking_step_2: platform === 'google' ? 0 : totals.booking_step_2,
+        booking_step_3: platform === 'google' ? 0 : totals.booking_step_3,
+        reservations: platform === 'google' ? 0 : totals.reservations,
+        reservation_value: platform === 'google' ? 0 : dailyReservationValue,
         // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value)
-        conversion_value: dailyReservationValue,
-        total_conversion_value: dailyReservationValue,
+        conversion_value: platform === 'google' ? 0 : dailyReservationValue,
+        total_conversion_value: platform === 'google' ? 0 : dailyReservationValue,
         roas: dailyReservationValue && totals.totalSpend ? dailyReservationValue / totals.totalSpend : 0,
         cost_per_reservation: totals.reservations && totals.totalSpend ? totals.totalSpend / totals.reservations : 0,
         reach: totals.reach
       };
-      console.log(`✅ Calculated conversion metrics from daily data: ${conversionMetrics.reservations} reservations, ${conversionMetrics.reservation_value} PLN`);
+      if (platform === 'google') {
+        console.warn('⚠️ Google Ads: No campaign summary found - booking steps set to 0 (MUST come from API, not daily_kpi_data)');
+      } else {
+        console.log(`✅ Calculated conversion metrics from daily data: ${conversionMetrics.reservations} reservations, ${conversionMetrics.reservation_value} PLN`);
+      }
     }
     
     const roas = conversionMetrics.roas;
@@ -1077,7 +1089,8 @@ export class StandardizedDataFetcher {
           const totalClicks = campaigns.reduce((sum: number, c: any) => sum + c.clicks, 0);
           const totalConversions = campaigns.reduce((sum: number, c: any) => sum + c.conversions, 0);
           
-          // ✅ CRITICAL FIX: Fetch account-level insights for CTR/CPC (same as smart cache)
+          // ✅ CRITICAL FIX: Meta CPC/CTR MUST come ONLY from API directly
+          // NO calculations, NO fallbacks - ONLY API data
           let averageCtr: number;
           let averageCpc: number;
           
@@ -1094,22 +1107,46 @@ export class StandardizedDataFetcher {
                 averageCpc = parseFloat(accountInsights.cost_per_inline_link_click || accountInsights.cpc || '0');
                 console.log('✅ Using CTR/CPC directly from account-level API insights (live API fallback):', { averageCtr, averageCpc });
               } else {
-                // Fallback: Calculate from totals
-                averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-                averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-                console.log('⚠️ Account insights not available, calculating from totals:', { averageCtr, averageCpc });
+                // ✅ CRITICAL: Use weighted average from campaign API values (NOT calculated from totals)
+                let weightedCtrSum = 0;
+                let weightedCpcSum = 0;
+                let totalClickWeight = 0;
+                
+                campaigns.forEach((campaign: any) => {
+                  const campaignClicks = parseInt(campaign.clicks || '0');
+                  const campaignCtr = parseFloat(campaign.ctr || '0');
+                  const campaignCpc = parseFloat(campaign.cpc || '0');
+                  
+                  if (campaignClicks > 0 && campaignCtr > 0 && campaignCpc > 0) {
+                    // ✅ Using API values from individual campaigns, not calculating from totals
+                    weightedCtrSum += campaignCtr * campaignClicks;
+                    weightedCpcSum += campaignCpc * campaignClicks;
+                    totalClickWeight += campaignClicks;
+                  }
+                });
+                
+                if (totalClickWeight > 0) {
+                  averageCtr = weightedCtrSum / totalClickWeight;
+                  averageCpc = weightedCpcSum / totalClickWeight;
+                  console.log('✅ Using weighted average CTR/CPC from campaign API values (NOT calculated):', { averageCtr, averageCpc });
+                } else {
+                  // ❌ REMOVED: No calculation fallback - if no API values available, set to 0
+                  averageCtr = 0;
+                  averageCpc = 0;
+                  console.warn('⚠️ No API CTR/CPC values available - setting to 0 (NOT calculating from totals)');
+                }
               }
             } else {
-              // Fallback: Calculate from totals
-              averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-              averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-              console.log('⚠️ No ad account ID, calculating from totals:', { averageCtr, averageCpc });
+              // ❌ REMOVED: No calculation fallback - if no ad account ID, set to 0
+              averageCtr = 0;
+              averageCpc = 0;
+              console.warn('⚠️ No ad account ID - setting CTR/CPC to 0 (NOT calculating from totals)');
             }
           } catch (accountError) {
-            // Fallback: Calculate from totals
-            averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-            averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
-            console.warn('⚠️ Failed to fetch account insights, calculating from totals:', accountError);
+            // ❌ REMOVED: No calculation fallback - if fetch fails, set to 0
+            averageCtr = 0;
+            averageCpc = 0;
+            console.warn('⚠️ Failed to fetch account insights - setting CTR/CPC to 0 (NOT calculating from totals):', accountError);
           }
           
           console.log(`✅ Meta API returned ${campaigns.length} campaigns, total spend: ${totalSpend}`);
