@@ -1527,39 +1527,45 @@ export default function DashboardPage() {
               // Fallback to loadMainDashboardData
               console.log('⚠️ REFRESH: Reload API returned no data, using loadMainDashboardData');
               const freshData = await loadMainDashboardData(selectedClient, activeAdsProvider, false);
-          
-          console.log('📊 REFRESH: Fresh data received:', {
-            hasFreshData: !!freshData,
-            campaignCount: freshData?.campaigns?.length || 0,
-            totalSpend: freshData?.stats?.totalSpend || 0,
-            totalConversions: freshData?.stats?.totalConversions || 0,
-            reservations: freshData?.conversionMetrics?.reservations || 0
-          });
-          
-          // Only update if we got valid data (has campaigns or stats)
-          if (freshData && (freshData.campaigns?.length > 0 || freshData.stats?.totalSpend > 0)) {
-            console.log('✅ REFRESH: Updating dashboard with fresh data');
-            // Update the dashboard with fresh data
-            setClientData(prev => {
-              const updated = {
-                ...prev!,
-                campaigns: freshData.campaigns || prev?.campaigns || [],
-                stats: freshData.stats || prev?.stats,
-                conversionMetrics: freshData.conversionMetrics || prev?.conversionMetrics
-              };
-              console.log('📊 REFRESH: Updated clientData:', {
-                campaignCount: updated.campaigns?.length || 0,
-                totalSpend: updated.stats?.totalSpend || 0,
-                totalConversions: updated.stats?.totalConversions || 0
+              
+              console.log('📊 REFRESH: Fresh data received:', {
+                hasFreshData: !!freshData,
+                campaignCount: freshData?.campaigns?.length || 0,
+                totalSpend: freshData?.stats?.totalSpend || 0,
+                totalConversions: freshData?.stats?.totalConversions || 0,
+                reservations: freshData?.conversionMetrics?.reservations || 0
               });
-              return updated;
-            });
-            // Force re-render
-            setRenderKey(prev => prev + 1);
+              
+              // Only update if we got valid data (has campaigns or stats)
+              if (freshData && (freshData.campaigns?.length > 0 || freshData.stats?.totalSpend > 0)) {
+                console.log('✅ REFRESH: Updating dashboard with fresh data');
+                // Update the dashboard with fresh data
+                setClientData(prev => {
+                  const updated = {
+                    ...prev!,
+                    campaigns: freshData.campaigns || prev?.campaigns || [],
+                    stats: freshData.stats || prev?.stats,
+                    conversionMetrics: freshData.conversionMetrics || prev?.conversionMetrics
+                  };
+                  console.log('📊 REFRESH: Updated clientData:', {
+                    campaignCount: updated.campaigns?.length || 0,
+                    totalSpend: updated.stats?.totalSpend || 0,
+                    totalConversions: updated.stats?.totalConversions || 0
+                  });
+                  return updated;
+                });
+                // Force re-render
+                setRenderKey(prev => prev + 1);
+              } else {
+                // If no fresh data, just reload normally (preserves existing data)
+                console.log('⚠️ REFRESH: Fresh data empty, reloading dashboard normally');
+                await loadClientDashboard();
+              }
+            }
           } else {
-            // If no fresh data, just reload normally (preserves existing data)
-            console.log('⚠️ REFRESH: Fresh data empty, reloading dashboard normally');
-      await loadClientDashboard();
+            // API call failed
+            console.error('⚠️ REFRESH: API call failed, reloading dashboard normally');
+            await loadClientDashboard();
           }
         } catch (reloadError) {
           console.error('Error reloading dashboard after refresh:', reloadError);
