@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { MetaAPIService } from '@/lib/meta-api-optimized';
+import { enhanceCampaignsWithConversions } from '@/lib/meta-actions-parser';
 import logger from '@/lib/logger';
 import { DataValidator } from '@/lib/data-validation';
 import { withRetry } from '@/lib/retry-helper';
@@ -106,15 +107,18 @@ export async function POST(request: NextRequest) {
         const metaAPI = new MetaAPIService(metaToken!);
 
         // Fetch campaigns data for the target date
-        const campaigns = await metaAPI.getCampaignInsights(
+        const rawCampaigns = await metaAPI.getCampaignInsights(
           client.ad_account_id,
           targetDate,
           targetDate
         );
         
-        if (!campaigns || campaigns.length === 0) {
+        if (!rawCampaigns || rawCampaigns.length === 0) {
           throw new Error('No campaign data available - not retrying');
         }
+
+        // Parse actions arrays into structured funnel metrics
+        const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
 
         console.log(`📊 Found ${campaigns.length} campaigns for ${client.name}`);
 

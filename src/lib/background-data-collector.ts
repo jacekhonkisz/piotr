@@ -249,7 +249,7 @@ export class BackgroundDataCollector {
     }
 
     // Collect Meta Ads data if configured
-    if (client.meta_access_token && client.ad_account_id) {
+    if ((client.system_user_token || client.meta_access_token) && client.ad_account_id) {
       await this.collectMetaMonthlySummary(client, monthsToCollect);
     }
 
@@ -259,7 +259,7 @@ export class BackgroundDataCollector {
     }
 
     // If neither platform is configured, log warning
-    if (!client.meta_access_token && !client.google_ads_customer_id) {
+    if (!(client.system_user_token || client.meta_access_token) && !client.google_ads_customer_id) {
       logger.warn(`⚠️ No advertising platforms configured for ${client.name}, skipping`);
       return;
     }
@@ -901,25 +901,21 @@ export class BackgroundDataCollector {
       total_spend: 0
     });
 
-    // 🔧 ENHANCED: If Meta API didn't return conversion metrics, try to get them from daily_kpi_data
+    // Per-metric enhancement: for any individual metric that is 0 from the API,
+    // try to fill it from daily_kpi_data. This handles cases where the API returns
+    // some funnel steps (e.g. booking_step_1) but not others (e.g. reservations).
     let enhancedConversionMetrics = { ...conversionTotals };
     
-    // 🔧 FIX: Check if ANY booking step metrics are missing, not just step 1
-    const hasAnyConversionData = conversionTotals.reservations > 0 || 
-                                  conversionTotals.booking_step_1 > 0 ||
-                                  conversionTotals.booking_step_2 > 0 ||
-                                  conversionTotals.booking_step_3 > 0;
+    const metricKeys = ['click_to_call', 'email_contacts', 'booking_step_1', 'booking_step_2', 'booking_step_3', 'reservations', 'reservation_value'] as const;
+    const zeroMetrics = metricKeys.filter(k => !conversionTotals[k] || conversionTotals[k] === 0);
     
-    if (!hasAnyConversionData) {
-      logger.info(`🔧 No conversion metrics from Meta API for ${data.summary_date}, trying daily_kpi_data fallback...`);
-      logger.info(`📊 Meta API conversion totals:`, conversionTotals);
+    if (zeroMetrics.length > 0) {
+      logger.info(`🔧 ${zeroMetrics.length} conversion metrics are 0 from Meta API for ${data.summary_date}, trying daily_kpi_data for: ${zeroMetrics.join(', ')}`);
       
       try {
-        // Get the month start and end dates
         const monthStart = data.summary_date;
         const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().split('T')[0];
         
-        // Query daily_kpi_data for this month
         const { data: dailyKpiData, error: kpiError } = await supabase
           .from('daily_kpi_data')
           .select('*')
@@ -928,9 +924,8 @@ export class BackgroundDataCollector {
           .lte('date', monthEnd);
         
         if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
-          logger.info(`🔧 Found ${dailyKpiData.length} daily KPI records for ${data.summary_date}, aggregating conversion metrics...`);
+          logger.info(`🔧 Found ${dailyKpiData.length} daily KPI records for ${data.summary_date}`);
           
-          // Aggregate conversion metrics from daily_kpi_data
           const dailyConversionTotals = dailyKpiData.reduce((acc: any, record: any) => ({
             click_to_call: acc.click_to_call + (record.click_to_call || 0),
             email_contacts: acc.email_contacts + (record.email_contacts || 0),
@@ -940,35 +935,27 @@ export class BackgroundDataCollector {
             booking_step_2: acc.booking_step_2 + (record.booking_step_2 || 0),
             booking_step_3: acc.booking_step_3 + (record.booking_step_3 || 0)
           }), {
-            click_to_call: 0,
-            email_contacts: 0,
-            booking_step_1: 0,
-            reservations: 0,
-            reservation_value: 0,
-            booking_step_2: 0,
-            booking_step_3: 0
+            click_to_call: 0, email_contacts: 0, booking_step_1: 0,
+            reservations: 0, reservation_value: 0, booking_step_2: 0, booking_step_3: 0
           });
           
-          // Use daily_kpi_data conversion metrics as fallback
-          enhancedConversionMetrics = {
-            click_to_call: dailyConversionTotals.click_to_call,
-            email_contacts: dailyConversionTotals.email_contacts,
-            booking_step_1: dailyConversionTotals.booking_step_1,
-            reservations: dailyConversionTotals.reservations,
-            reservation_value: dailyConversionTotals.reservation_value,
-            booking_step_2: dailyConversionTotals.booking_step_2,
-            booking_step_3: dailyConversionTotals.booking_step_3
-          };
+          // Only fill in metrics that are 0 from the API — keep API values for non-zero metrics
+          for (const key of zeroMetrics) {
+            if (dailyConversionTotals[key] > 0) {
+              (enhancedConversionMetrics as any)[key] = dailyConversionTotals[key];
+              logger.info(`  ✅ Enhanced ${key}: 0 → ${dailyConversionTotals[key]} (from daily_kpi_data)`);
+            }
+          }
           
-          logger.info(`✅ Enhanced conversion metrics from daily_kpi_data:`, enhancedConversionMetrics);
+          logger.info(`✅ Per-metric enhanced conversion metrics:`, enhancedConversionMetrics);
         } else {
-          logger.warn(`⚠️ No daily_kpi_data found for ${data.summary_date}, keeping zero conversion metrics`);
+          logger.warn(`⚠️ No daily_kpi_data found for ${data.summary_date}, keeping zero metrics as-is`);
         }
       } catch (fallbackError) {
         logger.error(`❌ Error getting daily_kpi_data fallback for ${data.summary_date}:`, fallbackError);
       }
     } else {
-      logger.info(`✅ Using conversion metrics from Meta API:`, enhancedConversionMetrics);
+      logger.info(`✅ All conversion metrics present from Meta API:`, enhancedConversionMetrics);
     }
 
     // Calculate derived conversion metrics

@@ -184,6 +184,9 @@ export async function GET(request: NextRequest) {
  * Manual trigger for weekly report generation (for testing)
  */
 export async function POST(request: NextRequest) {
+  if (!verifyCronAuth(request)) {
+    return createUnauthorizedResponse();
+  }
   try {
     const body = await request.json().catch(() => ({}));
     const { weekStart, weekEnd } = body;
@@ -215,7 +218,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Reuse the GET logic
-    return await GET();
+    return await GET(request);
     
   } catch (error) {
     logger.error('❌ Manual weekly report generation failed', { error });

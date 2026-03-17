@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIService } from '../../../../lib/meta-api-optimized';
+import { enhanceCampaignsWithConversions, aggregateConversionMetrics } from '../../../../lib/meta-actions-parser';
 import { GoogleAdsAPIService } from '../../../../lib/google-ads-api';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
@@ -170,13 +171,13 @@ export async function POST(request: NextRequest) {
             const metaService = new MetaAPIService(metaToken);
 
             // Fetch campaign insights
-            const campaigns = await metaService.getCampaignInsights(
+            const rawCampaigns = await metaService.getCampaignInsights(
               client.ad_account_id,
               startDate,
               endDate
             );
 
-            if (!campaigns || campaigns.length === 0) {
+            if (!rawCampaigns || rawCampaigns.length === 0) {
               logger.warn(`⚠️  No Meta campaigns returned for ${clientName}`);
               results.push({
                 clientId: client.id,
@@ -190,15 +191,19 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
-            logger.info(`  Found ${campaigns.length} Meta campaigns`);
+            // Parse actions arrays into structured funnel metrics
+            const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
+            const convMetrics = aggregateConversionMetrics(campaigns);
+
+            logger.info(`  Found ${campaigns.length} Meta campaigns (parsed with funnel data)`);
 
             // Calculate totals from campaigns
-            const totals = campaigns.reduce((acc, campaign) => ({
-              spend: acc.spend + (campaign.spend || 0),
-              impressions: acc.impressions + (campaign.impressions || 0),
-              clicks: acc.clicks + (campaign.clicks || 0),
-              conversions: acc.conversions + (campaign.conversions || 0),
-              reach: acc.reach + (campaign.reach || 0)
+            const totals = campaigns.reduce((acc: any, campaign: any) => ({
+              spend: acc.spend + (parseFloat(campaign.spend) || 0),
+              impressions: acc.impressions + (parseInt(campaign.impressions) || 0),
+              clicks: acc.clicks + (parseInt(campaign.inline_link_clicks || campaign.clicks) || 0),
+              conversions: acc.conversions + (parseInt(campaign.conversions) || 0),
+              reach: acc.reach + (parseInt(campaign.reach) || 0)
             }), { spend: 0, impressions: 0, clicks: 0, conversions: 0, reach: 0 });
 
             // ✅ NEW: Try to get account-level insights first to use API values directly
@@ -228,8 +233,12 @@ export async function POST(request: NextRequest) {
               averageCpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
             }
 
-            // STEP 3: Save to database
-            // ✅ IMPROVED: Use upsert pattern for consistency with other collection jobs
+            // STEP 3: Save to database with funnel metrics
+            const roas = totals.spend > 0 && convMetrics.reservation_value > 0
+              ? convMetrics.reservation_value / totals.spend : 0;
+            const costPerRes = convMetrics.reservations > 0 && totals.spend > 0
+              ? totals.spend / convMetrics.reservations : 0;
+
             const { error: saveError } = await supabaseAdmin
               .from('campaign_summaries')
               .upsert({
@@ -238,16 +247,25 @@ export async function POST(request: NextRequest) {
                 summary_type: 'monthly',
                 summary_date: startDate,
                 total_spend: totals.spend,
-                total_impressions: totals.impressions,
-                total_clicks: totals.clicks,
-                total_conversions: totals.conversions,
+                total_impressions: Math.round(totals.impressions),
+                total_clicks: Math.round(totals.clicks),
+                total_conversions: Math.round(totals.conversions),
                 average_ctr: averageCtr,
                 average_cpc: averageCpc,
+                click_to_call: Math.round(convMetrics.click_to_call || 0),
+                email_contacts: Math.round(convMetrics.email_contacts || 0),
+                booking_step_1: Math.round(convMetrics.booking_step_1 || 0),
+                booking_step_2: Math.round(convMetrics.booking_step_2 || 0),
+                booking_step_3: Math.round(convMetrics.booking_step_3 || 0),
+                reservations: Math.round(convMetrics.reservations || 0),
+                reservation_value: Math.round((convMetrics.reservation_value || 0) * 100) / 100,
+                roas: Math.round(roas * 100) / 100,
+                cost_per_reservation: Math.round(costPerRes * 100) / 100,
                 campaign_data: campaigns,
                 data_source: 'meta_api',
                 last_updated: new Date().toISOString()
               }, {
-                onConflict: 'client_id,summary_type,summary_date,platform'  // ✅ CRITICAL: Includes platform
+                onConflict: 'client_id,summary_type,summary_date,platform'
               });
 
             if (saveError) {

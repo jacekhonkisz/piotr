@@ -59,14 +59,6 @@ interface WeeklyReport {
     offline_reservations: number;
     offline_value: number;
   };
-  stats?: {
-    totalSpend: number;
-    totalImpressions: number;
-    totalClicks: number;
-    totalConversions: number; // ✅ For Google Ads: use this instead of summing campaign.conversions
-    averageCtr: number;
-    averageCpc: number;
-  };
 }
 
 interface WeeklyReportViewProps {
@@ -91,6 +83,11 @@ const formatCurrency = (amount: number) => {
 };
 
 const formatNumber = (num: number) => {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  } else if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
+  }
   return num.toLocaleString('pl-PL');
 };
 
@@ -110,19 +107,23 @@ const getConversionMetric = (
   metric: 'booking_step_1' | 'booking_step_2' | 'booking_step_3' | 'reservations' | 'reservation_value' | 'click_to_call' | 'email_contacts' | 'conversion_value' | 'total_conversion_value',
   campaigns: Campaign[]
 ): number => {
-  // 🥇 PRIORITY 1: Always use conversionMetrics if it exists (even if 0)
-  // ✅ FIX: Don't fall back to aggregating from campaigns - campaigns may have wrong values due to parser bugs
-  // The stored conversionMetrics value is the authoritative source from campaign_summaries
+  // 🥇 PRIORITY 1: Use conversionMetrics if it has a non-zero value
   const conversionValue = report?.conversionMetrics?.[metric];
-  if (conversionValue !== undefined && conversionValue !== null) {
+  if (conversionValue !== undefined && conversionValue > 0) {
     return conversionValue;
   }
   
-  // 🥈 PRIORITY 2: Fallback to campaigns array only if conversionMetrics is completely missing
-  // This handles edge cases where conversionMetrics wasn't populated
+  // 🥈 PRIORITY 2: Calculate from campaigns array
+  // This is more reliable as each campaign has its own conversion data from the API
   const campaignTotal = campaigns.reduce((sum, c) => sum + ((c as any)[metric] || 0), 0);
   
-  return campaignTotal;
+  // 🥉 PRIORITY 3: If campaigns also have 0, return conversionMetrics value (which may be 0)
+  // This preserves the case where conversionMetrics explicitly has 0
+  if (campaignTotal > 0) {
+    return campaignTotal;
+  }
+  
+  return conversionValue ?? 0;
 };
 
 const formatDate = (dateString: string) => {
@@ -556,15 +557,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     
     if (!firstReport || !firstReport.campaigns) return null;
     
-    // ✅ DEBUG: Log stats for Google Ads
-    if (platform === 'google' && firstReport.stats) {
-      console.log('🎯 GOOGLE ADS STATS IN WeeklyReportView:', {
-        totalConversions: firstReport.stats.totalConversions,
-        totalSpend: firstReport.stats.totalSpend,
-        totalClicks: firstReport.stats.totalClicks
-      });
-    }
-    
     // Calculate current period totals from existing report data
     // 🎯 STANDARDIZED: Use getConversionMetric helper for consistency
     const currentTotals = {
@@ -704,8 +696,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
       {reportIds.map((reportId) => {
         const report = reports[reportId];
         if (!report) return null;
-        // 🔧 FIX: Filter out campaigns with no spend - only show real campaigns with data
-        const campaigns = (report.campaigns || []).filter((campaign: any) => (campaign.spend || 0) > 0);
+        const campaigns = report.campaigns || [];
         
         // Year-over-year comparison data loaded
 
@@ -925,21 +916,23 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   
                   <MetricCard
                     title={platform === 'meta' ? 'Współczynnik kliknięć z linku' : 'CTR'}
-                    value={`${(platform === 'meta' && report.stats?.averageCtr !== undefined && report.stats?.averageCtr !== null
-                      ? report.stats.averageCtr
-                      : (campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0)).toFixed(2)}%`}
-                    tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń (z API Meta)"
+                    value={`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}
+                    tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń"
                   />
                   
                   <MetricCard
                     title={platform === 'meta' ? 'Koszt kliknięcia linku' : 'CPC'}
-                    value={formatCurrency(platform === 'meta' && report.stats?.averageCpc !== undefined && report.stats?.averageCpc !== null
-                      ? report.stats.averageCpc
-                      : (campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0))}
-                    tooltip="Cost Per Click: średni koszt kliknięcia (z API Meta)"
+                    value={formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}
+                    tooltip="Cost Per Click: średni koszt kliknięcia"
                   />
                   
-                  {/* Conversions metric removed */}
+                  <MetricCard
+                    title="Konwersje"
+                    value={getConversionMetric(report, 'reservations', campaigns).toString()}
+                    tooltip="Liczba zakończonych konwersji"
+                    change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
+                  />
                 </div>
               </div>
 
@@ -1076,9 +1069,9 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 />
                 
                 <MetricCard
-                  title={platform === 'google' ? "Łączna wartość rezerwacji" : "Łączna wartość konwersji"}
+                  title="Łączna wartość konwersji"
                   value={formatCurrency(getConversionMetric(report, 'total_conversion_value', campaigns))}
-                  tooltip={platform === 'google' ? "Łączna wartość rezerwacji (all_conversions_value)" : "Łączna wartość wszystkich konwersji (all_conversions_value)"}
+                  tooltip="Łączna wartość wszystkich konwersji (all_conversions_value)"
                 />
               </div>
 
@@ -1164,15 +1157,15 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     
                     return `${costPercentage.toFixed(1)}%`;
                   })()}
-                  subtitle={platform === 'google' ? "(wydana kwota / łączna wartość rezerwacji) × 100" : "(wydana kwota / łączna wartość konwersji) × 100"}
-                  tooltip={platform === 'google' ? "Procentowy koszt pozyskania w stosunku do łącznej wartości rezerwacji" : "Procentowy koszt pozyskania w stosunku do łącznej wartości konwersji"}
+                  subtitle="(wydana kwota / łączna wartość konwersji) × 100"
+                  tooltip="Procentowy koszt pozyskania w stosunku do łącznej wartości konwersji"
                   icon={<Percent className="w-5 h-5 text-slate-600" />}
                   change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
                   isComparisonLoading={yoyLoading && viewType !== 'custom'}
                 />
                 
                 <MetricCard
-                  title={platform === 'google' ? "Łączna wartość rezerwacji online + offline" : "Łączna wartość konwersji online + offline"}
+                  title="Łączna wartość konwersji online + offline"
                   value={(() => {
                     // Calculate offline value
                     const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
@@ -1278,7 +1271,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                                 </div>
                                 <div>
                                   <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>
-                                    {campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign'}
+                                    {campaign.campaign_name}
                                   </div>
                                   <div className="text-xs text-gray-500 mt-0.5">
                                     {campaign.objective || 'N/A'}

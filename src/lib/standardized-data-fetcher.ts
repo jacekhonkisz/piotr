@@ -673,8 +673,8 @@ export class StandardizedDataFetcher {
     };
     
     // Try to get more accurate conversion data from campaign_summaries
-    // @ts-ignore - Supabase type issue
-    const campaignSummaryResult = await supabase
+    // Use admin client (same as the daily_kpi_data query above) to bypass RLS
+    const campaignSummaryResult = await dbClient
       .from('campaign_summaries')
       .select('*')
       .eq('client_id', clientId)
@@ -1066,10 +1066,11 @@ export class StandardizedDataFetcher {
         const apiResult = await metaService.getMonthlyReport(client.ad_account_id, dateRange.start, dateRange.end);
         
         if (apiResult && apiResult.length > 0) {
-          // Transform campaigns
-          // ✅ CRITICAL: Use inline_link_clicks and cost_per_inline_link_click to match Meta Business Suite
-          // ✅ Use inline_link_click_ctr and cost_per_inline_link_click directly from Meta API (matches Business Suite)
-          const campaigns = apiResult.map((campaign: any) => ({
+          // Parse actions arrays to extract funnel/conversion metrics from raw API data
+          const { enhanceCampaignsWithConversions, aggregateConversionMetrics } = await import('./meta-actions-parser');
+          const enhancedCampaigns = enhanceCampaignsWithConversions(apiResult);
+          
+          const campaigns = enhancedCampaigns.map((campaign: any) => ({
             campaign_id: campaign.campaign_id || campaign.id,
             campaign_name: campaign.campaign_name || campaign.name,
             status: campaign.status || 'ACTIVE',
@@ -1077,11 +1078,21 @@ export class StandardizedDataFetcher {
             impressions: parseInt(campaign.impressions || '0'),
             clicks: parseInt(campaign.inline_link_clicks || campaign.clicks || '0'),
             conversions: parseInt(campaign.conversions || '0'),
-            // ✅ Use inline_link_click_ctr and cost_per_inline_link_click directly from Meta API (matches Business Suite)
             ctr: parseFloat(campaign.inline_link_click_ctr || campaign.ctr || '0'),
             cpc: parseFloat(campaign.cost_per_inline_link_click || campaign.cpc || '0'),
-            cpa: parseFloat(campaign.cpa || '0')
+            cpa: parseFloat(campaign.cpa || '0'),
+            click_to_call: campaign.click_to_call || 0,
+            email_contacts: campaign.email_contacts || 0,
+            booking_step_1: campaign.booking_step_1 || 0,
+            booking_step_2: campaign.booking_step_2 || 0,
+            booking_step_3: campaign.booking_step_3 || 0,
+            reservations: campaign.reservations || 0,
+            reservation_value: campaign.reservation_value || 0,
+            conversion_value: campaign.conversion_value || campaign.reservation_value || 0,
+            total_conversion_value: campaign.total_conversion_value || campaign.reservation_value || 0,
           }));
+          
+          const parsedConversionMetrics = aggregateConversionMetrics(enhancedCampaigns);
           
           // Calculate totals
           const totalSpend = campaigns.reduce((sum: number, c: any) => sum + c.spend, 0);
@@ -1151,6 +1162,30 @@ export class StandardizedDataFetcher {
           
           console.log(`✅ Meta API returned ${campaigns.length} campaigns, total spend: ${totalSpend}`);
           
+          const totalReservationValue = parsedConversionMetrics.reservation_value || 0;
+          const liveConversionMetrics = {
+            click_to_call: parsedConversionMetrics.click_to_call || 0,
+            email_contacts: parsedConversionMetrics.email_contacts || 0,
+            booking_step_1: parsedConversionMetrics.booking_step_1 || 0,
+            booking_step_2: parsedConversionMetrics.booking_step_2 || 0,
+            booking_step_3: parsedConversionMetrics.booking_step_3 || 0,
+            reservations: parsedConversionMetrics.reservations || 0,
+            reservation_value: totalReservationValue,
+            conversion_value: parsedConversionMetrics.conversion_value || totalReservationValue,
+            total_conversion_value: parsedConversionMetrics.total_conversion_value || totalReservationValue,
+            roas: totalSpend > 0 && totalReservationValue > 0 ? totalReservationValue / totalSpend : 0,
+            cost_per_reservation: parsedConversionMetrics.reservations > 0 && totalSpend > 0 ? totalSpend / parsedConversionMetrics.reservations : 0,
+            reach: (parsedConversionMetrics as any).reach || 0,
+          };
+          
+          console.log(`✅ Live API funnel metrics parsed:`, {
+            booking_step_1: liveConversionMetrics.booking_step_1,
+            booking_step_2: liveConversionMetrics.booking_step_2,
+            booking_step_3: liveConversionMetrics.booking_step_3,
+            reservations: liveConversionMetrics.reservations,
+            reservation_value: liveConversionMetrics.reservation_value,
+          });
+          
           return {
             success: true,
             data: {
@@ -1162,7 +1197,7 @@ export class StandardizedDataFetcher {
                 averageCtr,
                 averageCpc
               },
-              conversionMetrics: this.getZeroData().conversionMetrics,
+              conversionMetrics: liveConversionMetrics,
               campaigns
             }
           };
@@ -1511,6 +1546,8 @@ export class StandardizedDataFetcher {
         booking_step_3: 0,
         reservations: 0,
         reservation_value: 0,
+        conversion_value: 0,
+        total_conversion_value: 0,
         roas: 0,
         cost_per_reservation: 0,
         reach: 0

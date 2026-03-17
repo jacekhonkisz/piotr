@@ -344,59 +344,34 @@ export async function fetchFreshCurrentMonthData(client: any) {
     
     logger.info('📊 Aggregated Meta conversion metrics from parsed campaigns:', metaConversionMetrics);
 
-    // ✅ PRODUCTION FIX: Use ONLY real data - NO ESTIMATES
-    // ✅ CRITICAL FIX: For current month, prioritize fresh parser (with PBM fix) over old daily_kpi_data
-    // Priority: 1. Meta API parsed actions (fresh, with PBM fix), 2. daily_kpi_data (may be stale), 3. Zero
+    // Consistent priority for ALL conversion metrics:
+    // 1. Fresh Meta API parser result (just fetched, most accurate)
+    // 2. daily_kpi_data aggregation (up to 24h stale, collected by overnight cron)
+    // 3. Zero
+    const pickBest = (parserVal: number, dailyVal: number, fallback: number = 0): number => {
+      if (parserVal > 0) return parserVal;
+      if (dailyVal > 0) return dailyVal;
+      return fallback;
+    };
+
     const conversionMetrics = {
-      // ✅ FIX: Use fresh parser result first (has PBM-only fix), fallback to daily_kpi_data if parser returns 0
-      click_to_call: metaConversionMetrics.click_to_call > 0
-        ? metaConversionMetrics.click_to_call // ✅ Fresh parser with PBM fix
-        : realConversionMetrics.click_to_call > 0 
-          ? realConversionMetrics.click_to_call // Fallback to daily_kpi_data
-          : 0,
-
-      email_contacts: realConversionMetrics.email_contacts > 0 
-        ? realConversionMetrics.email_contacts 
-        : metaConversionMetrics.email_contacts, // Real Meta API data or 0
-
-      booking_step_1: realConversionMetrics.booking_step_1 > 0 
-        ? realConversionMetrics.booking_step_1 
-        : metaConversionMetrics.booking_step_1, // Real Meta API data or 0
-
-      booking_step_2: realConversionMetrics.booking_step_2 > 0 
-        ? realConversionMetrics.booking_step_2 
-        : metaConversionMetrics.booking_step_2, // Real Meta API data or 0
-
-      booking_step_3: realConversionMetrics.booking_step_3 > 0 
-        ? realConversionMetrics.booking_step_3 
-        : metaConversionMetrics.booking_step_3, // Real Meta API data or 0
-
-      reservations: realConversionMetrics.reservations > 0 
-        ? realConversionMetrics.reservations 
-        : metaConversionMetrics.reservations > 0 
-          ? metaConversionMetrics.reservations 
-          : metaTotalConversions, // Use raw total conversions as last resort
-
-      reservation_value: realConversionMetrics.reservation_value > 0 
-        ? realConversionMetrics.reservation_value 
-        : metaConversionMetrics.reservation_value, // Real Meta API data or 0
-
-      // ✅ NEW: Include conversion_value and total_conversion_value (calculated from purchase_roas × spend)
-      // These are analogous to Google Ads "Wartość konwersji" and "Łączna wartość konwersji"
+      click_to_call: pickBest(metaConversionMetrics.click_to_call, realConversionMetrics.click_to_call),
+      email_contacts: pickBest(metaConversionMetrics.email_contacts, realConversionMetrics.email_contacts),
+      booking_step_1: pickBest(metaConversionMetrics.booking_step_1, realConversionMetrics.booking_step_1),
+      booking_step_2: pickBest(metaConversionMetrics.booking_step_2, realConversionMetrics.booking_step_2),
+      booking_step_3: pickBest(metaConversionMetrics.booking_step_3, realConversionMetrics.booking_step_3),
+      reservations: pickBest(metaConversionMetrics.reservations, realConversionMetrics.reservations, metaTotalConversions),
+      reservation_value: pickBest(metaConversionMetrics.reservation_value, realConversionMetrics.reservation_value),
       conversion_value: metaConversionMetrics.conversion_value || 0,
       total_conversion_value: metaConversionMetrics.total_conversion_value || 0,
-
-      roas: 0, // Will be calculated below
-      cost_per_reservation: 0 // Will be calculated below
+      roas: 0,
+      cost_per_reservation: 0
     };
     
-    logger.info('✅ PRODUCTION: Using REAL data only (no estimates):', {
-      source: realConversionMetrics.click_to_call > 0 ? 'daily_kpi_data' : metaConversionMetrics.click_to_call > 0 ? 'meta_api_actions' : 'no_data',
-      click_to_call: conversionMetrics.click_to_call,
-      reservations: conversionMetrics.reservations,
-      reservation_value: conversionMetrics.reservation_value,
-      conversion_value: conversionMetrics.conversion_value,
-      total_conversion_value: conversionMetrics.total_conversion_value
+    logger.info('✅ Conversion metrics (parser-first, daily_kpi fallback):', {
+      click_to_call: { final: conversionMetrics.click_to_call, parser: metaConversionMetrics.click_to_call, daily: realConversionMetrics.click_to_call },
+      reservations: { final: conversionMetrics.reservations, parser: metaConversionMetrics.reservations, daily: realConversionMetrics.reservations },
+      reservation_value: { final: conversionMetrics.reservation_value, parser: metaConversionMetrics.reservation_value, daily: realConversionMetrics.reservation_value },
     });
 
     // ✅ Calculate ROAS from direct API values (reservation_value = "Zakupy w witrynie - wartość konwersji")
@@ -1375,44 +1350,42 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       logger.info(`📊 Using parsed Meta API conversion metrics (error fallback):`, realConversionMetrics);
     }
 
-    // 🔧 FIX: Use real conversion metrics when available, only fall back to estimates if no real data
-    const hasRealData = realConversionMetrics.booking_step_1 > 0 || 
-                       realConversionMetrics.booking_step_2 > 0 || 
-                       realConversionMetrics.booking_step_3 > 0 ||
-                       realConversionMetrics.click_to_call > 0 ||
-                       realConversionMetrics.email_contacts > 0 ||
-                       realConversionMetrics.reservations > 0;
-
-    // ✅ PRODUCTION FIX: Use ONLY real data - NO ESTIMATES for weekly metrics
-    // reservation_value = "Zakupy w witrynie - wartość konwersji" (direct from API)
-    const conversionMetrics = {
-      click_to_call: realConversionMetrics.click_to_call, // Real data or 0
-      email_contacts: realConversionMetrics.email_contacts, // Real data or 0
-      booking_step_1: realConversionMetrics.booking_step_1, // Real data or 0
-      booking_step_2: realConversionMetrics.booking_step_2, // Real data or 0
-      booking_step_3: realConversionMetrics.booking_step_3, // Real data or 0
-      reservations: realConversionMetrics.reservations > 0 
-        ? realConversionMetrics.reservations 
-        : totalConversionsSum, // Use raw total conversions as fallback
-      reservation_value: realConversionMetrics.reservation_value, // Real data or 0
-      // ✅ Direct from API action_values - "Zakupy w witrynie - wartość konwersji"
-      conversion_value: realConversionMetrics.reservation_value || 0,
-      total_conversion_value: realConversionMetrics.reservation_value || 0,
-      roas: totalSpend > 0 && realConversionMetrics.reservation_value > 0 
-        ? realConversionMetrics.reservation_value / totalSpend 
-        : 0,
-      cost_per_reservation: realConversionMetrics.reservations > 0 
-        ? totalSpend / realConversionMetrics.reservations 
-        : 0
+    // Consistent priority (same as monthly): parser first, daily_kpi fallback
+    const metaWeeklyConversionMetrics = aggregateConversionMetrics(campaignInsights);
+    const pickBestWeekly = (parserVal: number, dailyVal: number, fallback: number = 0): number => {
+      if (parserVal > 0) return parserVal;
+      if (dailyVal > 0) return dailyVal;
+      return fallback;
     };
 
-    logger.info(`✅ PRODUCTION: Weekly conversion metrics (REAL DATA ONLY):`, {
-      hasRealData,
-      conversionMetrics,
-      source: hasRealData ? 'daily_kpi_data/meta_api_parsed' : 'no_conversion_data'
+    const conversionMetrics = {
+      click_to_call: pickBestWeekly(metaWeeklyConversionMetrics.click_to_call, realConversionMetrics.click_to_call),
+      email_contacts: pickBestWeekly(metaWeeklyConversionMetrics.email_contacts, realConversionMetrics.email_contacts),
+      booking_step_1: pickBestWeekly(metaWeeklyConversionMetrics.booking_step_1, realConversionMetrics.booking_step_1),
+      booking_step_2: pickBestWeekly(metaWeeklyConversionMetrics.booking_step_2, realConversionMetrics.booking_step_2),
+      booking_step_3: pickBestWeekly(metaWeeklyConversionMetrics.booking_step_3, realConversionMetrics.booking_step_3),
+      reservations: pickBestWeekly(metaWeeklyConversionMetrics.reservations, realConversionMetrics.reservations, totalConversionsSum),
+      reservation_value: pickBestWeekly(metaWeeklyConversionMetrics.reservation_value, realConversionMetrics.reservation_value),
+      conversion_value: pickBestWeekly(metaWeeklyConversionMetrics.reservation_value, realConversionMetrics.reservation_value),
+      total_conversion_value: pickBestWeekly(metaWeeklyConversionMetrics.reservation_value, realConversionMetrics.reservation_value),
+      roas: 0,
+      cost_per_reservation: 0
+    };
+
+    conversionMetrics.roas = totalSpend > 0 && conversionMetrics.reservation_value > 0 
+      ? conversionMetrics.reservation_value / totalSpend 
+      : 0;
+    conversionMetrics.cost_per_reservation = conversionMetrics.reservations > 0 
+      ? totalSpend / conversionMetrics.reservations 
+      : 0;
+
+    logger.info(`✅ Weekly conversion metrics (parser-first, daily_kpi fallback):`, {
+      click_to_call: { final: conversionMetrics.click_to_call, parser: metaWeeklyConversionMetrics.click_to_call, daily: realConversionMetrics.click_to_call },
+      reservations: { final: conversionMetrics.reservations, parser: metaWeeklyConversionMetrics.reservations, daily: realConversionMetrics.reservations },
+      reservation_value: { final: conversionMetrics.reservation_value, parser: metaWeeklyConversionMetrics.reservation_value, daily: realConversionMetrics.reservation_value },
     });
     
-    // Log warning if we have spend but no conversion tracking
+    const hasRealData = conversionMetrics.booking_step_1 > 0 || conversionMetrics.reservations > 0 || conversionMetrics.click_to_call > 0;
     if ((totalSpend > 0 || totalClicks > 0) && !hasRealData) {
       logger.warn('⚠️ PRODUCTION WARNING: Weekly data has spend/clicks but no conversion tracking');
     }
