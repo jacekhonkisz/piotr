@@ -1622,8 +1622,10 @@ function generatePDFHTML(reportData: ReportData): string {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Raport Kampanii Reklamowych</title>
-        <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; img-src 'self' data: https:;">
         <meta name="robots" content="noindex, nofollow">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
         <style>
             /* Premium Agency-Grade Design System */
             :root {
@@ -1678,7 +1680,7 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Helvetica', sans-serif;
+                font-family: 'Inter', 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
                 line-height: 1.6;
                 color: var(--text-primary);
                 background: var(--bg-white);
@@ -3813,26 +3815,26 @@ export async function POST(request: NextRequest) {
         logger.info('📄 PDF Page Console:', msg.text());
       });
       
-      // Use domcontentloaded instead of networkidle0 to avoid timeout issues
       logger.info('⏳ Setting page content...');
       await page.setContent(html, { 
-        waitUntil: 'domcontentloaded',
+        waitUntil: 'networkidle0',
         timeout: 60000 
       });
       
-      logger.info('⏳ Waiting for content to render...');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced wait time
-      
-      // Wait for any remaining async operations
+      logger.info('⏳ Waiting for fonts and content to render...');
       await page.evaluate(() => {
-        return new Promise((resolve) => {
-          if (document.readyState === 'complete') {
-            resolve(true);
-          } else {
-            window.addEventListener('load', () => resolve(true));
-          }
+        return document.fonts.ready.then(() => {
+          return new Promise((resolve) => {
+            if (document.readyState === 'complete') {
+              resolve(true);
+            } else {
+              window.addEventListener('load', () => resolve(true));
+            }
+          });
         });
       });
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Check generation time limit
       const elapsedTime = Date.now() - startTime;
