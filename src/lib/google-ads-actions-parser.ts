@@ -4,6 +4,12 @@
  * Parses Google Ads conversion data into structured funnel metrics.
  * This is the SINGLE SOURCE OF TRUTH for converting Google Ads API responses into funnel data.
  * 
+ * Classification is PRIORITY-BASED — each conversion action is assigned to exactly ONE bucket:
+ *   1. Booking step 1/2/3  (highest priority)
+ *   2. Reservations / purchases
+ *   3. Click-to-call / phone
+ *   4. Email / contact / form  (lowest — catch-all for micro-conversions)
+ * 
  * Used by:
  * - Smart cache (current month/week data)
  * - Background data collector (historical data)
@@ -20,22 +26,126 @@ export interface ParsedConversionMetrics {
   booking_step_3: number;
   reservations: number;
   reservation_value: number;
-  total_conversion_value?: number; // ✅ Total conversion value (all_conversions_value) - "Wartość konwersji" from Google Ads
+  total_conversion_value?: number;
 }
 
-/**
- * Parses Google Ads conversions array into structured conversion metrics
- * 
- * Google Ads conversion names (Polish):
- * - "Step 1 w BE" = Booking Engine Step 1
- * - "Step 2 w BE" = Booking Engine Step 2
- * - "Step 3 w BE" = Booking Engine Step 3
- * - "Rezerwacja" or "Zakup" = Reservation/Purchase
- * 
- * @param conversions - Array of conversion objects from Google Ads API
- * @param campaignName - Optional campaign name for logging
- * @returns Parsed conversion metrics
- */
+type ConversionBucket = 'booking_step_1' | 'booking_step_2' | 'booking_step_3' | 'reservations' | 'click_to_call' | 'email_contacts' | null;
+
+function classifyConversion(name: string): ConversionBucket {
+  // --- BOOKING STEP 1 ---
+  if (
+    name.includes('step 1') ||
+    name.includes('step1') ||
+    name.includes('krok 1') ||
+    name.includes('1 krok') ||
+    name.includes('pierwszy krok') ||
+    name.includes('pierwszy_krok') ||
+    name.includes('booking_step_1') ||
+    name.includes('begin_checkout') ||
+    name.includes('start_checkout') ||
+    name.includes('checkout_started') ||
+    name.includes('initiate_checkout') ||
+    // Belmonte / MICE specific
+    name.includes('engaged user') ||
+    name.includes('wejście na stronę biznesow') ||
+    name.includes('wejscie na strone biznesow') ||
+    name.includes('kliknięcia linków na podstronie') ||
+    name.includes('klikniecia linkow na podstronie')
+  ) {
+    return 'booking_step_1';
+  }
+
+  // --- BOOKING STEP 2 ---
+  if (
+    name.includes('step 2') ||
+    name.includes('step2') ||
+    name.includes('krok 2') ||
+    name.includes('2 krok') ||
+    name.includes('drugi krok') ||
+    name.includes('drugi_krok') ||
+    name.includes('booking_step_2') ||
+    name.includes('add_to_cart') ||
+    name.includes('add_payment_info') ||
+    name.includes('checkout_progress') ||
+    name.includes('form_submit') ||
+    name.includes('form_completion') ||
+    // Belmonte / MICE specific
+    name.includes('pobranie oferty')
+  ) {
+    return 'booking_step_2';
+  }
+
+  // --- BOOKING STEP 3 ---
+  if (
+    name.includes('step 3') ||
+    name.includes('step3') ||
+    name.includes('krok 3') ||
+    name.includes('3 krok') ||
+    name.includes('trzeci krok') ||
+    name.includes('trzeci_krok') ||
+    name.includes('booking_step_3') ||
+    name.includes('micro_conversion') ||
+    name.includes('micro konwersj') ||
+    name.includes('micro-marco')
+  ) {
+    return 'booking_step_3';
+  }
+
+  // --- RESERVATIONS (final purchase) ---
+  // Exclude anything that looks like a booking engine step
+  const isBookingStep = (
+    name.includes('krok') ||
+    name.includes('step') ||
+    name.includes('booking engine') ||
+    name.includes('booking_step')
+  );
+  if (
+    !isBookingStep && (
+      name.includes('rezerwacja') ||
+      name.includes('reservation') ||
+      name.includes('zakup') ||
+      name.includes('purchase') ||
+      name.includes('transaction') ||
+      name.includes('sale') ||
+      name.includes('complete_checkout') ||
+      name.includes('checkout_complete') ||
+      name.includes('purchase_complete') ||
+      name.includes('booking_complete') ||
+      name.includes('reservation_complete')
+    )
+  ) {
+    return 'reservations';
+  }
+
+  // --- CLICK TO CALL ---
+  if (
+    name.includes('phone') ||
+    name.includes('telefon') ||
+    name.includes('call') ||
+    name.includes('dzwonienie')
+  ) {
+    return 'click_to_call';
+  }
+
+  // --- EMAIL / CONTACT (catch-all for remaining micro-conversions) ---
+  if (
+    name.includes('email') ||
+    name.includes('e-mail') ||
+    name.includes('mail') ||
+    name.includes('contact') ||
+    name.includes('kontakt') ||
+    name.includes('formularz') ||
+    name.includes('inquiry') ||
+    name.includes('lead_form') ||
+    name.includes('request_info') ||
+    name.includes('zapytanie')
+  ) {
+    return 'email_contacts';
+  }
+
+  return null;
+}
+
 export function parseGoogleAdsConversions(
   conversions: any[] = [],
   campaignName?: string
@@ -49,115 +159,37 @@ export function parseGoogleAdsConversions(
     booking_step_3: 0,
     reservations: 0,
     reservation_value: 0,
-    total_conversion_value: 0, // ✅ Will be set from all_conversions_value aggregation
+    total_conversion_value: 0,
   };
 
-  // Validate inputs
   if (!Array.isArray(conversions)) {
     logger.warn(`parseGoogleAdsConversions: conversions is not an array for campaign "${campaignName || 'unknown'}"`);
     return metrics;
   }
 
-  // Parse conversions array
   conversions.forEach((conversion) => {
     try {
       const conversionName = String(conversion.conversion_name || conversion.name || '').toLowerCase();
-      const conversions = parseFloat(conversion.conversions || conversion.value || '0');
+      const count = parseFloat(conversion.conversions || conversion.value || '0');
       const conversionValue = parseFloat(conversion.conversion_value || conversion.all_conversions_value || '0');
       
-      if (isNaN(conversions) || conversions < 0) {
-        logger.debug(`parseGoogleAdsConversions: Invalid conversions for "${conversionName}": ${conversion.conversions}`);
-        return; // Skip invalid values
+      if (isNaN(count) || count < 0) {
+        return;
       }
       
-      // Click to call conversions
-      if (conversionName.includes('phone') || 
-          conversionName.includes('telefon') ||
-          conversionName.includes('call') ||
-          conversionName.includes('dzwonienie')) {
-        metrics.click_to_call += conversions;
-      }
+      const bucket = classifyConversion(conversionName);
       
-      // Email contact conversions
-      // ✅ FIXED: Added 'e-mail', 'mail', 'kliknięcie w e-mail', 'klik w mail' patterns
-      if (conversionName.includes('email') || 
-          conversionName.includes('e-mail') ||
-          conversionName.includes('mail') ||
-          conversionName.includes('contact') ||
-          conversionName.includes('kontakt') ||
-          conversionName.includes('formularz')) {
-        metrics.email_contacts += conversions;
-      }
-      
-      // ✅ BOOKING STEP 1
-      // Matches: "Step 1 w BE", "step 1 w be", "booking step 1", "pierwszy krok", "1 krok", etc.
-      if (conversionName.includes('step 1') || 
-          conversionName.includes('step1') ||
-          conversionName.includes('krok 1') ||
-          conversionName.includes('1 krok') ||
-          conversionName.includes('pierwszy krok') ||
-          conversionName.includes('pierwszy_krok') ||
-          conversionName.includes('1 krok silnik') ||
-          conversionName.includes('1 krok rezerwacyjny') ||
-          conversionName.includes('booking_step_1')) {
-        metrics.booking_step_1 += conversions;
-      }
-      
-      // ✅ BOOKING STEP 2
-      // Matches: "Step 2 w BE", "step 2 w be", "booking step 2", "drugi krok", "2 krok", etc.
-      if (conversionName.includes('step 2') || 
-          conversionName.includes('step2') ||
-          conversionName.includes('krok 2') ||
-          conversionName.includes('2 krok') ||
-          conversionName.includes('drugi krok') ||
-          conversionName.includes('drugi_krok') ||
-          conversionName.includes('2 krok silnik') ||
-          conversionName.includes('2 krok rezerwacyjny') ||
-          conversionName.includes('booking_step_2')) {
-        metrics.booking_step_2 += conversions;
-      }
-      
-      // ✅ BOOKING STEP 3
-      // Matches: "Step 3 w BE", "step 3 w be", "booking step 3", "trzeci krok", "3 krok", etc.
-      if (conversionName.includes('step 3') || 
-          conversionName.includes('step3') ||
-          conversionName.includes('krok 3') ||
-          conversionName.includes('3 krok') ||
-          conversionName.includes('trzeci krok') ||
-          conversionName.includes('trzeci_krok') ||
-          conversionName.includes('3 krok silnik') ||
-          conversionName.includes('3 krok rezerwacyjny') ||
-          conversionName.includes('booking_step_3')) {
-        metrics.booking_step_3 += conversions;
-      }
-      
-      // ✅ RESERVATIONS (Final Purchase)
-      // Matches: "Rezerwacja", "Zakup", "Purchase", "Reservation"
-      // ⚠️ CRITICAL: Do NOT match generic "booking" - it matches "Booking Engine - krok 1/2/3"!
-      // Only match specific reservation/purchase patterns
-      const isReservation = (
-        conversionName.includes('rezerwacja') ||
-        conversionName.includes('reservation') ||
-        conversionName.includes('zakup') ||
-        conversionName.includes('purchase') ||
-        conversionName.includes('complete')
-      );
-      
-      // ⚠️ EXCLUDE booking engine steps from reservations
-      const isBookingStep = (
-        conversionName.includes('krok') ||
-        conversionName.includes('step') ||
-        conversionName.includes('booking engine') ||
-        conversionName.includes('booking_step')
-      );
-      
-      if (isReservation && !isBookingStep) {
-        metrics.reservations += conversions;
-        
-        // Add monetary value if available
-        if (!isNaN(conversionValue) && conversionValue > 0) {
-          metrics.reservation_value += conversionValue;
+      if (!bucket) {
+        if (count > 0) {
+          logger.debug(`Unclassified conversion action: "${conversionName}" (${count} conversions) — campaign "${campaignName || 'unknown'}"`);
         }
+        return;
+      }
+
+      metrics[bucket] += count;
+
+      if (bucket === 'reservations' && !isNaN(conversionValue) && conversionValue > 0) {
+        metrics.reservation_value += conversionValue;
       }
       
     } catch (error) {
@@ -169,19 +201,14 @@ export function parseGoogleAdsConversions(
     }
   });
 
-  // ✅ CRITICAL FIX: Round all conversion counts to integers
-  // Google Ads uses attribution models that can assign fractional conversions (e.g., 0.5)
-  // But for display purposes, we round to whole numbers
   metrics.click_to_call = Math.round(metrics.click_to_call);
   metrics.email_contacts = Math.round(metrics.email_contacts);
   metrics.booking_step_1 = Math.round(metrics.booking_step_1);
   metrics.booking_step_2 = Math.round(metrics.booking_step_2);
   metrics.booking_step_3 = Math.round(metrics.booking_step_3);
   metrics.reservations = Math.round(metrics.reservations);
-  // Note: reservation_value is monetary, keep as-is (with decimals)
-  metrics.reservation_value = Math.round(metrics.reservation_value * 100) / 100; // Round to 2 decimal places
+  metrics.reservation_value = Math.round(metrics.reservation_value * 100) / 100;
 
-  // Validation: Check for funnel inversions (debugging aid)
   if (metrics.booking_step_2 > metrics.booking_step_1 && metrics.booking_step_1 > 0) {
     logger.warn(`⚠️ Google Ads funnel inversion for campaign "${campaignName || 'unknown'}": Step 2 (${metrics.booking_step_2}) > Step 1 (${metrics.booking_step_1})`);
   }
