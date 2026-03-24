@@ -51,6 +51,12 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
   const [showTokenFields, setShowTokenFields] = useState(false);
   const [adAccountIdError, setAdAccountIdError] = useState<string>('');
   const [selectedPlatform, setSelectedPlatform] = useState<'meta' | 'google'>('meta');
+
+  // Shared tokens
+  const [sharedTokens, setSharedTokens] = useState<{
+    meta: { hasToken: boolean; tokenPreview: string; };
+    google: { hasRefreshToken: boolean; refreshTokenPreview: string; managerCustomerId: string; };
+  } | null>(null);
   
   // Logo upload states
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -109,7 +115,13 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
       setSubmitError('');
       setShowTokenFields(false);
       setAdAccountIdError('');
-      setSelectedPlatform('meta'); // Reset platform selection
+      setSelectedPlatform('meta');
+
+      // Fetch shared token info
+      fetch('/api/admin/shared-tokens')
+        .then(res => res.json())
+        .then(data => setSharedTokens(data))
+        .catch(() => {});
     }
   }, [client]);
 
@@ -916,13 +928,30 @@ export default function EditClientModal({ isOpen, onClose, onUpdate, client }: E
                 {showTokenFields ? 'Ukryj' : 'Aktualizuj tokeny'}
               </button>
             </div>
+
+            {/* Shared token status (always visible) */}
+            {sharedTokens && (
+              <div className="space-y-2 mb-4">
+                <div className={`flex items-center justify-between text-xs px-3 py-2 rounded-md ${sharedTokens.meta.hasToken ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <span className="flex items-center">
+                    <Facebook className="h-3 w-3 mr-1.5" />
+                    Meta token: {sharedTokens.meta.hasToken ? sharedTokens.meta.tokenPreview : 'Nie skonfigurowany'}
+                  </span>
+                  {sharedTokens.meta.hasToken && <CheckCircle className="h-3.5 w-3.5" />}
+                </div>
+                <div className={`flex items-center justify-between text-xs px-3 py-2 rounded-md ${sharedTokens.google.hasRefreshToken ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                  <span className="flex items-center">
+                    <Target className="h-3 w-3 mr-1.5" />
+                    Google token: {sharedTokens.google.hasRefreshToken ? sharedTokens.google.refreshTokenPreview : 'Nie skonfigurowany'}
+                    {sharedTokens.google.managerCustomerId && ` | Manager: ${sharedTokens.google.managerCustomerId}`}
+                  </span>
+                  {sharedTokens.google.hasRefreshToken && <CheckCircle className="h-3.5 w-3.5" />}
+                </div>
+              </div>
+            )}
             
             {showTokenFields ? (
               <div className="space-y-4">
-                {/* Debug indicator */}
-                <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
-                  ✅ Debug: Platform tabs should be visible (selectedPlatform: {selectedPlatform})
-                </div>
                 
                 {/* Platform Selection Tabs */}
                 <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">

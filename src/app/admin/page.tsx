@@ -59,7 +59,6 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     ad_account_id: '',
     meta_access_token: '',
     system_user_token: '',
-    // Google Ads fields
     google_ads_customer_id: '',
     google_ads_refresh_token: '',
     google_ads_system_user_token: '',
@@ -77,346 +76,154 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
     google: { status: 'idle', message: '' }
   });
   const [submitError, setSubmitError] = useState<string>('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<('meta' | 'google')[]>(['meta']);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<('meta' | 'google')[]>(['meta', 'google']);
+
+  // Shared tokens state
+  const [sharedTokens, setSharedTokens] = useState<{
+    meta: { hasToken: boolean; tokenPreview: string; fullToken: string; };
+    google: { hasRefreshToken: boolean; refreshTokenPreview: string; fullRefreshToken: string; managerCustomerId: string; };
+  } | null>(null);
+  const [loadingTokens, setLoadingTokens] = useState(true);
+  const [useCustomMetaToken, setUseCustomMetaToken] = useState(false);
+  const [useCustomGoogleToken, setUseCustomGoogleToken] = useState(false);
+
+  // Load shared tokens on mount
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoadingTokens(true);
+    fetch('/api/admin/shared-tokens')
+      .then(res => res.json())
+      .then(data => {
+        setSharedTokens(data);
+        setLoadingTokens(false);
+      })
+      .catch(() => setLoadingTokens(false));
+  }, [isOpen]);
+
+  const getEffectiveMetaToken = () => {
+    if (useCustomMetaToken && formData.system_user_token) return formData.system_user_token;
+    if (useCustomMetaToken && formData.meta_access_token) return formData.meta_access_token;
+    return sharedTokens?.meta?.fullToken || '';
+  };
+
+  const getEffectiveGoogleToken = () => {
+    if (useCustomGoogleToken && formData.google_ads_refresh_token) return formData.google_ads_refresh_token;
+    return sharedTokens?.google?.fullRefreshToken || '';
+  };
 
   const validateMetaCredentials = async () => {
-    // Check if Meta is selected
-    if (!selectedPlatforms.includes('meta')) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        meta: { status: 'idle', message: 'Meta Ads nie jest wybrane' }
-      }));
+    if (!selectedPlatforms.includes('meta')) return;
+
+    if (!formData.ad_account_id) {
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: 'Meta Ad Account ID jest wymagane' } }));
       return;
     }
 
-    // Check if Ad Account ID is provided (required)
-    if (!formData.ad_account_id) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        meta: { status: 'invalid', message: 'Meta Ad Account ID jest wymagane' }
-      }));
+    const tokenToUse = getEffectiveMetaToken();
+    if (!tokenToUse) {
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: 'Brak tokenu Meta. Skonfiguruj wspólny token lub podaj niestandardowy.' } }));
       return;
     }
-    
-    // Check if at least one token is provided
-    if (!formData.meta_access_token && !formData.system_user_token) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        meta: { status: 'invalid', message: 'Podaj token Meta Access (60 dni) lub System User Token (permanentny)' }
-      }));
-      return;
-    }
-    
-    // Use System User token if provided (permanent), otherwise use regular access token (60 days)
-    const tokenToUse = formData.system_user_token || formData.meta_access_token;
-    const tokenType = formData.system_user_token ? 'System User Token (Permanentny)' : 'Meta Access Token (60 dni)';
 
     setValidating(true);
-    setValidationStatus(prev => ({ 
-      ...prev, 
-      meta: { status: 'validating', message: `Walidacja ${tokenType}...` }
-    }));
+    setValidationStatus(prev => ({ ...prev, meta: { status: 'validating', message: 'Walidacja tokenu Meta...' } }));
 
     try {
       const metaService = new MetaAPIService(tokenToUse);
-      
-      // Step 1: Validate and convert the access token to long-lived
       const tokenValidation = await metaService.validateAndConvertToken();
       
       if (!tokenValidation.valid) {
-        let errorMessage = `Walidacja tokenu nie powiodła się: ${tokenValidation.error}`;
-        
-        // Provide helpful guidance based on error type
-        if (tokenValidation.error?.includes('expired')) {
-          errorMessage += '\n💡 Wskazówka: Użyj tokenu System User dla permanentnego dostępu, który nigdy nie wygasa.';
-        } else if (tokenValidation.error?.includes('permissions')) {
-          errorMessage += '\n💡 Wskazówka: Upewnij się, że twój token ma dostęp do tego konta reklamowego.';
-        } else if (tokenValidation.error?.includes('invalid')) {
-          errorMessage += '\n💡 Wskazówka: Sprawdź, czy twój token zaczyna się od "EAA" i jest skopiowany poprawnie.';
-        }
-        
-        setValidationStatus(prev => ({ 
-          ...prev, 
-          meta: { status: 'invalid', message: errorMessage }
-        }));
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: `Walidacja tokenu nie powiodla sie: ${tokenValidation.error}` } }));
         return;
       }
 
-      // Step 2: Validate the specific ad account ID
       const accountValidation = await metaService.validateAdAccount(formData.ad_account_id);
-      
       if (!accountValidation.valid) {
-        let errorMessage = `Walidacja konta reklamowego nie powiodła się: ${accountValidation.error}`;
-        
-        // Provide helpful guidance
-        if (accountValidation.error?.includes('not found')) {
-          errorMessage += '\n💡 Wskazówka: Sprawdź format ID konta reklamowego (powinien być podobny do "act_123456789").';
-        } else if (accountValidation.error?.includes('access denied')) {
-          errorMessage += '\n💡 Wskazówka: Upewnij się, że twój token ma dostęp do tego konta reklamowego.';
-        }
-        
-        setValidationStatus(prev => ({ 
-          ...prev, 
-          meta: { status: 'invalid', message: errorMessage }
-        }));
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: `Konto reklamowe nie znalezione: ${accountValidation.error}` } }));
         return;
       }
 
-      // Step 3: Test campaign access (optional but good to verify)
       try {
         const campaigns = await metaService.getCampaigns(formData.ad_account_id.replace('act_', ''));
-        
-        let statusMessage = `✅ Meta Ads: Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Znaleziono ${campaigns.length} kampanie.`;
-        
-        // Enhanced token status information with user-friendly guidance
-        if (tokenValidation.convertedToken) {
-          statusMessage += '\n🔄 Twój token zostanie automatycznie przekonwertowany na permanentny dostęp (bez wygaśnięcia).';
-        } else if (tokenValidation.isLongLived) {
-          statusMessage += '\n✅ Perfekcyjnie! Twój token jest już permanentny (System User token).';
-        } else if (tokenValidation.expiresAt) {
-          const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-          if (daysUntilExpiry <= 7) {
-            statusMessage += `\n⚠️ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
-          } else {
-            statusMessage += `\n⏰ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
-          }
-        }
-        
-        setValidationStatus(prev => ({ 
-          ...prev, 
-          meta: { status: 'valid', message: statusMessage }
-        }));
-      } catch (campaignError) {
-        // Campaign fetch failed, but credentials are still valid
-        let statusMessage = `✅ Meta Ads: Połączenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Dostęp do kampanii może być ograniczony.`;
-        
-        // Enhanced token status information with user-friendly guidance
-        if (tokenValidation.convertedToken) {
-          statusMessage += '\n🔄 Twój token zostanie automatycznie przekonwertowany na permanentny dostęp (bez wygaśnięcia).';
-        } else if (tokenValidation.isLongLived) {
-          statusMessage += '\n✅ Perfekcyjnie! Twój token jest już permanentny (System User token).';
-        } else if (tokenValidation.expiresAt) {
-          const daysUntilExpiry = Math.ceil((tokenValidation.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-          if (daysUntilExpiry <= 7) {
-            statusMessage += `\n⚠️ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
-          } else {
-            statusMessage += `\n⏰ Token wygasa za ${daysUntilExpiry} dni - zostanie przekonwertowany na permanentny dostęp.`;
-          }
-        }
-        
-        setValidationStatus(prev => ({ 
-          ...prev, 
-          meta: { status: 'valid', message: statusMessage }
-        }));
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'valid', message: `✅ Meta Ads: Polaczenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}. Znaleziono ${campaigns.length} kampanii.` } }));
+      } catch {
+        setValidationStatus(prev => ({ ...prev, meta: { status: 'valid', message: `✅ Meta Ads: Polaczenie udane! Konto: ${accountValidation.account?.name || formData.ad_account_id}.` } }));
       }
-
     } catch (error) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        meta: { 
-          status: 'invalid', 
-          message: `Błąd walidacji Meta: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
-        }
-      }));
+      setValidationStatus(prev => ({ ...prev, meta: { status: 'invalid', message: `Blad walidacji Meta: ${error instanceof Error ? error.message : 'Nieznany blad'}` } }));
     } finally {
       setValidating(false);
     }
   };
 
   const validateGoogleAdsCredentials = async () => {
-    // Check if Google Ads is selected
-    if (!selectedPlatforms.includes('google')) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        google: { status: 'idle', message: 'Google Ads nie jest wybrane' }
-      }));
+    if (!selectedPlatforms.includes('google')) return;
+
+    if (!formData.google_ads_customer_id) {
+      setValidationStatus(prev => ({ ...prev, google: { status: 'invalid', message: 'Google Ads Customer ID jest wymagane' } }));
       return;
     }
 
-    // Check if required fields are provided
-    if (!formData.google_ads_customer_id || (!formData.google_ads_refresh_token && !formData.google_ads_system_user_token)) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        google: { status: 'invalid', message: 'Google Ads Customer ID i token (Refresh lub System User) są wymagane' }
-      }));
+    if (!/^\d{3}-\d{3}-\d{4}$/.test(formData.google_ads_customer_id)) {
+      setValidationStatus(prev => ({ ...prev, google: { status: 'invalid', message: 'Google Ads Customer ID powinien miec format XXX-XXX-XXXX' } }));
       return;
     }
 
-    setValidating(true);
-    setValidationStatus(prev => ({ 
-      ...prev, 
-      google: { status: 'validating', message: 'Walidacja Google Ads...' }
-    }));
-
-    try {
-      // Validate format
-      const customerIdFormat = /^\d{3}-\d{3}-\d{4}$/.test(formData.google_ads_customer_id);
-      
-      if (!customerIdFormat) {
-        setValidationStatus(prev => ({ 
-          ...prev, 
-          google: { 
-            status: 'invalid', 
-            message: 'Google Ads Customer ID powinien mieć format XXX-XXX-XXXX' 
-          }
-        }));
-        return;
-      }
-
-      // Validate token format based on type
-      if (formData.google_ads_system_user_token) {
-        // System user token validation
-        const systemTokenFormat = formData.google_ads_system_user_token.match(/^[A-Za-z0-9_-]{50,}$/);
-        if (!systemTokenFormat) {
-          setValidationStatus(prev => ({ 
-            ...prev, 
-            google: { 
-              status: 'invalid', 
-              message: 'System User Token powinien być długim ciągiem alfanumerycznym (50+ znaków)' 
-            }
-          }));
-          return;
-        }
-      } else if (formData.google_ads_refresh_token) {
-        // Refresh token validation
-        const refreshTokenFormat = formData.google_ads_refresh_token.startsWith('1//');
-        if (!refreshTokenFormat) {
-          setValidationStatus(prev => ({ 
-            ...prev, 
-            google: { 
-              status: 'invalid', 
-              message: 'Google Ads Refresh Token powinien zaczynać się od "1//"' 
-            }
-          }));
-          return;
-        }
-      }
-
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        google: { 
-          status: 'valid', 
-          message: '✅ Google Ads: Format poprawny! Połączenie zostanie zweryfikowane podczas pierwszego użycia.' 
-        }
-      }));
-
-    } catch (error) {
-      setValidationStatus(prev => ({ 
-        ...prev, 
-        google: { 
-          status: 'invalid', 
-          message: `Błąd walidacji Google Ads: ${error instanceof Error ? error.message : 'Nieznany błąd'}` 
-        }
-      }));
-    } finally {
-      setValidating(false);
+    const tokenToUse = getEffectiveGoogleToken();
+    if (!tokenToUse) {
+      setValidationStatus(prev => ({ ...prev, google: { status: 'invalid', message: 'Brak tokenu Google Ads. Skonfiguruj wspolny token lub podaj niestandardowy.' } }));
+      return;
     }
-  };
 
-  const handleGoogleAdsTokenSuccess = (tokenData?: { type: 'refresh_token' | 'system_user'; token: string }) => {
-    if (tokenData) {
-      if (tokenData.type === 'system_user') {
-        setFormData(prev => ({
-          ...prev,
-          google_ads_system_user_token: tokenData.token
-        }));
-        setValidationStatus(prev => ({
-          ...prev,
-          google: { status: 'valid', message: '✅ System User Token został ustawiony' }
-        }));
-      } else {
-        setFormData(prev => ({
-          ...prev,
-          google_ads_refresh_token: tokenData.token
-        }));
-        setValidationStatus(prev => ({
-          ...prev,
-          google: { status: 'valid', message: '✅ Refresh Token został ustawiony' }
-        }));
-      }
-    }
-    // Refresh the page to show updated token status
-    window.location.reload();
+    setValidationStatus(prev => ({ ...prev, google: { status: 'valid', message: '✅ Google Ads: Format poprawny! Polaczenie zostanie zweryfikowane podczas pierwszego uzycia.' } }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Clear previous errors
     setSubmitError('');
-    
-    // Check if at least one platform is selected
+
     if (selectedPlatforms.length === 0) {
-      setSubmitError('Wybierz przynajmniej jedną platformę reklamową (Meta lub Google Ads)');
+      setSubmitError('Wybierz przynajmniej jedna platforme reklamowa');
       return;
     }
 
-    // Validate selected platforms
     if (selectedPlatforms.includes('meta') && validationStatus.meta.status !== 'valid') {
-      setSubmitError('Proszę najpierw zweryfikować poświadczenia Meta Ads');
+      setSubmitError('Zweryfikuj najpierw poswiadczenia Meta Ads');
       return;
     }
 
     if (selectedPlatforms.includes('google') && validationStatus.google.status !== 'valid') {
-      setSubmitError('Proszę najpierw zweryfikować poświadczenia Google Ads');
+      setSubmitError('Zweryfikuj najpierw poswiadczenia Google Ads');
       return;
     }
 
     setLoading(true);
     try {
-      // Prepare form data based on selected platforms
+      const effectiveMetaToken = getEffectiveMetaToken();
+      const effectiveGoogleToken = getEffectiveGoogleToken();
+
       const clientData = {
         ...formData,
-        // Only include Meta fields if Meta is selected
         ...(selectedPlatforms.includes('meta') ? {
           ad_account_id: formData.ad_account_id,
-          meta_access_token: formData.meta_access_token,
-          system_user_token: formData.system_user_token,
+          system_user_token: effectiveMetaToken,
+          meta_access_token: effectiveMetaToken,
         } : {
-          ad_account_id: '',
-          meta_access_token: '',
-          system_user_token: '',
+          ad_account_id: '', meta_access_token: '', system_user_token: '',
         }),
-        // Only include Google Ads fields if Google is selected
         ...(selectedPlatforms.includes('google') ? {
           google_ads_customer_id: formData.google_ads_customer_id,
-          google_ads_refresh_token: formData.google_ads_refresh_token,
-          google_ads_system_user_token: formData.google_ads_system_user_token,
+          google_ads_refresh_token: effectiveGoogleToken,
           google_ads_enabled: true,
         } : {
-          google_ads_customer_id: '',
-          google_ads_refresh_token: '',
-          google_ads_system_user_token: '',
-          google_ads_enabled: false,
+          google_ads_customer_id: '', google_ads_refresh_token: '', google_ads_enabled: false,
         })
       };
 
       await onAdd(clientData);
-      setFormData({
-        name: '',
-        email: '',
-        company: '',
-        ad_account_id: '',
-        meta_access_token: '',
-        system_user_token: '',
-        google_ads_customer_id: '',
-        google_ads_refresh_token: '',
-        google_ads_system_user_token: '',
-        google_ads_enabled: false,
-        reporting_frequency: 'monthly',
-        notes: ''
-      });
-      setValidationStatus({ 
-        meta: { status: 'idle', message: '' },
-        google: { status: 'idle', message: '' }
-      });
-      setSubmitError('');
-      setSelectedPlatforms(['meta']);
       onClose();
     } catch (error) {
-      console.error('Error adding client:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Nie udało się dodać klienta. Spróbuj ponownie.';
-      setSubmitError(errorMessage);
+      setSubmitError(error instanceof Error ? error.message : 'Nie udalo sie dodac klienta.');
     } finally {
       setLoading(false);
     }
@@ -436,390 +243,229 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nazwa firmy *
-            </label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Wprowadź nazwę firmy"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nazwa firmy *</label>
+            <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="Wprowadz nazwe firmy" />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Adres e-mail kontaktowy *
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="contact@company.com"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Adres e-mail kontaktowy *</label>
+            <input type="email" required value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500" placeholder="contact@company.com" />
           </div>
 
           {/* Platform Selection */}
           <div className="border-t pt-4">
-            <h3 className="text-lg font-semibold mb-4 flex items-center">
-              <Target className="h-5 w-5 mr-2 text-purple-600" />
-              Wybierz platformy reklamowe
+            <h3 className="text-sm font-semibold mb-3 flex items-center text-gray-700">
+              <Target className="h-4 w-4 mr-2 text-purple-600" />
+              Platformy reklamowe
             </h3>
-            
-            <div className="space-y-3">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.includes('meta')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedPlatforms(prev => [...prev, 'meta']);
-                    } else {
-                      setSelectedPlatforms(prev => prev.filter(p => p !== 'meta'));
-                    }
-                  }}
-                  className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <div className="flex items-center">
-                  <Facebook className="h-5 w-5 mr-2 text-blue-600" />
-                  <span className="font-medium">Meta Ads (Facebook & Instagram)</span>
-                </div>
+            <div className="flex gap-4">
+              <label className="flex items-center cursor-pointer">
+                <input type="checkbox" checked={selectedPlatforms.includes('meta')}
+                  onChange={(e) => setSelectedPlatforms(prev => e.target.checked ? [...prev, 'meta'] : prev.filter(p => p !== 'meta'))}
+                  className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+                <Facebook className="h-4 w-4 mr-1 text-blue-600" />
+                <span className="text-sm font-medium">Meta Ads</span>
               </label>
-              
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={selectedPlatforms.includes('google')}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedPlatforms(prev => [...prev, 'google']);
-                    } else {
-                      setSelectedPlatforms(prev => prev.filter(p => p !== 'google'));
-                    }
-                  }}
-                  className="mr-3 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded"
-                />
-                <div className="flex items-center">
-                  <Target className="h-5 w-5 mr-2 text-orange-600" />
-                  <span className="font-medium">Google Ads</span>
-                </div>
+              <label className="flex items-center cursor-pointer">
+                <input type="checkbox" checked={selectedPlatforms.includes('google')}
+                  onChange={(e) => setSelectedPlatforms(prev => e.target.checked ? [...prev, 'google'] : prev.filter(p => p !== 'google'))}
+                  className="mr-2 h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded" />
+                <Target className="h-4 w-4 mr-1 text-orange-600" />
+                <span className="text-sm font-medium">Google Ads</span>
               </label>
             </div>
           </div>
           
-          {/* Meta API Setup Section */}
+          {/* Meta Ads Section */}
           {selectedPlatforms.includes('meta') && (
-            <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Key className="h-5 w-5 mr-2 text-blue-600" />
-                Konfiguracja API Meta (Dostęp trwały)
+            <div className="border-t pt-4 space-y-3">
+              <h3 className="text-sm font-semibold flex items-center text-blue-700">
+                <Facebook className="h-4 w-4 mr-2" />
+                Meta Ads
               </h3>
-              
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <div className="flex items-start">
-                  <Shield className="h-5 w-5 mr-2 text-blue-600 mt-0.5" />
-                  <div>
-                    <h4 className="font-medium text-blue-900 mb-1">💡 Zalecane: Token Systemowego Użytkownika</h4>
-                    <p className="text-sm text-blue-800 mb-2">
-                      Dla trwałego dostępu, który nigdy nie wygasa, użyj tokenu Systemowego Użytkownika z Business Manager klienta.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => window.open('https://business.facebook.com/', '_blank')}
-                      className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700"
-                    >
-                      Otwórz Business Manager
+
+              {/* Shared token indicator */}
+              {loadingTokens ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-500 animate-pulse">Ladowanie tokenow...</div>
+              ) : sharedTokens?.meta?.hasToken ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-green-800 flex items-center">
+                        <CheckCircle className="h-4 w-4 mr-1.5" />
+                        Wspolny System User Token aktywny
+                      </p>
+                      <p className="text-xs text-green-600 mt-0.5 font-mono">{sharedTokens.meta.tokenPreview}</p>
+                    </div>
+                    <button type="button" onClick={() => setUseCustomMetaToken(!useCustomMetaToken)}
+                      className="text-xs text-green-700 hover:text-green-900 underline whitespace-nowrap ml-3">
+                      {useCustomMetaToken ? 'Uzyj wspolnego' : 'Zmien token'}
                     </button>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-sm text-amber-800">Brak wspolnego tokenu Meta. Podaj token ponizej.</p>
+                </div>
+              )}
 
-              {/* Required Ad Account ID */}
+              {/* Custom token fields (only if no shared token or user wants to override) */}
+              {(useCustomMetaToken || !sharedTokens?.meta?.hasToken) && (
+                <div className="space-y-3 pl-3 border-l-2 border-blue-200">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">System User Token</label>
+                    <input type="password" value={formData.system_user_token} onChange={(e) => setFormData({...formData, system_user_token: e.target.value})}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="EAA... (permanentny token)" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">lub Meta Access Token (60 dni)</label>
+                    <input type="password" value={formData.meta_access_token} onChange={(e) => setFormData({...formData, meta_access_token: e.target.value})}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="EAA... (token 60-dniowy)" />
+                  </div>
+                </div>
+              )}
+
+              {/* Required: Ad Account ID */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ID konta reklamowego Meta *
-                </label>
-                <input
-                  type="text"
-                  required={selectedPlatforms.includes('meta')}
-                  value={formData.ad_account_id}
+                <label className="block text-sm font-medium text-gray-700 mb-1">ID konta reklamowego Meta *</label>
+                <input type="text" required={selectedPlatforms.includes('meta')} value={formData.ad_account_id}
                   onChange={(e) => setFormData({...formData, ad_account_id: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="act_123456789"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Format: act_XXXXXXXXX (znajdź w Ads Manager → Settings → Ad Account ID)
-                </p>
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="act_123456789 lub 123456789" />
+                <p className="text-xs text-gray-500 mt-1">Ads Manager &rarr; Settings &rarr; Ad Account ID</p>
               </div>
 
-              {/* Preferred: System User Token */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  System User Token (Zalecane - trwały dostęp)
-                </label>
-                <input
-                  type="password"
-                  value={formData.system_user_token}
-                  onChange={(e) => setFormData({...formData, system_user_token: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="EAA... (permanentny token)"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  ✅ Najbezpieczniejszy - nigdy nie wygasa | Utwórz w Business Manager → Settings → System Users
-                </p>
-              </div>
-
-              {/* Alternative: Regular Meta Access Token */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Meta Access Token (Alternatywa - 60 dni)
-                </label>
-                <input
-                  type="password"
-                  value={formData.meta_access_token}
-                  onChange={(e) => setFormData({...formData, meta_access_token: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="EAA... (token 60-dniowy)"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  ⏰ Wygasa co 60 dni | Pobierz z Graph API Explorer lub Apps → Twoja aplikacja → Token
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={validateMetaCredentials}
-                disabled={validating || (!formData.ad_account_id || (!formData.meta_access_token && !formData.system_user_token))}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                {validating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Sprawdzanie Meta...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="h-4 w-4 mr-2" />
-                    Zweryfikuj poświadczenia Meta
-                  </>
-                )}
+              <button type="button" onClick={validateMetaCredentials}
+                disabled={validating || !formData.ad_account_id || (!getEffectiveMetaToken())}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm">
+                {validating ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Sprawdzanie...</> : <><Shield className="h-4 w-4 mr-2" />Zweryfikuj Meta Ads</>}
               </button>
-              
+
               {validationStatus.meta.status !== 'idle' && (
-                <div className={`text-sm p-3 rounded-md border ${
-                  validationStatus.meta.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
-                  validationStatus.meta.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
-                  'bg-yellow-50 text-yellow-800 border-yellow-200'
-                }`}>
+                <div className={`text-sm p-3 rounded-md border ${validationStatus.meta.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' : validationStatus.meta.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-yellow-50 text-yellow-800 border-yellow-200'}`}>
                   <div className="flex items-start">
-                    {validationStatus.meta.status === 'valid' ? (
-                      <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
-                    ) : validationStatus.meta.status === 'invalid' ? (
-                      <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
-                    ) : (
-                      <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
-                    )}
-                    <div>
-                      {validationStatus.meta.message}
-                    </div>
+                    {validationStatus.meta.status === 'valid' ? <CheckCircle className="h-4 w-4 mr-2 mt-0.5 text-green-600 shrink-0" /> :
+                     validationStatus.meta.status === 'invalid' ? <AlertCircle className="h-4 w-4 mr-2 mt-0.5 text-red-600 shrink-0" /> :
+                     <Clock className="h-4 w-4 mr-2 mt-0.5 text-yellow-600 shrink-0" />}
+                    <span>{validationStatus.meta.message}</span>
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Google Ads Setup Section */}
+          {/* Google Ads Section */}
           {selectedPlatforms.includes('google') && (
-            <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Target className="h-5 w-5 mr-2 text-orange-600" />
-                Konfiguracja Google Ads API
+            <div className="border-t pt-4 space-y-3">
+              <h3 className="text-sm font-semibold flex items-center text-orange-700">
+                <Target className="h-4 w-4 mr-2" />
+                Google Ads
               </h3>
-              
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
-                <div className="flex items-start">
-                  <Shield className="h-5 w-5 mr-2 text-orange-600 mt-0.5" />
-                  <div>
-                    <h4 className="font-medium text-orange-900 mb-1">🔑 Wymagane: Google Ads API Access</h4>
-                    <p className="text-sm text-orange-800 mb-2">
-                      Aby połączyć Google Ads, potrzebujesz Customer ID i Refresh Token z Google Ads API.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => window.open('https://developers.google.com/google-ads/api', '_blank')}
-                      className="text-xs bg-orange-600 text-white px-2 py-1 rounded hover:bg-orange-700"
-                    >
-                      Otwórz Google Ads API Console
+
+              {/* Shared token indicator */}
+              {loadingTokens ? (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-500 animate-pulse">Ladowanie tokenow...</div>
+              ) : sharedTokens?.google?.hasRefreshToken ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-green-800 flex items-center">
+                        <CheckCircle className="h-4 w-4 mr-1.5" />
+                        Wspolny Manager Refresh Token aktywny
+                      </p>
+                      <p className="text-xs text-green-600 mt-0.5 font-mono">{sharedTokens.google.refreshTokenPreview}</p>
+                      {sharedTokens.google.managerCustomerId && (
+                        <p className="text-xs text-green-600 mt-0.5">Manager ID: {sharedTokens.google.managerCustomerId}</p>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setUseCustomGoogleToken(!useCustomGoogleToken)}
+                      className="text-xs text-green-700 hover:text-green-900 underline whitespace-nowrap ml-3">
+                      {useCustomGoogleToken ? 'Uzyj wspolnego' : 'Zmien token'}
                     </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Google Ads Customer ID */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Google Ads Customer ID *
-                </label>
-                <input
-                  type="text"
-                  required={selectedPlatforms.includes('google')}
-                  value={formData.google_ads_customer_id}
-                  onChange={(e) => setFormData({...formData, google_ads_customer_id: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="123-456-7890"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Format: XXX-XXX-XXXX (znajdź w Google Ads → Account Settings → Account Info)
-                </p>
-              </div>
-
-              {/* Google Ads Refresh Token */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Google Ads Refresh Token *
-                </label>
-                <input
-                  type="password"
-                  required={selectedPlatforms.includes('google') && !formData.google_ads_system_user_token}
-                  value={formData.google_ads_refresh_token}
-                  onChange={(e) => setFormData({...formData, google_ads_refresh_token: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  placeholder="1//..."
-                  disabled={!!formData.google_ads_system_user_token}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Zaczyna się od &quot;1//&quot; | Uzyskaj z OAuth 2.0 flow dla Google Ads API
-                </p>
-              </div>
-
-              {/* System User Token Alternative */}
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="mb-2">
-                  <h4 className="font-medium text-green-900 flex items-center">
-                    <Shield className="h-4 w-4 mr-2" />
-                    Alternatywa: System User Token
-                  </h4>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-sm text-amber-800">Brak wspolnego tokenu Google Ads. Podaj token ponizej.</p>
                 </div>
-                <p className="text-sm text-green-800">
-                  {formData.google_ads_system_user_token ? 
-                    '✅ System User Token został ustawiony (permanentny dostęp)' :
-                    'Użyj System User Token dla permanentnego dostępu bez konieczności odnawiania'
-                  }
-                </p>
-                {formData.google_ads_system_user_token && (
-                  <button
-                    type="button"
-                    onClick={() => setFormData({...formData, google_ads_system_user_token: ''})}
-                    className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-                  >
-                    Usuń System User Token
-                  </button>
-                )}
+              )}
+
+              {/* Custom token fields */}
+              {(useCustomGoogleToken || !sharedTokens?.google?.hasRefreshToken) && (
+                <div className="space-y-3 pl-3 border-l-2 border-orange-200">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Refresh Token</label>
+                    <input type="password" value={formData.google_ads_refresh_token}
+                      onChange={(e) => setFormData({...formData, google_ads_refresh_token: e.target.value})}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="1//..." />
+                  </div>
+                </div>
+              )}
+
+              {/* Required: Customer ID */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Google Ads Customer ID *</label>
+                <input type="text" required={selectedPlatforms.includes('google')} value={formData.google_ads_customer_id}
+                  onChange={(e) => setFormData({...formData, google_ads_customer_id: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  placeholder="123-456-7890" />
+                <p className="text-xs text-gray-500 mt-1">Format: XXX-XXX-XXXX (Google Ads &rarr; Account Settings)</p>
               </div>
 
-              <button
-                type="button"
-                onClick={validateGoogleAdsCredentials}
-                disabled={validating || (!formData.google_ads_customer_id || (!formData.google_ads_refresh_token && !formData.google_ads_system_user_token))}
-                className="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                {validating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Sprawdzanie Google Ads...
-                  </>
-                ) : (
-                  <>
-                    <Target className="h-4 w-4 mr-2" />
-                    Zweryfikuj poświadczenia Google Ads
-                  </>
-                )}
+              <button type="button" onClick={validateGoogleAdsCredentials}
+                disabled={validating || !formData.google_ads_customer_id || (!getEffectiveGoogleToken())}
+                className="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm">
+                {validating ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Sprawdzanie...</> : <><Target className="h-4 w-4 mr-2" />Zweryfikuj Google Ads</>}
               </button>
-              
+
               {validationStatus.google.status !== 'idle' && (
-                <div className={`text-sm p-3 rounded-md border ${
-                  validationStatus.google.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' :
-                  validationStatus.google.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' :
-                  'bg-yellow-50 text-yellow-800 border-yellow-200'
-                }`}>
+                <div className={`text-sm p-3 rounded-md border ${validationStatus.google.status === 'valid' ? 'bg-green-50 text-green-800 border-green-200' : validationStatus.google.status === 'invalid' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-yellow-50 text-yellow-800 border-yellow-200'}`}>
                   <div className="flex items-start">
-                    {validationStatus.google.status === 'valid' ? (
-                      <CheckCircle className="h-5 w-5 mr-2 mt-0.5 text-green-600" />
-                    ) : validationStatus.google.status === 'invalid' ? (
-                      <AlertCircle className="h-5 w-5 mr-2 mt-0.5 text-red-600" />
-                    ) : (
-                      <Clock className="h-5 w-5 mr-2 mt-0.5 text-yellow-600" />
-                    )}
-                    <div>
-                      {validationStatus.google.message}
-                    </div>
+                    {validationStatus.google.status === 'valid' ? <CheckCircle className="h-4 w-4 mr-2 mt-0.5 text-green-600 shrink-0" /> :
+                     validationStatus.google.status === 'invalid' ? <AlertCircle className="h-4 w-4 mr-2 mt-0.5 text-red-600 shrink-0" /> :
+                     <Clock className="h-4 w-4 mr-2 mt-0.5 text-yellow-600 shrink-0" />}
+                    <span>{validationStatus.google.message}</span>
                   </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Submit Error Display */}
           {submitError && (
-            <div className="bg-red-100 text-red-800 text-sm p-3 rounded-md">
-              <div className="flex items-center">
-                <AlertCircle className="h-4 w-4 mr-2" />
-                {submitError}
-              </div>
+            <div className="bg-red-100 text-red-800 text-sm p-3 rounded-md flex items-center">
+              <AlertCircle className="h-4 w-4 mr-2 shrink-0" />{submitError}
             </div>
           )}
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Częstotliwość raportowania
-            </label>
-            <select
-              value={formData.reporting_frequency}
-              onChange={(e) => setFormData({...formData, reporting_frequency: e.target.value as any})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              <option value="monthly">Miesięcznie</option>
-              <option value="weekly">Co tydzień</option>
-              <option value="on_demand">Na żądanie</option>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Czestotliwosc raportowania</label>
+            <select value={formData.reporting_frequency} onChange={(e) => setFormData({...formData, reporting_frequency: e.target.value as any})}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <option value="monthly">Miesiecznie</option>
+              <option value="weekly">Co tydzien</option>
+              <option value="on_demand">Na zadanie</option>
             </select>
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Uwagi
-            </label>
-            <textarea
-              value={formData.notes || ''}
-              onChange={(e) => setFormData({...formData, notes: e.target.value})}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Uwagi</label>
+            <textarea value={formData.notes || ''} onChange={(e) => setFormData({...formData, notes: e.target.value})}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              rows={3}
-              placeholder="Uwagi dotyczące tego klienta"
-            />
+              rows={2} placeholder="Uwagi dotyczace tego klienta" />
           </div>
           
           <div className="flex space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-            >
-              Anuluj
-            </button>
-            <button
-              type="submit"
-              disabled={loading || (selectedPlatforms.length === 0 || (selectedPlatforms.includes('meta') && validationStatus.meta.status !== 'valid') || (selectedPlatforms.includes('google') && validationStatus.google.status !== 'valid'))}
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
-            >
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Anuluj</button>
+            <button type="submit"
+              disabled={loading || selectedPlatforms.length === 0 || (selectedPlatforms.includes('meta') && validationStatus.meta.status !== 'valid') || (selectedPlatforms.includes('google') && validationStatus.google.status !== 'valid')}
+              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50">
               {loading ? 'Dodawanie...' : 'Dodaj klienta'}
             </button>
           </div>
         </form>
       </div>
-      
     </div>
   );
 }
