@@ -12,7 +12,9 @@ const nextConfig = {
       '@supabase/supabase-js',
       'google-ads-api',
       '@grpc/grpc-js',
-      'google-gax'
+      'google-gax',
+      'puppeteer-core',
+      '@sparticuz/chromium',
     ],
   },
   

@@ -148,19 +148,47 @@ async function generatePDFHTMLForJob(reportData: any): Promise<string> {
 }
 
 /**
- * Generate PDF from HTML using Puppeteer
+ * Generate PDF from HTML using puppeteer-core + @sparticuz/chromium (serverless-compatible)
  */
 async function generatePDFFromHTML(html: string): Promise<Buffer> {
-  const puppeteer = await import('puppeteer');
+  const puppeteerCore = await import('puppeteer-core');
+  const chromiumModule = await import('@sparticuz/chromium');
+  const chromium = chromiumModule.default || chromiumModule;
   
-  const browser = await puppeteer.default.launch({
+  const isProduction = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production';
+  
+  let executablePath: string | undefined;
+  if (isProduction) {
+    executablePath = await chromium.executablePath();
+  } else {
+    const { execSync } = require('child_process');
+    try {
+      executablePath = execSync('which google-chrome-stable || which google-chrome || which chromium-browser || which chromium', { encoding: 'utf-8' }).trim();
+    } catch {
+      const fs = require('fs');
+      const macPaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      ];
+      executablePath = macPaths.find((p: string) => fs.existsSync(p));
+    }
+  }
+
+  if (!executablePath) {
+    throw new Error('No Chrome/Chromium executable found');
+  }
+
+  const browser = await puppeteerCore.default.launch({
+    executablePath,
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: isProduction ? chromium.args : ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    defaultViewport: { width: 1280, height: 900 },
   });
   
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     const pdfBuffer = await page.pdf({
       format: 'A4',

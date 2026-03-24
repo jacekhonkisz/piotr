@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
+import puppeteerCore from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import logger from '@/lib/logger';
 import { supabase } from '@/lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { authenticateRequest, canAccessClient, createErrorResponse } from '@/lib/auth-middleware';
+
+export const maxDuration = 120;
+export const dynamic = 'force-dynamic';
 
 interface ReportData {
   // Client information
@@ -342,7 +346,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
               
               <!-- Change Indicator (Meta) -->
-              ${metric.metaPrevious > 0 && metric.metaChange !== -999 ? `
+              ${metric.metaCurrent > 0 && metric.metaPrevious > 0 && metric.metaChange !== -999 ? `
                 <text x="${width - padding.right + 10}" y="${metaY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.metaChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
                   ${metric.metaChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.metaChange).toFixed(1)}%
                 </text>
@@ -362,7 +366,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <text x="${padding.left + googlePreviousWidth + 8}" y="${googleY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
               
               <!-- Change Indicator (Google) -->
-              ${metric.googlePrevious > 0 && metric.googleChange !== -999 ? `
+              ${metric.googleCurrent > 0 && metric.googlePrevious > 0 && metric.googleChange !== -999 ? `
                 <text x="${width - padding.right + 10}" y="${googleY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.googleChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
                   ${metric.googleChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.googleChange).toFixed(1)}%
                 </text>
@@ -390,23 +394,33 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
   
   const { metrics } = reportData.metaData;
   const metaYoYData = reportData.yoyComparison?.meta;
-  
+
   // Helper function to check if a metric has meaningful data
   const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
-  
-  // Helper to get change delta for a metric
+
   const getMetricChange = (metricKey: string) => {
     if (!metaYoYData || !metaYoYData.changes) return null;
-    
-    const changeMap: { [key: string]: number } = {
-      'totalSpend': metaYoYData.changes?.spend || 0,
-      'totalImpressions': metaYoYData.changes?.impressions || 0,
-      'totalClicks': metaYoYData.changes?.clicks || 0,
-      'totalConversions': metaYoYData.changes?.reservations || 0,
-      'totalReservations': metaYoYData.changes?.reservations || 0,
+
+    const currentMap: { [key: string]: number } = {
+      'totalSpend': metaYoYData.current?.spend || 0,
+      'totalImpressions': metaYoYData.current?.impressions || 0,
+      'totalClicks': metaYoYData.current?.clicks || 0,
+      'totalConversions': metaYoYData.current?.reservations || 0,
+      'totalReservations': metaYoYData.current?.reservations || 0,
     };
-    
-    return changeMap[metricKey] || null;
+    const previousMap: { [key: string]: number } = {
+      'totalSpend': metaYoYData.previous?.spend || 0,
+      'totalImpressions': metaYoYData.previous?.impressions || 0,
+      'totalClicks': metaYoYData.previous?.clicks || 0,
+      'totalConversions': metaYoYData.previous?.reservations || 0,
+      'totalReservations': metaYoYData.previous?.reservations || 0,
+    };
+
+    if ((currentMap[metricKey] || 0) === 0 || (previousMap[metricKey] || 0) === 0) return null;
+
+    const change = metaYoYData.changes?.[metricKey === 'totalConversions' || metricKey === 'totalReservations' ? 'reservations' : metricKey === 'totalSpend' ? 'spend' : metricKey === 'totalImpressions' ? 'impressions' : 'clicks'] || 0;
+    if (change === -999 || Math.abs(change) < 0.01) return null;
+    return change;
   };
   
   // Helper to render a clean metric card
@@ -665,20 +679,30 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
 
   // Helper function to check if a metric has meaningful data
   const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
-  
-  // Helper to get change delta for a metric
+
   const getMetricChange = (metricKey: string) => {
     if (!googleYoYData || !googleYoYData.changes) return null;
-    
-    const changeMap: { [key: string]: number } = {
-      'totalSpend': googleYoYData.changes?.spend || 0,
-      'totalImpressions': googleYoYData.changes?.impressions || 0,
-      'totalClicks': googleYoYData.changes?.clicks || 0,
-      'totalConversions': googleYoYData.changes?.reservations || 0,
-      'totalReservations': googleYoYData.changes?.reservations || 0,
+
+    const currentMap: { [key: string]: number } = {
+      'totalSpend': googleYoYData.current?.spend || 0,
+      'totalImpressions': googleYoYData.current?.impressions || 0,
+      'totalClicks': googleYoYData.current?.clicks || 0,
+      'totalConversions': googleYoYData.current?.reservations || 0,
+      'totalReservations': googleYoYData.current?.reservations || 0,
     };
-    
-    return changeMap[metricKey] || null;
+    const previousMap: { [key: string]: number } = {
+      'totalSpend': googleYoYData.previous?.spend || 0,
+      'totalImpressions': googleYoYData.previous?.impressions || 0,
+      'totalClicks': googleYoYData.previous?.clicks || 0,
+      'totalConversions': googleYoYData.previous?.reservations || 0,
+      'totalReservations': googleYoYData.previous?.reservations || 0,
+    };
+
+    if ((currentMap[metricKey] || 0) === 0 || (previousMap[metricKey] || 0) === 0) return null;
+
+    const change = googleYoYData.changes?.[metricKey === 'totalConversions' || metricKey === 'totalReservations' ? 'reservations' : metricKey === 'totalSpend' ? 'spend' : metricKey === 'totalImpressions' ? 'impressions' : 'clicks'] || 0;
+    if (change === -999 || Math.abs(change) < 0.01) return null;
+    return change;
   };
   
   // Helper to render a clean metric card
@@ -1457,9 +1481,8 @@ const generateKPIScoreboard = (reportData: ReportData) => {
   const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
   
-  // Calculate deltas from YoY comparison
   const getDelta = (current: number, previous: number) => {
-    if (previous === 0) return null;
+    if (current === 0 || previous === 0) return null;
     return ((current - previous) / previous) * 100;
   };
   
@@ -3724,34 +3747,54 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    logger.info('🚀 Launching Puppeteer...');
+    logger.info('🚀 Launching Puppeteer (serverless-compatible)...');
     let browser: any = null;
     let page: any = null;
     
-    // 🔒 Resource limits for PDF generation
-    const MAX_PDF_SIZE_MB = 50; // Maximum PDF size in MB
-    const MAX_GENERATION_TIME_MS = 120000; // 2 minutes maximum
+    const MAX_PDF_SIZE_MB = 50;
+    const MAX_GENERATION_TIME_MS = 110000; // 110s (within Vercel's 120s maxDuration)
     const startTime = Date.now();
     
     try {
-      // 🔒 SECURITY: Removed --disable-web-security flag for production security
-      // Use proper content isolation instead of disabling security
-      browser = await puppeteer.launch({
+      const isProduction = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NODE_ENV === 'production';
+      
+      let executablePath: string | undefined;
+      if (isProduction) {
+        executablePath = await chromium.executablePath();
+        logger.info('🔧 Using @sparticuz/chromium for serverless environment');
+      } else {
+        // Local development: try common Chrome/Chromium paths
+        const { execSync } = require('child_process');
+        try {
+          executablePath = execSync('which google-chrome-stable || which google-chrome || which chromium-browser || which chromium', { encoding: 'utf-8' }).trim();
+        } catch {
+          // macOS fallback
+          const fs = require('fs');
+          const macPaths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          ];
+          executablePath = macPaths.find(p => fs.existsSync(p));
+        }
+        logger.info(`🔧 Using local Chrome: ${executablePath}`);
+      }
+
+      if (!executablePath) {
+        throw new Error('No Chrome/Chromium executable found. Install Chrome or set CHROME_PATH.');
+      }
+
+      const launchArgs = isProduction ? chromium.args : [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ];
+
+      browser = await puppeteerCore.launch({
+        executablePath,
         headless: true,
-        args: [
-          '--no-sandbox', // Required for serverless environments
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          // Removed: '--disable-web-security' - Security risk
-          '--disable-features=VizDisplayCompositor',
-          // Resource limits
-          '--max-old-space-size=512', // Limit memory to 512MB
-        ],
-        // Resource constraints
+        args: launchArgs,
+        defaultViewport: { width: 1280, height: 900 },
         timeout: MAX_GENERATION_TIME_MS,
       });
 
@@ -3929,10 +3972,12 @@ export async function POST(request: NextRequest) {
       
       return NextResponse.json(
         { 
-          error: 'Failed to generate PDF with Puppeteer',
-          details: puppeteerError instanceof Error ? puppeteerError.message : 'Unknown Puppeteer error',
+          error: 'Failed to generate PDF',
+          details: puppeteerError instanceof Error ? puppeteerError.message : 'Unknown PDF generation error',
           isTimeout: isTimeoutError,
-          suggestion: isTimeoutError ? 'The PDF generation timed out. This may be due to complex content or server load. Please try again.' : undefined
+          suggestion: isTimeoutError 
+            ? 'The PDF generation timed out. This may be due to complex content or server load. Please try again.' 
+            : 'PDF generation failed. Please try again or contact support if the issue persists.'
         },
         { status: 500 }
       );

@@ -98,11 +98,11 @@ export function prepareClientMonthlyReportData(
     const metaPrevValue = previousYearData.metaAds?.reservationValue || 0;
     
     yoyComparison = {
-      googleAdsIncrease: googlePrevValue > 0 
-        ? ((googleValue - googlePrevValue) / googlePrevValue) * 100 
+      googleAdsIncrease: googleValue > 0 && googlePrevValue > 0
+        ? ((googleValue - googlePrevValue) / googlePrevValue) * 100
         : undefined,
-      metaAdsIncrease: metaPrevValue > 0 
-        ? ((metaValue - metaPrevValue) / metaPrevValue) * 100 
+      metaAdsIncrease: metaValue > 0 && metaPrevValue > 0
+        ? ((metaValue - metaPrevValue) / metaPrevValue) * 100
         : undefined
     };
   }

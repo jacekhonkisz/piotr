@@ -860,7 +860,7 @@ Piotr`;
                   <div className="mt-1 font-mono">
                     • <strong>KLIENT: {clientName}</strong>
                     <br />
-                    • Źródło danych: <strong>daily_kpi_data</strong> (TO SAMO CO /REPORTS!)
+                    • Źródło danych: <strong>StandardizedDataFetcher + GoogleAdsStandardizedDataFetcher</strong> (TO SAMO CO /REPORTS!)
                     <br />
                     • Okres: {dateRange.start} to {dateRange.end}
                     <br />
@@ -874,16 +874,38 @@ Piotr`;
                     <br />
                     • Platformy załadowane: {campaigns?.length || 0}
                     <br />
-                    {(!campaigns || campaigns.length === 0) && (
-                      <span className="text-red-600">
-                        ⚠️ BRAK DANYCH w daily_kpi_data - Sprawdź czy /reports pokazuje dane!
-                      </span>
-                    )}
-                    {campaigns && campaigns.length > 0 && (
-                      <span className="text-green-600">
-                        ✅ Dane załadowane z daily_kpi_data - TO SAME DANE CO W /REPORTS!
-                      </span>
-                    )}
+                    {(() => {
+                      const hasGoogleAds = !!(client?.google_ads_customer_id);
+                      const expectedPlatforms = hasGoogleAds ? 2 : 1;
+                      const loadedPlatforms = campaigns?.length || 0;
+
+                      if (loadedPlatforms === 0) {
+                        return (
+                          <span className="text-red-600">
+                            ⚠️ BRAK DANYCH - Sprawdź czy /reports pokazuje dane!
+                          </span>
+                        );
+                      }
+                      if (loadedPlatforms < expectedPlatforms) {
+                        return (
+                          <span className="text-yellow-600">
+                            ⚠️ Tylko {loadedPlatforms} platforma załadowana (oczekiwano {expectedPlatforms}: {hasGoogleAds ? 'Meta + Google' : 'Meta'})
+                          </span>
+                        );
+                      }
+                      if (!hasGoogleAds && loadedPlatforms === 1) {
+                        return (
+                          <span className="text-green-600">
+                            ✅ Meta załadowana (klient nie ma Google Ads) - TO SAME DANE CO W /REPORTS!
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="text-green-600">
+                          ✅ Obie platformy załadowane - TO SAME DANE CO W /REPORTS!
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
