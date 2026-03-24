@@ -422,54 +422,60 @@ export class GoogleAdsStandardizedDataFetcher {
   ): Promise<Partial<GoogleAdsStandardizedDataResult>> {
     
     try {
-      console.log('🚀 Using Google Ads smart cache API (3-hour refresh)...');
+      console.log('🚀 Using Google Ads smart cache (3-hour refresh)...');
       
-      // Use relative URL for same-origin requests
-      const fullUrl = '/api/google-ads-smart-cache';
+      if (typeof window === 'undefined') {
+        // Server-side: call the cache helper directly (no HTTP)
+        const { getGoogleAdsSmartCacheData } = await import('./google-ads-smart-cache-helper');
+        const cacheResult = await getGoogleAdsSmartCacheData(clientId, false);
+        
+        if (cacheResult.success && cacheResult.data) {
+          console.log('✅ Google Ads monthly smart cache returned data (direct)');
+          return {
+            success: true,
+            data: cacheResult.data
+          };
+        }
+        console.log('⚠️ Google Ads monthly smart cache returned no data (direct)');
+        return { success: false };
+      }
       
-      const requestBody = {
-        clientId,
-        forceRefresh: false
-      };
+      // Client-side: use HTTP API
+      const { createClient } = await import('@supabase/supabase-js');
+      const clientSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { data: { session } } = await clientSupabase.auth.getSession();
       
-      // 🔓 AUTH DISABLED: No authentication headers needed
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
       
-      const response = await fetch(fullUrl, {
+      const response = await fetch('/api/google-ads-smart-cache', {
         method: 'POST',
         headers,
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({ clientId, forceRefresh: false })
       });
       
       if (!response.ok) {
-        console.log(`⚠️ Google Ads smart cache API call failed: ${response.status} ${response.statusText}`);
+        console.log(`⚠️ Google Ads smart cache API call failed: ${response.status}`);
         return { success: false };
       }
       
       const result = await response.json();
       
-      if (result.success && result.data && result.data.stats) {
+      if (result.success && result.data?.stats) {
         console.log('✅ Google Ads smart cache API returned data');
-        
         return {
           success: true,
           data: {
             stats: result.data.stats,
             conversionMetrics: result.data.conversionMetrics || {
-              click_to_call: 0,
-              email_contacts: 0,
-              booking_step_1: 0,
-              booking_step_2: 0,
-              booking_step_3: 0,
-              reservations: 0,
-              reservation_value: 0,
-              conversion_value: 0,
-              total_conversion_value: 0,
-              roas: 0,
-              cost_per_reservation: 0,
-              reach: 0
+              click_to_call: 0, email_contacts: 0, booking_step_1: 0, booking_step_2: 0,
+              booking_step_3: 0, reservations: 0, reservation_value: 0, conversion_value: 0,
+              total_conversion_value: 0, roas: 0, cost_per_reservation: 0, reach: 0
             },
             campaigns: result.data.campaigns || []
           }
@@ -480,7 +486,7 @@ export class GoogleAdsStandardizedDataFetcher {
       return { success: false };
       
     } catch (error) {
-      console.log('❌ Google Ads smart cache API error:', error);
+      console.log('❌ Google Ads smart cache error:', error);
       return { success: false };
     }
   }
@@ -674,23 +680,33 @@ export class GoogleAdsStandardizedDataFetcher {
     try {
       console.log('🚀 Using live Google Ads API as fallback...');
       
-      // Use relative URL for same-origin requests
       const fullUrl = '/api/fetch-google-ads-live-data';
       
       const requestBody = {
         dateRange,
         clientId,
         platform: 'google',
-        forceFresh: true, // Always force fresh for fallback
+        forceFresh: true,
         reason: 'google-ads-standardized-fallback'
       };
       
-      // 🔓 AUTH DISABLED: No authentication headers needed
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
       
-      console.log('🔓 Authentication disabled for Google Ads live API calls');
+      if (sessionToken) {
+        headers['Authorization'] = `Bearer ${sessionToken}`;
+      } else if (typeof window !== 'undefined') {
+        const { createClient } = await import('@supabase/supabase-js');
+        const clientSupabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const { data: { session } } = await clientSupabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+      }
       
       const response = await fetch(fullUrl, {
         method: 'POST',

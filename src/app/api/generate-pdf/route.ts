@@ -2819,70 +2819,30 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   
   if (googleAdsConditionMet) {
     try {
-      logger.info('📊 Fetching Google Ads data using /api/fetch-google-ads-live-data (same as reports with fallback)...');
+      logger.info('📊 Fetching Google Ads data DIRECTLY via GoogleAdsStandardizedDataFetcher (no HTTP)...');
       
-      // ✅ CRITICAL: Use the same API endpoint as reports page
-      // This endpoint automatically routes to:
-      // - Google Ads smart cache (current_week_cache or google_ads_current_month_cache) for current periods
-      // - campaign_summaries database for historical periods
-      // This ensures PDF data matches /reports page exactly
-      const googleResponse = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          clientId,
-          dateRange: { start: dateRange.start, end: dateRange.end },
-          includeTableData: true
-        })
+      const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
+        clientId,
+        dateRange: { start: dateRange.start, end: dateRange.end },
+        reason: 'pdf-generation-google-ads'
       });
       
-      if (googleResponse.ok) {
-        const googleResult = await googleResponse.json();
-        if (googleResult.success && googleResult.data) {
-          googleData = googleResult.data;
-          
-          // ✅ VERIFY: Log data source to ensure correct routing
-          const googleSource = googleResult.source || googleResult.debug?.source || (googleData.fromDatabase ? 'database' : 'live_api');
-          logger.info('✅ Google Ads data fetched successfully via API endpoint:', {
-            totalSpend: googleData.stats?.totalSpend || 0,
-            totalReservations: googleData.stats?.totalConversions || 0,
-            // reservation_value now includes form conversion values
-            totalReservationValue: googleData.conversionMetrics?.reservation_value || 0,
-            source: googleSource,
-            hasStats: !!googleData.stats,
-            hasConversionMetrics: !!googleData.conversionMetrics,
-            campaignsCount: googleData.campaigns?.length || 0
-          });
-          
-          // ✅ VERIFY: Ensure we're using the correct data source
-          const expectedGoogleSourceForCurrentWeek = ['google-ads-weekly-cache', 'google-ads-cache-stale', 'google-ads-cache-fresh', 'google-ads-cache'];
-          const expectedGoogleSourceForHistorical = ['campaign_summaries', 'database'];
-          
-          if (expectedGoogleSourceForCurrentWeek.includes(googleSource)) {
-            logger.info('✅ PDF GOOGLE ADS DATA SOURCE VERIFIED: Current period using smart cache (matches /reports page)');
-          } else if (expectedGoogleSourceForHistorical.includes(googleSource)) {
-            logger.info('✅ PDF GOOGLE ADS DATA SOURCE VERIFIED: Historical period using database (matches /reports page)');
-          } else {
-            logger.warn('⚠️ PDF GOOGLE ADS DATA SOURCE: Unknown source:', googleSource);
-          }
-        } else {
-          logger.error('❌ Google Ads API returned unsuccessful response:', googleResult);
-          googleError = googleResult.error || 'Unknown Google Ads API error';
-        }
-      } else {
-        const errorText = await googleResponse.text();
-        logger.error('❌ Google Ads API request failed:', {
-          status: googleResponse.status,
-          statusText: googleResponse.statusText,
-          errorText
+      if (googleResult.success && googleResult.data) {
+        googleData = googleResult.data;
+        const googleSource = googleResult.debug?.source || 'direct-fetcher';
+        logger.info('✅ Google Ads data fetched directly:', {
+          totalSpend: googleData.stats?.totalSpend || 0,
+          hasStats: !!googleData.stats,
+          hasConversionMetrics: !!googleData.conversionMetrics,
+          campaignsCount: googleData.campaigns?.length || 0,
+          source: googleSource
         });
-        googleError = `Google Ads API failed: ${googleResponse.status} ${googleResponse.statusText}`;
+      } else {
+        logger.error('❌ Google Ads direct fetch unsuccessful');
+        googleError = 'Google Ads data not available';
       }
     } catch (error) {
-      logger.error('❌ Error fetching Google Ads data via API endpoint:', error);
+      logger.error('❌ Error fetching Google Ads data directly:', error);
       googleError = error instanceof Error ? error.message : 'Unknown Google Ads error';
     }
   } else {
@@ -3298,96 +3258,50 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     }
   }
 
-  // 🔧 FETCH META TABLES DATA: Always fetch demographic data if client has Meta credentials
+  // 🔧 FETCH META TABLES DATA DIRECTLY (no HTTP call - avoids auth issues in serverless)
   if (clientData.meta_access_token && clientData.ad_account_id) {
     try {
-      logger.info('📊 Fetching Meta tables data (demographics, placement, ad relevance)...');
+      logger.info('📊 Fetching Meta tables data DIRECTLY via MetaAPIService (no HTTP)...');
       
-      const metaTablesResponse = await fetch(`${baseUrl}/api/fetch-meta-tables`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify({
-          clientId,
-          dateRange: {
-            start: dateRange.start,
-            end: dateRange.end
-          }
-        })
+      const metaToken = clientData.system_user_token || clientData.meta_access_token;
+      const { MetaAPIService } = await import('@/lib/meta-api-optimized');
+      const metaService = new MetaAPIService(metaToken);
+      const adAccountId = clientData.ad_account_id.startsWith('act_') 
+        ? clientData.ad_account_id.substring(4) 
+        : clientData.ad_account_id;
+      
+      const [placementResult, demographicResult, adRelevanceResult] = await Promise.allSettled([
+        metaService.getPlacementPerformance(adAccountId, dateRange.start, dateRange.end),
+        metaService.getDemographicPerformance(adAccountId, dateRange.start, dateRange.end),
+        metaService.getAdRelevanceResults(adAccountId, dateRange.start, dateRange.end)
+      ]);
+      
+      const placementData = placementResult.status === 'fulfilled' ? (placementResult.value || []) : [];
+      const demographicData = demographicResult.status === 'fulfilled' ? (demographicResult.value || []) : [];
+      const adRelevanceData = adRelevanceResult.status === 'fulfilled' ? (adRelevanceResult.value || []) : [];
+      
+      logger.info('✅ Meta tables fetched directly:', {
+        placementCount: placementData.length,
+        demographicCount: demographicData.length,
+        adRelevanceCount: adRelevanceData.length
       });
       
-      if (metaTablesResponse.ok) {
-        const tablesData = await metaTablesResponse.json();
-        logger.info('🔍 PDF META TABLES RESPONSE:', {
-          success: tablesData.success,
-          hasData: !!tablesData.data,
-          dataKeys: Object.keys(tablesData.data || {}),
-          hasMetaTables: !!tablesData.data?.metaTables,
-          metaTablesKeys: Object.keys(tablesData.data?.metaTables || {}),
-          demographicLength: tablesData.data?.metaTables?.demographicPerformance?.length || 0,
-          demographicSample: tablesData.data?.metaTables?.demographicPerformance?.slice(0, 2) || []
-        });
-        
-        if (tablesData.success) {
-          // Initialize metaData if it doesn't exist
-          if (!reportData.metaData) {
-            reportData.metaData = {
-              metrics: {
-                totalSpend: 0,
-                totalImpressions: 0,
-                totalClicks: 0,
-                totalConversions: 0,
-                averageCtr: 0,
-                averageCpc: 0,
-                averageCpa: 0,
-                averageCpm: 0,
-                reach: 0,
-                relevanceScore: 0,
-                landingPageViews: 0,
-                totalReservations: 0,
-                totalReservationValue: 0,
-                roas: 0,
-                emailContacts: 0,
-                phoneContacts: 0
-              },
-              campaigns: [],
-              funnel: {
-                booking_step_1: 0,
-                booking_step_2: 0,
-                booking_step_3: 0,
-                reservations: 0,
-                reservation_value: 0,
-                roas: 0
-              },
-              tables: {
-                placementPerformance: [],
-                demographicPerformance: [],
-                adRelevanceResults: []
-              }
-            };
-          }
-          
-          // Assign tables data
-          reportData.metaData.tables = {
-            placementPerformance: tablesData.data.metaTables?.placementPerformance || [],
-            demographicPerformance: tablesData.data.metaTables?.demographicPerformance || [],
-            adRelevanceResults: tablesData.data.metaTables?.adRelevanceResults || []
-          };
-          
-          logger.info('✅ PDF META TABLES DATA ASSIGNED:', {
-            placementLength: reportData.metaData.tables.placementPerformance.length,
-            demographicLength: reportData.metaData.tables.demographicPerformance.length,
-            adRelevanceLength: reportData.metaData.tables.adRelevanceResults.length,
-            demographicSample: reportData.metaData.tables.demographicPerformance.slice(0, 1)
-          });
-        }
-      } else {
-        logger.warn('⚠️ Meta tables API failed:', metaTablesResponse.status, metaTablesResponse.statusText);
+      if (!reportData.metaData) {
+        reportData.metaData = {
+          metrics: { totalSpend: 0, totalImpressions: 0, totalClicks: 0, totalConversions: 0, averageCtr: 0, averageCpc: 0, averageCpa: 0, averageCpm: 0, reach: 0, relevanceScore: 0, landingPageViews: 0, totalReservations: 0, totalReservationValue: 0, roas: 0, emailContacts: 0, phoneContacts: 0 },
+          campaigns: [],
+          funnel: { booking_step_1: 0, booking_step_2: 0, booking_step_3: 0, reservations: 0, reservation_value: 0, roas: 0 },
+          tables: { placementPerformance: [], demographicPerformance: [], adRelevanceResults: [] }
+        };
       }
+      
+      reportData.metaData.tables = {
+        placementPerformance: placementData,
+        demographicPerformance: demographicData,
+        adRelevanceResults: adRelevanceData
+      };
     } catch (error) {
-      logger.warn('⚠️ Meta tables data fetch failed:', error);
+      logger.warn('⚠️ Meta tables direct fetch failed:', error);
     }
   }
   
@@ -3481,48 +3395,53 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   });
   
   try {
-    logger.info('🤖 Generating AI summary using main API...');
+    logger.info('🤖 Generating AI summary DIRECTLY (no HTTP call)...');
     
-    // Call the main AI summary API instead of duplicating logic
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-executive-summary`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader
-      },
-      body: JSON.stringify({
-        clientId,
-        dateRange,
-        reportData: {
-          metaData: reportData.metaData,
-          googleData: reportData.googleData
-        }
-      })
-    });
+    const { generateAISummary } = await import('@/lib/ai-summary-generator');
     
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success && result.summary) {
-        reportData.aiSummary = result.summary;
-        logger.info('✅ AI summary generated using main API:', {
-          summaryLength: result.summary.length,
-          summaryPreview: result.summary.substring(0, 100)
-        });
-      } else {
-        logger.warn('⚠️ AI summary API returned no summary');
-      }
+    const metaMetrics = reportData.metaData?.metrics;
+    const googleMetrics = reportData.googleData?.metrics;
+    
+    const summaryData = {
+      clientName: reportData.clientName,
+      dateRange,
+      metaSpend: metaMetrics?.totalSpend,
+      metaImpressions: metaMetrics?.totalImpressions,
+      metaClicks: metaMetrics?.totalClicks,
+      metaConversions: metaMetrics?.totalConversions,
+      metaCtr: metaMetrics?.averageCtr,
+      metaCpc: metaMetrics?.averageCpc,
+      metaRoas: metaMetrics?.roas,
+      metaReservationValue: metaMetrics?.totalReservationValue,
+      metaReservations: metaMetrics?.totalReservations,
+      googleSpend: googleMetrics?.totalSpend,
+      googleImpressions: googleMetrics?.totalImpressions,
+      googleClicks: googleMetrics?.totalClicks,
+      googleConversions: googleMetrics?.totalConversions,
+      googleCtr: googleMetrics?.averageCtr,
+      googleCpc: googleMetrics?.averageCpc,
+      googleRoas: googleMetrics?.roas,
+      googleReservationValue: googleMetrics?.totalReservationValue,
+      googleReservations: googleMetrics?.totalReservations,
+      bookingStep1: (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
+      bookingStep2: (reportData.metaData?.funnel?.booking_step_2 || 0) + (reportData.googleData?.funnel?.booking_step_2 || 0),
+      bookingStep3: (reportData.metaData?.funnel?.booking_step_3 || 0) + (reportData.googleData?.funnel?.booking_step_3 || 0),
+      emailContacts: (metaMetrics?.emailContacts || 0) + (googleMetrics?.emailContacts || 0),
+      clickToCall: (metaMetrics?.phoneContacts || 0) + (googleMetrics?.phoneContacts || 0),
+    };
+    
+    const summary = await generateAISummary(summaryData, clientId);
+    if (summary) {
+      reportData.aiSummary = summary;
+      logger.info('✅ AI summary generated directly:', { summaryLength: summary.length });
     } else {
-      logger.warn('⚠️ AI summary API call failed:', response.status);
+      logger.warn('⚠️ AI summary generator returned null');
     }
-    
   } catch (error) {
     logger.error('❌ AI SUMMARY GENERATION EXCEPTION:', {
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      errorStack: error instanceof Error ? error.stack : 'No stack trace',
-      errorType: typeof error,
-      errorName: error instanceof Error ? error.name : 'Unknown'
     });
-    logger.warn('⚠️ AI summary generation failed, continuing without it:', error);
+    logger.warn('⚠️ AI summary generation failed, continuing without it');
   }
   
   logger.info('🔍 AI SUMMARY GENERATION COMPLETED - Final check:', {
