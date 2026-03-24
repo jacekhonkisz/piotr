@@ -1905,6 +1905,8 @@ export default function DashboardPage() {
                 )
               }}
               isLoading={loading}
+              clientId={clientData.client?.id}
+              platform={activeAdsProvider}
             />
 
           </div>
