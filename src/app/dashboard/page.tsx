@@ -222,7 +222,7 @@ export default function DashboardPage() {
         });
         
         // 📊 Fetch previous month conversion metrics for the new provider
-        fetchPreviousMonthConversionMetrics(currentClient);
+        fetchPreviousMonthConversionMetrics(currentClient, provider);
       }
     }
     
@@ -1164,86 +1164,26 @@ export default function DashboardPage() {
     }
   };
 
-  // 📊 FETCH PREVIOUS MONTH CONVERSION METRICS: For AnimatedMetricsCharts comparison
-  const fetchPreviousMonthConversionMetrics = async (currentClient: Client) => {
+  // 📊 FETCH PREVIOUS MONTH CONVERSION METRICS: Via server-side API to bypass RLS
+  const fetchPreviousMonthConversionMetrics = async (currentClient: Client, platform?: 'meta' | 'google') => {
+    const resolvedPlatform = platform || activeAdsProvider;
     try {
-      const now = new Date();
-      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const previousMonthStr = previousMonth.toISOString().split('T')[0];
-      
-      console.log('📊 FETCHING PREVIOUS MONTH CONVERSION METRICS:', {
+      console.log('📊 FETCHING PREVIOUS MONTH CONVERSION METRICS via API:', {
         clientId: currentClient.id,
         clientName: currentClient.name,
-        platform: activeAdsProvider,
-        previousMonth: previousMonthStr,
-        query: {
-          table: 'campaign_summaries',
-          filters: {
-            client_id: currentClient.id,
-            summary_type: 'monthly',
-            platform: activeAdsProvider,
-            summary_date: previousMonthStr
-          }
-        }
+        platform: resolvedPlatform
       });
-      
-      // First, let's check what data exists for this client
-      const { data: allData, error: checkError } = await supabase
-        .from('campaign_summaries')
-        .select('*')
-        .eq('client_id', currentClient.id)
-        .eq('summary_type', 'monthly')
-        .order('summary_date', { ascending: false })
-        .limit(5);
-      
-      console.log('📊 ALL MONTHLY SUMMARIES FOR CLIENT:', {
-        count: allData?.length || 0,
-        summaries: allData?.map(d => ({
-          date: d.summary_date,
-          platform: d.platform,
-          booking_step_1: d.booking_step_1,
-          reservations: d.reservations,
-          reservation_value: d.reservation_value
-        }))
+
+      const res = await fetch(`/api/previous-month-metrics?clientId=${currentClient.id}&platform=${resolvedPlatform}`);
+      const data = await res.json();
+
+      console.log('📊 PREVIOUS MONTH API RESULT:', data);
+
+      setPreviousMonthConversionMetrics({
+        booking_step_1: data.booking_step_1 || 0,
+        reservations: data.reservations || 0,
+        reservation_value: data.reservation_value || 0
       });
-      
-      const { data, error } = await supabase
-        .from('campaign_summaries')
-        .select('booking_step_1, reservations, reservation_value, summary_date, platform')
-        .eq('client_id', currentClient.id)
-        .eq('summary_type', 'monthly')
-        .eq('platform', activeAdsProvider)
-        .eq('summary_date', previousMonthStr)
-        .single();
-      
-      console.log('📊 PREVIOUS MONTH QUERY RESULT:', {
-        found: !!data,
-        error: error?.message,
-        data: data
-      });
-      
-      if (!error && data) {
-        setPreviousMonthConversionMetrics({
-          booking_step_1: data.booking_step_1 || 0,
-          reservations: data.reservations || 0,
-          reservation_value: data.reservation_value || 0
-        });
-        console.log('✅ Previous month conversion metrics loaded:', data);
-      } else {
-        console.warn('⚠️ No previous month data found:', {
-          error: error?.message,
-          searchedFor: {
-            client: currentClient.id,
-            platform: activeAdsProvider,
-            month: previousMonthStr
-          }
-        });
-        setPreviousMonthConversionMetrics({
-          booking_step_1: 0,
-          reservations: 0,
-          reservation_value: 0
-        });
-      }
     } catch (error) {
       console.error('❌ Failed to fetch previous month conversion metrics:', error);
       setPreviousMonthConversionMetrics({
