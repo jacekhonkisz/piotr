@@ -14,7 +14,11 @@ import {
   CheckCircle,
   Eye,
   X,
-  RefreshCw
+  RefreshCw,
+  Shield,
+  ShieldCheck,
+  TestTube,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
@@ -105,6 +109,98 @@ export default function AdminCalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showCalendarEmailPreview, setShowCalendarEmailPreview] = useState(false);
 
+  // Email Review Mode state
+  const [reviewMode, setReviewMode] = useState<boolean | null>(null);
+  const [reviewEmail, setReviewEmail] = useState('kontakt@piotrbajerlein.pl');
+  const [reviewToggling, setReviewToggling] = useState(false);
+  const [hasCustomSmtp, setHasCustomSmtp] = useState(false);
+  const [smtpUser, setSmtpUser] = useState<string | null>(null);
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+    details?: any;
+  } | null>(null);
+  const [testClientId, setTestClientId] = useState('');
+  const [showTestModal, setShowTestModal] = useState(false);
+
+  const getAuthToken = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || '';
+  }, []);
+
+  const loadReviewMode = useCallback(async () => {
+    try {
+      const token = await getAuthToken();
+      const res = await fetch('/api/admin/email-review-mode', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReviewMode(data.reviewMode);
+        setReviewEmail(data.reviewEmail);
+        setHasCustomSmtp(data.hasCustomSmtp);
+        setSmtpUser(data.smtpUser);
+      }
+    } catch (err) {
+      console.error('Failed to load review mode:', err);
+    }
+  }, [getAuthToken]);
+
+  const toggleReviewMode = useCallback(async () => {
+    if (reviewMode === null) return;
+    setReviewToggling(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch('/api/admin/email-review-mode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ enabled: !reviewMode })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReviewMode(data.reviewMode);
+      }
+    } catch (err) {
+      console.error('Failed to toggle review mode:', err);
+    } finally {
+      setReviewToggling(false);
+    }
+  }, [reviewMode, getAuthToken]);
+
+  const sendTestEmail = useCallback(async (clientId?: string) => {
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch('/api/admin/test-report-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ clientId: clientId || testClientId || undefined, includePdf: true })
+      });
+      const data = await res.json();
+      setTestResult({
+        success: data.success,
+        message: data.success
+          ? `Test wysłany do ${data.sentTo}${data.pdfIncluded ? ` z PDF (${(data.pdfSize / 1024).toFixed(0)} KB)` : ' (bez PDF)'}`
+          : `Błąd: ${data.error}`,
+        details: data
+      });
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: `Błąd: ${err instanceof Error ? err.message : 'Nieznany błąd'}`
+      });
+    } finally {
+      setTestSending(false);
+    }
+  }, [getAuthToken, testClientId]);
 
   // Function to cleanup old errors (older than 3 days)
   const cleanupOldErrors = useCallback(async () => {
@@ -360,8 +456,8 @@ export default function AdminCalendarPage() {
         return;
       }
       
-      // Only load data once when auth is ready
       loadData();
+      loadReviewMode();
     }
   }, [user, profile, authLoading, router]); // FIXED: Removed currentDate dependency to prevent production loops
 
@@ -441,10 +537,12 @@ export default function AdminCalendarPage() {
 
   const sendManualReport = async (clientId: string) => {
     try {
+      const token = await getAuthToken();
       const response = await fetch('/api/admin/send-manual-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ clientId })
       });
@@ -453,8 +551,10 @@ export default function AdminCalendarPage() {
         throw new Error('Failed to send report');
       }
 
-      alert('Raport został wysłany pomyślnie. Odśwież stronę aby zobaczyć aktualizacje.');
-      // Auto-refresh disabled - user must manually refresh to see updates
+      const modeNote = reviewMode
+        ? `\n\nTryb weryfikacji: raport został wysłany do ${reviewEmail} do ręcznej weryfikacji.`
+        : '';
+      alert(`Raport został wysłany pomyślnie.${modeNote}\nOdśwież stronę aby zobaczyć aktualizacje.`);
     } catch (error) {
       console.error('Error sending manual report:', error);
       alert('Nie udało się wysłać raportu');
@@ -744,6 +844,238 @@ export default function AdminCalendarPage() {
       </header>
 
       <main className="max-w-7xl xl:max-w-8xl 2xl:max-w-9xl mx-auto px-6 lg:px-8 xl:px-12 2xl:px-16 py-8">
+        {/* Email Review Mode Banner */}
+        {reviewMode !== null && (
+          <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6 mb-6">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+
+              {/* Mode cards — left side */}
+              <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                {/* Card: Weryfikacja */}
+                <div className={`relative flex-1 rounded-xl border-2 p-4 transition-all cursor-default ${
+                  reviewMode
+                    ? 'border-amber-400 bg-amber-50 shadow-md shadow-amber-100'
+                    : 'border-gray-200 bg-gray-50 opacity-50'
+                }`}>
+                  {reviewMode && (
+                    <span className="absolute -top-2.5 left-3 bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      aktywny
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`p-1.5 rounded-lg ${reviewMode ? 'bg-amber-100' : 'bg-gray-100'}`}>
+                      <Shield className={`h-4 w-4 ${reviewMode ? 'text-amber-600' : 'text-gray-400'}`} />
+                    </div>
+                    <span className={`font-semibold text-sm ${reviewMode ? 'text-amber-900' : 'text-gray-400'}`}>
+                      Tryb weryfikacji
+                    </span>
+                  </div>
+                  <p className={`text-xs leading-relaxed ${reviewMode ? 'text-amber-700' : 'text-gray-400'}`}>
+                    Każdy raport trafia najpierw do <strong>{reviewEmail}</strong>. Sprawdzasz PDF, treść i dane — potem ręcznie przesyłasz do klienta.
+                  </p>
+                  <p className={`text-[11px] mt-2 font-medium ${reviewMode ? 'text-amber-500' : 'text-gray-300'}`}>
+                    Idealne do testowania i kontroli jakości
+                  </p>
+                </div>
+
+                {/* Card: Bezpośredni */}
+                <div className={`relative flex-1 rounded-xl border-2 p-4 transition-all cursor-default ${
+                  !reviewMode
+                    ? 'border-green-400 bg-green-50 shadow-md shadow-green-100'
+                    : 'border-gray-200 bg-gray-50 opacity-50'
+                }`}>
+                  {!reviewMode && (
+                    <span className="absolute -top-2.5 left-3 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      aktywny
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`p-1.5 rounded-lg ${!reviewMode ? 'bg-green-100' : 'bg-gray-100'}`}>
+                      <ShieldCheck className={`h-4 w-4 ${!reviewMode ? 'text-green-600' : 'text-gray-400'}`} />
+                    </div>
+                    <span className={`font-semibold text-sm ${!reviewMode ? 'text-green-900' : 'text-gray-400'}`}>
+                      Tryb bezpośredni
+                    </span>
+                  </div>
+                  <p className={`text-xs leading-relaxed ${!reviewMode ? 'text-green-700' : 'text-gray-400'}`}>
+                    Raport trafia <strong>bezpośrednio do klienta</strong> na jego adres e-mail. Bez pośredniego kroku weryfikacji.
+                  </p>
+                  <p className={`text-[11px] mt-2 font-medium ${!reviewMode ? 'text-green-500' : 'text-gray-300'}`}>
+                    Produkcja — gdy wszystko jest sprawdzone
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle + test button — right side */}
+              <div className="flex flex-col items-center gap-4 min-w-[140px]">
+                {/* Toggle switch */}
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    {reviewMode ? 'Weryfikacja' : 'Bezpośredni'}
+                  </span>
+                  <button
+                    onClick={toggleReviewMode}
+                    disabled={reviewToggling}
+                    aria-label={reviewMode ? 'Wyłącz tryb weryfikacji' : 'Włącz tryb weryfikacji'}
+                    className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+                      reviewMode
+                        ? 'bg-amber-500 focus:ring-amber-400'
+                        : 'bg-green-500 focus:ring-green-400'
+                    }`}
+                  >
+                    <span
+                      className={`inline-flex h-7 w-7 transform items-center justify-center rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ease-in-out ${
+                        reviewMode ? 'translate-x-6' : 'translate-x-0'
+                      }`}
+                    >
+                      {reviewToggling ? (
+                        <Loader2 className="h-3.5 w-3.5 text-gray-400 animate-spin" />
+                      ) : reviewMode ? (
+                        <Shield className="h-3.5 w-3.5 text-amber-500" />
+                      ) : (
+                        <ShieldCheck className="h-3.5 w-3.5 text-green-500" />
+                      )}
+                    </span>
+                  </button>
+                  {hasCustomSmtp && smtpUser && (
+                    <span className="text-[10px] text-gray-400 text-center">SMTP: {smtpUser}</span>
+                  )}
+                </div>
+
+                {/* Test button */}
+                <button
+                  onClick={() => setShowTestModal(true)}
+                  className="group flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:border-purple-300 transition-all text-sm font-medium text-gray-600 hover:text-purple-700 w-full justify-center"
+                >
+                  <TestTube className="h-4 w-4 text-gray-400 group-hover:text-purple-500 transition-colors" />
+                  Wyślij test
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Test Email Modal */}
+        {showTestModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => { setShowTestModal(false); setTestResult(null); }}></div>
+              <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-white">
+                      <TestTube className="h-5 w-5" />
+                      <h3 className="text-lg font-semibold">Test wysyłki e-mail z PDF</h3>
+                    </div>
+                    <button onClick={() => { setShowTestModal(false); setTestResult(null); }} className="text-white/80 hover:text-white">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Wyślij testowy e-mail z raportem PDF aby zweryfikować czy system działa poprawnie.
+                      {reviewMode && (
+                        <span className="block mt-1 text-amber-700 font-medium">
+                          Tryb weryfikacji: e-mail trafi do {reviewEmail}
+                        </span>
+                      )}
+                    </p>
+
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Wybierz klienta (opcjonalnie — dla danych PDF)
+                    </label>
+                    <select
+                      value={testClientId}
+                      onChange={(e) => setTestClientId(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    >
+                      <option value="">Bez klienta (test bez PDF)</option>
+                      {clients.map(client => (
+                        <option key={client.id} value={client.id}>
+                          {client.name} ({client.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* SMTP Info */}
+                  <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Provider:</span>
+                      <span className="font-medium">{hasCustomSmtp ? `Custom SMTP (${smtpUser})` : 'Resend / Gmail'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Tryb:</span>
+                      <span className={`font-medium ${reviewMode ? 'text-amber-700' : 'text-green-700'}`}>
+                        {reviewMode ? 'Weryfikacja' : 'Bezpośredni'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Odbiorca:</span>
+                      <span className="font-medium">{reviewMode ? reviewEmail : (testClientId ? 'e-mail klienta' : reviewEmail)}</span>
+                    </div>
+                  </div>
+
+                  {/* Result */}
+                  {testResult && (
+                    <div className={`rounded-xl p-4 ${testResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                      <div className="flex items-start gap-2">
+                        {testResult.success ? (
+                          <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <p className={`text-sm font-medium ${testResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                            {testResult.success ? 'Test zakończony sukcesem!' : 'Test nieudany'}
+                          </p>
+                          <p className={`text-sm mt-1 ${testResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                            {testResult.message}
+                          </p>
+                          {testResult.details?.provider && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Provider: {testResult.details.provider} | ID: {testResult.details.messageId || 'n/a'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => { setShowTestModal(false); setTestResult(null); }}
+                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50"
+                    >
+                      Zamknij
+                    </button>
+                    <button
+                      onClick={() => sendTestEmail()}
+                      disabled={testSending}
+                      className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                      {testSending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Wysyłanie...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" />
+                          Wyślij test
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Calendar Controls */}
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl ring-1 ring-black/5 p-6 mb-8">
           <div className="flex items-center justify-between mb-6">

@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import logger from './logger';
 import { RateLimiter } from './rate-limiter';
-import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject } from './email-config';
+import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject, getEmailRecipientsAsync, getEmailSubjectAsync } from './email-config';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -32,7 +32,6 @@ export interface ReportData {
   cpm: number;
   reservations?: number;
   reservationValue?: number;
-  // Separate platform data
   metaData?: {
     spend: number;
     impressions: number;
@@ -53,12 +52,13 @@ export interface ReportData {
   };
 }
 
-export type EmailProvider = 'resend' | 'gmail' | 'auto';
+export type EmailProvider = 'resend' | 'gmail' | 'custom_smtp' | 'auto';
 
 export class FlexibleEmailService {
   private static instance: FlexibleEmailService;
   private resend: Resend;
   private gmailTransporter: nodemailer.Transporter;
+  private customSmtpTransporter: nodemailer.Transporter | null = null;
   private rateLimiter: RateLimiter;
   private defaultProvider: EmailProvider;
 
@@ -66,7 +66,6 @@ export class FlexibleEmailService {
     this.resend = new Resend(process.env.RESEND_API_KEY);
     this.defaultProvider = (process.env.EMAIL_PROVIDER as EmailProvider) || 'auto';
     
-    // Initialize Gmail transporter if credentials are available
     if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
       this.gmailTransporter = nodemailer.createTransport({
         service: 'gmail',
@@ -76,8 +75,25 @@ export class FlexibleEmailService {
         }
       });
     }
+
+    if (process.env.CUSTOM_SMTP_HOST && process.env.CUSTOM_SMTP_USER && process.env.CUSTOM_SMTP_PASSWORD) {
+      const port = parseInt(process.env.CUSTOM_SMTP_PORT || '587', 10);
+      const secure = process.env.CUSTOM_SMTP_SECURE === 'true' || port === 465;
+      this.customSmtpTransporter = nodemailer.createTransport({
+        host: process.env.CUSTOM_SMTP_HOST,
+        port,
+        secure,
+        auth: {
+          user: process.env.CUSTOM_SMTP_USER,
+          pass: process.env.CUSTOM_SMTP_PASSWORD
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+      logger.info(`📧 Custom SMTP configured: ${process.env.CUSTOM_SMTP_USER} via ${process.env.CUSTOM_SMTP_HOST}:${port}`);
+    }
     
-    // Initialize rate limiter
     this.rateLimiter = new RateLimiter({
       minDelay: 100,
       maxCallsPerMinute: 600,
@@ -93,32 +109,36 @@ export class FlexibleEmailService {
     return FlexibleEmailService.instance;
   }
 
-  /**
-   * Determine the best email provider based on recipient and configuration
-   */
+  /** Check if custom SMTP is configured */
+  hasCustomSmtp(): boolean {
+    return this.customSmtpTransporter !== null;
+  }
+
   private determineProvider(recipient: string): EmailProvider {
-    // Force Gmail SMTP for development mode
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev') {
+      if (this.customSmtpTransporter) return 'custom_smtp';
       return 'gmail';
     }
 
     if (this.defaultProvider !== 'auto') {
-      return this.defaultProvider;
+      return this.defaultProvider as EmailProvider;
     }
 
-    // Auto-detection logic
+    if (this.customSmtpTransporter) {
+      return 'custom_smtp';
+    }
+
     const isJacEmail = recipient.toLowerCase().includes('jac.honkisz');
     const isVerifiedResendEmail = recipient.toLowerCase().includes('pbajerlein');
     
     if (isJacEmail && this.gmailTransporter) {
-      return 'gmail'; // Use Gmail for direct sending to Jac
+      return 'gmail';
     }
     
     if (isVerifiedResendEmail) {
-      return 'resend'; // Use Resend for verified emails
+      return 'resend';
     }
     
-    // Default to Resend for production emails
     return 'resend';
   }
 
@@ -133,15 +153,31 @@ export class FlexibleEmailService {
   }
 
   /**
-   * Send email using the determined provider
+   * Send email using the determined provider.
+   * Applies review-mode redirect automatically (async DB check).
    */
-  async sendEmail(emailData: EmailData, provider?: EmailProvider): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
+  async sendEmail(emailData: EmailData, provider?: EmailProvider): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string }> {
     const selectedProvider = provider || this.determineProvider(emailData.to);
+
+    // Apply review-mode redirect (async, always fresh)
+    const { recipients, originalRecipient, isRedirected } = await getEmailRecipientsAsync(emailData.to);
+    const resolvedSubject = await getEmailSubjectAsync(emailData.subject, isRedirected ? originalRecipient : undefined);
+
+    const resolvedEmailData: EmailData = {
+      ...emailData,
+      to: recipients[0],
+      subject: resolvedSubject
+    };
+
+    if (isRedirected) {
+      logger.info(`🔀 Review mode: redirecting email from ${originalRecipient} → ${recipients[0]}`);
+    }
     
     try {
       logger.info(`📧 Sending email via ${selectedProvider.toUpperCase()}...`, {
-        to: emailData.to,
-        subject: emailData.subject,
+        to: resolvedEmailData.to,
+        originalRecipient: isRedirected ? originalRecipient : undefined,
+        subject: resolvedEmailData.subject,
         provider: selectedProvider
       });
 
@@ -149,10 +185,13 @@ export class FlexibleEmailService {
 
       switch (selectedProvider) {
         case 'gmail':
-          result = await this.sendViaGmail(emailData);
+          result = await this.sendViaGmail(resolvedEmailData);
           break;
         case 'resend':
-          result = await this.sendViaResend(emailData);
+          result = await this.sendViaResend(resolvedEmailData);
+          break;
+        case 'custom_smtp':
+          result = await this.sendViaCustomSmtp(resolvedEmailData);
           break;
         default:
           throw new Error(`Unsupported email provider: ${selectedProvider}`);
@@ -160,7 +199,8 @@ export class FlexibleEmailService {
 
       return {
         ...result,
-        provider: selectedProvider
+        provider: selectedProvider,
+        ...(isRedirected ? { redirectedTo: recipients[0] } : {})
       };
 
     } catch (error) {
@@ -175,9 +215,6 @@ export class FlexibleEmailService {
     }
   }
 
-  /**
-   * Send email via Gmail SMTP
-   */
   private async sendViaGmail(emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
     if (!this.gmailTransporter) {
       throw new Error('Gmail transporter not configured. Please set GMAIL_USER and GMAIL_APP_PASSWORD');
@@ -187,6 +224,7 @@ export class FlexibleEmailService {
       from: `"Meta Ads Reports" <${process.env.GMAIL_USER}>`,
       to: emailData.to,
       subject: emailData.subject,
+      html: emailData.html,
       text: emailData.text || '',
       attachments: emailData.attachments
     };
@@ -199,22 +237,14 @@ export class FlexibleEmailService {
     };
   }
 
-  /**
-   * Send email via Resend API
-   */
   private async sendViaResend(emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    // Wait for rate limit slot
     await this.rateLimiter.waitForNextCall();
-    
-    // Get appropriate recipients based on configuration
-    const originalRecipient = emailData.to;
-    const recipients = getEmailRecipients(originalRecipient);
-    const subject = getEmailSubject(emailData.subject);
 
     const resendData = {
       from: emailData.from,
-      to: recipients,
-      subject: subject,
+      to: [emailData.to],
+      subject: emailData.subject,
+      html: emailData.html,
       text: emailData.text || '',
       attachments: emailData.attachments
     };
@@ -231,6 +261,40 @@ export class FlexibleEmailService {
     return {
       success: true,
       messageId: data.id
+    };
+  }
+
+  /**
+   * Send email via custom SMTP (e.g. kontakt@piotrbajerlein.pl)
+   */
+  private async sendViaCustomSmtp(emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.customSmtpTransporter) {
+      throw new Error('Custom SMTP not configured. Set CUSTOM_SMTP_HOST, CUSTOM_SMTP_USER, CUSTOM_SMTP_PASSWORD env vars.');
+    }
+
+    const fromAddress = process.env.CUSTOM_SMTP_USER || emailData.from;
+    const fromName = process.env.CUSTOM_SMTP_FROM_NAME || 'Piotr Bajerlein - Raporty';
+
+    const mailOptions = {
+      from: `"${fromName}" <${fromAddress}>`,
+      to: emailData.to,
+      subject: emailData.subject,
+      html: emailData.html,
+      text: emailData.text || '',
+      attachments: emailData.attachments?.map(att => ({
+        filename: att.filename,
+        content: att.content,
+        contentType: att.contentType
+      }))
+    };
+
+    const result = await this.customSmtpTransporter.sendMail(mailOptions);
+    
+    logger.info(`✅ Custom SMTP email sent: ${result.messageId}`);
+
+    return {
+      success: true,
+      messageId: result.messageId
     };
   }
 
@@ -420,13 +484,12 @@ export class FlexibleEmailService {
     return this.sendEmail(emailData, provider);
   }
 
-  /**
-   * Get the appropriate from address based on provider
-   */
   private getFromAddress(provider: EmailProvider): string {
     switch (provider) {
       case 'gmail':
         return process.env.GMAIL_USER || 'jac.honkisz@gmail.com';
+      case 'custom_smtp':
+        return process.env.CUSTOM_SMTP_USER || process.env.EMAIL_FROM_ADDRESS || 'kontakt@piotrbajerlein.pl';
       case 'resend':
         return process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
       default:
