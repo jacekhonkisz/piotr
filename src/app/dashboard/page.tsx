@@ -508,6 +508,11 @@ export default function DashboardPage() {
             setClientData(cacheData.data);
             setDataSource(cacheData.dataSource);
             setLoading(false);
+            
+            // Fetch previous month comparison even when using cache
+            if (cacheData.data?.client) {
+              fetchPreviousMonthConversionMetrics(cacheData.data.client);
+            }
             return;
           } else {
             console.log('❌ DASHBOARD: Cache expired, will load fresh data');
