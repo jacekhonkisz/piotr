@@ -157,10 +157,13 @@ export async function POST(request: NextRequest) {
             booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
             reservations: acc.reservations + (campaign.reservations || 0),
             reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+            conversion_value: acc.conversion_value + (campaign.conversion_value || 0),
+            total_conversion_value: acc.total_conversion_value + (campaign.total_conversion_value || 0),
           }), {
             spend: 0, impressions: 0, clicks: 0, conversions: 0,
             click_to_call: 0, email_contacts: 0, booking_step_1: 0,
-            booking_step_2: 0, booking_step_3: 0, reservations: 0, reservation_value: 0
+            booking_step_2: 0, booking_step_3: 0, reservations: 0, reservation_value: 0,
+            conversion_value: 0, total_conversion_value: 0,
           });
 
           // Calculate derived metrics
@@ -172,11 +175,13 @@ export async function POST(request: NextRequest) {
           const summaryData = {
             client_id: client.id,
             platform: 'google', // Important: Mark as Google Ads data
+            /** Must be set explicitly — DB default can otherwise label Google rows as meta_api. */
+            data_source: 'google_ads_api',
             summary_date: targetDate,
             total_spend: Math.round(dailyTotals.spend * 100) / 100, // Round to 2 decimal places
             total_impressions: Math.round(dailyTotals.impressions), // Ensure integer
             total_clicks: Math.round(dailyTotals.clicks), // Ensure integer
-            total_conversions: Math.round(dailyTotals.conversions), // Ensure integer
+            total_conversions: Math.round(dailyTotals.reservations || 0),
             average_ctr: Math.round(ctr * 100) / 100, // Round to 2 decimal places
             average_cpc: Math.round(cpc * 100) / 100, // Round to 2 decimal places
             // Google Ads specific conversion fields (ensure integers)
@@ -187,6 +192,8 @@ export async function POST(request: NextRequest) {
             booking_step_3: Math.round(dailyTotals.booking_step_3 || 0),
             reservations: Math.round(dailyTotals.reservations || 0),
             reservation_value: Math.round(dailyTotals.reservation_value * 100) / 100, // Round to 2 decimal places
+            conversion_value: Math.round(dailyTotals.conversion_value * 100) / 100,
+            total_conversion_value: Math.round(dailyTotals.total_conversion_value * 100) / 100,
             campaign_data: campaigns as any, // Type assertion for JSON compatibility
             last_updated: new Date().toISOString()
           };

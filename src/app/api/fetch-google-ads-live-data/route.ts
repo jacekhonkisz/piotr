@@ -9,6 +9,10 @@ import {
   selectMetaAPIMethod, 
   validateDateRange
 } from '../../../lib/date-range-utils';
+import {
+  fetchGoogleDynamicConversionRows,
+  googleDynamicRowsToMetricMap,
+} from '../../../lib/google-dynamic-conversion-fetch';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1018,9 +1022,7 @@ export async function POST(request: NextRequest) {
     const totalSpend = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.spend || 0), 0);
     const totalImpressions = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.impressions || 0), 0);
     const totalClicks = freshCampaigns.reduce((sum: number, campaign: any) => sum + (campaign.clicks || 0), 0);
-    
-    // Conversions removed - set to 0
-    const totalConversions = 0;
+
     const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
     const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
@@ -1128,6 +1130,24 @@ export async function POST(request: NextRequest) {
     // Get account info
     const accountInfo = await googleAdsService.getAccountInfo();
 
+    let dynamicMetricValues: Record<string, number> = {};
+    let dynamicMetricRows: Array<{ key: string; id: string; label: string; count: number; value: number }> = [];
+    try {
+      const dyn = await fetchGoogleDynamicConversionRows(client.id, startDate, endDate);
+      if (dyn.fetchOk) {
+        dynamicMetricValues = googleDynamicRowsToMetricMap(dyn.rows);
+        dynamicMetricRows = dyn.rows.map((r) => ({
+          key: r.key,
+          id: r.id,
+          label: r.label,
+          count: r.count,
+          value: r.value
+        }));
+      }
+    } catch (dynErr) {
+      logger.warn('fetch-google-ads-live-data: dynamic conversions fetch failed', dynErr);
+    }
+
     const result = {
       client: {
         id: client.id,
@@ -1145,7 +1165,8 @@ export async function POST(request: NextRequest) {
         totalSpend,
         totalImpressions,
         totalClicks,
-        totalConversions: 0, // Conversions removed
+        /** Align with stored `total_conversions` + metrics audit (primary booking count). */
+        totalConversions: conversionMetrics.reservations,
         averageCtr,
         averageCpc
       },
@@ -1160,7 +1181,11 @@ export async function POST(request: NextRequest) {
         unmappedActions: [],
         totalActions: 0,
         unmappedCount: 0
-      }
+      },
+      /** dyn_google_* keys aligned with metrics config / discovery */
+      dynamicMetricValues,
+      /** Same data as key→count map, with conversion action names for UI / audit */
+      dynamicMetricRows,
     };
 
     const responseTime = Date.now() - startTime;
@@ -1169,7 +1194,7 @@ export async function POST(request: NextRequest) {
       source: 'live_api',
       campaignCount: freshCampaigns.length,
       totalSpend,
-      totalConversions: 0 // Conversions removed
+      totalConversions: conversionMetrics.reservations
     });
 
     // ✅ NEW: Update database immediately if this is a refresh request
@@ -1227,7 +1252,7 @@ export async function POST(request: NextRequest) {
           total_spend: totalSpend,
           total_impressions: Math.round(totalImpressions),
           total_clicks: Math.round(totalClicks),
-          total_conversions: 0, // Conversions removed
+          total_conversions: Math.round(conversionMetrics.reservations || 0),
           average_ctr: averageCtr,
           average_cpc: averageCpc,
           click_to_call: Math.round(conversionMetrics.click_to_call || 0),
@@ -1237,6 +1262,8 @@ export async function POST(request: NextRequest) {
           booking_step_3: Math.round(conversionMetrics.booking_step_3 || 0),
           reservations: Math.round(conversionMetrics.reservations || 0),
           reservation_value: conversionMetrics.reservation_value || 0,
+          conversion_value: conversionMetrics.conversion_value || 0,
+          total_conversion_value: conversionMetrics.total_conversion_value || 0,
           cost_per_reservation: cost_per_reservation,
           roas: conversionMetrics.roas || 0,
           campaign_data: freshCampaigns,
@@ -1251,7 +1278,7 @@ export async function POST(request: NextRequest) {
           clientId: client.id,
           summaryType,
           summaryDate,
-          totalConversions: 0, // Conversions removed
+          totalConversions: Math.round(conversionMetrics.reservations || 0),
           campaignCount: freshCampaigns.length,
           dateRange: `${startDate} to ${endDate}`
         });
@@ -1282,7 +1309,7 @@ export async function POST(request: NextRequest) {
             clientName: client.name,
             summaryType,
             summaryDate,
-            totalConversions: 0, // Conversions removed
+            totalConversions: Math.round(conversionMetrics.reservations || 0),
             totalSpend: totalSpend.toFixed(2),
             campaignCount: freshCampaigns.length,
             note: 'Hard refresh will now show correct value from database'
@@ -1291,7 +1318,7 @@ export async function POST(request: NextRequest) {
             clientId: client.id,
             summaryType,
             summaryDate,
-            totalConversions: 0, // Conversions removed
+            totalConversions: Math.round(conversionMetrics.reservations || 0),
             totalSpend,
             campaignCount: freshCampaigns.length
           });
