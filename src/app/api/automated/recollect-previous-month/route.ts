@@ -192,6 +192,20 @@ async function recollectMeta(
   const roas = totals.spend > 0 && conv.reservation_value > 0 ? conv.reservation_value / totals.spend : 0;
   const costPerRes = conv.reservations > 0 && totals.spend > 0 ? totals.spend / conv.reservations : 0;
 
+  const {
+    validateMetaCampaignSummaryWrite,
+    logBlockedMetaSummaryWrite,
+  } = await import('../../../../lib/campaign-summary-guard');
+  const guard = validateMetaCampaignSummaryWrite({
+    totals,
+    campaigns,
+    liveApiCampaignCount: campaigns.length,
+  });
+  if (!guard.allowed) {
+    logBlockedMetaSummaryWrite('recollect_previous_month', client.id, startDate, guard);
+    return { platform: 'meta', status: 'skipped', reason: guard.reason };
+  }
+
   const { error } = await supabaseAdmin!.from('campaign_summaries').upsert({
     client_id: client.id,
     platform: 'meta',

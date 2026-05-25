@@ -52,10 +52,7 @@ interface DiscoveryResponse {
 
 function fmtVal(n: number): string {
   if (Number.isNaN(n)) return '—';
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-  if (abs >= 1_000) return n.toLocaleString('pl-PL', { maximumFractionDigits: 0 });
-  return n.toLocaleString('pl-PL', { maximumFractionDigits: 2 });
+  return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(Math.round(n));
 }
 
 function fmtValWithFetchStatus(n: number, fetchOk: boolean): string {

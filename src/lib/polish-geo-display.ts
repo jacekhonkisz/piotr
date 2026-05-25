@@ -61,6 +61,26 @@ const CITY_NAME_PL: Record<string, string> = {
 
 const REGION_NAME_PL: Record<string, string> = {
   warsaw: 'Mazowieckie',
+  dolnoslaskie: 'Dolnośląskie',
+  'dolnoslaskie voivodeship': 'Dolnośląskie',
+  kujawsko: 'Kujawsko-Pomorskie',
+  'kujawsko pomorskie': 'Kujawsko-Pomorskie',
+  'kujawsko-pomorskie': 'Kujawsko-Pomorskie',
+  lubelskie: 'Lubelskie',
+  lubuskie: 'Lubuskie',
+  lodzkie: 'Łódzkie',
+  malopolskie: 'Małopolskie',
+  mazowieckie: 'Mazowieckie',
+  opolskie: 'Opolskie',
+  podkarpackie: 'Podkarpackie',
+  podlaskie: 'Podlaskie',
+  pomorskie: 'Pomorskie',
+  slaskie: 'Śląskie',
+  swietokrzyskie: 'Świętokrzyskie',
+  'warminsko mazurskie': 'Warmińsko-Mazurskie',
+  'warminsko-mazurskie': 'Warmińsko-Mazurskie',
+  wielkopolskie: 'Wielkopolskie',
+  zachodniopomorskie: 'Zachodniopomorskie',
   'masovian voivodeship': 'Mazowieckie',
   'lower silesian voivodeship': 'Dolnośląskie',
   'lesser poland voivodeship': 'Małopolskie',
@@ -82,6 +102,26 @@ const REGION_NAME_PL: Record<string, string> = {
 
 const REGION_NAME_TO_CODE: Record<string, string> = {
   warsaw: 'PL-MZ',
+  dolnoslaskie: 'PL-DS',
+  'dolnoslaskie voivodeship': 'PL-DS',
+  kujawsko: 'PL-KP',
+  'kujawsko pomorskie': 'PL-KP',
+  'kujawsko-pomorskie': 'PL-KP',
+  lubelskie: 'PL-LU',
+  lubuskie: 'PL-LB',
+  lodzkie: 'PL-LD',
+  malopolskie: 'PL-MA',
+  mazowieckie: 'PL-MZ',
+  opolskie: 'PL-OP',
+  podkarpackie: 'PL-PK',
+  podlaskie: 'PL-PD',
+  pomorskie: 'PL-PM',
+  slaskie: 'PL-SL',
+  swietokrzyskie: 'PL-SK',
+  'warminsko mazurskie': 'PL-WN',
+  'warminsko-mazurskie': 'PL-WN',
+  wielkopolskie: 'PL-WP',
+  zachodniopomorskie: 'PL-ZP',
   'masovian voivodeship': 'PL-MZ',
   'lower silesian voivodeship': 'PL-DS',
   'lesser poland voivodeship': 'PL-MA',
@@ -131,7 +171,7 @@ const CITY_TO_REGION_CODE: Record<string, string> = {
 };
 
 function key(value?: string | null): string {
-  return (value || '').trim().toLowerCase();
+  return normalizeCityLookupKey(value || '').replace(/\s+/g, ' ');
 }
 
 export function formatPolishCityName(cityName?: string | null): string {

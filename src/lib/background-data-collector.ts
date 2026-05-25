@@ -349,23 +349,27 @@ export class BackgroundDataCollector {
           const demographicData = await metaService.getDemographicPerformance(processedAdAccountId, monthData.startDate, monthData.endDate);
           // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
           const adRelevanceData = await metaService.getAdRelevanceResults(processedAdAccountId, monthData.startDate, monthData.endDate);
+          // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
+          const geographicData = await metaService.getGeographicPerformance(processedAdAccountId, monthData.startDate, monthData.endDate);
           
           metaTables = {
             placementPerformance: placementData,
             demographicPerformance: demographicData,
-            adRelevanceResults: adRelevanceData
+            adRelevanceResults: adRelevanceData,
+            geographicPerformance: geographicData,
           };
         } catch (error) {
           logger.warn(`⚠️ Failed to fetch meta tables for ${client.name} ${monthData.year}-${monthData.month}:`, error);
         }
 
-        // Store the summary
+        // Store the summary (skipped when guard blocks phantom/synthetic writes)
         await this.storeMonthlySummary(client.id, {
           summary_date: monthData.startDate,
           campaigns: campaignInsights,
           totals,
           metaTables,
-          activeCampaignCount
+          activeCampaignCount,
+          liveApiCampaignCount: campaignInsights.length,
         });
 
         logger.info(`✅ Stored monthly summary for ${client.name} ${monthData.year}-${monthData.month}`);
@@ -704,11 +708,14 @@ export class BackgroundDataCollector {
             const demographicData = await metaService.getDemographicPerformance(processedAdAccountId, weekData.startDate, weekData.endDate);
             // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
             const adRelevanceData = await metaService.getAdRelevanceResults(processedAdAccountId, weekData.startDate, weekData.endDate);
+            // @ts-ignore - processedAdAccountId is guaranteed to be string after null check
+            const geographicData = await metaService.getGeographicPerformance(processedAdAccountId, weekData.startDate, weekData.endDate);
             
             metaTables = {
               placementPerformance: placementData,
               demographicPerformance: demographicData,
-              adRelevanceResults: adRelevanceData
+              adRelevanceResults: adRelevanceData,
+              geographicPerformance: geographicData,
             };
           } catch (error) {
             logger.warn(`⚠️ Failed to fetch meta tables for ${client.name} week ${weekData.weekNumber}:`, error);
@@ -724,7 +731,8 @@ export class BackgroundDataCollector {
           totals,
           metaTables,
           activeCampaignCount,
-          isCurrentWeek: weekData.isCurrent
+          isCurrentWeek: weekData.isCurrent,
+          liveApiCampaignCount: campaignInsights.length,
         }, 'meta'); // ✅ Explicitly specify Meta platform
 
         logger.info(`✅ Stored ${weekType} weekly summary for ${client.name} week ${weekData.weekNumber}`);
@@ -1018,6 +1026,26 @@ export class BackgroundDataCollector {
    */
   private async storeMonthlySummary(clientId: string, data: any): Promise<void> {
     logger.info(`💾 Storing monthly summary for client ${clientId} on ${data.summary_date}`);
+
+    const {
+      validateMetaCampaignSummaryWrite,
+      logBlockedMetaSummaryWrite,
+    } = await import('./campaign-summary-guard');
+
+    const guard = validateMetaCampaignSummaryWrite({
+      totals: {
+        spend: data.totals?.spend,
+        impressions: data.totals?.impressions,
+        clicks: data.totals?.clicks,
+      },
+      campaigns: data.campaigns,
+      liveApiCampaignCount: data.liveApiCampaignCount,
+    });
+
+    if (!guard.allowed) {
+      logBlockedMetaSummaryWrite('background_monthly', clientId, data.summary_date, guard);
+      return;
+    }
 
     // Aggregate conversion metrics from campaigns
     const campaigns = data.campaigns || [];
@@ -1384,6 +1412,26 @@ export class BackgroundDataCollector {
       reservations: summary.reservations,
       unique_key: `${clientId}|weekly|${data.summary_date}|${platform}`
     });
+
+    if (platform === 'meta') {
+      const {
+        validateMetaCampaignSummaryWrite,
+        logBlockedMetaSummaryWrite,
+      } = await import('./campaign-summary-guard');
+      const guard = validateMetaCampaignSummaryWrite({
+        totals: {
+          spend: summary.total_spend,
+          impressions: summary.total_impressions,
+          clicks: summary.total_clicks,
+        },
+        campaigns: data.campaigns,
+        liveApiCampaignCount: data.liveApiCampaignCount ?? campaigns.length,
+      });
+      if (!guard.allowed) {
+        logBlockedMetaSummaryWrite('background_weekly', clientId, data.summary_date, guard);
+        return;
+      }
+    }
 
     const { error, data: upsertResult } = await supabase
       .from('campaign_summaries')

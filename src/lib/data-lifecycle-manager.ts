@@ -337,6 +337,26 @@ export class DataLifecycleManager {
     const costPerReservation =
       reservations > 0 && totalSpend > 0 ? totalSpend / reservations : 0;
 
+    if (platform === 'meta') {
+      const {
+        validateMetaCampaignSummaryWrite,
+        logBlockedMetaSummaryWrite,
+      } = await import('./campaign-summary-guard');
+      const guard = validateMetaCampaignSummaryWrite({
+        totals: {
+          spend: totalSpend,
+          impressions: cacheData?.stats?.totalImpressions || 0,
+          clicks: cacheData?.stats?.totalClicks || 0,
+        },
+        campaigns,
+        liveApiCampaignCount: campaigns.length,
+      });
+      if (!guard.allowed) {
+        logBlockedMetaSummaryWrite('lifecycle_monthly_archive', cacheEntry.client_id, summaryDate, guard);
+        return;
+      }
+    }
+
     const summary = {
       client_id: cacheEntry.client_id,
       summary_type: 'monthly',

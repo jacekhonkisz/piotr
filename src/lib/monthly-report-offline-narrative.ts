@@ -52,11 +52,10 @@ export function getMonthlyOfflineNarrative(
     };
   }
 
-  const thousands = Math.round(p.estimatedOfflineValue / 1000).toLocaleString('pl-PL');
   const p1 =
     `Dodatkowo pozyskaliśmy też ${fmtInt(p.totalMicroConversions)} mikro konwersji (telefonów i e-maili), ` +
     `które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, ` +
-    `to pozyskaliśmy ${fmtInt(p.estimatedOfflineReservations)} rezerwacji i dodatkowe ok. ${thousands} tys. zł tą drogą.`;
+    `to pozyskaliśmy ${fmtInt(p.estimatedOfflineReservations)} rezerwacji i dodatkowe ok. ${fmtPlnWhole(p.estimatedOfflineValue)} tą drogą.`;
   const p2 = `Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${fmtDec(p.finalCostPercentage)}%.`;
   return {
     highlightParagraphsText: [p1, p2],

@@ -407,17 +407,19 @@ export async function fetchFreshCurrentMonthData(client: any) {
     try {
       logger.info('📊 Fetching meta tables data and account info for current month cache...');
       
-      const [placementData, demographicData, adRelevanceData, accountData] = await Promise.all([
+      const [placementData, demographicData, adRelevanceData, geographicData, accountData] = await Promise.all([
         metaService.getPlacementPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
         metaService.getDemographicPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
         metaService.getAdRelevanceResults(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
+        metaService.getGeographicPerformance(adAccountId, currentMonth.startDate!, currentMonth.endDate!),
         metaService.getAccountInfo(adAccountId).catch(() => null)
       ]);
       
       metaTables = {
         placementPerformance: placementData,
         demographicPerformance: demographicData,
-        adRelevanceResults: adRelevanceData
+        adRelevanceResults: adRelevanceData,
+        geographicPerformance: geographicData,
       };
       
       accountInfo = accountData;
@@ -426,6 +428,7 @@ export async function fetchFreshCurrentMonthData(client: any) {
         placementCount: placementData?.length || 0,
         demographicCount: demographicData?.length || 0,
         adRelevanceCount: adRelevanceData?.length || 0,
+        geographicCount: geographicData?.length || 0,
         hasAccountInfo: !!accountData
       });
     } catch (metaError) {
@@ -1432,17 +1435,19 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     try {
       logger.info('📊 Fetching meta tables data for weekly cache...');
       
-      const [placementData, demographicData, adRelevanceData, accountData] = await Promise.all([
+      const [placementData, demographicData, adRelevanceData, geographicData, accountData] = await Promise.all([
         metaService.getPlacementPerformance(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
         metaService.getDemographicPerformance(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
         metaService.getAdRelevanceResults(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
+        metaService.getGeographicPerformance(adAccountId, currentWeek.startDate!, currentWeek.endDate!),
         metaService.getAccountInfo(adAccountId).catch(() => null)
       ]);
       
       metaTables = {
         placementPerformance: placementData,
         demographicPerformance: demographicData,
-        adRelevanceResults: adRelevanceData
+        adRelevanceResults: adRelevanceData,
+        geographicPerformance: geographicData,
       };
       
       accountInfo = accountData;
@@ -1451,6 +1456,7 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         placementCount: placementData?.length || 0,
         demographicCount: demographicData?.length || 0,
         adRelevanceCount: adRelevanceData?.length || 0,
+        geographicCount: geographicData?.length || 0,
         hasAccountInfo: !!accountData
       });
     } catch (metaError) {
@@ -1458,7 +1464,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
       metaTables = {
         placementPerformance: [],
         demographicPerformance: [],
-        adRelevanceResults: []
+        adRelevanceResults: [],
+        geographicPerformance: [],
       };
       accountInfo = null;
     }

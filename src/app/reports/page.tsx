@@ -567,6 +567,7 @@ function ReportsPageContent() {
     placementPerformance: any[];
     demographicPerformance: any[];
     adRelevanceResults: any[];
+    geographicPerformance: any[];
   } | null>(null);
   const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('google');
 
@@ -4094,6 +4095,7 @@ function ReportsPageContent() {
                 dateStart={selectedReport.date_range_start}
                 dateEnd={selectedReport.date_range_end}
                 clientId={client?.id || ''}
+                campaignTotals={getGoogleMapCampaignTotals(selectedReport)}
                 onDataLoaded={(data) => {
                   setMetaTablesData(data);
                   console.log('Meta Ads tables data loaded:', data);

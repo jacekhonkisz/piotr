@@ -191,6 +191,7 @@ interface ReportData {
       placementPerformance: any[];
       demographicPerformance: any[];
       adRelevanceResults: any[];
+      geographicPerformance?: any[];
     };
   };
   
@@ -294,6 +295,9 @@ const formatNumber = (value: number | undefined | null, decimals: number = 0) =>
     maximumFractionDigits: decimals
   }).replace(/\s/g, '\u00A0');
 };
+
+const formatCompactNumber = (value: number | undefined | null, decimals: number = 0) =>
+  formatNumber(value, decimals);
 
 const formatPercentage = (value: number | undefined | null) => {
   if (value === undefined || value === null || isNaN(value) || value === 0) return '—';
@@ -808,7 +812,7 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         <p style="font-size: 13px; color: #64748B; margin-bottom: 24px; margin-top: -4px;">Kluczowe wskaźniki efektywności kampanii</p>
         
         <!-- Basic Metrics Grid (2x3) -->
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 32px; width: 100%; max-width: 100%; box-sizing: border-box;">
           ${metaBasicCards.join('')}
       </div>
         
@@ -816,12 +820,12 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         <h3 style="font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 4px; margin-top: 32px;">Kontakt & Konwersje</h3>
         <p style="font-size: 12px; color: #64748B; margin-bottom: 16px;">Metryki kontaktu i zakończonych konwersji</p>
         
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 32px; width: 100%; max-width: 100%; box-sizing: border-box;">
           ${metaContactCards.join('')}
     </div>
         
         ${showMetaRoas ? `
-          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 32px; width: 100%; max-width: 100%; box-sizing: border-box;">
             ${renderMetricCard(
               pdfMetricLabel(reportData, 'meta', 'funnel', 'roas', 'ROAS'),
               `${metrics.roas.toFixed(2)}x`,
@@ -834,18 +838,18 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         ${showMetaOfflineBox ? `
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 20px; margin-bottom: 32px;">
             <h3 style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 16px;">Potencjalne Metryki Offline</h3>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; font-size: 12px; width: 100%; max-width: 100%; box-sizing: border-box;">
               <div>
                 <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Rezerwacje offline</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatNumber(potentialOfflineReservations)}</div>
+                <div style="font-size: 16px; font-weight: 600; color: #0F172A; overflow-wrap: anywhere;">${formatNumber(potentialOfflineReservations)}</div>
               </div>
               <div>
                 <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Wartość offline</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(potentialOfflineValue)}</div>
+                <div style="font-size: 16px; font-weight: 600; color: #0F172A; overflow-wrap: anywhere;">${formatCurrency(potentialOfflineValue)}</div>
               </div>
               <div>
                 <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Łączna wartość</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(totalPotentialValue)}</div>
+                <div style="font-size: 16px; font-weight: 600; color: #0F172A; overflow-wrap: anywhere;">${formatCurrency(totalPotentialValue)}</div>
               </div>
             </div>
           </div>
@@ -1258,7 +1262,7 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
         <p style="font-size: 13px; color: #64748B; margin-bottom: 24px; margin-top: -4px;">Kluczowe wskaźniki efektywności kampanii</p>
         
         <!-- Basic Metrics Grid (2x3) -->
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 32px; width: 100%; max-width: 100%; box-sizing: border-box;">
           ${googleBasicCards.join('')}
         </div>
         
@@ -1266,12 +1270,12 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
         <h3 style="font-size: 16px; font-weight: 600; color: #0F172A; margin-bottom: 4px; margin-top: 32px;">Kontakt & Konwersje</h3>
         <p style="font-size: 12px; color: #64748B; margin-bottom: 16px;">Metryki kontaktu i zakończonych konwersji</p>
         
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 32px; width: 100%; max-width: 100%; box-sizing: border-box;">
           ${googleContactCards.join('')}
         </div>
         
         ${showGoogleRoas ? `
-          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 32px; width: 100%; max-width: 100%; box-sizing: border-box;">
             ${renderMetricCard(
               pdfMetricLabel(reportData, 'google', 'funnel', 'roas', 'ROAS'),
               `${metrics.roas.toFixed(2)}x`,
@@ -1284,18 +1288,18 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
         ${showGoogleOfflineBox ? `
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 20px; margin-bottom: 32px;">
             <h3 style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 16px;">Potencjalne Metryki Offline</h3>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; font-size: 12px; width: 100%; max-width: 100%; box-sizing: border-box;">
               <div>
                 <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Rezerwacje offline</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatNumber(potentialOfflineReservations)}</div>
+                <div style="font-size: 16px; font-weight: 600; color: #0F172A; overflow-wrap: anywhere;">${formatNumber(potentialOfflineReservations)}</div>
               </div>
               <div>
                 <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Wartość offline</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(potentialOfflineValue)}</div>
+                <div style="font-size: 16px; font-weight: 600; color: #0F172A; overflow-wrap: anywhere;">${formatCurrency(potentialOfflineValue)}</div>
               </div>
               <div>
                 <div style="font-size: 10px; color: #64748B; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">Łączna wartość</div>
-                <div style="font-size: 18px; font-weight: 600; color: #0F172A;">${formatCurrency(totalPotentialValue)}</div>
+                <div style="font-size: 16px; font-weight: 600; color: #0F172A; overflow-wrap: anywhere;">${formatCurrency(totalPotentialValue)}</div>
               </div>
             </div>
           </div>
@@ -1783,12 +1787,7 @@ const generateGoogleGeographicSectionHTML = (
     const value = bucket ? bucket[heatmapMetric] : 0;
     const normalized = maxValue > 0 ? value / maxValue : 0;
     const fill = heatmapColor(normalized, value > 0);
-    return `<path d="${v.path}" fill="${fill}" stroke="#94a3b8" stroke-width="1"/>`;
-  }).join('');
-
-  const legendStops = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => {
-    const x = 50 + t * 500;
-    return `<rect x="${x}" y="0" width="100" height="14" fill="${heatmapColor(t, true)}" />`;
+    return `<path d="${v.path}" fill="${fill}" stroke="rgba(15,39,66,0.2)" stroke-width="1"/>`;
   }).join('');
 
   const topRegions = Array.from(byCode.values())
@@ -1799,52 +1798,74 @@ const generateGoogleGeographicSectionHTML = (
     .filter((b) => b[heatmapMetric] > 0)
     .sort((a, b) => b[heatmapMetric] - a[heatmapMetric])
     .slice(0, 5);
+  const topRegionMax = topRegions[0]?.[heatmapMetric] || 0;
+  const showInlineTopRegionBars = topRegions.every((r) => formatCurrency(r[heatmapMetric]).length <= 8);
+  const locationRowsExceedCampaignTotal =
+    campaignMetricTotal !== null &&
+    geographicViewTotal > totalMetric + 0.0001;
+  const locationRowsLabel = locationRowsExceedCampaignTotal
+    ? 'suma wierszy lokalizacji'
+    : 'z czego z lokalizacji';
 
   return `
-    <div class="geographic-section" style="padding: 0 2mm; margin-top: 20px;">
-      <h3 class="table-title">Wydajność wg Regionów (Polska + zagranica)</h3>
-      <p style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
-        Mapa cieplna — wartość konwersji wg województw; zagranica w podsumowaniu.
-        ${campaignMetricTotal !== null
-          ? `Łącznie (kampanie Google Ads): <strong>${formatCurrency(totalMetric)}</strong> &middot; z czego z lokalizacji: <strong>${formatCurrency(geographicViewTotal)}</strong>`
-          : `Łącznie: <strong>${formatCurrency(totalMetric)}</strong>`}
-      </p>
-
-      <div style="display: flex; gap: 16px; align-items: flex-start; page-break-inside: avoid;">
-        <div style="flex: 1.6; min-width: 0;">
-          <svg viewBox="${POLAND_MAP_VIEW_BOX}" style="width: 100%; height: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
-            ${paths}
-          </svg>
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; font-size: 10px; color: #64748b;">
-            <span>0</span>
-            <svg viewBox="0 0 600 14" style="flex: 1; height: 8px; margin: 0 12px;" preserveAspectRatio="none">
-              ${legendStops}
-            </svg>
-            <span>${formatCurrency(maxValue)}</span>
+    <div class="geographic-section" style="padding: 0; margin-top: 20px;">
+      <div style="border:0; border-radius:0; background:transparent; box-shadow:none; padding:0; page-break-inside:avoid;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; border-bottom:1px solid #eef2f7; padding-bottom:14px; margin-bottom:16px;">
+          <div>
+            <h3 style="margin:0; color:#0f172a; font-size:22px; line-height:1.1; font-weight:800;">Regiony</h3>
+            <p style="margin:4px 0 0; color:#64748b; font-size:12px;">Wyniki według regionów i miast</p>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; color:#64748b; font-size:11px; font-weight:700;">
+            Metryka:
+            <span style="display:inline-flex; align-items:center; gap:7px; border:1px solid #dbe3ef; border-radius:12px; padding:8px 12px; color:#0f172a; background:#fff; font-size:12px; font-weight:800;"><i style="width:10px; height:10px; border-radius:999px; background:#dbeafe; box-shadow:inset 0 0 0 3px #1f5fbf; display:inline-block;"></i>Wartość konwersji</span>
           </div>
         </div>
 
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">
-            Top 5 województw — wartość konwersji
-          </div>
-          ${topRegions.length === 0 ? `
-            <div style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">Brak danych dla wybranego okresu.</div>
-          ` : topRegions.map((r, idx) => {
-            const pct = totalMetric > 0 ? (r[heatmapMetric] / totalMetric) * 100 : 0;
-            return `
-              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                  <span style="font-size: 11px; color: #1e293b;"><strong>#${idx + 1}</strong> ${r.name}</span>
-                  <span style="font-size: 11px; font-weight: 600; color: #0f172a;">${formatCurrency(r[heatmapMetric])}</span>
-                </div>
-                <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
-                  <div style="height: 100%; width: ${pct.toFixed(1)}%; background: #0f172a;"></div>
-                </div>
-                <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${pct.toFixed(1)}%</div>
+        <div style="display:grid; grid-template-columns:minmax(0,1.55fr) minmax(260px,0.95fr); gap:18px; align-items:start;">
+          <div style="min-width:0;">
+            <div style="display:flex; gap:9px; align-items:flex-start; margin-bottom:9px;">
+              <span style="width:32px; height:32px; border-radius:10px; background:#071842; display:inline-block;"></span>
+              <div>
+                <strong style="display:block; color:#0f172a; font-size:14px;">Wydajność wg regionów</strong>
+                <small style="display:block; margin-top:2px; color:#64748b; font-size:10px;">Mapa cieplna — wartość konwersji wg województw; zagranica w podsumowaniu</small>
               </div>
-            `;
-          }).join('')}
+            </div>
+            <svg viewBox="${POLAND_MAP_VIEW_BOX}" style="width:100%; height:auto; background:transparent; padding:0;">
+              ${paths}
+            </svg>
+            <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:8px; font-size:10px; color:#64748b; font-weight:700;">
+              <span>Niska wartość</span>
+              <span style="display:block; width:150px; height:7px; border-radius:999px; background:linear-gradient(90deg,#dbeafe,#5b9bed,#071842);"></span>
+              <span>Wysoka wartość</span>
+            </div>
+          </div>
+
+          <div style="min-width:0;">
+            <div style="border-radius:16px; background:linear-gradient(135deg,#eff6ff,#f8fafc 68%,#fff); padding:16px; margin-bottom:16px;">
+              <span style="display:block; color:#64748b; font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:800;">Łącznie (kampanie Google Ads)</span>
+              <strong style="display:block; margin-top:6px; color:#0f172a; font-size:30px; line-height:1; font-weight:850;">${formatCurrency(totalMetric)}</strong>
+              <small style="display:block; margin-top:5px; color:#64748b; font-size:11px;">${locationRowsLabel}: ${formatCurrency(geographicViewTotal)}</small>
+              ${locationRowsExceedCampaignTotal ? '<small style="display:block; margin-top:3px; color:#94a3b8; font-size:9px;">Wiersze lokalizacji nie sumują się do KPI kampanii.</small>' : ''}
+            </div>
+            <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:10px;">
+              <strong style="color:#0f172a; font-size:13px;">Najlepsze regiony</strong>
+              <span style="color:#64748b; font-size:11px;">Wartość konwersji</span>
+            </div>
+            ${topRegions.length === 0 ? `
+              <div style="font-size:12px; color:#64748b; padding:18px; background:#f8fafc; border-radius:12px; border:1px dashed #dbe3ef; text-align:center;">Brak danych dla wybranego okresu.</div>
+            ` : topRegions.map((r, idx) => {
+              const pct = topRegionMax > 0 ? Math.max(6, (r[heatmapMetric] / topRegionMax) * 100) : 0;
+              const barColor = ['#071842', '#1f5fbf', '#4f8ee8', '#8db8f7', '#bfdbfe'][idx] || '#bfdbfe';
+              const valueLabel = formatCurrency(r[heatmapMetric]);
+              return `
+                <div style="display:grid; grid-template-columns:${showInlineTopRegionBars ? '20px minmax(76px,1fr) minmax(28px,0.42fr) max-content' : '20px minmax(0,1fr) max-content'}; gap:7px; align-items:center; margin:10px 0; max-width:100%; overflow:hidden;">
+                  <b style="width:20px; height:20px; border-radius:999px; background:${idx === 0 ? '#071842' : '#dbeafe'}; color:${idx === 0 ? '#fff' : '#1e3a8a'}; display:inline-flex; align-items:center; justify-content:center; font-size:10px;">${idx + 1}</b>
+                  <em style="font-style:normal; color:#334155; font-size:12px; font-weight:700; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.name.toLowerCase())}</em>
+                  ${showInlineTopRegionBars ? `<span style="display:block; min-width:0; height:6px; border-radius:999px; background:#eef2ff; overflow:hidden;"><i style="display:block; height:100%; width:${pct.toFixed(1)}%; background:${barColor}; border-radius:999px;"></i></span>` : ''}
+                  <strong style="color:#0f172a; font-size:11px; font-weight:850; white-space:nowrap; text-align:right;">${valueLabel}</strong>
+                </div>
+              `;
+            }).join('')}
 
           ${unmatchedPolandValue > 0 ? `
             <div style="font-size: 10px; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 8px; margin-top: 8px;">
@@ -1891,6 +1912,7 @@ const generateGoogleGeographicSectionHTML = (
             </div>
           ` : ''}
         </div>
+      </div>
       </div>
 
       ${options?.includeCityTable !== false && cityRows.length > 0 ? `
@@ -2243,9 +2265,8 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
           }
         </div>` : ''}
 
-        <!-- Geographic Performance — always show heading -->
+        <!-- Geographic Performance -->
         ${pdfMetricVisible(reportData, 'google', 'geographic_map', 'region') || pdfMetricVisible(reportData, 'google', 'geographic_map', 'city') ? `<div class="google-geographic-pdf-block" style="margin-top: 16px;">
-          <h3 class="table-title">Regiony i miasta</h3>
           ${(tables.geographicPerformance && tables.geographicPerformance.length > 0)
             ? (generateGoogleGeographicSectionHTML(tables.geographicPerformance, geoCampaignTotals) || `
               <p style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
@@ -2743,8 +2764,10 @@ function generatePDFHTML(reportData: ReportData): string {
             
             .section-container {
                 padding: var(--space-xl) 0;
-                max-width: 210mm;
+                width: 100%;
+                max-width: 100%;
                 margin: 0 auto;
+                box-sizing: border-box;
             }
             
             .section-container:first-child {
@@ -2755,6 +2778,8 @@ function generatePDFHTML(reportData: ReportData): string {
                 max-width: 100%;
                 margin: 0 auto;
                 width: 100%;
+                min-width: 0;
+                box-sizing: border-box;
             }
             
             /* Editorial Typography Hierarchy */
@@ -2802,17 +2827,24 @@ function generatePDFHTML(reportData: ReportData): string {
             /* Clean KPI Scoreboard - Analytics Product Style */
             .kpi-scoreboard {
                 display: grid;
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 16px;
                 margin: 24px 0 32px 0;
                 page-break-inside: avoid;
+                width: 100%;
+                max-width: 100%;
+                box-sizing: border-box;
             }
             
             .kpi-card {
                 background: #FFFFFF;
                 border: 1px solid #E2E8F0;
                 border-radius: 6px;
-                padding: 20px;
+                padding: 16px;
+                min-width: 0;
+                max-width: 100%;
+                box-sizing: border-box;
+                page-break-inside: avoid;
             }
             
             .kpi-label {
@@ -2822,14 +2854,19 @@ function generatePDFHTML(reportData: ReportData): string {
                 letter-spacing: 0.08em;
                 color: #64748B;
                 margin-bottom: 12px;
+                white-space: normal;
+                overflow-wrap: anywhere;
             }
             
             .kpi-value {
-                font-size: 24px;
+                font-size: 21px;
                 font-weight: 600;
                 color: #0F172A;
                 margin-bottom: 4px;
                 font-variant-numeric: tabular-nums;
+                max-width: 100%;
+                white-space: normal;
+                overflow-wrap: anywhere;
             }
             
             .kpi-delta {
@@ -3736,16 +3773,62 @@ function hotelReportPage(
   `;
 }
 
+function metricDeltaBadge(delta: number | null | undefined): string {
+  if (typeof delta !== 'number' || !Number.isFinite(delta)) return '';
+  const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral';
+  return `<span class="metric-delta ${deltaClass}">${delta >= 0 ? '+' : '−'}${Math.abs(delta).toFixed(1).replace('.', ',')}% <small>vs rok do roku</small></span>`;
+}
+
+function normalizeMetricDelta(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const delta = safeNumber(value);
+  return Number.isFinite(delta) ? delta : null;
+}
+
+function yoyMetricChange(
+  side: NonNullable<ReportData['yoyComparison']>[ReportPlatform] | undefined,
+  metricKey: string,
+): number | null {
+  const changes = side?.changes;
+  if (!changes) return null;
+
+  switch (metricKey) {
+    case 'totalSpend':
+    case 'spend':
+      return normalizeMetricDelta(changes.spend);
+    case 'totalImpressions':
+    case 'impressions':
+      return normalizeMetricDelta(changes.impressions);
+    case 'totalClicks':
+    case 'clicks':
+      return normalizeMetricDelta(changes.clicks);
+    case 'reservations':
+    case 'totalReservations':
+    case 'totalConversions':
+      return normalizeMetricDelta(changes.reservations ?? changes.conversions);
+    case 'reservation_value':
+    case 'reservationValue':
+    case 'conversion_value':
+      return normalizeMetricDelta(changes.reservationValue);
+    case 'booking_step_1':
+      return normalizeMetricDelta(changes.booking_step_1);
+    case 'booking_step_2':
+      return normalizeMetricDelta(changes.booking_step_2);
+    case 'booking_step_3':
+      return normalizeMetricDelta(changes.booking_step_3);
+    default:
+      return null;
+  }
+}
+
 function hotelMetricCard(card: HotelMetricCard): string {
-  const delta = typeof card.delta === 'number' && Number.isFinite(card.delta)
-    ? `<div class="metric-delta ${card.delta >= 0 ? 'positive' : 'negative'}">${card.delta >= 0 ? '+' : '−'}${Math.abs(card.delta).toFixed(1).replace('.', ',')}%</div>`
-    : '';
+  const delta = metricDeltaBadge(card.delta);
   return `
     <div class="hotel-metric-card">
       <div class="metric-label">${escapeHtml(card.label)}</div>
       <div class="metric-value">${card.value}</div>
+      ${delta ? `<div class="metric-delta-row">${delta}</div>` : ''}
       ${card.subtext ? `<div class="metric-subtext">${escapeHtml(card.subtext)}</div>` : ''}
-      ${delta}
     </div>
   `;
 }
@@ -3961,6 +4044,78 @@ function platformData(reportData: ReportData, platform: ReportPlatform) {
   return platform === 'google' ? reportData.googleData : reportData.metaData;
 }
 
+function percentDelta(current: unknown, previous: unknown): number | null {
+  const previousValue = safeNumber(previous);
+  if (previousValue <= 0) return null;
+  const currentValue = safeNumber(current);
+  const delta = ((currentValue - previousValue) / previousValue) * 100;
+  return Number.isFinite(delta) ? delta : null;
+}
+
+function yoyMetricValue(
+  side: NonNullable<ReportData['yoyComparison']>[ReportPlatform] | undefined,
+  period: 'current' | 'previous',
+  metricKey: string,
+): number | null {
+  const data = side?.[period];
+  if (!data) return null;
+  const spend = safeNumber(data.spend);
+  const impressions = safeNumber(data.impressions);
+  const clicks = safeNumber(data.clicks);
+  const reservations = safeNumber(data.reservations ?? data.conversions);
+  const reservationValue = safeNumber(data.reservationValue);
+
+  switch (metricKey) {
+    case 'totalSpend':
+    case 'spend':
+      return spend;
+    case 'totalImpressions':
+    case 'impressions':
+      return impressions;
+    case 'totalClicks':
+    case 'clicks':
+      return clicks;
+    case 'averageCtr':
+      return impressions > 0 ? (clicks / impressions) * 100 : null;
+    case 'averageCpc':
+      return clicks > 0 ? spend / clicks : null;
+    case 'reservations':
+    case 'totalReservations':
+    case 'totalConversions':
+      return reservations;
+    case 'reservation_value':
+    case 'reservationValue':
+    case 'conversion_value':
+      return reservationValue;
+    case 'roas':
+      return spend > 0 ? reservationValue / spend : null;
+    case 'cost_per_reservation':
+      return reservations > 0 ? spend / reservations : null;
+    case 'booking_step_1':
+      return safeNumber(data.booking_step_1);
+    case 'booking_step_2':
+      return safeNumber(data.booking_step_2);
+    case 'booking_step_3':
+      return safeNumber(data.booking_step_3);
+    default:
+      return null;
+  }
+}
+
+function platformMetricDelta(reportData: ReportData, platform: ReportPlatform, metricKey: string): number | null {
+  const side = reportData.yoyComparison?.[platform];
+  const previousValue = yoyMetricValue(side, 'previous', metricKey);
+  if (safeNumber(previousValue) <= 0) return null;
+
+  const storedChange = yoyMetricChange(side, metricKey);
+  if (storedChange !== null) return storedChange;
+
+  return percentDelta(
+    yoyMetricValue(side, 'current', metricKey),
+    yoyMetricValue(side, 'previous', metricKey),
+  );
+}
+
 function comparisonBarRows(entries: Array<{ label: string; google: number; meta: number; formatter: (value: number) => string }>): string {
   return `
     <div class="comparison-bars">
@@ -4035,7 +4190,7 @@ function donutChart(entries: Array<[string, number]>): string {
   }).join('');
   return `
     <div class="donut-wrap">
-      <svg viewBox="0 0 36 36" class="donut">${segments}</svg>
+      <svg viewBox="-3 -3 42 42" class="donut">${segments}</svg>
       <div class="donut-legend">
         ${entries.slice(0, 4).map(([label, value], idx) => `<div><span style="background:${colors[idx] || '#F3C7AF'}"></span>${escapeHtml(label)} <strong>${formatPercentValue(safeDivide(value, total), 1)}</strong></div>`).join('')}
       </div>
@@ -4152,27 +4307,119 @@ function sortedCampaigns(reportData: ReportData, platform: ReportPlatform): any[
     .sort((a, b) => safeNumber(getRowValue(b, 'totalSpend')) - safeNumber(getRowValue(a, 'totalSpend')));
 }
 
-function campaignHighlightCards(reportData: ReportData, platform: ReportPlatform): string {
-  const rows = sortedCampaigns(reportData, platform);
-  const byReservations = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'reservations')) - safeNumber(getRowValue(a, 'reservations')) || safeNumber(getRowValue(b, 'reservation_value')) - safeNumber(getRowValue(a, 'reservation_value')));
-  const byValue = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'reservation_value')) - safeNumber(getRowValue(a, 'reservation_value')));
-  const byTraffic = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'totalClicks')) - safeNumber(getRowValue(a, 'totalClicks')) || safeNumber(getRowValue(b, 'totalImpressions')) - safeNumber(getRowValue(a, 'totalImpressions')));
-  const byRoas = [...rows].filter((row) => safeNumber(getRowValue(row, 'reservations')) > 0).sort((a, b) => safeNumber(getRowValue(b, 'roas')) - safeNumber(getRowValue(a, 'roas')));
-  const international = rows.find((campaign) => /\b(niemcy|germany|de|deutschland|german)\b/i.test(getCampaignName(campaign)));
-  const candidates = platform === 'google'
-    ? [
-        { title: 'Top booking driver', campaign: byReservations[0] },
-        { title: 'Highest booking value', campaign: byValue.find((row) => row !== byReservations[0]) || byValue[0] },
-        { title: 'International signal', campaign: international || byRoas[0] },
-      ]
-    : [
-        { title: 'Top booking driver', campaign: byReservations[0] },
-        { title: 'Highest traffic', campaign: byTraffic[0] },
-        { title: 'International signal / ROAS', campaign: international || byRoas[0] },
-      ];
-  const cards = candidates.filter((candidate, idx, arr) => candidate.campaign && arr.findIndex((item) => item.campaign === candidate.campaign) === idx).slice(0, 3);
-  if (cards.length === 0) return '<div class="empty-panel">Brak danych kampanii dla wyróżnień.</div>';
-  return `<div class="highlight-grid">${cards.map(({ title, campaign }) => `
+/** Minimum share of total reservation value required to show an international signal card. */
+const INTERNATIONAL_SIGNAL_MIN_SHARE = 0.05;
+
+type GeographicHighlightBucket = {
+  code: string;
+  name: string;
+  conversion_value: number;
+  conversions: number;
+  clicks: number;
+};
+
+function aggregateGeographicHighlights(reportData: ReportData, platform: ReportPlatform): {
+  topForeign: GeographicHighlightBucket | null;
+  topRegion: GeographicHighlightBucket | null;
+  foreignShare: number;
+  totalMetric: number;
+} {
+  const rows = platform === 'google'
+    ? (reportData.googleData?.tables?.geographicPerformance || [])
+    : (reportData.metaData?.tables?.geographicPerformance || []);
+  if (!rows.length) {
+    return { topForeign: null, topRegion: null, foreignShare: 0, totalMetric: 0 };
+  }
+
+  const { resolvePolishVoivodeshipCode, formatPolishCountryName, formatPolishVoivodeshipName } = require('@/lib/polish-geo-display');
+  const { VOIVODESHIP_BY_CODE } = require('@/lib/poland-voivodeships');
+
+  const byCode = new Map<string, GeographicHighlightBucket>();
+  const foreignByCountry = new Map<string, GeographicHighlightBucket>();
+  let geoTotal = 0;
+
+  rows.forEach((row: any) => {
+    const value = safeNumber(row.conversion_value || row.reservation_value);
+    const conversions = safeNumber(row.conversions || row.reservations);
+    const clicks = safeNumber(row.clicks);
+    geoTotal += value;
+
+    if (row.countryCode && row.countryCode !== 'PL') {
+      const key = row.countryCode || row.countryName || '__foreign__';
+      const bucket = foreignByCountry.get(key) ?? {
+        code: key,
+        name: row.countryName || row.countryCode || 'Zagranica',
+        conversion_value: 0,
+        conversions: 0,
+        clicks: 0,
+      };
+      bucket.conversion_value += value;
+      bucket.conversions += conversions;
+      bucket.clicks += clicks;
+      foreignByCountry.set(key, bucket);
+      return;
+    }
+
+    const code = resolvePolishVoivodeshipCode(row);
+    const shape = code ? VOIVODESHIP_BY_CODE[code] : null;
+    if (code && shape) {
+      const bucket = byCode.get(code) ?? { code, name: shape.name, conversion_value: 0, conversions: 0, clicks: 0 };
+      bucket.conversion_value += value;
+      bucket.conversions += conversions;
+      bucket.clicks += clicks;
+      byCode.set(code, bucket);
+      return;
+    }
+
+    // Meta rows for Poland often lack voivodeship codes — bucket by region name.
+    if ((!row.countryCode || row.countryCode === 'PL') && row.regionName && row.regionName !== '(nieznane)') {
+      const regionKey = `region::${String(row.regionName).trim().toLowerCase()}`;
+      const bucket = byCode.get(regionKey) ?? {
+        code: regionKey,
+        name: formatPolishVoivodeshipName(row),
+        conversion_value: 0,
+        conversions: 0,
+        clicks: 0,
+      };
+      bucket.conversion_value += value;
+      bucket.conversions += conversions;
+      bucket.clicks += clicks;
+      byCode.set(regionKey, bucket);
+    }
+  });
+
+  const campaigns = platformData(reportData, platform)?.campaigns || [];
+  const campaignTotalValue = campaigns.reduce(
+    (sum: number, campaign: any) => sum + safeNumber(getRowValue(campaign, 'reservation_value')),
+    0
+  );
+  const platformTotalValue = platform === 'meta'
+    ? safeNumber(reportData.metaData?.metrics?.totalReservationValue)
+    : 0;
+  const totalMetric = campaignTotalValue > 0
+    ? campaignTotalValue
+    : (platformTotalValue > 0 ? platformTotalValue : geoTotal);
+  const foreignTotal = Array.from(foreignByCountry.values()).reduce((sum, country) => sum + country.conversion_value, 0);
+  const foreignShare = totalMetric > 0 ? foreignTotal / totalMetric : 0;
+
+  const topForeignRaw = Array.from(foreignByCountry.values())
+    .filter((bucket) => bucket.conversion_value > 0)
+    .sort((a, b) => b.conversion_value - a.conversion_value)[0] ?? null;
+  const topForeign = topForeignRaw
+    ? {
+        ...topForeignRaw,
+        name: formatPolishCountryName({ countryCode: topForeignRaw.code, countryName: topForeignRaw.name }),
+      }
+    : null;
+  const topRegion = Array.from(byCode.values())
+    .filter((bucket) => bucket.conversion_value > 0)
+    .sort((a, b) => b.conversion_value - a.conversion_value)[0] ?? null;
+
+  return { topForeign, topRegion, foreignShare, totalMetric };
+}
+
+function renderCampaignHighlightCard(reportData: ReportData, platform: ReportPlatform, title: string, campaign: any): string {
+  return `
     <div class="highlight-card">
       <div class="highlight-label">${escapeHtml(title)}</div>
       <h3>${escapeHtml(getCampaignName(campaign))}</h3>
@@ -4182,7 +4429,96 @@ function campaignHighlightCards(reportData: ReportData, platform: ReportPlatform
         <div><dt>${escapeHtml(metricLabel(reportData, platform, 'campaign_table', 'roas', 'ROAS'))}</dt><dd>${formatROASValue(safeNumber(getRowValue(campaign, 'roas')) || safeDivide(getRowValue(campaign, 'reservation_value'), getRowValue(campaign, 'totalSpend')))}</dd></div>
       </dl>
     </div>
-  `).join('')}</div>`;
+  `;
+}
+
+function renderGeographicHighlightCard(
+  reportData: ReportData,
+  platform: ReportPlatform,
+  title: string,
+  name: string,
+  bucket: GeographicHighlightBucket,
+  totalMetric: number,
+  shareLabel: string,
+): string {
+  const share = safeDivide(bucket.conversion_value, totalMetric);
+  return `
+    <div class="highlight-card">
+      <div class="highlight-label">${escapeHtml(title)}</div>
+      <h3>${escapeHtml(name)}</h3>
+      <dl>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'geographic_map', 'totalConversions', 'Konwersje'))}</dt><dd>${formatNumber(bucket.conversions)}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'geographic_map', 'conversion_value', 'Wartość konwersji'))}</dt><dd>${formatCurrency(bucket.conversion_value)}</dd></div>
+        <div><dt>${escapeHtml(shareLabel)}</dt><dd>${formatPercentValue(share, 1)}</dd></div>
+      </dl>
+    </div>
+  `;
+}
+
+function resolveThirdHighlightCard(
+  reportData: ReportData,
+  platform: ReportPlatform,
+  rows: any[],
+  byRoas: any[],
+): string {
+  const geo = aggregateGeographicHighlights(reportData, platform);
+  if (geo.topForeign && geo.foreignShare >= INTERNATIONAL_SIGNAL_MIN_SHARE) {
+    return renderGeographicHighlightCard(
+      reportData,
+      platform,
+      'International signal',
+      geo.topForeign.name,
+      geo.topForeign,
+      geo.totalMetric,
+      'Udział zagranicy',
+    );
+  }
+  if (geo.topRegion) {
+    return renderGeographicHighlightCard(
+      reportData,
+      platform,
+      'Top region',
+      geo.topRegion.name,
+      geo.topRegion,
+      geo.totalMetric,
+      'Udział regionu',
+    );
+  }
+  if (byRoas[0]) {
+    return renderCampaignHighlightCard(reportData, platform, 'Best ROAS', byRoas[0]);
+  }
+  return '';
+}
+
+function campaignHighlightCards(reportData: ReportData, platform: ReportPlatform): string {
+  const rows = sortedCampaigns(reportData, platform);
+  const byReservations = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'reservations')) - safeNumber(getRowValue(a, 'reservations')) || safeNumber(getRowValue(b, 'reservation_value')) - safeNumber(getRowValue(a, 'reservation_value')));
+  const byValue = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'reservation_value')) - safeNumber(getRowValue(a, 'reservation_value')));
+  const byTraffic = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'totalClicks')) - safeNumber(getRowValue(a, 'totalClicks')) || safeNumber(getRowValue(b, 'totalImpressions')) - safeNumber(getRowValue(a, 'totalImpressions')));
+  const byRoas = [...rows].filter((row) => safeNumber(getRowValue(row, 'reservations')) > 0).sort((a, b) => safeNumber(getRowValue(b, 'roas')) - safeNumber(getRowValue(a, 'roas')));
+
+  const campaignCards = platform === 'google'
+    ? [
+        { title: 'Top booking driver', campaign: byReservations[0] },
+        { title: 'Highest booking value', campaign: byValue.find((row) => row !== byReservations[0]) || byValue[0] },
+      ]
+    : [
+        { title: 'Top booking driver', campaign: byReservations[0] },
+        { title: 'Highest traffic', campaign: byTraffic[0] },
+      ];
+
+  const uniqueCampaignCards = campaignCards
+    .filter((candidate) => candidate.campaign)
+    .filter((candidate, idx, arr) => arr.findIndex((item) => item.campaign === candidate.campaign) === idx);
+
+  const thirdCard = resolveThirdHighlightCard(reportData, platform, rows, byRoas);
+  const cardsHtml = [
+    ...uniqueCampaignCards.map(({ title, campaign }) => renderCampaignHighlightCard(reportData, platform, title, campaign)),
+    thirdCard,
+  ].filter(Boolean);
+
+  if (cardsHtml.length === 0) return '<div class="empty-panel">Brak danych kampanii dla wyróżnień.</div>';
+  return `<div class="highlight-grid">${cardsHtml.join('')}</div>`;
 }
 
 function campaignContributionChart(reportData: ReportData, platform: ReportPlatform): string {
@@ -4206,16 +4542,27 @@ function funnelBlock(reportData: ReportData, platform: ReportPlatform): string {
   ].filter((step) => pdfMetricVisible(reportData, platform, 'funnel', step.key));
   const firstValue = steps[0]?.value || 0;
   const lastValue = steps[steps.length - 1]?.value || 0;
+  const firstStepKey = steps[0]?.key;
+  const lastStepKey = steps[steps.length - 1]?.key;
+  const side = reportData.yoyComparison?.[platform];
+  const previousFirstValue = firstStepKey ? yoyMetricValue(side, 'previous', firstStepKey) : null;
+  const previousLastValue = lastStepKey ? yoyMetricValue(side, 'previous', lastStepKey) : null;
+  const funnelRateDelta = percentDelta(
+    safeDivide(lastValue, firstValue),
+    previousFirstValue && previousLastValue ? safeDivide(previousLastValue, previousFirstValue) : null,
+  );
   return `
     <div class="funnel-shell">
       <div class="funnel-segments">
         ${steps.map((step, idx) => {
           const previous = idx > 0 ? steps[idx - 1]?.value ?? null : null;
           const rate = previous === null ? null : safeDivide(step.value, previous);
+          const delta = metricDeltaBadge(platformMetricDelta(reportData, platform, step.key));
           return `
             <div class="funnel-segment segment-${idx + 1}">
               <div class="funnel-label">${escapeHtml(metricLabel(reportData, platform, 'funnel', step.key, step.fallback))}</div>
               <div class="funnel-value">${formatNumber(step.value)}</div>
+              ${delta ? `<div class="funnel-delta-row">${delta}</div>` : ''}
               <div class="funnel-rate">${idx === 0 ? 'Początek ścieżki' : `${formatPercentValue(rate, 1)} z poprzedniego kroku`}</div>
             </div>
           `;
@@ -4224,6 +4571,7 @@ function funnelBlock(reportData: ReportData, platform: ReportPlatform): string {
       <div class="funnel-total-rate">
         <span>Współczynnik konwersji</span>
         <strong>${formatPercentValue(safeDivide(lastValue, firstValue), 2)}</strong>
+        ${metricDeltaBadge(funnelRateDelta)}
       </div>
     </div>
   `;
@@ -4233,11 +4581,11 @@ function platformMediaCards(reportData: ReportData, platform: ReportPlatform): s
   const metrics = platformData(reportData, platform)?.metrics;
   if (!metrics) return '<div class="empty-panel">Brak danych mediowych.</div>';
   return metricStrip(buildMetricCards(reportData, platform, 'report_summary', [
-    { key: 'totalSpend', fallback: 'Wydatki', value: formatCurrency(metrics.totalSpend) },
-    { key: 'totalImpressions', fallback: 'Wyświetlenia', value: formatNumber(metrics.totalImpressions) },
-    { key: 'totalClicks', fallback: 'Kliknięcia', value: formatNumber(metrics.totalClicks) },
-    { key: 'averageCtr', fallback: 'CTR', value: formatPercentage(metrics.averageCtr) },
-    { key: 'averageCpc', fallback: 'CPC', value: formatCurrency(metrics.averageCpc) },
+    { key: 'totalSpend', fallback: 'Wydatki', value: formatCurrency(metrics.totalSpend), delta: platformMetricDelta(reportData, platform, 'totalSpend') },
+    { key: 'totalImpressions', fallback: 'Wyświetlenia', value: formatNumber(metrics.totalImpressions), delta: platformMetricDelta(reportData, platform, 'totalImpressions') },
+    { key: 'totalClicks', fallback: 'Kliknięcia', value: formatNumber(metrics.totalClicks), delta: platformMetricDelta(reportData, platform, 'totalClicks') },
+    { key: 'averageCtr', fallback: 'CTR', value: formatPercentage(metrics.averageCtr), delta: platformMetricDelta(reportData, platform, 'averageCtr') },
+    { key: 'averageCpc', fallback: 'CPC', value: formatCurrency(metrics.averageCpc), delta: platformMetricDelta(reportData, platform, 'averageCpc') },
   ]), 5);
 }
 
@@ -4248,9 +4596,9 @@ function platformOutcomeCards(reportData: ReportData, platform: ReportPlatform):
   const metrics = data.metrics;
   const funnel = data.funnel;
   const cards = buildMetricCards(reportData, platform, 'funnel', [
-    { key: 'reservation_value', fallback: 'Wartość rezerwacji', value: formatCurrency(funnel.reservation_value || metrics.totalReservationValue) },
-    { key: 'roas', fallback: 'ROAS', value: formatROASValue(funnel.roas || metrics.roas) },
-    { key: 'reservations', fallback: 'Rezerwacje', value: formatNumber(funnel.reservations || metrics.totalReservations) },
+    { key: 'reservation_value', fallback: 'Wartość rezerwacji', value: formatCurrency(funnel.reservation_value || metrics.totalReservationValue), delta: platformMetricDelta(reportData, platform, 'reservation_value') },
+    { key: 'roas', fallback: 'ROAS', value: formatROASValue(funnel.roas || metrics.roas), delta: platformMetricDelta(reportData, platform, 'roas') },
+    { key: 'reservations', fallback: 'Rezerwacje', value: formatNumber(funnel.reservations || metrics.totalReservations), delta: platformMetricDelta(reportData, platform, 'reservations') },
   ]);
   const contactCards = buildMetricCards(reportData, platform, 'contact', [
     { key: 'email_contacts', fallback: 'Kontakty e-mail', value: formatNumber(metrics.emailContacts) },
@@ -4264,14 +4612,20 @@ function channelCard(reportData: ReportData, platform: ReportPlatform, metrics: 
   if (!metrics) return `<div class="channel-card"><h3>${platformName(platform)}</h3><div class="empty-panel">Brak danych.</div></div>`;
   const spend = safeNumber(metrics.totalSpend);
   const value = safeNumber(metrics.totalReservationValue);
+  const row = (key: string, fallback: string, displayValue: string, deltaKey = key) => `
+    <div>
+      <dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', key, fallback))}</dt>
+      <dd><span>${displayValue}</span>${metricDeltaBadge(platformMetricDelta(reportData, platform, deltaKey))}</dd>
+    </div>
+  `;
   return `
     <div class="channel-card">
       <h3>${platformName(platform)}</h3>
       <dl>
-        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'totalSpend', 'Wydatki'))}</dt><dd>${formatCurrency(spend)}</dd></div>
-        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'reservations', 'Rezerwacje'))}</dt><dd>${formatNumber(metrics.totalReservations)}</dd></div>
-        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'reservation_value', 'Wartość rezerwacji'))}</dt><dd>${formatCurrency(value)}</dd></div>
-        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'roas', 'ROAS'))}</dt><dd>${formatROASValue(safeDivide(value, spend))}</dd></div>
+        ${row('totalSpend', 'Wydatki', formatCurrency(spend))}
+        ${row('reservations', 'Rezerwacje', formatNumber(metrics.totalReservations))}
+        ${row('reservation_value', 'Wartość rezerwacji', formatCurrency(value))}
+        ${row('roas', 'ROAS', formatROASValue(safeDivide(value, spend)))}
       </dl>
     </div>
   `;
@@ -4525,35 +4879,126 @@ function demographicBlocks(reportData: ReportData, platform: ReportPlatform): Re
   ];
 }
 
-function generateHotelGoogleRegionsBody(reportData: ReportData): string {
-  const rows = reportData.googleData?.tables?.geographicPerformance || [];
+function getGeographicPerformanceRows(reportData: ReportData, platform: ReportPlatform): any[] {
+  return platform === 'google'
+    ? (reportData.googleData?.tables?.geographicPerformance || [])
+    : (reportData.metaData?.tables?.geographicPerformance || []);
+}
+
+type GeoMapMetric = 'spend' | 'clicks' | 'impressions' | 'conversion_value';
+
+const META_TOP_REGIONS_LIMIT = 10;
+
+function defaultGeoMapMetric(platform: ReportPlatform): GeoMapMetric {
+  // Meta does not return offsite conversion value at region breakdown; clicks
+  // are the most reliable geographic signal for PDF maps.
+  return platform === 'meta' ? 'clicks' : 'conversion_value';
+}
+
+function getGeoRowMetric(row: any, metric: GeoMapMetric): number {
+  switch (metric) {
+    case 'spend':
+      return safeNumber(row.spend);
+    case 'clicks':
+      return safeNumber(row.clicks);
+    case 'impressions':
+      return safeNumber(row.impressions);
+    case 'conversion_value':
+      return safeNumber(row.conversion_value || row.reservation_value);
+  }
+}
+
+function formatGeoMapMetric(value: number, metric: GeoMapMetric): string {
+  return metric === 'spend' || metric === 'conversion_value'
+    ? formatCurrency(value)
+    : formatNumber(value);
+}
+
+function formatCompactGeoMapMetric(value: number, metric: GeoMapMetric): string {
+  return formatGeoMapMetric(value, metric);
+}
+
+function geoMapMetricLabel(metric: GeoMapMetric): string {
+  switch (metric) {
+    case 'spend':
+      return 'wydatków';
+    case 'clicks':
+      return 'kliknięć';
+    case 'impressions':
+      return 'wyświetleń';
+    case 'conversion_value':
+      return 'wartości konwersji';
+  }
+}
+
+function geoMapMetricTitle(metric: GeoMapMetric): string {
+  switch (metric) {
+    case 'spend':
+      return 'Wydatki';
+    case 'clicks':
+      return 'Kliknięcia';
+    case 'impressions':
+      return 'Wyświetlenia';
+    case 'conversion_value':
+      return 'Wartość konwersji';
+  }
+}
+
+function getGeographicCampaignTotal(reportData: ReportData, platform: ReportPlatform, metric: GeoMapMetric): number {
+  const campaignField =
+    metric === 'conversion_value' ? 'reservation_value'
+    : metric === 'spend' ? 'totalSpend'
+    : metric === 'clicks' ? 'totalClicks'
+    : 'totalImpressions';
+  const campaigns = platformData(reportData, platform)?.campaigns || [];
+  const fromCampaigns = campaigns.reduce(
+    (sum: number, campaign: any) => sum + safeNumber(getRowValue(campaign, campaignField)),
+    0,
+  );
+  if (fromCampaigns > 0) return fromCampaigns;
+  if (platform === 'meta') {
+    const metrics = reportData.metaData?.metrics;
+    if (metric === 'conversion_value') return safeNumber(metrics?.totalReservationValue);
+    if (metric === 'spend') return safeNumber(metrics?.totalSpend);
+    if (metric === 'clicks') return safeNumber(metrics?.totalClicks);
+    if (metric === 'impressions') return safeNumber(metrics?.totalImpressions);
+  }
+  return 0;
+}
+
+function generateHotelRegionsBody(
+  reportData: ReportData,
+  platform: ReportPlatform,
+  metric: GeoMapMetric = defaultGeoMapMetric(platform),
+): string {
+  const rows = getGeographicPerformanceRows(reportData, platform);
   if (!rows || rows.length === 0) {
     return `
-      <div class="regions-layout region-fallback-layout">
-        <div class="map-wrap map-fallback">
-          <div class="empty-panel">Mapa niedostępna dla tego zakresu danych.</div>
+      <div class="regions-card">
+        <div class="regions-card-header">
+          <div>
+            <h3>Regiony</h3>
+            <p>Wyniki według regionów i miast</p>
+          </div>
+          <div class="metric-static-wrap"><span>Metryka:</span><div class="metric-static-pill"><i></i>${escapeHtml(geoMapMetricTitle(metric))}</div></div>
         </div>
-        <div class="region-card-grid">
-          <div class="region-card"><div class="region-card-title">Top regiony</div><div class="region-card-row"><span>Brak danych regionalnych.</span><strong>—</strong></div></div>
-          <div class="region-card"><div class="region-card-title">Zagranica</div><div class="region-card-row"><span>Brak danych.</span><strong>—</strong></div></div>
-          <div class="region-card"><div class="region-card-title">Nieznana lokalizacja</div><div class="region-card-row"><span>Bez przypisania</span><strong>—</strong></div></div>
-        </div>
+        <div class="regions-empty-state">Brak danych regionalnych dla tego okresu.</div>
       </div>
     `;
   }
   const { POLAND_MAP_VIEW_BOX, POLAND_VOIVODESHIPS, VOIVODESHIP_BY_CODE, heatmapColor } = require('@/lib/poland-voivodeships');
   const { resolvePolishVoivodeshipCode, formatPolishCountryName } = require('@/lib/polish-geo-display');
 
-  type Bucket = { code: string; name: string; conversion_value: number };
+  type Bucket = { code: string; name: string; metricValue: number };
   const byCode = new Map<string, Bucket>();
   const foreignByCountry = new Map<string, Bucket>();
   let unmatchedPolandValue = 0;
   rows.forEach((row: any) => {
-    const value = safeNumber(row.conversion_value || row.reservation_value);
+    const value = getGeoRowMetric(row, metric);
     if (row.countryCode && row.countryCode !== 'PL') {
       const key = row.countryCode || row.countryName || '__foreign__';
-      const country = foreignByCountry.get(key) ?? { code: key, name: row.countryName || row.countryCode || 'Zagranica', conversion_value: 0 };
-      country.conversion_value += value;
+      const country = foreignByCountry.get(key) ?? { code: key, name: row.countryName || row.countryCode || 'Zagranica', metricValue: 0 };
+      country.metricValue += value;
       foreignByCountry.set(key, country);
       return;
     }
@@ -4563,34 +5008,89 @@ function generateHotelGoogleRegionsBody(reportData: ReportData): string {
       unmatchedPolandValue += value;
       return;
     }
-    const bucket = byCode.get(code) ?? { code, name: shape.name, conversion_value: 0 };
-    bucket.conversion_value += value;
+    const bucket = byCode.get(code) ?? { code, name: shape.name, metricValue: 0 };
+    bucket.metricValue += value;
     byCode.set(code, bucket);
   });
-  const values = Array.from(byCode.values()).map((b) => b.conversion_value);
+  const values = Array.from(byCode.values()).map((b) => b.metricValue);
   const maxValue = values.length > 0 ? Math.max(...values) : 0;
-  const geoTotal = values.reduce((s, v) => s + v, 0) + unmatchedPolandValue + Array.from(foreignByCountry.values()).reduce((s, c) => s + c.conversion_value, 0);
-  const campaignTotalValue = (reportData.googleData?.campaigns || []).reduce((sum: number, c: any) => sum + safeNumber(getRowValue(c, 'reservation_value')), 0);
-  const totalMetric = campaignTotalValue > 0 ? campaignTotalValue : geoTotal;
+  const geoTotal = values.reduce((s, v) => s + v, 0) + unmatchedPolandValue + Array.from(foreignByCountry.values()).reduce((s, c) => s + c.metricValue, 0);
+  const campaignTotal = getGeographicCampaignTotal(reportData, platform, metric);
+  const totalMetric = campaignTotal > 0 ? campaignTotal : geoTotal;
   const unknownLocation = Math.max(0, totalMetric - geoTotal);
+  const geographicCoverage = totalMetric > 0 ? geoTotal / totalMetric : 1;
+  const showCoverageWarning =
+    metric === 'conversion_value' &&
+    totalMetric > 0 &&
+    unknownLocation > 0 &&
+    geographicCoverage < 0.05;
+  const legendLow = metric === 'conversion_value' || metric === 'spend' ? 'Niższa wartość' : 'Mniej';
+  const legendHigh = metric === 'conversion_value' || metric === 'spend' ? 'Wyższa wartość' : 'Więcej';
+  const legendSuffix = metric === 'clicks' ? ' kliknięć' : metric === 'impressions' ? ' wyświetleń' : '';
   const paths = POLAND_VOIVODESHIPS.map((v: any) => {
     const bucket = byCode.get(v.code);
-    const value = bucket ? bucket.conversion_value : 0;
+    const value = bucket ? bucket.metricValue : 0;
     return `<path d="${v.path}" fill="${heatmapColor(maxValue > 0 ? value / maxValue : 0, value > 0)}" stroke="rgba(15,39,66,0.18)" stroke-width="1"/>`;
   }).join('');
-  const topRegions = Array.from(byCode.values()).filter((b) => b.conversion_value > 0).sort((a, b) => b.conversion_value - a.conversion_value).slice(0, 5);
-  const topForeign = Array.from(foreignByCountry.values()).filter((b) => b.conversion_value > 0).sort((a, b) => b.conversion_value - a.conversion_value).slice(0, 3);
+  const topRegions = Array.from(byCode.values()).filter((b) => b.metricValue > 0).sort((a, b) => b.metricValue - a.metricValue).slice(0, 5);
+  const topForeign = Array.from(foreignByCountry.values()).filter((b) => b.metricValue > 0).sort((a, b) => b.metricValue - a.metricValue).slice(0, 3);
   const hasRegionalContent = topRegions.length > 0 || topForeign.length > 0 || unknownLocation + unmatchedPolandValue > 0;
+  const platformLabel = platformName(platform);
+  const metricKey =
+    metric === 'conversion_value' ? 'conversion_value'
+    : metric === 'spend' ? 'totalSpend'
+    : metric === 'clicks' ? 'totalClicks'
+    : 'totalImpressions';
+  const selectedMetricLabel = metricLabel(reportData, platform, 'geographic_map', metricKey, geoMapMetricTitle(metric));
+  const topRegionMax = topRegions[0]?.metricValue || 0;
+  const showTopRegionBars = topRegions.every((r) => formatGeoMapMetric(r.metricValue, metric).length <= 8);
+  const locationRowsExceedCampaignTotal = campaignTotal > 0 && geoTotal > totalMetric + 0.0001;
+  const locationRowsLabel = locationRowsExceedCampaignTotal
+    ? 'suma wierszy lokalizacji'
+    : 'z czego z lokalizacji';
   return `
-    <div class="regions-layout">
-      <div class="map-wrap">
-        ${hasRegionalContent ? `<svg viewBox="${POLAND_MAP_VIEW_BOX}" class="poland-map" preserveAspectRatio="xMidYMid meet">${paths}</svg>
-        <div class="map-legend"><span>Niższa wartość</span><span class="legend-ramp"></span><span>Wyższa wartość</span></div>` : '<div class="empty-panel">Mapa niedostępna dla tego zakresu danych.</div>'}
+    <div class="regions-card">
+      <div class="regions-card-header">
+        <div>
+          <h3>Regiony</h3>
+          <p>Wyniki według regionów i miast</p>
+        </div>
+        <div class="metric-static-wrap"><span>Metryka:</span><div class="metric-static-pill"><i></i>${escapeHtml(selectedMetricLabel)}</div></div>
       </div>
-      <div class="region-card-grid">
-        <div class="region-card"><div class="region-card-title">Top regiony</div>${topRegions.map((r, idx) => `<div class="region-card-row"><span>${idx + 1}. ${escapeHtml(r.name)}</span><strong>${formatCurrency(r.conversion_value)}</strong></div>`).join('') || '<div class="region-card-row"><span>Brak danych.</span></div>'}</div>
-        <div class="region-card"><div class="region-card-title">Zagranica</div>${topForeign.map((r) => `<div class="region-card-row"><span>${escapeHtml(formatPolishCountryName({ countryCode: r.code, countryName: r.name }))}</span><strong>${formatCurrency(r.conversion_value)}</strong></div>`).join('') || '<div class="region-card-row"><span>Brak danych.</span></div>'}</div>
-        <div class="region-card"><div class="region-card-title">Nieznana lokalizacja</div><div class="region-card-row"><span>Bez przypisania</span><strong>${formatCurrency(unknownLocation + unmatchedPolandValue)}</strong></div></div>
+      ${showCoverageWarning ? `<div class="region-warning">API nie zwróciło wiarygodnego podziału geograficznego dla wartości konwersji. Przypisano geograficznie ${formatCurrency(geoTotal)} z ${formatCurrency(totalMetric)} (${formatPercentValue(geographicCoverage, 1)}), dlatego mapa nie powinna być traktowana jako realny podział województw.</div>` : ''}
+      <div class="regions-layout">
+        <div class="map-wrap">
+          <div class="map-heading">
+            <span class="map-pin"></span>
+            <div><strong>Wydajność wg regionów</strong><small>Mapa cieplna — ${escapeHtml(selectedMetricLabel.toLowerCase())} wg województw; zagranica w podsumowaniu</small></div>
+          </div>
+          ${hasRegionalContent ? `<svg viewBox="${POLAND_MAP_VIEW_BOX}" class="poland-map" preserveAspectRatio="xMidYMid meet">${paths}</svg>
+          <div class="map-legend map-legend-caption"><span>${legendLow}${legendSuffix}</span><span class="legend-ramp"></span><span>${legendHigh}${legendSuffix}</span></div>` : '<div class="regions-empty-state">Mapa niedostępna dla tego zakresu danych.</div>'}
+        </div>
+        <div class="region-side-panel">
+          <div class="region-total-card">
+            <span>Łącznie (kampanie ${escapeHtml(platformLabel)})</span>
+            <strong>${formatGeoMapMetric(totalMetric, metric)}</strong>
+            <small>${locationRowsLabel}: ${formatGeoMapMetric(geoTotal, metric)}</small>
+            ${locationRowsExceedCampaignTotal ? '<small class="region-total-note">Wiersze lokalizacji nie sumują się do KPI kampanii.</small>' : ''}
+          </div>
+          <div class="top-region-list">
+            <div class="top-region-head"><strong>Najlepsze regiony</strong><span>${escapeHtml(selectedMetricLabel)}</span></div>
+            ${topRegions.map((r, idx) => {
+              const pct = topRegionMax > 0 ? Math.max(6, (r.metricValue / topRegionMax) * 100) : 0;
+              const barColor = ['#071842', '#1f5fbf', '#4f8ee8', '#8db8f7', '#bfdbfe'][idx] || '#bfdbfe';
+              const valueLabel = formatGeoMapMetric(r.metricValue, metric);
+              return `<div class="top-region-row ${showTopRegionBars ? 'with-bars' : 'no-bars'}"><b>${idx + 1}</b><em>${escapeHtml(r.name.toLowerCase())}</em>${showTopRegionBars ? `<span><i style="width:${pct.toFixed(1)}%; background:${barColor};"></i></span>` : ''}<strong>${valueLabel}</strong></div>`;
+            }).join('') || '<div class="regions-empty-state compact">Brak danych.</div>'}
+          </div>
+          ${(unmatchedPolandValue > 0 || topForeign.length > 0 || unknownLocation > 0) ? `
+            <div class="region-extra-list">
+              ${unmatchedPolandValue > 0 ? `<div><span>Polska niedopasowana</span><strong>${formatGeoMapMetric(unmatchedPolandValue, metric)}</strong></div>` : ''}
+              ${topForeign.map((r) => `<div><span>${escapeHtml(formatPolishCountryName({ countryCode: r.code, countryName: r.name }))}</span><strong>${formatGeoMapMetric(r.metricValue, metric)}</strong></div>`).join('')}
+              ${unknownLocation > 0 ? `<div><span>Nieznana lokalizacja</span><strong>${formatGeoMapMetric(unknownLocation, metric)}</strong></div>` : ''}
+            </div>
+          ` : ''}
+        </div>
       </div>
     </div>
   `;
@@ -4603,44 +5103,90 @@ function generateHotelGoogleCityRows(reportData: ReportData): any[] {
     .slice(0, 15);
 }
 
-function geoBlocks(reportData: ReportData): ReportBlock[] {
-  const cityRows = generateHotelGoogleCityRows(reportData);
+function generateHotelMetaRegionRows(reportData: ReportData): any[] {
+  return [...getGeographicPerformanceRows(reportData, 'meta')]
+    .filter((row: any) => !row.countryCode || row.countryCode === 'PL')
+    .filter((row: any) => row.regionName && row.regionName !== '(nieznane)')
+    .sort((a: any, b: any) => getGeoRowMetric(b, 'clicks') - getGeoRowMetric(a, 'clicks'))
+    .slice(0, META_TOP_REGIONS_LIMIT);
+}
+
+function geoBlocks(reportData: ReportData, platform: ReportPlatform): ReportBlock[] {
+  const platformTitle = platformName(platform);
   const { formatPolishVoivodeshipName } = require('@/lib/polish-geo-display');
-  const cityColumns: TableColumn[] = [
-    { key: 'city', label: metricLabel(reportData, 'google', 'geographic_map', 'city', 'Miasto'), className: 'dimension', value: (row) => escapeHtml(row.cityName || row.city || 'Nieznane') },
+  const geoMapMetric = defaultGeoMapMetric(platform);
+  const blocks: ReportBlock[] = [{
+    title: platformTitle,
+    subtitle: platform === 'meta'
+      ? `Regiony — ${metricLabel(reportData, 'meta', 'geographic_map', 'totalClicks', 'kliknięcia')}`
+      : 'Regiony',
+    platform,
+    heightMm: 118,
+    html: generateHotelRegionsBody(reportData, platform, geoMapMetric),
+  }];
+
+  if (platform === 'google') {
+    const cityRows = generateHotelGoogleCityRows(reportData);
+    const cityColumns: TableColumn[] = [
+      { key: 'city', label: metricLabel(reportData, 'google', 'geographic_map', 'city', 'Miasto'), className: 'dimension', value: (row) => escapeHtml(row.cityName || row.city || 'Nieznane') },
+      {
+        key: 'region',
+        label: metricLabel(reportData, 'google', 'geographic_map', 'region', 'Województwo'),
+        className: 'dimension',
+        value: (row: any) => {
+          const text =
+            row.countryCode && row.countryCode !== 'PL'
+              ? row.regionName || row.region || row.countryName || row.countryCode
+              : formatPolishVoivodeshipName(row);
+          return escapeHtml(String(text ?? '—'));
+        },
+      },
+      { key: 'totalClicks', label: metricLabel(reportData, 'google', 'geographic_map', 'totalClicks', 'Kliknięcia'), value: (row) => formatNumber(safeNumber(row.clicks)) },
+      { key: 'totalConversions', label: metricLabel(reportData, 'google', 'geographic_map', 'totalConversions', 'Konwersje'), value: (row) => formatNumber(safeNumber(row.conversions)) },
+      { key: 'conversion_value', label: metricLabel(reportData, 'google', 'geographic_map', 'conversion_value', 'Wartość konwersji'), value: (row) => formatCurrency(safeNumber(row.conversion_value || row.reservation_value)) },
+    ];
+    const cityChunks = cityRows.length > 6
+      ? [cityRows.slice(0, 6), cityRows.slice(6)]
+      : cityRows.length > 0 ? [cityRows] : [];
+    cityChunks.forEach((chunk, idx) => {
+      blocks.push({
+        title: platformTitle,
+        subtitle: idx === 0 ? 'Miasta' : 'Miasta — ciąg dalszy',
+        platform,
+        heightMm: idx === 0 ? 105 : estimateTableBlockHeightMm(chunk.length),
+        html: `${idx === 0 ? barPanel(metricLabel(reportData, 'google', 'geographic_map', 'conversion_value', 'Wartość konwersji wg miasta'), chunk.slice(0, 5).map((row: any) => [row.cityName || row.city || 'Nieznane', safeNumber(row.conversion_value || row.reservation_value)]), formatCurrency, { maxRows: 5 }) : ''}${framedSection(idx === 0 ? 'Miasta' : 'Miasta — ciąg dalszy', tableFromColumns(chunk, configuredTableColumns(reportData, 'google', 'geographic_map', cityColumns), 'city-table', 'city'))}`,
+      });
+    });
+    return blocks;
+  }
+
+  const regionRows = generateHotelMetaRegionRows(reportData);
+  if (regionRows.length === 0) return blocks;
+
+  const regionColumns: TableColumn[] = [
     {
       key: 'region',
-      label: metricLabel(reportData, 'google', 'geographic_map', 'region', 'Województwo'),
+      label: metricLabel(reportData, 'meta', 'geographic_map', 'region', 'Region'),
       className: 'dimension',
-      value: (row: any) => {
-        const text =
-          row.countryCode && row.countryCode !== 'PL'
-            ? row.regionName || row.region || row.countryName || row.countryCode
-            : formatPolishVoivodeshipName(row);
-        return escapeHtml(String(text ?? '—'));
-      },
+      value: (row: any) => escapeHtml(String(formatPolishVoivodeshipName(row) ?? row.regionName ?? '—')),
     },
-    { key: 'totalClicks', label: metricLabel(reportData, 'google', 'geographic_map', 'totalClicks', 'Kliknięcia'), value: (row) => formatNumber(safeNumber(row.clicks)) },
-    { key: 'totalConversions', label: metricLabel(reportData, 'google', 'geographic_map', 'totalConversions', 'Konwersje'), value: (row) => formatNumber(safeNumber(row.conversions)) },
-    { key: 'conversion_value', label: metricLabel(reportData, 'google', 'geographic_map', 'conversion_value', 'Wartość konwersji'), value: (row) => formatCurrency(safeNumber(row.conversion_value || row.reservation_value)) },
+    { key: 'totalSpend', label: metricLabel(reportData, 'meta', 'geographic_map', 'totalSpend', 'Wydatki'), value: (row) => formatCurrency(safeNumber(row.spend)) },
+    { key: 'totalClicks', label: metricLabel(reportData, 'meta', 'geographic_map', 'totalClicks', 'Kliknięcia'), value: (row) => formatNumber(safeNumber(row.clicks)) },
+    { key: 'totalImpressions', label: metricLabel(reportData, 'meta', 'report_summary', 'totalImpressions', 'Wyświetlenia'), value: (row) => formatNumber(safeNumber(row.impressions)) },
   ];
-  const blocks: ReportBlock[] = [{
-    title: 'Google Ads',
-    subtitle: 'Regiony',
-    platform: 'google',
-    heightMm: 104,
-    html: generateHotelGoogleRegionsBody(reportData),
-  }];
-  const cityChunks = cityRows.length > 6
-    ? [cityRows.slice(0, 6), cityRows.slice(6)]
-    : cityRows.length > 0 ? [cityRows] : [];
-  cityChunks.forEach((chunk, idx) => {
+  const regionChunks = regionRows.length > 8
+    ? [regionRows.slice(0, 8), regionRows.slice(8)]
+    : [regionRows];
+  regionChunks.forEach((chunk, idx) => {
     blocks.push({
-      title: 'Google Ads',
-      subtitle: idx === 0 ? 'Miasta' : 'Miasta — ciąg dalszy',
-      platform: 'google',
-      heightMm: idx === 0 ? 105 : estimateTableBlockHeightMm(chunk.length),
-      html: `${idx === 0 ? barPanel(metricLabel(reportData, 'google', 'geographic_map', 'conversion_value', 'Wartość konwersji wg miasta'), chunk.slice(0, 5).map((row: any) => [row.cityName || row.city || 'Nieznane', safeNumber(row.conversion_value || row.reservation_value)]), formatCurrency, { maxRows: 5 }) : ''}${framedSection(idx === 0 ? 'Miasta' : 'Miasta — ciąg dalszy', tableFromColumns(chunk, configuredTableColumns(reportData, 'google', 'geographic_map', cityColumns), 'city-table', 'city'))}`,
+      title: platformTitle,
+      subtitle: idx === 0 ? 'Regiony — szczegóły' : 'Regiony — ciąg dalszy',
+      platform,
+      heightMm: estimateTableBlockHeightMm(chunk.length),
+      html: framedSection(
+        idx === 0 ? 'Najlepsze regiony — kliknięcia' : 'Najlepsze regiony — ciąg dalszy',
+        tableFromColumns(chunk, configuredTableColumns(reportData, 'meta', 'geographic_map', regionColumns), 'city-table', 'city'),
+      ),
     });
   });
   return blocks;
@@ -4696,7 +5242,7 @@ function buildHotelReportBlocks(reportData: ReportData): ReportBlock[] {
       ...campaignBlocks(reportData, 'google'),
       ...deviceBlocks(reportData),
       ...demographicBlocks(reportData, 'google'),
-      ...geoBlocks(reportData),
+      ...geoBlocks(reportData, 'google'),
     );
   }
   if (reportData.metaData) {
@@ -4704,6 +5250,7 @@ function buildHotelReportBlocks(reportData: ReportData): ReportBlock[] {
       ...platformOverviewBlocks(reportData, 'meta'),
       ...campaignBlocks(reportData, 'meta'),
       ...demographicBlocks(reportData, 'meta'),
+      ...geoBlocks(reportData, 'meta'),
       ...placementBlocks(reportData),
     );
   }
@@ -4789,7 +5336,8 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .hotel-wordmark-rule { display: flex; align-items: center; justify-content: center; gap: 4mm; margin-top: 1.7mm; color: var(--navy); }
           .hotel-wordmark-rule span { width: 18mm; height: 0.15mm; background: var(--line); }
           .hotel-wordmark-rule small { font-size: 5.8pt; letter-spacing: 0.35em; }
-          .page-main { position: absolute; left: var(--pad-x); right: var(--pad-x); top: var(--content-y); height: var(--content-h); overflow: visible; z-index: 1; }
+          .page-main { position: absolute; left: var(--pad-x); right: var(--pad-x); top: var(--content-y); height: var(--content-h); overflow: visible; z-index: 1; max-width: calc(var(--page-w) - (2 * var(--pad-x))); box-sizing: border-box; }
+          .page-main > *, .flow-block, .framed-section, .two-stack, .metric-strip, .channel-grid, .yoy-grid, .highlight-grid, .row-card-grid, .regions-card, .regions-layout { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
           .page-title-block { text-align: center; margin: 0 0 5mm; }
           .page-title-block h1 { font-family: var(--serif); font-weight: 400; font-size: 32pt; line-height: 0.96; margin: 0; letter-spacing: -0.025em; color: var(--navy); }
           .page-subtitle { font-family: var(--serif); color: var(--terracotta-muted); font-size: 14pt; line-height: 1.12; margin-top: 1.6mm; }
@@ -4813,11 +5361,11 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .footer-page-number { font-size: 6.2pt; letter-spacing: 0.34em; font-variant-numeric: tabular-nums; }
           .framed-section { margin-top: 0; }
           .framed-title { margin: 0 0 4mm; font-size: 7pt; }
-          .metric-strip { display: grid; gap: 3mm; margin: 0; }
-          .metric-strip.cols-5 { grid-template-columns: repeat(5, 1fr); gap: 1.6mm; }
-          .metric-strip.cols-4 { grid-template-columns: repeat(4, 1fr); }
-          .metric-strip.cols-3 { grid-template-columns: repeat(3, 1fr); }
-          .metric-strip.cols-2 { grid-template-columns: repeat(2, 1fr); }
+          .metric-strip { display: grid; gap: 3mm; margin: 0; width: 100%; max-width: 100%; min-width: 0; }
+          .metric-strip.cols-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .metric-strip.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .metric-strip.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .metric-strip.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .hotel-metric-card, .channel-card, .yoy-card, .highlight-card, .bar-panel, .empty-panel, .donut-wrap, .region-card {
             border: 0.16mm solid var(--line-soft);
             border-radius: 2mm;
@@ -4826,26 +5374,33 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
             break-inside: avoid;
             page-break-inside: avoid;
           }
-          .hotel-metric-card { min-height: 18mm; padding: 3mm 1.8mm; text-align: center; display: flex; flex-direction: column; justify-content: center; }
-          .metric-label { min-height: 6mm; display: flex; align-items: center; justify-content: center; font-size: 5.5pt; line-height: 1.15; font-weight: 800; text-transform: uppercase; letter-spacing: 0.11em; color: var(--navy); }
-          .metric-value { margin-top: 1.8mm; font-size: 12pt; line-height: 1.08; color: var(--navy); font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; overflow-wrap: normal; }
-          .metric-subtext { margin-top: 1mm; font-size: 5.4pt; line-height: 1.15; color: var(--muted); font-variant-numeric: tabular-nums; }
-          .metric-strip.cols-5 .metric-label { font-size: 4.6pt; letter-spacing: 0.07em; }
-          .metric-strip.cols-5 .metric-value { font-size: 8.8pt; }
+          .hotel-metric-card { min-width: 0; max-width: 100%; min-height: 18mm; padding: 3mm 1.8mm; text-align: center; display: flex; flex-direction: column; justify-content: center; overflow: visible; }
+          .metric-label { min-width: 0; min-height: 6mm; display: flex; align-items: center; justify-content: center; font-size: 5.5pt; line-height: 1.15; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--navy); white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+          .metric-value { max-width: 100%; margin-top: 1.8mm; font-size: 11pt; line-height: 1.08; color: var(--navy); font-variant-numeric: tabular-nums; font-weight: 650; white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+          .metric-delta-row { margin-top: 1mm; display: flex; justify-content: center; }
+          .metric-subtext { max-width: 100%; margin-top: 1mm; font-size: 5.4pt; line-height: 1.15; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+          .metric-strip.cols-5 .metric-label { font-size: 5.1pt; letter-spacing: 0.07em; }
+          .metric-strip.cols-5 .metric-value { font-size: 9.8pt; }
+          .metric-strip.cols-5 .metric-delta { padding: 0.25mm 0.55mm; font-size: 4.3pt; }
           .metric-strip.cols-2 .hotel-metric-card { min-height: 14mm; padding: 2mm; }
           .metric-strip.cols-2 .metric-value { font-size: 10pt; }
-          .metric-delta { font-size: 5.4pt; margin-top: 1mm; }
+          .metric-delta { display: inline-flex; align-items: center; border-radius: 999px; padding: 0.35mm 0.9mm; background: rgba(14,39,66,0.055); font-size: 5.2pt; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+          .metric-delta small { margin-left: 0.7mm; color: var(--muted); font-size: 4.7pt; font-weight: 700; }
           .metric-delta.positive { color: var(--green); }
           .metric-delta.negative { color: var(--red); }
+          .metric-delta.neutral { color: var(--muted); }
           .two-stack { display: grid; gap: 5mm; }
-          .channel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+          .channel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; width: 100%; max-width: 100%; min-width: 0; }
           .yoy-grid { display: grid; grid-template-columns: 1fr; gap: 3mm; }
           .channel-card, .yoy-card, .highlight-card, .bar-panel, .empty-panel, .donut-wrap, .region-card { padding: 4mm; }
           .channel-card h3, .yoy-card h3, .highlight-card h3, .bar-panel h3 { font-family: var(--serif); font-size: 15pt; font-weight: 400; line-height: 1.05; margin: 0 0 3mm; text-align: center; }
           dl { margin: 0; }
-          .channel-card dl div, .highlight-card dl div { display: flex; justify-content: space-between; gap: 2mm; border-top: 0.12mm solid var(--line-soft); padding: 1.5mm 0; }
-          dt { color: var(--muted); font-size: 6.1pt; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.07em; }
-          dd { margin: 0; font-size: 7.3pt; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow-wrap: normal; }
+          .channel-card dl div, .highlight-card dl div { display: flex; justify-content: space-between; gap: 2mm; border-top: 0.12mm solid var(--line-soft); padding: 1.5mm 0; min-width: 0; max-width: 100%; }
+          dt { min-width: 0; color: var(--muted); font-size: 6.1pt; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; }
+          dd { max-width: 54%; margin: 0; font-size: 7.1pt; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+          .channel-card dd { display: inline-flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 0.7mm; }
+          .channel-card dd span { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+          .channel-card .metric-delta { font-size: 4.5pt; padding: 0.25mm 0.55mm; }
           .comparison-bars { display: grid; gap: 3.2mm; }
           .comparison-legend { display: flex; justify-content: center; gap: 5mm; font-size: 6.3pt; line-height: 1.2; color: var(--muted); font-weight: 700; }
           .comparison-legend span { display: inline-flex; align-items: center; gap: 1.2mm; }
@@ -4872,10 +5427,13 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .funnel-segment.segment-4 { width: 58%; background: linear-gradient(135deg, var(--navy), #17466B); }
           .funnel-label { font-size: 6.5pt; line-height: 1.15; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
           .funnel-value { margin-top: 0.7mm; font-size: 15pt; line-height: 1; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+          .funnel-delta-row { margin-top: 0.8mm; display: flex; justify-content: center; }
+          .funnel-segment .metric-delta { background: rgba(255,253,248,0.9); font-size: 5pt; padding: 0.3mm 0.75mm; }
           .funnel-rate { margin-top: 0.9mm; font-size: 5.8pt; opacity: 0.9; white-space: nowrap; overflow-wrap: normal; }
           .funnel-total-rate { border: 0.16mm solid var(--line-soft); border-radius: 2mm; padding: 2.6mm; text-align: center; background: rgba(255,253,248,0.72); }
           .funnel-total-rate span { display: block; color: var(--muted); font-size: 6pt; text-transform: uppercase; letter-spacing: 0.1em; }
           .funnel-total-rate strong { display: block; margin-top: 0.8mm; color: var(--terracotta-muted); font-size: 14pt; font-weight: 700; }
+          .funnel-total-rate .metric-delta { margin-top: 1mm; }
           .highlight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm; }
           .highlight-label { color: var(--terracotta-muted); font-size: 5.6pt; font-weight: 800; letter-spacing: 0.06em; margin-bottom: 2mm; text-align: center; text-transform: uppercase; }
           .highlight-card { padding: 3mm; }
@@ -4888,7 +5446,7 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .bar-track { height: 2.6mm; background: var(--soft); border-radius: 999px; overflow: hidden; margin-top: 1mm; }
           .bar-track div { height: 100%; background: linear-gradient(90deg, var(--terracotta), var(--pale-terracotta)); }
           .donut-wrap { display: flex; gap: 5mm; align-items: center; justify-content: center; min-height: 35mm; }
-          .donut { width: 32mm; height: 32mm; transform: rotate(-90deg); }
+          .donut { width: 32mm; height: 32mm; overflow: visible; transform: rotate(-90deg); transform-origin: center; }
           .donut-legend { font-size: 7pt; line-height: 1.65; }
           .donut-legend span { display: inline-block; width: 2.4mm; height: 2.4mm; margin-right: 1.4mm; vertical-align: middle; border-radius: 50%; }
           .donut-empty, .empty-cell, .empty-panel { text-align: center; color: var(--muted); font-style: italic; }
@@ -4946,12 +5504,51 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .row-card-metric strong { color: var(--navy); font-size: 7pt; line-height: 1.15; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow-wrap: normal; }
           .report-table-appendix th { font-size: 5.2pt; }
           .report-table-appendix td { font-size: 5.7pt; }
-          .regions-layout { display: grid; grid-template-columns: 1fr; gap: 4mm; }
-          .map-wrap { border: 0.16mm solid var(--line-soft); background: rgba(255,253,248,0.72); border-radius: 2mm; padding: 3mm; min-height: 72mm; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+          .regions-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; break-inside: avoid; page-break-inside: avoid; }
+          .regions-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 4mm; border-bottom: 0.12mm solid rgba(226,232,240,0.95); padding-bottom: 3.2mm; margin-bottom: 4.3mm; }
+          .regions-card-header h3 { margin: 0; font-size: 12pt; line-height: 1.05; color: #0f172a; font-weight: 800; letter-spacing: -0.02em; }
+          .regions-card-header p { margin: 1mm 0 0; font-size: 6.6pt; line-height: 1.2; color: #64748b; }
+          .metric-static-wrap { display: flex; align-items: center; gap: 1.5mm; color: #64748b; font-size: 5.8pt; font-weight: 700; white-space: nowrap; }
+          .metric-static-pill { display: inline-flex; align-items: center; gap: 1.5mm; min-height: 7.5mm; border: 0.14mm solid rgba(148,163,184,0.35); border-radius: 3mm; background: #fff; padding: 0 3mm; color: #0f172a; font-size: 6.4pt; line-height: 1; font-weight: 800; box-shadow: 0 0.7mm 2mm rgba(15,23,42,0.04); }
+          .metric-static-pill i, .metric-static-pill span { width: 3mm; height: 3mm; border-radius: 999px; background: #dbeafe; box-shadow: inset 0 0 0 0.8mm #1f5fbf; display: inline-block; }
+          .regions-layout { display: grid; grid-template-columns: minmax(0, 1.58fr) minmax(47mm, 0.92fr); gap: 5mm; align-items: start; }
+          .map-wrap { min-height: 68mm; display: flex; flex-direction: column; justify-content: flex-start; }
           .map-fallback { min-height: 48mm; }
-          .map-wrap svg.poland-map { width: 100%; height: 62mm; display: block; }
-          .map-legend { display: flex; align-items: center; justify-content: space-between; margin-top: 2mm; font-size: 5.8pt; color: var(--muted); width: 100%; text-transform: uppercase; letter-spacing: 0.08em; }
-          .legend-ramp { display: block; width: 32mm; height: 2mm; border-radius: 999px; background: linear-gradient(90deg, #F7D8C6, var(--terracotta)); }
+          .map-heading { display: flex; gap: 2mm; align-items: flex-start; margin-bottom: 2mm; }
+          .map-pin { width: 7mm; height: 7mm; border-radius: 2mm; background: #071842; display: inline-block; position: relative; flex: 0 0 auto; }
+          .map-pin:after { content: ''; position: absolute; left: 2.45mm; top: 2.45mm; width: 2.1mm; height: 2.1mm; border: 0.5mm solid #fff; border-radius: 999px; }
+          .map-heading strong { display: block; font-size: 7.5pt; line-height: 1.15; color: #0f172a; font-weight: 800; }
+          .map-heading small { display: block; margin-top: 0.6mm; font-size: 5.7pt; line-height: 1.25; color: #64748b; }
+          .map-wrap svg.poland-map { width: 100%; height: 55mm; display: block; background: transparent; border-radius: 0; padding: 0; }
+          .map-legend { display: flex; align-items: center; justify-content: center; gap: 2.2mm; margin-top: 2mm; font-size: 5.7pt; color: var(--muted); width: 100%; }
+          .map-legend-caption { margin-top: 1.5mm; font-size: 5.2pt; font-weight: 700; }
+          .legend-ramp { display: block; width: 34mm; height: 2mm; border-radius: 999px; background: linear-gradient(90deg, #dbeafe, #5b9bed, #071842); }
+          .region-side-panel { min-width: 0; }
+          .region-total-card { border-radius: 4mm; background: linear-gradient(135deg, #eff6ff, #f8fafc 68%, #fff); padding: 4mm; margin-bottom: 4mm; }
+          .region-total-card span { display: block; color: #64748b; font-size: 5.4pt; letter-spacing: 0.12em; text-transform: uppercase; line-height: 1.15; font-weight: 800; }
+          .region-total-card strong { display: block; margin-top: 1.5mm; color: #0f172a; font-size: 18pt; line-height: 1; font-weight: 850; font-variant-numeric: tabular-nums; white-space: nowrap; }
+          .region-total-card small { display: block; margin-top: 1.3mm; color: #64748b; font-size: 6pt; line-height: 1.2; font-variant-numeric: tabular-nums; }
+          .region-total-card .region-total-note { color: #94a3b8; font-size: 5.2pt; font-variant-numeric: normal; }
+          .top-region-head { display: flex; justify-content: space-between; gap: 2mm; align-items: baseline; margin-bottom: 2.3mm; }
+          .top-region-head strong { color: #0f172a; font-size: 7pt; line-height: 1; font-weight: 850; }
+          .top-region-head span { color: #64748b; font-size: 5.7pt; line-height: 1; font-weight: 700; }
+          .top-region-row { display: grid; align-items: center; gap: 1.35mm; margin: 2.2mm 0; max-width: 100%; overflow: hidden; }
+          .top-region-row.with-bars { grid-template-columns: 4.8mm minmax(13mm, 1fr) minmax(7mm, 0.42fr) max-content; }
+          .top-region-row.no-bars { grid-template-columns: 4.8mm minmax(0, 1fr) max-content; }
+          .top-region-row b { width: 4.2mm; height: 4.2mm; border-radius: 999px; background: #dbeafe; color: #1e3a8a; display: inline-flex; align-items: center; justify-content: center; font-size: 5.5pt; line-height: 1; font-weight: 850; }
+          .top-region-row:first-of-type b { background: #071842; color: #fff; }
+          .top-region-row em { min-width: 0; color: #334155; font-size: 6.5pt; line-height: 1.1; font-style: normal; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .top-region-row span { display: block; min-width: 0; height: 1.6mm; border-radius: 999px; background: #eef2ff; overflow: hidden; }
+          .top-region-row span i { display: block; height: 100%; border-radius: inherit; }
+          .top-region-row strong { color: #0f172a; font-size: 5.8pt; line-height: 1; font-weight: 850; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+          .region-extra-list { margin-top: 2mm; border-radius: 3mm; background: #f8fafc; padding: 1.4mm 2.2mm; }
+          .region-extra-list div { display: flex; justify-content: space-between; gap: 2mm; padding: 0.45mm 0; color: #64748b; font-size: 5.4pt; line-height: 1.1; }
+          .region-extra-list strong { color: #0f172a; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+          .region-warning { margin-bottom: 3mm; border-radius: 3mm; background: rgba(254,243,199,0.62); color: #78350f; padding: 2.2mm 3mm; font-size: 6pt; line-height: 1.3; }
+          .regions-empty-state { border: 0.14mm dashed rgba(148,163,184,0.35); border-radius: 3mm; background: #f8fafc; color: #64748b; padding: 7mm 4mm; text-align: center; font-size: 7pt; line-height: 1.3; }
+          .regions-empty-state.compact { padding: 3mm; font-size: 6pt; }
+          .map-region-label { font-family: var(--sans); font-size: 24px; font-weight: 800; fill: #0f2742; paint-order: stroke; stroke: rgba(255,253,248,0.92); stroke-width: 5px; stroke-linejoin: round; pointer-events: none; }
+          .map-region-code { font-size: 19px; letter-spacing: 1px; fill: rgba(15,39,66,0.72); }
           .region-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
           .region-card { padding: 3mm; }
           .region-card-title { font-size: 5.7pt; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.8mm; text-align: center; font-weight: 800; }
@@ -5799,7 +6396,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         tables: {
           placementPerformance: [],
           demographicPerformance: [],
-          adRelevanceResults: []
+          adRelevanceResults: [],
+          geographicPerformance: [],
         }
       };
     } catch (error) {
@@ -5819,20 +6417,23 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         ? clientData.ad_account_id.substring(4) 
         : clientData.ad_account_id;
       
-      const [placementResult, demographicResult, adRelevanceResult] = await Promise.allSettled([
+      const [placementResult, demographicResult, adRelevanceResult, geographicResult] = await Promise.allSettled([
         metaService.getPlacementPerformance(adAccountId, dateRange.start, dateRange.end),
         metaService.getDemographicPerformance(adAccountId, dateRange.start, dateRange.end),
-        metaService.getAdRelevanceResults(adAccountId, dateRange.start, dateRange.end)
+        metaService.getAdRelevanceResults(adAccountId, dateRange.start, dateRange.end),
+        metaService.getGeographicPerformance(adAccountId, dateRange.start, dateRange.end),
       ]);
       
       const placementData = placementResult.status === 'fulfilled' ? (placementResult.value || []) : [];
       const demographicData = demographicResult.status === 'fulfilled' ? (demographicResult.value || []) : [];
       const adRelevanceData = adRelevanceResult.status === 'fulfilled' ? (adRelevanceResult.value || []) : [];
+      const geographicData = geographicResult.status === 'fulfilled' ? (geographicResult.value || []) : [];
       
       logger.info('✅ Meta tables fetched directly:', {
         placementCount: placementData.length,
         demographicCount: demographicData.length,
-        adRelevanceCount: adRelevanceData.length
+        adRelevanceCount: adRelevanceData.length,
+        geographicCount: geographicData.length,
       });
       
       if (!reportData.metaData) {
@@ -5840,14 +6441,15 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           metrics: { totalSpend: 0, totalImpressions: 0, totalClicks: 0, totalConversions: 0, averageCtr: 0, averageCpc: 0, averageCpa: 0, averageCpm: 0, reach: 0, relevanceScore: 0, landingPageViews: 0, totalReservations: 0, totalReservationValue: 0, roas: 0, emailContacts: 0, phoneContacts: 0 },
           campaigns: [],
           funnel: { booking_step_1: 0, booking_step_2: 0, booking_step_3: 0, reservations: 0, reservation_value: 0, roas: 0 },
-          tables: { placementPerformance: [], demographicPerformance: [], adRelevanceResults: [] }
+          tables: { placementPerformance: [], demographicPerformance: [], adRelevanceResults: [], geographicPerformance: [] }
         };
       }
       
       reportData.metaData.tables = {
         placementPerformance: placementData,
         demographicPerformance: demographicData,
-        adRelevanceResults: adRelevanceData
+        adRelevanceResults: adRelevanceData,
+        geographicPerformance: geographicData,
       };
     } catch (error) {
       logger.warn('⚠️ Meta tables direct fetch failed:', error);
@@ -6372,7 +6974,8 @@ export async function POST(request: NextRequest) {
       const tables = {
         placementPerformance: metaTables?.placementPerformance || [],
         demographicPerformance: metaTables?.demographicPerformance || [],
-        adRelevanceResults: metaTables?.adRelevanceResults || []
+        adRelevanceResults: metaTables?.adRelevanceResults || [],
+        geographicPerformance: metaTables?.geographicPerformance || [],
       };
       
       reportData = {

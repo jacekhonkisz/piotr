@@ -434,9 +434,9 @@ export const REGISTRY_DIMENSIONS: RegistryField[] = [
     label: 'Województwo',
     format: 'text',
     description: 'Województwo (Polska) lub region poza Polską',
-    platforms: ['google'],
+    platforms: ['meta', 'google'],
     sections: ['geographic_map'],
-    sourceFields: { google: ['regionName', 'regionCode'] },
+    sourceFields: { meta: ['regionName', 'region'], google: ['regionName', 'regionCode'] },
     aggregation: 'none',
   },
   {

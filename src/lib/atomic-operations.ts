@@ -163,6 +163,29 @@ export async function saveMonthlySummary(params: {
     summaryDate
   });
 
+  const {
+    validateMetaCampaignSummaryWrite,
+    logBlockedMetaSummaryWrite,
+  } = await import('./campaign-summary-guard');
+  const guard = validateMetaCampaignSummaryWrite({
+    totals: {
+      spend: metrics.total_spend,
+      impressions: metrics.total_impressions,
+      clicks: metrics.total_clicks,
+    },
+    campaigns: campaignData,
+    liveApiCampaignCount: Array.isArray(campaignData) ? campaignData.length : 0,
+  });
+  if (!guard.allowed) {
+    logBlockedMetaSummaryWrite('atomic_monthly', clientId, summaryDate, guard);
+    return {
+      success: false,
+      error: new Error(guard.reason),
+      operationsCompleted: 0,
+      totalOperations: 1,
+    };
+  }
+
   // Prepare complete record (all data together)
   const summaryRecord = {
     client_id: clientId,

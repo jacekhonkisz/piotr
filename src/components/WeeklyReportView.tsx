@@ -106,14 +106,8 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-const formatNumber = (num: number) => {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M';
-  } else if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K';
-  }
-  return num.toLocaleString('pl-PL');
-};
+const formatNumber = (num: number) =>
+  new Intl.NumberFormat('pl-PL').format(Math.round(num));
 
 /** Contact counts should never abbreviate to K/M — show the exact integer. */
 const formatContactCount = (num: number) =>
@@ -766,6 +760,20 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
             type: changePercent >= 0 ? 'increase' as const : 'decrease' as const,
           };
         };
+
+        const comparisonText = (changePercent: number | undefined, currentValue?: number, previousValue?: number) => {
+          const change = formatComparisonChange(changePercent ?? 0, currentValue, previousValue);
+          if (!change) return null;
+
+          return (
+            <p className="mt-1 inline-flex items-center rounded-md bg-white/80 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums shadow-sm ring-1 ring-slate-200">
+              <span className={change.type === 'increase' ? 'text-green-600' : 'text-red-600'}>
+                {change.type === 'increase' ? '+' : '−'}{change.value.toFixed(1)}%
+              </span>
+              <span className="ml-1 text-slate-400">vs rok temu</span>
+            </p>
+          );
+        };
         
         // Calculate campaign performance totals
         const campaignTotals = campaigns.reduce((acc, campaign) => {
@@ -838,6 +846,29 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         const valueForRoas =
           onlineConversionValue || getConversionMetric(report, 'reservation_value', campaigns);
         const reportRoas = campaignTotals.spend > 0 ? valueForRoas / campaignTotals.spend : 0;
+        const previousContacts = (effectiveYoYData?.previous?.email_contacts || 0) + (effectiveYoYData?.previous?.click_to_call || 0);
+        const previousOfflineContactBasis = isBelmonteClient(clientName) && platform === 'google' ? 0 : previousContacts;
+        const previousOfflineReservations = Math.round(previousOfflineContactBasis * 0.2);
+        const previousOnlineValue = effectiveYoYData?.previous?.total_conversion_value || effectiveYoYData?.previous?.reservation_value || 0;
+        const previousReservations = effectiveYoYData?.previous?.reservations || 0;
+        const previousAverageConversionValue = previousReservations > 0 ? previousOnlineValue / previousReservations : 0;
+        const previousOfflineValue = isBelmonteClient(clientName)
+          ? getBelmontePotentialOfflineValue(previousAverageConversionValue)
+          : previousAverageConversionValue * previousOfflineReservations;
+        const previousTotalValueWithOffline = previousOnlineValue + previousOfflineValue;
+        const previousCostPercentage =
+          previousTotalValueWithOffline > 0 ? ((effectiveYoYData?.previous?.spend || 0) / previousTotalValueWithOffline) * 100 : 0;
+        const costPerReservation = totalReservations > 0 ? campaignTotals.spend / totalReservations : 0;
+
+        const currentCtr = campaignTotals.impressions > 0 ? (campaignTotals.clicks / campaignTotals.impressions) * 100 : 0;
+        const currentCpc = campaignTotals.clicks > 0 ? campaignTotals.spend / campaignTotals.clicks : 0;
+        const previousImpressions = effectiveYoYData?.previous?.impressions || 0;
+        const previousClicks = effectiveYoYData?.previous?.clicks || 0;
+        const previousSpend = effectiveYoYData?.previous?.spend || 0;
+        const previousCtr = previousImpressions > 0 ? (previousClicks / previousImpressions) * 100 : 0;
+        const previousCpc = previousClicks > 0 ? previousSpend / previousClicks : 0;
+        const ctrChange = previousCtr > 0 ? ((currentCtr - previousCtr) / previousCtr) * 100 : -999;
+        const cpcChange = previousCpc > 0 ? ((currentCpc - previousCpc) / previousCpc) * 100 : -999;
 
         // Calculate actual days in the report range
         const reportStartDate = new Date(report.date_range_start);
@@ -890,6 +921,12 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     title={metricLabel('report_summary', 'total_conversion_value', 'Łączna wartość konwersji')}
                     value={formatCurrency(getConversionMetric(report, 'total_conversion_value', campaigns))}
                     tooltip={metricLabel('report_summary', 'total_conversion_value', 'Łączna wartość konwersji')}
+                    change={formatComparisonChange(
+                      effectiveYoYData?.changes?.total_conversion_value || 0,
+                      getConversionMetric(report, 'total_conversion_value', campaigns),
+                      effectiveYoYData?.previous?.total_conversion_value
+                    )}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                 )}
 
@@ -898,6 +935,12 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     title={metricLabel('report_summary', 'reservation_value', 'Wartość rezerwacji')}
                     value={formatCurrency(getConversionMetric(report, 'reservation_value', campaigns))}
                     tooltip={metricLabel('report_summary', 'reservation_value', 'Wartość rezerwacji')}
+                    change={formatComparisonChange(
+                      effectiveYoYData?.changes?.reservation_value || 0,
+                      getConversionMetric(report, 'reservation_value', campaigns),
+                      effectiveYoYData?.previous?.reservation_value
+                    )}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                 )}
 
@@ -906,6 +949,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     title={metricLabel('report_summary', 'roas', 'ROAS')}
                     value={`${reportRoas.toFixed(2)}x`}
                     tooltip={metricLabel('report_summary', 'roas', 'ROAS')}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.roas || 0, reportRoas, effectiveYoYData?.previous?.roas)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                 )}
 
@@ -918,6 +963,12 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         : 0
                     )}
                     tooltip={metricLabel('contact', 'cost_per_reservation', 'Koszt rezerwacji')}
+                    change={formatComparisonChange(
+                      effectiveYoYData?.changes?.cost_per_reservation || 0,
+                      costPerReservation,
+                      effectiveYoYData?.previous?.cost_per_reservation
+                    )}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
                 )}
 
@@ -938,24 +989,36 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                     <div className="px-3 py-1.5">
                       <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'totalImpressions', 'Wyświetlenia')}</p>
                       <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatNumber(campaignTotals.impressions)}</p>
+                      {comparisonText(
+                        effectiveYoYData?.changes?.impressions,
+                        campaignTotals.impressions,
+                        effectiveYoYData?.previous?.impressions
+                      )}
                     </div>
                   )}
                   {metricVisible('report_summary', 'totalClicks') && (
                     <div className="px-3 py-1.5">
                       <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'totalClicks', 'Kliknięcia')}</p>
                       <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatNumber(campaignTotals.clicks)}</p>
+                      {comparisonText(
+                        effectiveYoYData?.changes?.clicks,
+                        campaignTotals.clicks,
+                        effectiveYoYData?.previous?.clicks
+                      )}
                     </div>
                   )}
                   {metricVisible('report_summary', 'averageCtr') && (
                     <div className="px-3 py-1.5">
                       <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'averageCtr', 'CTR')}</p>
-                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}</p>
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{`${currentCtr.toFixed(2)}%`}</p>
+                      {comparisonText(ctrChange, currentCtr, previousCtr)}
                     </div>
                   )}
                   {metricVisible('report_summary', 'averageCpc') && (
                     <div className="px-3 py-1.5">
                       <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'averageCpc', 'CPC')}</p>
-                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}</p>
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatCurrency(currentCpc)}</p>
+                      {comparisonText(cpcChange, currentCpc, previousCpc)}
                     </div>
                   )}
                 </div>
@@ -995,13 +1058,17 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   step1: yoyData.previous.booking_step_1,
                   step2: yoyData.previous.booking_step_2,
                   step3: yoyData.previous.booking_step_3,
-                  reservations: yoyData.previous.reservations
+                  reservations: yoyData.previous.reservations,
+                  totalConversionValue: yoyData.previous.total_conversion_value || yoyData.previous.reservation_value,
+                  roas: yoyData.previous.roas,
                 } : undefined}
                 yoyChanges={yoyData ? {
                   step1: yoyData.changes.booking_step_1,
                   step2: yoyData.changes.booking_step_2,
                   step3: yoyData.changes.booking_step_3,
-                  reservations: yoyData.changes.reservations
+                  reservations: yoyData.changes.reservations,
+                  totalConversionValue: yoyData.changes.total_conversion_value || yoyData.changes.reservation_value,
+                  roas: yoyData.changes.roas,
                 } : undefined}
                 className="h-full"
               />
@@ -1021,6 +1088,11 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">
                           {formatContactCount(totalContacts)}
                         </p>
+                        {comparisonText(
+                          effectiveYoYData?.changes?.total_contacts,
+                          totalContacts,
+                          effectiveYoYData?.previous?.total_contacts
+                        )}
                         {showEmailContacts && showPhoneContacts && (
                           <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
                             {formatContactCount(emailContacts)} {metricLabel('contact', 'email_contacts', 'e-mail').toLowerCase()} / {formatContactCount(phoneContacts)} {metricLabel('contact', 'click_to_call', 'telefon').toLowerCase()}
@@ -1033,12 +1105,22 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         <div className="rounded-lg bg-slate-50 p-2.5">
                           <p className="text-xs text-slate-500">{metricLabel('contact', 'email_contacts', 'E-mail')}</p>
                           <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatContactCount(emailContacts)}</p>
+                          {comparisonText(
+                            effectiveYoYData?.changes?.email_contacts,
+                            emailContacts,
+                            effectiveYoYData?.previous?.email_contacts
+                          )}
                         </div>
                       )}
                       {showPhoneContacts && (
                         <div className="rounded-lg bg-slate-50 p-2.5">
                           <p className="text-xs text-slate-500">{metricLabel('contact', 'click_to_call', 'Telefon')}</p>
                           <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatContactCount(phoneContacts)}</p>
+                          {comparisonText(
+                            effectiveYoYData?.changes?.click_to_call,
+                            phoneContacts,
+                            effectiveYoYData?.previous?.click_to_call
+                          )}
                         </div>
                       )}
                     </div>
@@ -1051,12 +1133,22 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                         <div className="rounded-lg bg-slate-50 p-2.5">
                           <p className="text-xs text-slate-500">{metricLabel('contact', 'reservations', 'Rezerwacje')}</p>
                           <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(getConversionMetric(report, 'reservations', campaigns))}</p>
+                          {comparisonText(
+                            effectiveYoYData?.changes?.reservations,
+                            totalReservations,
+                            effectiveYoYData?.previous?.reservations
+                          )}
                         </div>
                       )}
                       {metricVisible('contact', 'cost_per_reservation') && (
                         <div className="rounded-lg bg-slate-50 p-2.5">
                           <p className="text-xs text-slate-500">{metricLabel('contact', 'cost_per_reservation', 'Koszt rezerwacji')}</p>
-                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatCurrency(totalReservations > 0 ? campaignTotals.spend / totalReservations : 0)}</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatCurrency(costPerReservation)}</p>
+                          {comparisonText(
+                            effectiveYoYData?.changes?.cost_per_reservation,
+                            costPerReservation,
+                            effectiveYoYData?.previous?.cost_per_reservation
+                          )}
                         </div>
                       )}
                     </div>
@@ -1070,12 +1162,22 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                           <div className="rounded-lg bg-blue-50 p-2.5">
                             <p className="text-xs text-blue-700">{metricLabel('contact', 'offline_reservations', 'Rezerwacje offline')}</p>
                             <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(potentialOfflineReservations)}</p>
+                            {comparisonText(
+                              previousOfflineReservations > 0 ? ((potentialOfflineReservations - previousOfflineReservations) / previousOfflineReservations) * 100 : -999,
+                              potentialOfflineReservations,
+                              previousOfflineReservations
+                            )}
                           </div>
                         )}
                         {metricVisible('contact', 'offline_value') && (
                           <div className="rounded-lg bg-blue-50 p-2.5">
                             <p className="text-xs text-blue-700">{metricLabel('contact', 'offline_value', 'Wartość offline')}</p>
                             <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatCurrency(potentialOfflineValue)}</p>
+                            {comparisonText(
+                              previousOfflineValue > 0 ? ((potentialOfflineValue - previousOfflineValue) / previousOfflineValue) * 100 : -999,
+                              potentialOfflineValue,
+                              previousOfflineValue
+                            )}
                           </div>
                         )}
                       </div>
@@ -1088,10 +1190,20 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                       {metricVisible('contact', 'total_value_with_offline') && (
                         <p className="mt-1 text-xl font-semibold tabular-nums">{formatCurrency(totalConversionValueWithOffline)}</p>
                       )}
+                      {metricVisible('contact', 'total_value_with_offline') && comparisonText(
+                        previousTotalValueWithOffline > 0 ? ((totalConversionValueWithOffline - previousTotalValueWithOffline) / previousTotalValueWithOffline) * 100 : -999,
+                        totalConversionValueWithOffline,
+                        previousTotalValueWithOffline
+                      )}
                       {metricVisible('contact', 'cost_percentage') && (
                         <p className="mt-1 text-xs text-slate-300">
                           {metricLabel('contact', 'cost_percentage', 'Koszt pozyskania rezerwacji')}: {costPercentage.toFixed(1)}%
                         </p>
+                      )}
+                      {metricVisible('contact', 'cost_percentage') && comparisonText(
+                        previousCostPercentage > 0 ? ((costPercentage - previousCostPercentage) / previousCostPercentage) * 100 : -999,
+                        costPercentage,
+                        previousCostPercentage
                       )}
                     </div>
                   )}

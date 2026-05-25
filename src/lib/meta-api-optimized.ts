@@ -287,21 +287,6 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
-   * Clear all cached responses (useful for debugging or forcing fresh data)
-   */
-  clearCache(): void {
-    optimizedApiCache.clear();
-    logger.info('Meta API: Cache cleared');
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats(): { size: number; memoryMB: number } {
-    return optimizedApiCache.getStats();
-  }
-
-  /**
    * Fetch all pages of an insights endpoint (Graph API default limit would truncate campaigns).
    * Follows `paging.next` until exhausted. Same auth as makeRequest.
    */
@@ -701,6 +686,154 @@ export class MetaAPIServiceOptimized {
       'unknown': 'Nieznane'
     };
     return translations[position?.toLowerCase()] || position || '';
+  }
+
+  private extractReservationMetrics(item: any): { reservations: number; reservation_value: number } {
+    const actions = item.actions || [];
+    const actionValues = item.action_values || [];
+    const reservationAction = actions.find((a: any) =>
+      a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+      a.action_type === 'offsite_conversion.fb_pixel_complete_registration' ||
+      a.action_type === 'omni_purchase'
+    );
+    const reservationValueAction = actionValues.find((a: any) =>
+      a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+      a.action_type === 'offsite_conversion.fb_pixel_complete_registration' ||
+      a.action_type === 'omni_purchase'
+    );
+    return {
+      reservations: parseInt(reservationAction?.value || '0', 10),
+      reservation_value: parseFloat(reservationValueAction?.value || '0'),
+    };
+  }
+
+  /**
+   * Geographic performance by country and region (Insights breakdowns=country,region).
+   * Shape aligns with GoogleAdsGeographicPerformance rows used by PDF/report UI.
+   */
+  async getGeographicPerformance(adAccountId: string, dateStart: string, dateEnd: string): Promise<any[]> {
+    const endpoint = `act_${adAccountId}/insights`;
+    // v2: inline_link_clicks + unified attribution — matches campaign KPI contract.
+    const params = `since=${dateStart}&until=${dateEnd}&breakdowns=country,region&link_clicks=1`;
+    const cacheKey = this.getCacheKey(endpoint, params);
+
+    const cached = this.getCachedResponse(cacheKey);
+    if (cached) {
+      logger.info('Meta API: Cache hit for geographic performance');
+      return cached;
+    }
+
+    logger.info('Meta API: Fetching geographic performance from API');
+
+    const fields =
+      'impressions,clicks,inline_link_clicks,inline_link_click_ctr,cost_per_inline_link_click,spend,cpm,cpc,ctr,actions,action_values,conversions,conversion_values';
+    const buildUrl = (breakdowns: string) =>
+      `${this.baseUrl}/${endpoint}?time_range={"since":"${dateStart}","until":"${dateEnd}"}&fields=${fields}&breakdowns=${breakdowns}&limit=500&use_unified_attribution_setting=true&access_token=${this.accessToken}`;
+
+    const combinedResponse = await this.fetchAllInsightsPages(buildUrl('country,region'));
+    let rawRows = combinedResponse.data || [];
+
+    if (combinedResponse.error && rawRows.length === 0) {
+      logger.warn('Meta API: country,region geographic breakdown failed; falling back to separate country and region calls', combinedResponse.error);
+
+      const [regionResponse, countryResponse] = await Promise.all([
+        this.fetchAllInsightsPages(buildUrl('region')),
+        this.fetchAllInsightsPages(buildUrl('country')),
+      ]);
+
+      if (regionResponse.error) {
+        logger.warn('Meta API: Region geographic fallback failed:', regionResponse.error);
+      }
+      if (countryResponse.error) {
+        logger.warn('Meta API: Country geographic fallback failed:', countryResponse.error);
+      }
+
+      const regionRows = (regionResponse.data || []).map((item: any) => ({
+        ...item,
+        country: item.country || 'PL',
+      }));
+      // Country rows are only needed for the "Zagranica" bucket; PL would
+      // duplicate the region-level domestic totals.
+      const foreignCountryRows = (countryResponse.data || []).filter((item: any) => {
+        const country = String(item.country || '').trim().toUpperCase();
+        return country && country !== 'PL';
+      });
+
+      rawRows = [...regionRows, ...foreignCountryRows];
+    }
+
+    type Bucket = {
+      countryCode: string;
+      countryName: string;
+      regionName: string;
+      spend: number;
+      impressions: number;
+      clicks: number;
+      conversions: number;
+      conversion_value: number;
+      reservations: number;
+      reservation_value: number;
+    };
+
+    const buckets = new Map<string, Bucket>();
+
+    for (const item of rawRows) {
+      const countryCode = String(item.country || '').trim().toUpperCase() || 'UNKNOWN';
+      const regionName = String(item.region || '(nieznane)').trim() || '(nieznane)';
+      const key = `${countryCode}::${regionName}`;
+      const { reservations, reservation_value } = this.extractReservationMetrics(item);
+      const spend = parseFloat(item.spend || '0');
+      const impressions = parseInt(item.impressions || '0', 10);
+      // Canonical: link clicks per region — same metric as campaign totals / Ads Manager.
+      const clicks = parseInt(item.inline_link_clicks || item.clicks || '0', 10);
+      const conversions = parseInt(item.conversions || '0', 10) || reservations;
+      const conversion_value = reservation_value;
+
+      const bucket = buckets.get(key) ?? {
+        countryCode,
+        countryName: countryCode,
+        regionName,
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        conversions: 0,
+        conversion_value: 0,
+        reservations: 0,
+        reservation_value: 0,
+      };
+      bucket.spend += spend;
+      bucket.impressions += impressions;
+      bucket.clicks += clicks;
+      bucket.conversions += conversions;
+      bucket.conversion_value += conversion_value;
+      bucket.reservations += reservations;
+      bucket.reservation_value += reservation_value;
+      buckets.set(key, bucket);
+    }
+
+    const transformedData = Array.from(buckets.values())
+      .filter((row) => row.spend > 0 || row.impressions > 0 || row.clicks > 0 || row.reservation_value > 0)
+      .map((row) => ({
+        countryCode: row.countryCode === 'UNKNOWN' ? null : row.countryCode,
+        countryName: row.countryName,
+        regionName: row.regionName,
+        cityName: '(nieznane)',
+        spend: row.spend,
+        impressions: row.impressions,
+        clicks: row.clicks,
+        ctr: row.impressions > 0 ? (row.clicks / row.impressions) * 100 : 0,
+        cpc: row.clicks > 0 ? row.spend / row.clicks : 0,
+        conversions: row.conversions,
+        conversion_value: row.conversion_value,
+        reservations: row.reservations,
+        reservation_value: row.reservation_value,
+        roas: row.spend > 0 ? row.reservation_value / row.spend : 0,
+      }))
+      .sort((a, b) => b.reservation_value - a.reservation_value || b.spend - a.spend);
+
+    this.setCachedResponse(cacheKey, transformedData);
+    logger.info(`Meta API: Fetched ${transformedData.length} geographic records with conversion data`);
+    return transformedData;
   }
 
   /**

@@ -16,6 +16,7 @@ interface InteractivePDFButtonProps {
     placementPerformance: any[];
     demographicPerformance: any[];
     adRelevanceResults: any[];
+    geographicPerformance?: any[];
   } | null;
   viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom'; // Track if this is a custom date range
 }

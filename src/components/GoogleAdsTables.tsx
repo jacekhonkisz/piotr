@@ -14,12 +14,11 @@ import {
   Search,
   Smartphone,
   Users,
-  MapPin,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import GoogleAdsDemographicPieCharts from './GoogleAdsDemographicPieCharts';
-import PolandRegionMap, { type GeographicRow } from './PolandRegionMap';
+import PolandRegionMap, { type GeographicRow, type MapMetric } from './PolandRegionMap';
 import { formatPolishCityName, formatPolishVoivodeshipName } from '../lib/polish-geo-display';
 import { mergeGoogleAdsDevicePerformanceRows } from '../lib/google-ads-device-pl';
 import { useMetricsConfig } from '../lib/useMetricsConfig';
@@ -121,7 +120,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
   const [demographicData, setDemographicData] = useState<GoogleAdsDemographicPerformance[]>([]);
   const [demographicMetric, setDemographicMetric] = useState<'conversionValue' | 'clicks' | 'impressions'>('conversionValue');
   const [geographicData, setGeographicData] = useState<GeographicRow[]>([]);
-  const [geographicMetric, setGeographicMetric] = useState<'spend' | 'clicks' | 'conversions' | 'conversion_value'>('conversion_value');
+  const [geographicMetric, setGeographicMetric] = useState<'spend' | 'clicks' | 'conversion_value'>('conversion_value');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Tabs were removed in favor of stacked sections so every Google Ads
@@ -136,7 +135,6 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
   const sectionVisible = (section: MetricSection) => hasConfiguredColumns(metricsConfig, section);
   const geographicMetricOptions = [
     { value: 'conversion_value' as const, key: 'conversion_value', fallback: 'Wartość konwersji' },
-    { value: 'conversions' as const, key: 'totalConversions', fallback: 'Konwersje' },
     { value: 'clicks' as const, key: 'totalClicks', fallback: 'Kliknięcia' },
     { value: 'spend' as const, key: 'totalSpend', fallback: 'Wydatki' },
   ].filter((option) => visible('geographic_map', option.key));
@@ -600,50 +598,23 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         </div>
         )}
 
-        {/* Geographic: map + cities */}
+        {/* Geographic: integrated map + city details */}
         {sectionVisible('geographic_map') && (
-        <div id="google-regions" className="order-1 scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div>
-                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Regiony</h3>
-                <p className="text-xs text-slate-500">
-                  Wyniki według regionów i miast
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[11px] font-medium text-slate-500">Metryka:</span>
-                <select
-                  value={effectiveGeographicMetric}
-                  onChange={(e) => setGeographicMetric(e.target.value as typeof geographicMetric)}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900"
-                >
-                  {geographicMetricOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {label('geographic_map', option.key, option.fallback)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+        <div id="google-regions" className="order-1 scroll-mt-24 space-y-4">
+            <PolandRegionMap
+              data={geographicData}
+              metric={effectiveGeographicMetric}
+              metricOptions={geographicMetricOptions.map((option) => ({
+                value: option.value as MapMetric,
+                label: label('geographic_map', option.key, option.fallback),
+              }))}
+              onMetricChange={(nextMetric) => setGeographicMetric(nextMetric as typeof geographicMetric)}
+              platformLabel="Google Ads"
+              campaignTotals={campaignTotals ?? null}
+            />
 
-            <div className="space-y-4 p-4">
-              {geographicData.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  <p>Brak danych geograficznych dla wybranego okresu.</p>
-                  <p className="text-xs mt-2 text-slate-400">
-                    Dane pojawiają się, gdy kampanie wyświetlają się użytkownikom o znanej lokalizacji.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <PolandRegionMap
-                    data={geographicData}
-                    metric={effectiveGeographicMetric}
-                    campaignTotals={campaignTotals ?? null}
-                  />
-
-                  {/* Top cities table */}
-                  <div id="google-cities" className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {topCitiesByClicks.length > 0 && (
+                  <div id="google-cities" className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                     <div className="border-b border-slate-100 px-4 py-3">
                       <h3 className="text-sm font-semibold text-slate-900">Najlepiej konwertujące miasta</h3>
                       <p className="text-xs text-slate-500">
@@ -679,9 +650,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                       </table>
                     </div>
                   </div>
-                </>
-              )}
-            </div>
+            )}
         </div>
         )}
 

@@ -192,6 +192,7 @@ const sampleMetaTables = {
     { age: '35-44', gender: 'Mężczyźni', spend: 4800, impressions: 221000, clicks: 2400, ctr: 1.09, cpc: 2, reservations: 72, reservation_value: 41100, roas: 8.56, cost_per_reservation: 66.67, conversion_rate: 3, booking_step_1: 520, booking_step_2: 330, booking_step_3: 150, click_to_call: 28, email_contacts: 19 },
   ],
   adRelevanceResults: [],
+  geographicPerformance: [],
 };
 
 const sampleGoogleTables = {

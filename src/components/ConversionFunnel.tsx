@@ -16,6 +16,8 @@ interface FunnelBottomCardData {
   key: 'total_conversion_value' | 'roas';
   label: string;
   value: string;
+  numericValue: number;
+  comparisonKey: 'totalConversionValue' | 'roas';
   icon: React.ReactNode;
   color: string;
   bgColor: string;
@@ -41,6 +43,8 @@ interface ConversionFunnelProps {
     step2: number;
     step3: number;
     reservations: number;
+    totalConversionValue?: number;
+    roas?: number;
   };
   // Pre-calculated YoY changes from API
   yoyChanges?: {
@@ -48,6 +52,8 @@ interface ConversionFunnelProps {
     step2: number;
     step3: number;
     reservations: number;
+    totalConversionValue?: number;
+    roas?: number;
   };
   labels?: Partial<Record<
     | 'booking_step_1'
@@ -181,6 +187,8 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
       // ✅ Platform-specific label: Meta = "Wartość rezerwacji (zakupy w witrynie)", Google = "Łączna wartość rezerwacji"
       label: conversionValueLabel,
       value: `${displayTotalConversionValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`,
+      numericValue: displayTotalConversionValue,
+      comparisonKey: 'totalConversionValue',
       icon: <Calendar className="w-6 h-6" />,
       color: "text-white",
       bgColor: "bg-gradient-to-r from-slate-600 to-slate-500"
@@ -189,6 +197,8 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
       key: 'roas' as const,
       label: labels.roas || "ROAS",
       value: `${roas.toFixed(2)}x`,
+      numericValue: roas,
+      comparisonKey: 'roas',
       icon: <Calendar className="w-6 h-6" />,
       color: "text-white",
       bgColor: "bg-gradient-to-r from-slate-700 to-slate-600"
@@ -207,6 +217,31 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
     const bottomInset = Math.min((index + 1) * taperPercent, 42);
 
     return `polygon(${topInset}% 0%, ${100 - topInset}% 0%, ${100 - bottomInset}% 100%, ${bottomInset}% 100%)`;
+  };
+
+  const renderComparisonText = (
+    change: number | undefined,
+    currentValue: number,
+    previousValue: number | undefined
+  ) => {
+    if (
+      change === undefined ||
+      change === -999 ||
+      currentValue === 0 ||
+      !previousValue ||
+      Math.abs(change) < 0.01
+    ) {
+      return null;
+    }
+
+    return (
+      <div className="mt-1 text-[10px] font-semibold text-emerald-100 tabular-nums">
+        <span className={change > 0 ? 'text-emerald-100' : 'text-red-100'}>
+          {change > 0 ? '+' : '−'}{Math.abs(change).toFixed(1)}%
+        </span>
+        <span className="ml-1 text-white/70">vs rok temu</span>
+      </div>
+    );
   };
 
   return (
@@ -269,6 +304,11 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                     <div className={`text-base font-semibold ${card.color}`}>
                       {typeof card.value === 'string' ? card.value : (card.value as number).toLocaleString()}
                     </div>
+                    {renderComparisonText(
+                      yoyChanges?.[card.comparisonKey],
+                      card.numericValue,
+                      previousYear?.[card.comparisonKey]
+                    )}
                     <div className={`text-[11px] ${card.color}`}>
                       {card.label}
                     </div>
@@ -298,10 +338,11 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
               const prevValue = previousYear?.[item.key as keyof typeof previousYear] ?? 0;
 
               const shouldHide =
+                change === undefined ||
                 change === -999 ||
                 item.currentVal === 0 ||
                 prevValue === 0 ||
-                Math.abs(change) < 0.01;
+                Math.abs(change ?? 0) < 0.01;
 
               if (shouldHide) {
                 return (
@@ -309,7 +350,8 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                 );
               }
 
-              const isPositive = change > 0;
+              const safeChange = change ?? 0;
+              const isPositive = safeChange > 0;
 
               return (
                 <motion.div
@@ -322,7 +364,7 @@ const ConversionFunnel: React.FC<ConversionFunnelProps> = ({
                 >
                   <div className="text-center">
                     <div className="font-bold">
-                      {`${isPositive ? '↗' : '↘'} ${Math.abs(change).toFixed(1)}%`}
+                      {`${isPositive ? '↗' : '↘'} ${Math.abs(safeChange).toFixed(1)}%`}
                     </div>
                     <div className="text-[10px] mt-1">vs rok temu</div>
                   </div>

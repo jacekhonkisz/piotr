@@ -1660,7 +1660,7 @@ Piotr Bajerlein`;
                 </div>
                 ` : ''}
 
-                <p>Poprzedni miesiąc przyniósł nam łącznie <strong>${reportData.totalOnlineReservations.toLocaleString('pl-PL')} rezerwacji online</strong> o łącznej wartości ponad <strong>${Math.round(reportData.totalOnlineValue / 1000).toLocaleString('pl-PL')} tys. zł</strong>.</p>
+                <p>Poprzedni miesiąc przyniósł nam łącznie <strong>${reportData.totalOnlineReservations.toLocaleString('pl-PL')} rezerwacji online</strong> o łącznej wartości ponad <strong>${Math.round(Number(reportData.totalOnlineValue) || 0).toLocaleString('pl-PL')} zł</strong>.</p>
                 <p style="margin-bottom: 0;">Koszt pozyskania rezerwacji online zatem wyniósł: <strong>${reportData.onlineCostPercentage.toFixed(2)}%</strong>.</p>
               </div>
 
@@ -1735,7 +1735,7 @@ ${reportData.yoyComparison && (reportData.yoyComparison.googleAdsIncrease || rep
 Porównanie naszych wyników rok do roku wygląda następująco:
 ${reportData.yoyComparison.googleAdsIncrease ? `- Google Ads - wartość rezerwacji jest wyższa aż o ${reportData.yoyComparison.googleAdsIncrease.toFixed(0)}%.\n` : ''}${reportData.yoyComparison.metaAdsIncrease ? `- Facebook Ads - wartość rezerwacji jest wyższa aż o ${reportData.yoyComparison.metaAdsIncrease.toFixed(0)}%.\n` : ''}
 ` : ''}
-Poprzedni miesiąc przyniósł nam łącznie ${reportData.totalOnlineReservations.toLocaleString('pl-PL')} rezerwacji online o łącznej wartości ponad ${Math.round(reportData.totalOnlineValue / 1000).toLocaleString('pl-PL')} tys. zł.
+Poprzedni miesiąc przyniósł nam łącznie ${reportData.totalOnlineReservations.toLocaleString('pl-PL')} rezerwacji online o łącznej wartości ponad ${Math.round(Number(reportData.totalOnlineValue) || 0).toLocaleString('pl-PL')} zł.
 
 Koszt pozyskania rezerwacji online zatem wyniósł: ${reportData.onlineCostPercentage.toFixed(2)}%.
 

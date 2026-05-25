@@ -156,20 +156,42 @@ export async function POST(request: NextRequest) {
         
         // If smart cache has data, return it immediately (even if metaTables is empty)
         if (cacheResult.success && cacheResult.data) {
-          const metaTables = cacheResult.data.metaTables || {
+          const cachedMetaTables = cacheResult.data.metaTables || {};
+          const metaTables = {
+            ...cachedMetaTables,
             demographicPerformance: [],
             placementPerformance: [],
-            adRelevanceResults: []
+            adRelevanceResults: [],
+            geographicPerformance: [],
           };
+          metaTables.demographicPerformance = cachedMetaTables.demographicPerformance || [];
+          metaTables.placementPerformance = cachedMetaTables.placementPerformance || [];
+          metaTables.adRelevanceResults = cachedMetaTables.adRelevanceResults || [];
+          metaTables.geographicPerformance = cachedMetaTables.geographicPerformance || [];
           
           const demographicsCount = metaTables.demographicPerformance?.length || 0;
           const placementCount = metaTables.placementPerformance?.length || 0;
+          const geographicCount = metaTables.geographicPerformance?.length || 0;
+          const cacheHasGeographicPerformance = Array.isArray(cachedMetaTables.geographicPerformance);
           
           // 🔧 CRITICAL FIX: If cache has empty arrays, fall back to live API
           if (demographicsCount === 0 && placementCount === 0) {
             logger.info('⚠️ Cache has empty metaTables - falling back to live API');
             // Don't return here - let it fall through to live API section below
           } else {
+            if (!cacheHasGeographicPerformance) {
+              logger.info('🌍 Smart cache predates Meta geographicPerformance - fetching geo live and merging into response');
+              try {
+                const metaService = new MetaAPIService(metaToken);
+                const adAccountId = client.ad_account_id.startsWith('act_')
+                  ? client.ad_account_id.substring(4)
+                  : client.ad_account_id;
+                metaTables.geographicPerformance = await metaService.getGeographicPerformance(adAccountId, dateRange.start, dateRange.end);
+              } catch (geoError) {
+                logger.warn('⚠️ Failed to backfill Meta geographic performance for cached response:', geoError);
+              }
+            }
+
             // Cache has data - return it
             logger.info(`✅ Returning from ${isCurrentWeek ? 'weekly' : 'monthly'} smart cache with data`);
             const responseTime = Date.now() - startTime;
@@ -187,6 +209,7 @@ export async function POST(request: NextRequest) {
                 cacheAge: cacheResult.data.cacheAge || 0,
                 metaApiError: null,
                 hasMetaApiError: false,
+                geographicCount: metaTables.geographicPerformance?.length || geographicCount,
                 authenticatedUser: user.email
               }
             });
@@ -220,16 +243,18 @@ export async function POST(request: NextRequest) {
     
     try {
       // Fetch all meta tables in parallel with individual error handling
-      const [placementResult, demographicResult, adRelevanceResult] = await Promise.allSettled([
+      const [placementResult, demographicResult, adRelevanceResult, geographicResult] = await Promise.allSettled([
         metaService.getPlacementPerformance(adAccountId, dateRange.start, dateRange.end),
         metaService.getDemographicPerformance(adAccountId, dateRange.start, dateRange.end),
-        metaService.getAdRelevanceResults(adAccountId, dateRange.start, dateRange.end)
+        metaService.getAdRelevanceResults(adAccountId, dateRange.start, dateRange.end),
+        metaService.getGeographicPerformance(adAccountId, dateRange.start, dateRange.end),
       ]);
       
       // Process results with individual error handling
       let placementData: any[] = [];
       let demographicData: any[] = [];
       let adRelevanceData: any[] = [];
+      let geographicData: any[] = [];
       let partialErrors: string[] = [];
       
       if (placementResult.status === 'fulfilled') {
@@ -275,11 +300,20 @@ export async function POST(request: NextRequest) {
         console.error('❌ Ad relevance results failed:', adRelevanceResult.reason);
         partialErrors.push(`Ad Relevance: ${adRelevanceResult.reason}`);
       }
+
+      if (geographicResult.status === 'fulfilled') {
+        geographicData = geographicResult.value || [];
+        logger.info('Success', geographicData.length, 'geographic records');
+      } else {
+        console.error('❌ Geographic performance failed:', geographicResult.reason);
+        partialErrors.push(`Geographic: ${geographicResult.reason}`);
+      }
       
       metaTables = {
         placementPerformance: placementData,
         demographicPerformance: demographicData,
-        adRelevanceResults: adRelevanceData
+        adRelevanceResults: adRelevanceData,
+        geographicPerformance: geographicData,
       };
       
       // Set error message if any partial failures occurred
@@ -290,7 +324,8 @@ export async function POST(request: NextRequest) {
         logger.info('Success', {
           placementCount: placementData.length,
           demographicCount: demographicData.length,
-          adRelevanceCount: adRelevanceData.length
+          adRelevanceCount: adRelevanceData.length,
+          geographicCount: geographicData.length,
         });
       }
       
@@ -300,7 +335,8 @@ export async function POST(request: NextRequest) {
       metaTables = {
         placementPerformance: [],
         demographicPerformance: [],
-        adRelevanceResults: []
+        adRelevanceResults: [],
+        geographicPerformance: [],
       };
     }
 

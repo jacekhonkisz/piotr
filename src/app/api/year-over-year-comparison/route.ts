@@ -44,15 +44,26 @@ const calculateChange = (current: number, previous: number): number => {
 };
 
 function extractSummaryMetrics(summary: any) {
+  const spend = summary.total_spend || 0;
+  const reservations = summary.reservations || 0;
+  const reservationValue = summary.reservation_value || 0;
+  const totalConversionValue = summary.total_conversion_value || summary.conversion_value || reservationValue;
+  const emailContacts = summary.email_contacts || summary.total_email_clicks || summary.email_clicks || 0;
+  const phoneContacts = summary.click_to_call || summary.total_phone_clicks || summary.phone_clicks || 0;
   return {
-    spend: summary.total_spend || 0,
+    spend,
     impressions: summary.total_impressions || 0,
     clicks: summary.total_clicks || 0,
+    email_contacts: emailContacts,
+    click_to_call: phoneContacts,
     booking_step_1: summary.booking_step_1 || 0,
     booking_step_2: summary.booking_step_2 || 0,
     booking_step_3: summary.booking_step_3 || 0,
-    reservations: summary.reservations || 0,
-    reservation_value: summary.reservation_value || 0,
+    reservations,
+    reservation_value: reservationValue,
+    total_conversion_value: totalConversionValue,
+    roas: spend > 0 ? totalConversionValue / spend : 0,
+    cost_per_reservation: reservations > 0 ? spend / reservations : 0,
   };
 }
 
@@ -233,6 +244,19 @@ export async function POST(request: NextRequest) {
                 smartCacheResult.data.conversionMetrics.reservations || 0;
               currentData.totalReservationValue =
                 smartCacheResult.data.conversionMetrics.reservation_value || 0;
+              currentData.emailContacts =
+                smartCacheResult.data.conversionMetrics.email_contacts || 0;
+              currentData.phoneContacts =
+                smartCacheResult.data.conversionMetrics.click_to_call || 0;
+              currentData.totalConversionValue =
+                smartCacheResult.data.conversionMetrics.total_conversion_value ||
+                smartCacheResult.data.conversionMetrics.conversion_value ||
+                smartCacheResult.data.conversionMetrics.reservation_value ||
+                0;
+              currentData.roas =
+                (currentData.totalSpend || 0) > 0 ? currentData.totalConversionValue / currentData.totalSpend : 0;
+              currentData.costPerReservation =
+                currentData.totalReservations > 0 ? currentData.totalSpend / currentData.totalReservations : 0;
             }
             console.log(`✅ [${requestId}] Google Ads current data from SMART CACHE`);
           }
@@ -270,6 +294,19 @@ export async function POST(request: NextRequest) {
                   data.data.conversionMetrics.reservations || 0;
                 currentData.totalReservationValue =
                   data.data.conversionMetrics.reservation_value || 0;
+                currentData.emailContacts =
+                  data.data.conversionMetrics.email_contacts || 0;
+                currentData.phoneContacts =
+                  data.data.conversionMetrics.click_to_call || 0;
+                currentData.totalConversionValue =
+                  data.data.conversionMetrics.total_conversion_value ||
+                  data.data.conversionMetrics.conversion_value ||
+                  data.data.conversionMetrics.reservation_value ||
+                  0;
+                currentData.roas =
+                  (currentData.totalSpend || 0) > 0 ? currentData.totalConversionValue / currentData.totalSpend : 0;
+                currentData.costPerReservation =
+                  currentData.totalReservations > 0 ? currentData.totalSpend / currentData.totalReservations : 0;
               }
             }
           }
@@ -303,6 +340,11 @@ export async function POST(request: NextRequest) {
           totalBookingStep3: summaryMetrics.booking_step_3,
           totalReservations: summaryMetrics.reservations,
           totalReservationValue: summaryMetrics.reservation_value,
+          emailContacts: summaryMetrics.email_contacts,
+          phoneContacts: summaryMetrics.click_to_call,
+          totalConversionValue: summaryMetrics.total_conversion_value,
+          roas: summaryMetrics.roas,
+          costPerReservation: summaryMetrics.cost_per_reservation,
         };
       }
     }
@@ -335,6 +377,11 @@ export async function POST(request: NextRequest) {
       booking_step_3: 0,
       reservations: 0,
       reservation_value: 0,
+      email_contacts: 0,
+      click_to_call: 0,
+      total_conversion_value: 0,
+      roas: 0,
+      cost_per_reservation: 0,
     };
 
     // ===== CALCULATE CHANGES =====
@@ -362,6 +409,21 @@ export async function POST(request: NextRequest) {
         currentData?.totalReservationValue || 0,
         previousData.reservation_value
       ),
+      email_contacts: calculateChange(currentData?.emailContacts || 0, previousData.email_contacts),
+      click_to_call: calculateChange(currentData?.phoneContacts || 0, previousData.click_to_call),
+      total_contacts: calculateChange(
+        (currentData?.emailContacts || 0) + (currentData?.phoneContacts || 0),
+        previousData.email_contacts + previousData.click_to_call
+      ),
+      total_conversion_value: calculateChange(
+        currentData?.totalConversionValue || currentData?.totalReservationValue || 0,
+        previousData.total_conversion_value || previousData.reservation_value
+      ),
+      roas: calculateChange(currentData?.roas || 0, previousData.roas),
+      cost_per_reservation: calculateChange(
+        currentData?.costPerReservation || 0,
+        previousData.cost_per_reservation
+      ),
     };
 
     const responsePayload = {
@@ -374,6 +436,12 @@ export async function POST(request: NextRequest) {
         booking_step_3: currentData?.totalBookingStep3 || 0,
         reservations: currentData?.totalReservations || 0,
         reservation_value: currentData?.totalReservationValue || 0,
+        email_contacts: currentData?.emailContacts || 0,
+        click_to_call: currentData?.phoneContacts || 0,
+        total_contacts: (currentData?.emailContacts || 0) + (currentData?.phoneContacts || 0),
+        total_conversion_value: currentData?.totalConversionValue || currentData?.totalReservationValue || 0,
+        roas: currentData?.roas || 0,
+        cost_per_reservation: currentData?.costPerReservation || 0,
       },
       previous: {
         spend: previousData.spend,
@@ -384,6 +452,12 @@ export async function POST(request: NextRequest) {
         booking_step_3: previousData.booking_step_3,
         reservations: previousData.reservations,
         reservation_value: previousData.reservation_value,
+        email_contacts: previousData.email_contacts,
+        click_to_call: previousData.click_to_call,
+        total_contacts: previousData.email_contacts + previousData.click_to_call,
+        total_conversion_value: previousData.total_conversion_value || previousData.reservation_value,
+        roas: previousData.roas,
+        cost_per_reservation: previousData.cost_per_reservation,
       },
       changes: {
         spend: changes.spend || 0,
@@ -394,6 +468,12 @@ export async function POST(request: NextRequest) {
         booking_step_3: changes.booking_step_3 || 0,
         reservations: changes.reservations || 0,
         reservation_value: changes.reservation_value || 0,
+        email_contacts: changes.email_contacts || 0,
+        click_to_call: changes.click_to_call || 0,
+        total_contacts: changes.total_contacts || 0,
+        total_conversion_value: changes.total_conversion_value || 0,
+        roas: changes.roas || 0,
+        cost_per_reservation: changes.cost_per_reservation || 0,
       },
       _metadata: {
         platformRequested: platform,

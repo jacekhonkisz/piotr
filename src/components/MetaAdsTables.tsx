@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, 
   AlertCircle,
@@ -10,13 +10,15 @@ import {
   MousePointer,
   Eye,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import DemographicPieCharts from './DemographicPieCharts';
+import PolandRegionMap, { type GeographicRow, type MapMetric } from './PolandRegionMap';
 import { useMetricsConfig } from '../lib/useMetricsConfig';
 import type { MetricSection } from '../lib/default-metrics-config';
 import { hasConfiguredColumns } from '../lib/configured-report-columns';
+import { formatPolishVoivodeshipName } from '../lib/polish-geo-display';
 
 interface PlacementPerformance {
   placement: string;
@@ -63,25 +65,53 @@ interface AdRelevanceResult {
   reservation_value?: number;
 }
 
+interface GeographicPerformance {
+  countryCode?: string | null;
+  countryName?: string;
+  regionName?: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions?: number;
+  reservations?: number;
+  conversion_value?: number;
+  reservation_value?: number;
+}
+
 interface MetaAdsTablesProps {
   dateStart: string;
   dateEnd: string;
   clientId?: string;
+  campaignTotals?: {
+    spend?: number;
+    impressions?: number;
+    clicks?: number;
+    conversions?: number;
+    conversion_value?: number;
+  } | null;
   preloadedTablesData?: {
     placementPerformance?: PlacementPerformance[];
     demographicPerformance?: DemographicPerformance[];
     adRelevanceResults?: AdRelevanceResult[];
+    geographicPerformance?: GeographicPerformance[];
   } | null;
   onDataLoaded?: (data: {
     placementPerformance: PlacementPerformance[];
     demographicPerformance: DemographicPerformance[];
     adRelevanceResults: AdRelevanceResult[];
+    geographicPerformance: GeographicPerformance[];
   }) => void;
 }
 
-const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId, preloadedTablesData, onDataLoaded }) => {
+type MetaGeographicMetric = 'spend' | 'clicks' | 'impressions';
+
+const META_TOP_REGIONS_LIMIT = 10;
+
+const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId, preloadedTablesData, campaignTotals, onDataLoaded }) => {
   const [placementData, setPlacementData] = useState<PlacementPerformance[]>([]);
   const [demographicData, setDemographicData] = useState<DemographicPerformance[]>([]);
+  const [geographicData, setGeographicData] = useState<GeographicRow[]>([]);
+  const [geographicMetric, setGeographicMetric] = useState<MetaGeographicMetric>('clicks');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<string>('unknown');
@@ -113,18 +143,46 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     getMetricName(section, key) || fallback;
   const visible = (section: MetricSection, key: string) => isMetricVisible(section, key);
   const sectionVisible = (section: MetricSection) => hasConfiguredColumns(metricsConfig, section);
+  const geographicMetricOptions = [
+    { value: 'spend' as const, key: 'totalSpend', fallback: 'Wydatki' },
+    { value: 'clicks' as const, key: 'totalClicks', fallback: 'Kliknięcia' },
+    { value: 'impressions' as const, key: 'totalImpressions', fallback: 'Wyświetlenia' },
+  ];
+  const effectiveGeographicMetric =
+    geographicMetricOptions.some((option) => option.value === geographicMetric)
+      ? geographicMetric
+      : 'clicks';
+  const getGeographicMetricValue = (row: GeographicRow, metric: MetaGeographicMetric) => {
+    if (metric === 'spend') return row.spend || 0;
+    if (metric === 'clicks') return row.clicks || 0;
+    return row.impressions || 0;
+  };
+  const topRegionsByMetric = useMemo(
+    () =>
+      [...geographicData]
+        .filter((row) => !row.countryCode || row.countryCode === 'PL')
+        .filter((row) => row.regionName && row.regionName !== '(nieznane)')
+        .sort(
+          (a, b) =>
+            getGeographicMetricValue(b, effectiveGeographicMetric) - getGeographicMetricValue(a, effectiveGeographicMetric),
+        )
+        .slice(0, META_TOP_REGIONS_LIMIT),
+    [geographicData, effectiveGeographicMetric],
+  );
 
   useEffect(() => {
     if (preloadedTablesData) {
       const placementPerformance = preloadedTablesData.placementPerformance || [];
       const demographicPerformance = preloadedTablesData.demographicPerformance || [];
       const adRelevanceResults = preloadedTablesData.adRelevanceResults || [];
+      const geographicPerformance = preloadedTablesData.geographicPerformance || [];
       setPlacementData(placementPerformance);
       setDemographicData(demographicPerformance);
+      setGeographicData(geographicPerformance as GeographicRow[]);
       setDataSource('sample-preview');
       setCacheAge(null);
       setLoading(false);
-      onDataLoaded?.({ placementPerformance, demographicPerformance, adRelevanceResults });
+      onDataLoaded?.({ placementPerformance, demographicPerformance, adRelevanceResults, geographicPerformance });
       return;
     }
 
@@ -169,7 +227,9 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         success: result.success,
         source: result.debug?.source,
         demographicCount: result.data?.metaTables?.demographicPerformance?.length || 0,
-        placementCount: result.data?.metaTables?.placementPerformance?.length || 0
+        placementCount: result.data?.metaTables?.placementPerformance?.length || 0,
+        geographicCount: result.data?.metaTables?.geographicPerformance?.length || 0,
+        debugGeographicCount: result.debug?.geographicCount,
       });
       
       if (result.success) {
@@ -179,6 +239,16 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         const placementArray = result.data.metaTables?.placementPerformance || [];
         const rawDemographicArray = result.data.metaTables?.demographicPerformance || [];
+        const geographicArray = (result.data.metaTables?.geographicPerformance || []).map((item: any) => ({
+          ...item,
+          spend: typeof item.spend === 'string' ? parseFloat(item.spend) : (item.spend || 0),
+          impressions: typeof item.impressions === 'string' ? parseInt(item.impressions, 10) : (item.impressions || 0),
+          clicks: typeof item.clicks === 'string' ? parseInt(item.clicks, 10) : (item.clicks || 0),
+          conversions: typeof item.conversions === 'string' ? parseInt(item.conversions, 10) : (item.conversions || item.reservations || 0),
+          reservation_value: typeof item.reservation_value === 'string'
+            ? parseFloat(item.reservation_value)
+            : (item.reservation_value || item.conversion_value || 0),
+        }));
         
         // 🔍 DEBUG: Log placement data to verify transformation
         console.log('🔍 PLACEMENT DATA DEBUG:', {
@@ -208,13 +278,15 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         
         setPlacementData(placementArray);
         setDemographicData(demographicArray);
+        setGeographicData(geographicArray as GeographicRow[]);
         
         // Call the callback with the loaded data
         if (onDataLoaded) {
           onDataLoaded({
             placementPerformance: result.data.metaTables?.placementPerformance || [],
             demographicPerformance: result.data.metaTables?.demographicPerformance || [],
-            adRelevanceResults: result.data.metaTables?.adRelevanceResults || []
+            adRelevanceResults: result.data.metaTables?.adRelevanceResults || [],
+            geographicPerformance: geographicArray,
           });
         }
       } else {
@@ -257,7 +329,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   };
   
   const formatNumber = (value: number) => {
-    const numValue = typeof value === 'number' ? value : parseFloat(value) || 0;
+    const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
     return numValue.toLocaleString();
   };
 
@@ -370,7 +442,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   }
 
   // Check if all tables have no data
-  const hasNoData = placementData.length === 0 && demographicData.length === 0;
+  const hasNoData = placementData.length === 0 && demographicData.length === 0 && geographicData.length === 0;
   
   if (hasNoData && !loading) {
     return (
@@ -532,6 +604,76 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                 <p className="text-slate-600">Nie znaleziono danych o miejscach docelowych dla wybranego okresu.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {sectionVisible('geographic_map') && (
+          <div
+            id="meta-regions"
+            className="scroll-mt-24 space-y-4"
+          >
+            <PolandRegionMap
+              data={geographicData}
+              metric={effectiveGeographicMetric}
+              sectionSubtitle="Wyniki według regionów i miast"
+              metricOptions={geographicMetricOptions.map((option) => ({
+                value: option.value as MapMetric,
+                label: label('geographic_map', option.key, option.fallback),
+              }))}
+              onMetricChange={(nextMetric) => setGeographicMetric(nextMetric as MetaGeographicMetric)}
+              platformLabel="Meta Ads"
+              campaignTotals={campaignTotals ?? null}
+            />
+
+                  {topRegionsByMetric.length > 0 && (
+                    <div id="meta-region-details" className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                      <div className="border-b border-slate-100 px-4 py-3">
+                        <h3 className="text-sm font-semibold text-slate-900">Najlepsze regiony</h3>
+                        <p className="text-xs text-slate-500">Regiony z najwyższymi wynikami dostarczenia reklam (top 10)</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">
+                                {label('geographic_map', 'region', 'Region')}
+                              </th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                                {label('geographic_map', 'totalSpend', 'Wydatki')}
+                              </th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                                {label('geographic_map', 'totalClicks', 'Kliknięcia')}
+                              </th>
+                              <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                                {label('geographic_map', 'totalImpressions', 'Wyświetlenia')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white">
+                            {topRegionsByMetric.map((row, index) => (
+                              <tr
+                                key={`${row.regionName}-${index}`}
+                                className={`hover:bg-slate-50 ${index % 2 === 1 ? 'bg-slate-50/30' : ''}`}
+                              >
+                                <td className="px-4 py-2.5 text-[13px] font-medium text-slate-900">
+                                  {formatPolishVoivodeshipName(row)}
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-slate-900">
+                                  {formatCurrency(row.spend || 0)}
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-slate-900">
+                                  {formatNumber(row.clicks || 0)}
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-slate-900">
+                                  {formatNumber(row.impressions || 0)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
           </div>
         )}
 

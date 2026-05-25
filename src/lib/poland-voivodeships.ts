@@ -140,22 +140,21 @@ export const VOIVODESHIP_BY_CODE: Record<string, VoivodeshipShape> = Object.from
 /**
  * Compute a heatmap fill color for a value in [0..1].
  *
- * Uses a slate→sky→amber→rose ramp (matches the dashboard's neutral
- * Tailwind palette). Returns `#f1f5f9` (slate-100) for 0 / no-data so
+ * Uses the report's blue regional scale. Returns `#edf4ff` for 0 / no-data so
  * empty voivodeships read as "no activity" rather than the lowest tier.
  */
 export function heatmapColor(normalized: number, hasValue: boolean): string {
-  if (!hasValue) return '#f1f5f9'; // slate-100
+  if (!hasValue) return '#edf4ff';
   const t = Math.max(0, Math.min(1, normalized));
-  // Stops: slate-200 → sky-300 → amber-400 → rose-500
+  // Stops: light blue -> medium blue -> strongest navy.
   if (t < 0.25) {
-    return lerpHex('#e2e8f0', '#7dd3fc', t / 0.25);
+    return lerpHex('#dbeafe', '#bfdbfe', t / 0.25);
   } else if (t < 0.5) {
-    return lerpHex('#7dd3fc', '#fbbf24', (t - 0.25) / 0.25);
+    return lerpHex('#bfdbfe', '#93c5fd', (t - 0.25) / 0.25);
   } else if (t < 0.75) {
-    return lerpHex('#fbbf24', '#fb923c', (t - 0.5) / 0.25);
+    return lerpHex('#93c5fd', '#3b82f6', (t - 0.5) / 0.25);
   }
-  return lerpHex('#fb923c', '#e11d48', (t - 0.75) / 0.25);
+  return lerpHex('#3b82f6', '#071842', (t - 0.75) / 0.25);
 }
 
 function lerpHex(a: string, b: string, t: number): string {

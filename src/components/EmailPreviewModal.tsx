@@ -630,7 +630,6 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     // Format currency
     const fmt = (val: number) => val.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtInt = (val: number) => val.toLocaleString('pl-PL');
-    const fmtThousands = (val: number) => Math.round(val / 1000).toLocaleString('pl-PL');
     const fmtPlnWhole = (val: number) =>
       `${Math.round(Number(val) || 0).toLocaleString('pl-PL')} zł`;
 
@@ -670,7 +669,7 @@ Wartość rezerwacji: ${fmt(metaReservationValue)} zł
 ROAS: ${fmt(metaROAS)} (${fmt(metaROAS * 100)}%)
 
 Podsumowanie ogólne
-Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtThousands(totalOnlineValue)} tys. zł.
+Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtPlnWhole(totalOnlineValue)}.
 Koszt pozyskania rezerwacji online zatem wyniósł: ${fmt(onlineCostPercentage)}%.
 
 ${offlineNarrative.highlightParagraphsText[0]}
@@ -806,7 +805,7 @@ Piotr`;
             
     <div class="summary">
       <strong>Podsumowanie ogólne</strong><br><br>
-      Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtThousands(totalOnlineValue)} tys. zł.<br>
+      Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtPlnWhole(totalOnlineValue)}.<br>
       Koszt pozyskania rezerwacji online zatem wyniósł: ${fmt(onlineCostPercentage)}%.<br><br>
       
       <p style="margin: 0 0 12px 0;">${offlineNarrative.highlightParagraphsText[0]}</p>

@@ -33,7 +33,7 @@ const sv = (k: string) => SAMPLE[k] ?? 0;
 const fmtCurrency = (n: number) =>
   new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', minimumFractionDigits: 2 }).format(n);
 const fmtNumber = (n: number) =>
-  n >= 1_000_000 ? (n / 1_000_000).toFixed(1) + 'M' : n >= 1_000 ? (n / 1_000).toFixed(1) + 'K' : n.toLocaleString('pl-PL');
+  new Intl.NumberFormat('pl-PL').format(Math.round(n));
 const fmtVal = (key: string, fmt: string) => {
   const v = sv(key);
   if (fmt === 'currency') return fmtCurrency(v);

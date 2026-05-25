@@ -2,7 +2,16 @@
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin } from 'lucide-react';
+import {
+  BarChart3,
+  CalendarCheck,
+  ChevronDown,
+  Eye,
+  MapPin,
+  MousePointerClick,
+  WalletCards,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   POLAND_MAP_VIEW_BOX,
   POLAND_VOIVODESHIPS,
@@ -25,17 +34,35 @@ export interface GeographicRow {
   impressions?: number;
   clicks?: number;
   conversions?: number;
+  reservations?: number;
   conversion_value?: number;
   reservation_value?: number;
   roas?: number;
 }
 
+export type MapMetric = 'spend' | 'clicks' | 'impressions' | 'conversions' | 'conversion_value';
+
+export interface RegionMetricOption {
+  value: MapMetric;
+  label: string;
+}
+
 interface PolandRegionMapProps {
   data: GeographicRow[];
   /** Which metric drives the heatmap intensity. */
-  metric?: 'spend' | 'clicks' | 'conversions' | 'conversion_value';
+  metric?: MapMetric;
   /** Optional title rendered above the map. */
   title?: string;
+  /** Optional title rendered in the main card header. */
+  sectionTitle?: string;
+  /** Optional subtitle rendered in the main card header. */
+  sectionSubtitle?: string;
+  /** Existing metric selector options from report configuration. */
+  metricOptions?: RegionMetricOption[];
+  /** Existing metric state setter from the parent report. */
+  onMetricChange?: (metric: MapMetric) => void;
+  /** Platform label used in the campaign-total reconciliation header. */
+  platformLabel?: string;
   /**
    * Optional account/campaign totals for the same period. When provided, the
    * map renders a "Nieznana lokalizacja" bucket equal to
@@ -45,6 +72,7 @@ interface PolandRegionMapProps {
    */
   campaignTotals?: {
     spend?: number;
+    impressions?: number;
     clicks?: number;
     conversions?: number;
     conversion_value?: number;
@@ -59,7 +87,7 @@ interface RegionAggregate {
   clicks: number;
   conversions: number;
   conversion_value: number;
-  cities: { name: string; spend: number; clicks: number; conversions: number; conversion_value: number }[];
+  cities: { name: string; spend: number; impressions: number; clicks: number; conversions: number; conversion_value: number }[];
 }
 
 interface CountryAggregate {
@@ -76,17 +104,41 @@ const formatPLN = (v: number): string =>
   new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN', maximumFractionDigits: 0 }).format(v);
 const formatInt = (v: number): string => new Intl.NumberFormat('pl-PL').format(Math.round(v));
 
-const METRIC_LABELS: Record<NonNullable<PolandRegionMapProps['metric']>, string> = {
+const METRIC_LABELS: Record<MapMetric, string> = {
   spend: 'Wydatki',
+  impressions: 'Wyświetlenia',
   clicks: 'Kliknięcia',
   conversions: 'Konwersje',
   conversion_value: 'Wartość konwersji',
 };
 
+const METRIC_GENITIVE_LABELS: Record<MapMetric, string> = {
+  spend: 'wydatków',
+  impressions: 'wyświetleń',
+  clicks: 'kliknięć',
+  conversions: 'konwersji',
+  conversion_value: 'wartości konwersji',
+};
+
+const METRIC_ICONS: Record<MapMetric, LucideIcon> = {
+  spend: WalletCards,
+  impressions: Eye,
+  clicks: MousePointerClick,
+  conversions: CalendarCheck,
+  conversion_value: BarChart3,
+};
+
+const TOP_REGION_BAR_COLORS = ['#071842', '#1f5fbf', '#4f8ee8', '#8db8f7', '#bfdbfe'];
+
 const PolandRegionMap: React.FC<PolandRegionMapProps> = ({
   data,
   metric = 'conversion_value',
   title = 'Wydajność wg regionów',
+  sectionTitle = 'Regiony',
+  sectionSubtitle = 'Wyniki według regionów i miast',
+  metricOptions,
+  onMetricChange,
+  platformLabel = 'Google Ads',
   campaignTotals = null,
 }) => {
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
@@ -166,6 +218,7 @@ const PolandRegionMap: React.FC<PolandRegionMapProps> = ({
         target.cities.push({
           name: formatPolishCityName(row.cityName),
           spend: row.spend || 0,
+          impressions: row.impressions || 0,
           clicks: row.clicks || 0,
           conversions: row.conversions || 0,
           conversion_value: row.conversion_value || row.reservation_value || 0,
@@ -216,14 +269,26 @@ const PolandRegionMap: React.FC<PolandRegionMapProps> = ({
   const hoveredShape: VoivodeshipShape | null = hoveredCode
     ? VOIVODESHIP_BY_CODE[hoveredCode] ?? null
     : null;
+  const isMetaMap = platformLabel.toLowerCase().includes('meta');
+  const formatMetricValue = (v: number, metricKey: MapMetric) => {
+    if (!Number.isFinite(v)) return '—';
+    return metricKey === 'spend' || metricKey === 'conversion_value' ? formatPLN(v) : formatInt(v);
+  };
+  const tooltipMetrics: MapMetric[] = isMetaMap
+    ? (['spend', 'clicks', 'impressions'] as MapMetric[]).sort((a, b) => {
+        if (a === metric) return -1;
+        if (b === metric) return 1;
+        return 0;
+      })
+    : ['conversion_value', 'clicks', 'spend'];
 
-  // Top 5 regions for the side panel
+  const topRegionsLimit = 5;
   const topRegions = useMemo(() => {
     return Array.from(byCode.values())
       .filter((r) => (r[metric] ?? 0) > 0)
       .sort((a, b) => (b[metric] ?? 0) - (a[metric] ?? 0))
-      .slice(0, 5);
-  }, [byCode, metric]);
+      .slice(0, topRegionsLimit);
+  }, [byCode, metric, topRegionsLimit]);
 
   const foreignRows = useMemo(() => {
     return Array.from(foreignByCountry.values())
@@ -232,98 +297,151 @@ const PolandRegionMap: React.FC<PolandRegionMapProps> = ({
       .slice(0, 5);
   }, [foreignByCountry, metric]);
 
-  const formatMetric = (v: number) =>
-    metric === 'spend' || metric === 'conversion_value' ? formatPLN(v) : formatInt(v);
+  const formatMetric = (v: number) => formatMetricValue(v, metric);
+  const activeMetricLabel =
+    metricOptions?.find((option) => option.value === metric)?.label ?? METRIC_LABELS[metric];
+  const metricSelectorOptions = metricOptions?.length
+    ? metricOptions
+    : [{ value: metric, label: activeMetricLabel }];
+  const ActiveMetricIcon = METRIC_ICONS[metric] ?? BarChart3;
+  const topRegionMax = topRegions[0]?.[metric] ?? 0;
+  const hasGeographicRows = (data?.length ?? 0) > 0;
+  const locationRowsExceedCampaignTotal =
+    !!campaignTotals &&
+    hasGeographicRows &&
+    geographicViewTotal > totalMetric + 0.0001;
+  const summaryTotalValue = hasGeographicRows || campaignTotals ? formatMetric(totalMetric) : '—';
+  const summaryLocationValue = hasGeographicRows ? formatMetric(geographicViewTotal) : '—';
+  const summaryLocationLabel = locationRowsExceedCampaignTotal
+    ? 'suma wierszy lokalizacji'
+    : 'z czego z lokalizacji';
+  const geographicCoverage = totalMetric > 0 ? geographicViewTotal / totalMetric : 1;
+  const hasLowGeographicCoverage =
+    !!campaignTotals &&
+    totalMetric > 0 &&
+    geographicViewTotal > 0 &&
+    geographicCoverage < 0.05;
+  const hasNoGeographicMetricAssignment =
+    !!campaignTotals &&
+    totalMetric > 0 &&
+    geographicViewTotal === 0 &&
+    unknownLocationMetric > 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200">
-      <div className="flex items-center justify-between p-6 border-b border-slate-100">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-slate-900 rounded-lg">
-            <MapPin className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-            <p className="text-sm text-slate-600">
-              Mapa cieplna — {METRIC_LABELS[metric].toLowerCase()} wg województw; zagranica w podsumowaniu
-            </p>
-          </div>
+    <section className="overflow-hidden rounded-[1.65rem] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+      <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+        <div>
+          <h3 className="text-xl font-bold tracking-tight text-slate-950">{sectionTitle}</h3>
+          <p className="mt-1 text-sm text-slate-500">{sectionSubtitle}</p>
         </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-slate-500">
-            {campaignTotals ? 'Łącznie (kampanie Google Ads)' : 'Łącznie (Polska + zagranica)'}
+        <div className="flex items-center gap-2 self-start sm:self-center">
+          <span className="text-[11px] font-semibold text-slate-500">Metryka:</span>
+          <div className="relative">
+            <ActiveMetricIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-700" />
+            <select
+              value={metric}
+              onChange={(e) => onMetricChange?.(e.target.value as MapMetric)}
+              disabled={!onMetricChange}
+              aria-label="Wybierz metrykę mapy regionów"
+              className="h-10 min-w-[13rem] appearance-none rounded-xl border border-slate-200 bg-white pl-9 pr-9 text-sm font-semibold text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.05)] outline-none transition hover:border-blue-200 hover:bg-blue-50/30 focus:border-blue-300 focus:ring-4 focus:ring-blue-100 disabled:cursor-default disabled:opacity-100"
+            >
+              {metricSelectorOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           </div>
-          <div className="text-2xl font-semibold tabular-nums text-slate-900">{formatMetric(totalMetric)}</div>
-          {campaignTotals && unknownLocationMetric > 0 && (
-            <div className="text-[11px] text-slate-500 mt-1 tabular-nums">
-              z czego z lokalizacji: {formatMetric(geographicViewTotal)}
-            </div>
-          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
+      <div className="grid grid-cols-1 gap-7 px-5 py-6 sm:px-7 lg:grid-cols-[minmax(0,1.6fr)_minmax(310px,0.95fr)]">
         {/* Map */}
-        <div className="lg:col-span-2">
-          <div ref={mapAreaRef} className="relative bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+        <div className="min-w-0">
+          <div className="mb-4 flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#071842] shadow-[0_8px_18px_rgba(7,24,66,0.18)]">
+              <MapPin className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-slate-950">{title}</h4>
+              <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                Mapa cieplna — {activeMetricLabel.toLowerCase()} wg województw; zagranica w podsumowaniu
+              </p>
+            </div>
+          </div>
+
+          <div ref={mapAreaRef} className="relative min-h-[290px] overflow-visible">
             {/* Slightly inset + max width so the hover card does not cover the whole country */}
-            <div className="flex justify-center px-2 pt-3 pb-2 sm:px-4 sm:pt-4 sm:pb-3">
-              <div className="w-[90%] max-w-[min(100%,520px)] sm:max-w-[540px] lg:max-w-[560px]">
-                <svg
-                  viewBox={POLAND_MAP_VIEW_BOX}
-                  className="w-full h-auto"
-                  role="img"
-                  aria-label={`Mapa Polski - ${METRIC_LABELS[metric]} wg województw`}
-                >
-                  {POLAND_VOIVODESHIPS.map((v) => {
-                    const agg = byCode.get(v.code);
-                    const value = agg ? (agg[metric] ?? 0) : 0;
-                    const normalized = maxValue > 0 ? value / maxValue : 0;
-                    const fill = heatmapColor(normalized, value > 0);
-                    const isHovered = hoveredCode === v.code;
-                    return (
-                      <motion.path
-                        key={v.code}
-                        data-voiv={v.code}
-                        d={v.path}
-                        fill={fill}
-                        stroke={isHovered ? '#0f172a' : '#94a3b8'}
-                        strokeWidth={isHovered ? 2 : 1}
-                        style={{ cursor: agg ? 'pointer' : 'default', transition: 'stroke 120ms, stroke-width 120ms' }}
-                        onMouseEnter={(e) => {
-                          setHoveredCode(v.code);
-                          updateTooltipSideFromPathElement(e.currentTarget);
-                        }}
-                        onMouseLeave={() => setHoveredCode((c) => (c === v.code ? null : c))}
-                      />
-                    );
-                  })}
-                </svg>
+            <div className="flex justify-center px-0 pb-3 pt-2 sm:px-3 sm:pb-4">
+              <div className="w-[94%] max-w-[min(100%,590px)]">
+                {!hasGeographicRows ? (
+                  <div className="flex min-h-[290px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white/70 px-6 text-center">
+                    <MapPin className="mb-3 h-8 w-8 text-slate-300" />
+                    <p className="text-sm font-semibold text-slate-700">Brak danych geograficznych dla wybranego okresu.</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Dane pojawiają się, gdy kampanie wyświetlają się użytkownikom o znanej lokalizacji.
+                    </p>
+                  </div>
+                ) : (
+                  <svg
+                    viewBox={POLAND_MAP_VIEW_BOX}
+                    className="w-full h-auto drop-shadow-[0_18px_30px_rgba(15,23,42,0.08)]"
+                    role="img"
+                    aria-label={`Mapa Polski - ${activeMetricLabel} wg województw`}
+                  >
+                    {POLAND_VOIVODESHIPS.map((v) => {
+                      const agg = byCode.get(v.code);
+                      const value = agg ? (agg[metric] ?? 0) : 0;
+                      const normalized = maxValue > 0 ? value / maxValue : 0;
+                      const fill = heatmapColor(normalized, value > 0);
+                      const isHovered = hoveredCode === v.code;
+                      return (
+                        <motion.path
+                          key={v.code}
+                          data-voiv={v.code}
+                          d={v.path}
+                          fill={fill}
+                          stroke={isHovered ? '#071842' : 'rgba(15,39,66,0.2)'}
+                          strokeWidth={isHovered ? 2 : 1}
+                          style={{ cursor: agg ? 'pointer' : 'default', transition: 'stroke 120ms, stroke-width 120ms, fill 120ms' }}
+                          onMouseEnter={(e) => {
+                            setHoveredCode(v.code);
+                            updateTooltipSideFromPathElement(e.currentTarget);
+                          }}
+                          onMouseLeave={() => setHoveredCode((c) => (c === v.code ? null : c))}
+                        />
+                      );
+                    })}
+                  </svg>
+                )}
               </div>
             </div>
 
             {/* Hover tooltip — flips left/right so it stays off the hovered region */}
             {hovered && hoveredShape && (
               <div
-                className={`absolute top-3 z-10 max-w-sm w-[min(100%,20rem)] sm:top-4 bg-white/95 backdrop-blur-sm rounded-lg border border-slate-200 shadow-md p-3 sm:p-4 text-sm pointer-events-none ${
+                className={`absolute top-3 z-10 max-w-sm w-[min(100%,20rem)] sm:top-4 bg-white/95 backdrop-blur-sm rounded-xl border border-slate-200 shadow-lg p-3 sm:p-4 text-sm pointer-events-none ${
                   tooltipAlignEnd ? 'right-3 sm:right-4 left-auto' : 'left-3 sm:left-4 right-auto'
                 }`}
               >
                 <div className="font-semibold text-slate-900 mb-2">{hovered.name}</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-slate-600">
-                  <div>Wydatki:</div>
-                  <div className="text-right tabular-nums font-medium text-slate-900">{formatPLN(hovered.spend)}</div>
-                  <div>Kliknięcia:</div>
-                  <div className="text-right tabular-nums font-medium text-slate-900">{formatInt(hovered.clicks)}</div>
-                  <div>Konwersje:</div>
-                  <div className="text-right tabular-nums font-medium text-slate-900">{formatInt(hovered.conversions)}</div>
-                  <div>Wartość konwersji:</div>
-                  <div className="text-right tabular-nums font-medium text-slate-900">{formatPLN(hovered.conversion_value)}</div>
+                  {tooltipMetrics.map((metricKey) => (
+                    <React.Fragment key={metricKey}>
+                      <div className={metricKey === metric ? 'font-semibold text-slate-800' : undefined}>
+                        {METRIC_LABELS[metricKey]}:
+                      </div>
+                      <div className={`text-right tabular-nums font-medium text-slate-900 ${metricKey === metric ? 'font-semibold' : ''}`}>
+                        {formatMetricValue(hovered[metricKey] ?? 0, metricKey)}
+                      </div>
+                    </React.Fragment>
+                  ))}
                 </div>
                 {hovered.cities.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-slate-100">
                     <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">
-                      Top miasta wg {METRIC_LABELS[metric].toLowerCase()}
+                      Top miasta wg {activeMetricLabel.toLowerCase()}
                     </div>
                     <div className="space-y-0.5">
                       {hovered.cities.slice(0, 3).map((c) => (
@@ -342,100 +460,107 @@ const PolandRegionMap: React.FC<PolandRegionMapProps> = ({
           </div>
 
           {/* Legend */}
-          <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
-            <span>0</span>
-            <div className="flex-1 mx-4 h-2 rounded-full overflow-hidden flex">
-              {[0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => (
-                <div
-                  key={t}
-                  className="flex-1"
-                  style={{ backgroundColor: heatmapColor(t, true) }}
-                />
-              ))}
-            </div>
-            <span>{formatMetric(maxValue)}</span>
+          <div className="mt-3 flex items-center justify-center gap-3 text-[11px] font-medium text-slate-500">
+            <span>Niska wartość</span>
+            <div className="h-2 w-44 overflow-hidden rounded-full bg-gradient-to-r from-[#dbeafe] via-[#5b9bed] to-[#071842]" />
+            <span>Wysoka wartość</span>
           </div>
         </div>
 
-        {/* Side panel - Top 5 voivodeships */}
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-500 mb-3">
-            Top 5 województw — {METRIC_LABELS[metric]}
-          </div>
-          {topRegions.length === 0 ? (
-            <div className="text-sm text-slate-500 py-6 text-center bg-slate-50 rounded-lg border border-slate-200">
-              Brak danych dla wybranego okresu.
+        {/* Side panel - summary + top voivodeships */}
+        <div className="min-w-0">
+          <div className="rounded-2xl bg-gradient-to-br from-blue-50 via-slate-50 to-white p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+              {campaignTotals ? `Łącznie (kampanie ${platformLabel})` : 'Łącznie (Polska + zagranica)'}
             </div>
-          ) : (
-            <div className="space-y-2">
-              {topRegions.map((r, idx) => {
-                const value = r[metric] ?? 0;
-                const pct = totalMetric > 0 ? (value / totalMetric) * 100 : 0;
-                return (
-                  <div
-                    key={r.code}
-                    onMouseEnter={() => {
-                      setHoveredCode(r.code);
-                      const path = mapAreaRef.current?.querySelector(`path[data-voiv="${CSS.escape(r.code)}"]`);
-                      if (path) updateTooltipSideFromPathElement(path);
-                      else setTooltipAlignEnd(true);
-                    }}
-                    onMouseLeave={() => setHoveredCode(null)}
-                    className="bg-slate-50 rounded-lg p-3 border border-slate-200 cursor-pointer transition-colors hover:bg-slate-100"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs font-mono text-slate-500 w-5">#{idx + 1}</span>
-                        <span className="text-sm font-medium text-slate-900">{r.name}</span>
-                      </div>
-                      <span className="text-sm font-semibold tabular-nums text-slate-900">
-                        {formatMetric(value)}
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-slate-900"
-                        style={{ width: `${pct.toFixed(1)}%` }}
-                      />
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1 tabular-nums">{pct.toFixed(1)}%</div>
-                  </div>
-                );
-              })}
+            <div className="mt-2 text-3xl font-bold tracking-tight tabular-nums text-slate-950">{summaryTotalValue}</div>
+            <div className="mt-1 text-xs text-slate-500 tabular-nums">
+              {summaryLocationLabel}: {summaryLocationValue}
+            </div>
+            {locationRowsExceedCampaignTotal && (
+              <div className="mt-1 text-[11px] leading-4 text-slate-400">
+                Wiersze lokalizacji nie sumują się do KPI kampanii.
+              </div>
+            )}
+          </div>
+
+          {(hasNoGeographicMetricAssignment || hasLowGeographicCoverage) && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+              <strong>Brak wiarygodnego podziału geograficznego dla tej metryki.</strong>{' '}
+              {hasNoGeographicMetricAssignment
+                ? `API zwróciło 0 ${METRIC_GENITIVE_LABELS[metric]} z lokalizacji, mimo że kampanie mają ${formatMetric(totalMetric)}.`
+                : `API przypisało geograficznie tylko ${formatMetric(geographicViewTotal)} z ${formatMetric(totalMetric)} (${(geographicCoverage * 100).toFixed(1)}%).`}
+              {' '}Mapa dla tej metryki nie powinna być traktowana jako realny podział województw.
             </div>
           )}
 
+          <div className="mt-6">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div className="text-sm font-bold text-slate-900">Najlepsze regiony</div>
+              <div className="text-xs font-medium text-slate-500">{activeMetricLabel}</div>
+            </div>
+            {topRegions.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
+                Brak danych dla wybranego okresu.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {topRegions.map((r, idx) => {
+                  const value = r[metric] ?? 0;
+                  const pct = topRegionMax > 0 ? Math.max(6, (value / topRegionMax) * 100) : 0;
+                  const barColor = TOP_REGION_BAR_COLORS[idx] ?? TOP_REGION_BAR_COLORS[TOP_REGION_BAR_COLORS.length - 1];
+                  return (
+                    <div
+                      key={r.code}
+                      onMouseEnter={() => {
+                        setHoveredCode(r.code);
+                        const path = mapAreaRef.current?.querySelector(`path[data-voiv="${CSS.escape(r.code)}"]`);
+                        if (path) updateTooltipSideFromPathElement(path);
+                        else setTooltipAlignEnd(true);
+                      }}
+                      onMouseLeave={() => setHoveredCode(null)}
+                      className="grid cursor-pointer grid-cols-[1.6rem_minmax(5.8rem,0.9fr)_minmax(4rem,1fr)_auto] items-center gap-3 rounded-xl py-0.5 transition-colors hover:bg-blue-50/50"
+                    >
+                      <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${idx === 0 ? 'bg-[#071842] text-white' : 'bg-blue-100 text-blue-800'}`}>
+                        {idx + 1}
+                      </span>
+                      <span className="truncate text-sm font-medium text-slate-800">{r.name.toLowerCase()}</span>
+                      <span className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <span
+                          className="block h-full rounded-full"
+                          style={{ width: `${pct.toFixed(1)}%`, backgroundColor: barColor }}
+                        />
+                      </span>
+                      <span className="text-right text-sm font-bold tabular-nums text-slate-900">{formatMetric(value)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {(unmatchedPoland[metric] ?? 0) > 0 && (
-            <div className="mt-4 text-xs text-slate-500 bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <strong className="text-amber-900">Polska niedopasowana:</strong>{' '}
-              {formatMetric(unmatchedPoland[metric] ?? 0)} w wierszach, których Google Ads
+            <div className="mt-5 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+              <strong>Polska niedopasowana:</strong>{' '}
+              {formatMetric(unmatchedPoland[metric] ?? 0)} w wierszach, których {platformLabel}
               nie przypisał jednoznacznie do województwa.
             </div>
           )}
 
           {foreignRows.length > 0 && (
-            <div className="mt-4">
-              <div className="text-xs uppercase tracking-wider text-slate-500 mb-3">
-                Zagranica — {METRIC_LABELS[metric]}
+            <div className="mt-5">
+              <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                Zagranica — {activeMetricLabel}
               </div>
               <div className="space-y-2">
                 {foreignRows.map((country) => {
                   const value = country[metric] ?? 0;
-                  const pct = totalMetric > 0 ? (value / totalMetric) * 100 : 0;
                   return (
-                    <div key={country.code} className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-slate-900">
-                          {formatPolishCountryName({ countryCode: country.code, countryName: country.name })}
-                        </span>
-                        <span className="text-sm font-semibold tabular-nums text-slate-900">
-                          {formatMetric(value)}
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-slate-500" style={{ width: `${pct.toFixed(1)}%` }} />
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1 tabular-nums">{pct.toFixed(1)}%</div>
+                    <div key={country.code} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                      <span className="truncate font-medium text-slate-700">
+                        {formatPolishCountryName({ countryCode: country.code, countryName: country.name })}
+                      </span>
+                      <span className="font-bold tabular-nums text-slate-900">{formatMetric(value)}</span>
                     </div>
                   );
                 })}
@@ -444,43 +569,19 @@ const PolandRegionMap: React.FC<PolandRegionMapProps> = ({
           )}
 
           {campaignTotals && unknownLocationMetric > 0 && (
-            <div className="mt-4">
-              <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">
-                Nieznana lokalizacja
+            <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium text-slate-700">Nieznana lokalizacja</span>
+                <span className="font-bold tabular-nums text-slate-900">{formatMetric(unknownLocationMetric)}</span>
               </div>
-              <div className="bg-slate-50 rounded-lg p-3 border border-dashed border-slate-300">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-slate-900">
-                    Bez przypisania geograficznego
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums text-slate-900">
-                    {formatMetric(unknownLocationMetric)}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-slate-400"
-                    style={{
-                      width: `${
-                        totalMetric > 0
-                          ? ((unknownLocationMetric / totalMetric) * 100).toFixed(1)
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-                <div className="text-xs text-slate-500 mt-1 tabular-nums">
-                  {totalMetric > 0
-                    ? ((unknownLocationMetric / totalMetric) * 100).toFixed(1)
-                    : '0.0'}
-                  % wartości kampanii
-                </div>
+              <div className="mt-1 text-slate-500">
+                Nieprzypisane przez API
               </div>
             </div>
           )}
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 
