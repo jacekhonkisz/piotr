@@ -9,6 +9,7 @@ import logger from './logger';
 import { getAISummaryConfig, validateConfig } from './ai-summary-config';
 import AISummaryRateLimiter from './ai-summary-rate-limiter';
 import AISummaryCostTracker from './ai-summary-cost-tracker';
+import { ctrPercentFromStats } from './ctr-from-stats';
 
 interface ExecutiveSummaryData {
   totalSpend: number;
@@ -174,27 +175,35 @@ export async function generateAISummary(data: ExecutiveSummaryData, clientId?: s
     const platformText = data.platformAttribution || 'kampanie reklamowe';
     let prompt = `Podsumuj wyniki kampanii (${formatDateRange(data.dateRange.start, data.dateRange.end)}):`;
 
-    // Add platform-specific data breakdown
+    // Add platform-specific data breakdown (Google first — matches required output order)
     if (data.platformBreakdown && data.platformBreakdown.meta && data.platformBreakdown.google) {
       const metaData = data.platformBreakdown.meta;
       const googleData = data.platformBreakdown.google;
       
       prompt += `
-**Meta Ads:**
-Wydatki: ${formatCurrency(metaData.spend || 0)}
-Wyświetlenia: ${formatNumber(metaData.impressions || 0)}
-Kliknięcia: ${formatNumber(metaData.clicks || 0)}
-CTR: ${((metaData.clicks || 0) / (metaData.impressions || 1) * 100).toFixed(2)}%
-Rezerwacje: ${formatNumber(metaData.conversions || 0)}
-
-**Google Ads:**
+**Google Ads (dane źródłowe):**
 Wydatki: ${formatCurrency(googleData.spend || 0)}
 Wyświetlenia: ${formatNumber(googleData.impressions || 0)}
 Kliknięcia: ${formatNumber(googleData.clicks || 0)}
-CTR: ${((googleData.clicks || 0) / (googleData.impressions || 1) * 100).toFixed(2)}%
+CTR: ${ctrPercentFromStats(
+        googleData.averageCtr,
+        googleData.clicks || 0,
+        googleData.impressions || 0
+      ).toFixed(2)}%
 Rezerwacje: ${formatNumber(googleData.conversions || 0)}
 
-**Łączne wyniki:**
+**Meta Ads (dane źródłowe):**
+Wydatki: ${formatCurrency(metaData.spend || 0)}
+Wyświetlenia: ${formatNumber(metaData.impressions || 0)}
+Kliknięcia: ${formatNumber(metaData.clicks || 0)}
+CTR: ${ctrPercentFromStats(
+        metaData.averageCtr,
+        metaData.clicks || 0,
+        metaData.impressions || 0
+      ).toFixed(2)}%
+Rezerwacje: ${formatNumber(metaData.conversions || 0)}
+
+**Łączne wyniki (do ewentualnego krótkiego podsumowania na końcu):**
 Budżet łącznie: ${formatCurrency(data.totalSpend)}
 Wyświetlenia łącznie: ${formatNumber(data.totalImpressions)}
 Kliknięcia łącznie: ${formatNumber(data.totalClicks)}
@@ -222,9 +231,30 @@ Lejek konwersji: ${formatNumber(data.bookingStep1 || 0)} kroków pierwszego etap
 Kontakty: ${formatNumber(data.emailContacts || 0)} email, ${formatNumber(data.clickToCall || 0)} telefoniczne`;
     }
 
-    prompt += `
+    const hasBothPlatforms = !!(
+      data.platformBreakdown &&
+      data.platformBreakdown.meta &&
+      data.platformBreakdown.google
+    );
 
-Napisz zwięzłe podsumowanie z perspektywy zespołu ("wydaliśmy", "osiągnęliśmy"). Bez nazw firm. Tylko fakty. Uwzględnij dane z lejka konwersji i kontakty jeśli dostępne. Jeśli dostępne są dane z Meta Ads i Google Ads, napisz płynny tekst skupiając się najpierw na wynikach Meta Ads, a następnie na wynikach Google Ads, wszystko w jednym spójnym akapicie.`;
+    if (hasBothPlatforms) {
+      prompt += `
+
+Napisz podsumowanie z perspektywy zespołu ("wydaliśmy", "osiągnęliśmy"). Bez nazw firm. Tylko fakty z danych powyżej.
+
+WYMAGANA STRUKTURA (użyj podwójnej nowej linii między akapitami):
+1) Opcjonalnie jedno krótkie zdanie wstępu o analizowanym okresie — bez liczb konkretnych platform.
+2) Akapit: pierwsza linia to dokładnie "Google Ads" — wyłącznie wyniki Google Ads (zero danych Meta w tym akapicie).
+3) Akapit: pierwsza linia to dokładnie "Meta Ads" — wyłącznie wyniki Meta Ads (zero danych Google w tym akapicie).
+4) Opcjonalnie krótki akapit "Podsumowanie łączne" ze skrótem budżetu łącznego i ROAS — bez powtarzania szczegółów z punktów 2–3.
+
+Uwzględnij lejek konwersji i kontakty w podsumowaniu łącznym lub osobno pod platformami, jeśli da się to uzasadnić danymi.`;
+    } else {
+      prompt += `
+
+Napisz zwięzłe podsumowanie z perspektywy zespołu ("wydaliśmy", "osiągnęliśmy"). Bez nazw firm. Tylko fakty.
+Zacznij jeden akapit od nagłówka "Google Ads" lub "Meta Ads" — zgodnie z tym, której platformy dotyczą dane (tylko jedna platforma w zestawieniu). Uwzględnij lejek konwersji i kontakty jeśli dostępne.`;
+    }
 
     // Call OpenAI API with retry logic
     const summary = await callOpenAIWithRetry(prompt, config.openai.maxRetries);
@@ -317,9 +347,9 @@ function generateFallbackSummary(data: ExecutiveSummaryData): string {
     }
   };
 
-  // Build the summary with smooth platform-specific narrative
+  // Czytelna struktura: wstęp → Google Ads (tylko Google) → Meta Ads (tylko Meta) → opcjonalnie łącznie
   const platformText = data.platformAttribution || 'kampanie reklamowe';
-  let summary = `W okresie od ${formatDateRange(data.dateRange.start, data.dateRange.end)} przeprowadziliśmy ${platformText}`;
+  let summary = `W okresie ${formatDateRange(data.dateRange.start, data.dateRange.end)} analizowaliśmy ${platformText}.`;
   
   // Add platform-specific narrative if both platforms are present
   if (data.platformBreakdown && data.platformBreakdown.meta && data.platformBreakdown.google) {
@@ -337,28 +367,39 @@ function generateFallbackSummary(data: ExecutiveSummaryData): string {
     const googleClicksSafe = Number.isFinite(googleData.clicks) ? googleData.clicks : 0;
     const googleConversionsSafe = Number.isFinite(googleData.conversions) ? googleData.conversions : 0;
     
-    // Meta Ads results
-    summary += ` o budżecie ${formatCurrency(metaSpendSafe)} w Meta Ads i ${formatCurrency(googleSpendSafe)} w Google Ads. `;
-    summary += `Kampanie Meta Ads wygenerowały ${formatNumber(metaImpressionsSafe)} wyświetleń i ${formatNumber(metaClicksSafe)} kliknięć, osiągając CTR na poziomie ${((metaClicksSafe) / (metaImpressionsSafe || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(metaConversionsSafe)} rezerwacji. `;
-    
-    // Google Ads results
-    summary += `Kampanie Google Ads wygenerowały ${formatNumber(googleImpressionsSafe)} wyświetlenia i ${formatNumber(googleClicksSafe)} kliknięć, osiągając CTR na poziomie ${((googleClicksSafe) / (googleImpressionsSafe || 1) * 100).toFixed(2)}% i przynosząc ${formatNumber(googleConversionsSafe)} rezerwacji. `;
-    
-    // Combined results
-    summary += `Łącznie działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.averageCpa || 0)}.`;
+    const googleCtr = ctrPercentFromStats(
+      googleData.averageCtr,
+      googleClicksSafe,
+      googleImpressionsSafe
+    ).toFixed(2);
+    const metaCtr = ctrPercentFromStats(
+      metaData.averageCtr,
+      metaClicksSafe,
+      metaImpressionsSafe
+    ).toFixed(2);
+
+    summary += `\n\nGoogle Ads\n`;
+    summary += `Wydaliśmy ${formatCurrency(googleSpendSafe)}. Wygenerowaliśmy ${formatNumber(googleImpressionsSafe)} wyświetleń i ${formatNumber(googleClicksSafe)} kliknięć (CTR ${googleCtr}%). Rezerwacje: ${formatNumber(googleConversionsSafe)}.`;
+
+    summary += `\n\nMeta Ads\n`;
+    summary += `Wydaliśmy ${formatCurrency(metaSpendSafe)}. Wygenerowaliśmy ${formatNumber(metaImpressionsSafe)} wyświetleń i ${formatNumber(metaClicksSafe)} kliknięć (CTR ${metaCtr}%). Rezerwacje: ${formatNumber(metaConversionsSafe)}.`;
+
+    summary += `\n\nPodsumowanie łączne\n`;
+    summary += `Łącznie: ${formatNumber(data.reservations || 0)} rezerwacji, wartość ${formatCurrency(data.reservationValue || 0)}, ROAS ${(data.roas || 0).toFixed(2)}x, średni koszt rezerwacji ${formatCurrency(data.averageCpa || 0)}.`;
   } else {
     // Fallback to combined format if only one platform
     summary += ` o łącznym budżecie ${formatCurrency(data.totalSpend)}. Kampanie wygenerowały ${formatNumber(data.totalImpressions)} wyświetleń i ${formatNumber(data.totalClicks)} kliknięć, osiągając CTR na poziomie ${data.averageCtr.toFixed(2)}%. Działania reklamowe przyniosły ${formatNumber(data.reservations || 0)} rezerwacji o łącznej wartości ${formatCurrency(data.reservationValue || 0)}, co dało ROAS na poziomie ${(data.roas || 0).toFixed(2)}x. Średni koszt pozyskania rezerwacji wyniósł ${formatCurrency(data.costPerReservation || 0)}.`;
   }
   
-  // Add funnel data if available
+  // Add funnel data if available (łącznie — brak podziału per platforma w danych wejściowych)
   if (data.bookingStep1 || data.bookingStep2 || data.bookingStep3) {
-    summary += `W lejku konwersji odnotowaliśmy ${formatNumber(data.bookingStep1 || 0)} kroków pierwszego etapu, ${formatNumber(data.bookingStep2 || 0)} kroków drugiego etapu i ${formatNumber(data.bookingStep3 || 0)} kroków trzeciego etapu. `;
+    summary += `\n\nLejek konwersji (łącznie)\n`;
+    summary += `Odnotowaliśmy ${formatNumber(data.bookingStep1 || 0)} kroków pierwszego etapu, ${formatNumber(data.bookingStep2 || 0)} drugiego i ${formatNumber(data.bookingStep3 || 0)} trzeciego etapu.`;
   }
-  
-  // Add contact data if available
+
   if (data.emailContacts || data.clickToCall) {
-    summary += `Kampanie wygenerowały ${formatNumber(data.emailContacts || 0)} kontaktów email i ${formatNumber(data.clickToCall || 0)} kontaktów telefonicznych.`;
+    summary += `\n\nKontakty (łącznie)\n`;
+    summary += `${formatNumber(data.emailContacts || 0)} kontaktów e-mail i ${formatNumber(data.clickToCall || 0)} telefonicznych.`;
   }
   
   return summary;
@@ -428,7 +469,7 @@ async function callOpenAIWithRetry(prompt: string, maxRetries: number = 3): Prom
           messages: [
             {
               role: 'system',
-              content: 'Jesteś ekspertem ds. marketingu cyfrowego. Tworzysz zwięzłe podsumowania kampanii reklamowych w języku polskim. Pisz z perspektywy zespołu ("zrobiliśmy", "wydaliśmy"). Nie używaj nazw firm. Opieraj się tylko na danych. Tekst ma być zwięzły. Liczby w formacie polskim z PLN (zł).'
+              content: 'Jesteś ekspertem ds. marketingu cyfrowego. Podsumowania po polsku. Gdy są dane z Google Ads i Meta Ads: dwa osobne akapity — najpierw "Google Ads" (wyłącznie Google), potem "Meta Ads" (wyłącznie Meta), potem ewentualnie krótkie podsumowanie łączne. Perspektywa zespołu ("wydaliśmy"). Bez nazw firm. Liczby po polsku (zł).'
             },
             {
               role: 'user',

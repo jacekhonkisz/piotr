@@ -3,6 +3,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, Eye, FileText, Save } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { getMonthlyOfflineNarrative } from '@/lib/monthly-report-offline-narrative';
+import {
+  getBelmontePotentialOfflineValue,
+  getMicroConversionsForOfflineModel,
+  isBelmonteClient,
+  offlineMicroPartsFromCampaigns
+} from '@/lib/offline-reservation-estimate';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -384,17 +391,47 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
       const totalClicks = finalTotals.clicks || 0;
       const totalConversions = finalTotals.conversions || 0;
       
-      // Calculate new metrics using same logic as WeeklyReportView
-      const totalEmailContacts = finalCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-      const totalPhoneContacts = finalCampaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-      const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-      
+      const googleRows = finalCampaigns.filter((c: any) => c.platform === 'google');
+      const metaRows = finalCampaigns.filter((c: any) => c.platform === 'meta');
+      const hasPlatformSplit =
+        finalCampaigns.length > 0 &&
+        finalCampaigns.some((c: any) => c.platform === 'google' || c.platform === 'meta');
+
+      const partsForOffline = hasPlatformSplit
+        ? {
+            googleFormSubmits: 0,
+            googleEmail: googleRows.reduce((s, c: any) => s + (c.email_contacts || 0), 0),
+            googlePhone: googleRows.reduce((s, c: any) => s + (c.click_to_call || 0), 0),
+            metaFormSubmits: 0,
+            metaEmail: metaRows.reduce((s, c: any) => s + (c.email_contacts || 0), 0),
+            metaPhone: metaRows.reduce((s, c: any) => s + (c.click_to_call || 0), 0)
+          }
+        : offlineMicroPartsFromCampaigns(finalCampaigns);
+
+      const microForOffline = getMicroConversionsForOfflineModel(clientName, partsForOffline, {
+        metaCampaigns: metaRows
+      });
+
+      const potentialOfflineReservations = Math.round(microForOffline * 0.2);
+
       const totalReservationValue = finalCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
       const totalReservations = finalCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-      const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-      const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
-      const totalPotentialValue = potentialOfflineValue + totalReservationValue;
-      const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
+      let averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+      const metaOnlineReservationValue = metaRows.reduce((s, c: any) => s + (Number(c.reservation_value) || 0), 0);
+      const metaReservationsCount = metaRows.reduce((s, c: any) => s + (Number(c.reservations) || 0), 0);
+      if (isBelmonteClient(clientName) && metaReservationsCount > 0) {
+        averageReservationValue = metaOnlineReservationValue / metaReservationsCount;
+      }
+      const potentialOfflineValue = isBelmonteClient(clientName)
+        ? getBelmontePotentialOfflineValue(averageReservationValue)
+        : potentialOfflineReservations * averageReservationValue;
+      const totalPotentialValue = isBelmonteClient(clientName)
+        ? potentialOfflineValue + metaOnlineReservationValue
+        : potentialOfflineValue + totalReservationValue;
+      const spendForCost = isBelmonteClient(clientName)
+        ? metaRows.reduce((s, c: any) => s + (Number(c.spend) || 0), 0) || totalSpend
+        : totalSpend;
+      const costPercentage = totalPotentialValue > 0 ? (spendForCost / totalPotentialValue) * 100 : 0;
 
       // Check if period has ended and try to get real summary from generated report
       const now = new Date();
@@ -527,7 +564,6 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     const googleClicks = googleSummary.clicks || 0;
     const googleCPC = googleSummary.cpc || (googleClicks > 0 ? googleSpend / googleClicks : 0);
     const googleCTR = googleSummary.ctr || (googleImpressions > 0 ? (googleClicks / googleImpressions) * 100 : 0);
-    const googleFormSubmissions = googleSummary.form_submissions || 0;
     const googleEmails = googleSummary.email_contacts || 0;
     const googlePhones = googleSummary.click_to_call || 0;
     const googleBE1 = googleSummary.booking_step_1 || 0;
@@ -541,7 +577,6 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     const metaSpend = metaSummary.spend || 0;
     const metaImpressions = metaSummary.impressions || 0;
     const metaClicks = metaSummary.clicks || 0;
-    const metaFormSubmissions = metaSummary.form_submissions || 0;
     const metaEmails = metaSummary.email_contacts || 0;
     const metaPhones = metaSummary.click_to_call || 0;
     const metaReservations = metaSummary.reservations || 0;
@@ -554,18 +589,50 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     const totalSpend = googleSpend + metaSpend;
     const onlineCostPercentage = totalOnlineValue > 0 ? (totalSpend / totalOnlineValue) * 100 : 0;
 
-    // Calculate micro conversions
-    const totalMicroConversions = googleFormSubmissions + googleEmails + googlePhones + metaFormSubmissions + metaEmails + metaPhones;
+    const metaDetailCampaigns = campaignsData.filter((c: any) => c.platform === 'meta');
+    const totalMicroConversions = getMicroConversionsForOfflineModel(
+      clientName,
+      {
+        googleFormSubmits: 0,
+        googleEmail: googleEmails,
+        googlePhone: googlePhones,
+        metaFormSubmits: 0,
+        metaEmail: metaEmails,
+        metaPhone: metaPhones
+      },
+      { metaCampaigns: metaDetailCampaigns }
+    );
     const estimatedOfflineReservations = Math.round(totalMicroConversions * 0.2);
-    const avgReservationValue = totalOnlineReservations > 0 ? totalOnlineValue / totalOnlineReservations : 0;
-    const estimatedOfflineValue = estimatedOfflineReservations * avgReservationValue;
-    const totalValue = totalOnlineValue + estimatedOfflineValue;
-    const finalCostPercentage = totalValue > 0 ? (totalSpend / totalValue) * 100 : 0;
+    let avgReservationValue = totalOnlineReservations > 0 ? totalOnlineValue / totalOnlineReservations : 0;
+    if (isBelmonteClient(clientName) && metaReservations > 0) {
+      avgReservationValue = metaReservationValue / metaReservations;
+    }
+    const estimatedOfflineValue = isBelmonteClient(clientName)
+      ? getBelmontePotentialOfflineValue(avgReservationValue)
+      : estimatedOfflineReservations * avgReservationValue;
+    const totalValue = isBelmonteClient(clientName)
+      ? estimatedOfflineValue + metaReservationValue
+      : totalOnlineValue + estimatedOfflineValue;
+    const spendForCostPct = isBelmonteClient(clientName) ? metaSpend || totalSpend : totalSpend;
+    const finalCostPercentage = totalValue > 0 ? (spendForCostPct / totalValue) * 100 : 0;
+
+    const offlineNarrative = getMonthlyOfflineNarrative(clientName, {
+      totalMicroConversions,
+      estimatedOfflineReservations,
+      estimatedOfflineValue,
+      finalCostPercentage,
+      totalValue,
+      monthName,
+      year,
+      metaReservationValue: metaReservationValue
+    });
 
     // Format currency
     const fmt = (val: number) => val.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fmtInt = (val: number) => val.toLocaleString('pl-PL');
     const fmtThousands = (val: number) => Math.round(val / 1000).toLocaleString('pl-PL');
+    const fmtPlnWhole = (val: number) =>
+      `${Math.round(Number(val) || 0).toLocaleString('pl-PL')} zł`;
 
     const subject = `Podsumowanie miesiąca - ${monthName} ${year} | ${clientName}`;
 
@@ -583,12 +650,11 @@ Wyświetlenia: ${fmtInt(googleImpressions)}
 Kliknięcia: ${fmtInt(googleClicks)}
 CPC: ${fmt(googleCPC)} zł
 CTR: ${fmt(googleCTR)}%
-Wysłanie formularza: ${fmtInt(googleFormSubmissions)}
 Kliknięcia w adres e-mail: ${fmtInt(googleEmails)}
 Kliknięcia w numer telefonu: ${fmtInt(googlePhones)}
-Booking Engine krok 1: ${fmtInt(googleBE1)}
-Booking Engine krok 2: ${fmtInt(googleBE2)}
-Booking Engine krok 3: ${fmtInt(googleBE3)}
+Booking step 1: ${fmtInt(googleBE1)}
+Booking step 2: ${fmtInt(googleBE2)}
+Booking step 3: ${fmtInt(googleBE3)}
 Rezerwacje: ${fmtInt(googleReservations)}
 Wartość rezerwacji: ${fmt(googleReservationValue)} zł
 ROAS: ${fmt(googleROAS)} (${fmt(googleROAS * 100)}%)
@@ -597,7 +663,6 @@ ROAS: ${fmt(googleROAS)} (${fmt(googleROAS * 100)}%)
 Wydana kwota: ${fmt(metaSpend)} zł
 Wyświetlenia: ${fmtInt(metaImpressions)}
 Kliknięcia linku: ${fmtInt(metaClicks)}
-Wysłanie formularza: ${fmtInt(metaFormSubmissions)}
 Kliknięcia w adres e-mail: ${fmtInt(metaEmails)}
 Kliknięcia w numer telefonu: ${fmtInt(metaPhones)}
 Rezerwacje: ${fmtInt(metaReservations)}
@@ -608,11 +673,11 @@ Podsumowanie ogólne
 Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtThousands(totalOnlineValue)} tys. zł.
 Koszt pozyskania rezerwacji online zatem wyniósł: ${fmt(onlineCostPercentage)}%.
 
-Dodatkowo pozyskaliśmy też ${fmtInt(totalMicroConversions)} mikro konwersji (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy ${fmtInt(estimatedOfflineReservations)} rezerwacji i dodatkowe ok. ${fmtThousands(estimatedOfflineValue)} tys. zł tą drogą.
+${offlineNarrative.highlightParagraphsText[0]}
 
-Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${fmt(finalCostPercentage)}%.
+${offlineNarrative.highlightParagraphsText[1]}
 
-Zatem suma wartości rezerwacji za ${monthName} ${year} (online + offline) wynosi około: ${fmtThousands(totalValue)} tys. zł.
+${offlineNarrative.totalClosingLine}
 
 W razie pytań proszę o kontakt.
 
@@ -714,12 +779,11 @@ Piotr`;
         <div class="metric-line"><span class="metric-label">Kliknięcia:</span> <span class="metric-value">${fmtInt(googleClicks)}</span></div>
         <div class="metric-line"><span class="metric-label">CPC:</span> <span class="metric-value">${fmt(googleCPC)} zł</span></div>
         <div class="metric-line"><span class="metric-label">CTR:</span> <span class="metric-value">${fmt(googleCTR)}%</span></div>
-        <div class="metric-line"><span class="metric-label">Wysłanie formularza:</span> <span class="metric-value">${fmtInt(googleFormSubmissions)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia w adres e-mail:</span> <span class="metric-value">${fmtInt(googleEmails)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu:</span> <span class="metric-value">${fmtInt(googlePhones)}</span></div>
-        <div class="metric-line"><span class="metric-label">Booking Engine krok 1:</span> <span class="metric-value">${fmtInt(googleBE1)}</span></div>
-        <div class="metric-line"><span class="metric-label">Booking Engine krok 2:</span> <span class="metric-value">${fmtInt(googleBE2)}</span></div>
-        <div class="metric-line"><span class="metric-label">Booking Engine krok 3:</span> <span class="metric-value">${fmtInt(googleBE3)}</span></div>
+        <div class="metric-line"><span class="metric-label">Booking step 1:</span> <span class="metric-value">${fmtInt(googleBE1)}</span></div>
+        <div class="metric-line"><span class="metric-label">Booking step 2:</span> <span class="metric-value">${fmtInt(googleBE2)}</span></div>
+        <div class="metric-line"><span class="metric-label">Booking step 3:</span> <span class="metric-value">${fmtInt(googleBE3)}</span></div>
         <div class="metric-line"><span class="metric-label">Rezerwacje:</span> <span class="metric-value">${fmtInt(googleReservations)}</span></div>
         <div class="metric-line"><span class="metric-label">Wartość rezerwacji:</span> <span class="metric-value">${fmt(googleReservationValue)} zł</span></div>
         <div class="metric-line"><span class="metric-label">ROAS:</span> <span class="metric-value">${fmt(googleROAS)} (${fmt(googleROAS * 100)}%)</span></div>
@@ -732,7 +796,6 @@ Piotr`;
         <div class="metric-line"><span class="metric-label">Wydana kwota:</span> <span class="metric-value">${fmt(metaSpend)} zł</span></div>
         <div class="metric-line"><span class="metric-label">Wyświetlenia:</span> <span class="metric-value">${fmtInt(metaImpressions)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia linku:</span> <span class="metric-value">${fmtInt(metaClicks)}</span></div>
-        <div class="metric-line"><span class="metric-label">Wysłanie formularza:</span> <span class="metric-value">${fmtInt(metaFormSubmissions)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia w adres e-mail:</span> <span class="metric-value">${fmtInt(metaEmails)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu:</span> <span class="metric-value">${fmtInt(metaPhones)}</span></div>
         <div class="metric-line"><span class="metric-label">Rezerwacje:</span> <span class="metric-value">${fmtInt(metaReservations)}</span></div>
@@ -746,12 +809,13 @@ Piotr`;
       Poprzedni miesiąc przyniósł nam łącznie ${fmtInt(totalOnlineReservations)} rezerwacji online o łącznej wartości ponad ${fmtThousands(totalOnlineValue)} tys. zł.<br>
       Koszt pozyskania rezerwacji online zatem wyniósł: ${fmt(onlineCostPercentage)}%.<br><br>
       
-      Dodatkowo pozyskaliśmy też ${fmtInt(totalMicroConversions)} mikro konwersji (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. 
-      Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy ${fmtInt(estimatedOfflineReservations)} rezerwacji i dodatkowe ok. ${fmtThousands(estimatedOfflineValue)} tys. zł tą drogą.<br><br>
+      <p style="margin: 0 0 12px 0;">${offlineNarrative.highlightParagraphsText[0]}</p>
+      <p style="margin: 0 0 16px 0;">${offlineNarrative.highlightParagraphsText[1]}</p>
       
-      Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${fmt(finalCostPercentage)}%.<br><br>
-      
-      <strong>Zatem suma wartości rezerwacji za ${monthName} ${year} (online + offline) wynosi około: ${fmtThousands(totalValue)} tys. zł.</strong>
+      <div style="background: #e8f5e9; padding: 16px; border-radius: 6px; margin-top: 16px; text-align: center; border: 2px solid #4caf50;">
+      <p style="margin: 0; font-size: 18px; color: #555;">${offlineNarrative.totalBoxLabel}</p>
+      <div style="font-size: 28px; font-weight: bold; color: #2e7d32; margin: 10px 0;">około ${fmtPlnWhole(totalValue)}</div>
+      </div>
           </div>
           
           <div class="footer">

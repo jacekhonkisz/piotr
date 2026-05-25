@@ -67,6 +67,10 @@
     {
       "path": "/api/automated/cleanup-old-data",
       "schedule": "0 4 1 * *"
+    },
+    {
+      "path": "/api/cron/drift-check",
+      "schedule": "30 5 * * *"
     }
   ]
 }

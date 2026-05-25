@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { UnifiedReport, UnifiedCampaign, PlatformTotals } from '../lib/unified-campaign-types';
 import AIExecutiveSummary from './AIExecutiveSummary';
+import { ctrPercentFromStats } from '../lib/ctr-from-stats';
 
 interface UnifiedReportViewProps {
   report: UnifiedReport;
@@ -495,9 +496,11 @@ export default function UnifiedReportView({
             <h4 className="font-semibold mb-2 text-blue-600">Meta Ads Performance</h4>
             <ul className="space-y-2 text-sm">
               <li>• {report.metaCampaigns.length} aktywnych kampanii</li>
-              <li>• Średni CTR: {(report.totals.meta.averageCtr !== undefined && report.totals.meta.averageCtr !== null
-                ? report.totals.meta.averageCtr
-                : (report.totals.meta.totalImpressions > 0 ? (report.totals.meta.totalClicks / report.totals.meta.totalImpressions) * 100 : 0)).toFixed(2)}%</li>
+              <li>• Średni CTR: {ctrPercentFromStats(
+                report.totals.meta.averageCtr,
+                report.totals.meta.totalClicks,
+                report.totals.meta.totalImpressions
+              ).toFixed(2)}%</li>
               <li>• Łączne wydatki: {new Intl.NumberFormat('pl-PL', { style: 'currency', currency }).format(report.totals.meta.totalSpend)}</li>
               <li>• Rezerwacje: {report.totals.meta.totalReservations}</li>
             </ul>
@@ -506,7 +509,11 @@ export default function UnifiedReportView({
             <h4 className="font-semibold mb-2 text-green-600">Google Ads Performance</h4>
             <ul className="space-y-2 text-sm">
               <li>• {report.googleCampaigns.length} aktywnych kampanii</li>
-              <li>• Średni CTR: {report.totals.google.averageCtr.toFixed(2)}%</li>
+              <li>• Średni CTR: {ctrPercentFromStats(
+                report.totals.google.averageCtr,
+                report.totals.google.totalClicks,
+                report.totals.google.totalImpressions
+              ).toFixed(2)}%</li>
               <li>• Łączne wydatki: {new Intl.NumberFormat('pl-PL', { style: 'currency', currency }).format(report.totals.google.totalSpend)}</li>
               <li>• Rezerwacje: {report.totals.google.totalReservations}</li>
             </ul>

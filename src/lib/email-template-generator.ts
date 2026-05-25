@@ -5,6 +5,9 @@
  * This ensures preview components show the same content as actual emails
  */
 
+import { formatPlnWhole } from './email-helpers';
+import { getMonthlyOfflineNarrative } from './monthly-report-offline-narrative';
+
 export interface MonthlyReportData {
   dashboardUrl: string;
   googleAds?: {
@@ -13,7 +16,6 @@ export interface MonthlyReportData {
     clicks: number;
     cpc: number;
     ctr: number;
-    formSubmits: number;
     emailClicks: number;
     phoneClicks: number;
     bookingStep1: number;
@@ -27,7 +29,8 @@ export interface MonthlyReportData {
     spend: number;
     impressions: number;
     linkClicks: number;
-    formSubmits: number;
+    ctr: number;
+    cpc: number;
     emailClicks: number;
     phoneClicks: number;
     reservations: number;
@@ -60,6 +63,17 @@ export function generateMonthlyReportTemplate(
 ): { subject: string; text: string; html: string } {
   
   const subject = `Podsumowanie miesiąca - ${monthName} ${year} | ${clientName}`;
+
+  const offlineNarrative = getMonthlyOfflineNarrative(clientName, {
+    totalMicroConversions: reportData.totalMicroConversions,
+    estimatedOfflineReservations: reportData.estimatedOfflineReservations,
+    estimatedOfflineValue: reportData.estimatedOfflineValue,
+    finalCostPercentage: reportData.finalCostPercentage,
+    totalValue: reportData.totalValue,
+    monthName,
+    year,
+    metaReservationValue: reportData.metaAds?.reservationValue ?? 0
+  });
   
   // Text version (what clients actually receive)
   const text = `Dzień dobry,
@@ -77,12 +91,11 @@ Wyświetlenia: ${reportData.googleAds.impressions.toLocaleString('pl-PL')}
 Kliknięcia: ${reportData.googleAds.clicks.toLocaleString('pl-PL')}
 CPC: ${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 CTR: ${reportData.googleAds.ctr.toFixed(2)}%
-Wysłanie formularza: ${reportData.googleAds.formSubmits.toLocaleString('pl-PL')}
 Kliknięcia w adres e-mail: ${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}
 Kliknięcia w numer telefonu: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
-Booking Engine krok 1: ${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}
-Booking Engine krok 2: ${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}
-Booking Engine krok 3: ${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}
+Booking step 1: ${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}
+Booking step 2: ${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}
+Booking step 3: ${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}
 Rezerwacje: ${reportData.googleAds.reservations.toLocaleString('pl-PL')}
 Wartość rezerwacji: ${reportData.googleAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 ROAS: ${reportData.googleAds.roas.toFixed(2)} (${(reportData.googleAds.roas * 100).toFixed(0)}%)
@@ -93,7 +106,8 @@ ${reportData.metaAds ? `
 Wydana kwota: ${reportData.metaAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 Wyświetlenia: ${reportData.metaAds.impressions.toLocaleString('pl-PL')}
 Kliknięcia linku: ${reportData.metaAds.linkClicks.toLocaleString('pl-PL')}
-Wysłanie formularza: ${reportData.metaAds.formSubmits.toLocaleString('pl-PL')}
+CTR (link): ${reportData.metaAds.ctr.toFixed(2)}%
+CPC (link): ${reportData.metaAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 Kliknięcia w adres e-mail: ${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}
 Kliknięcia w numer telefonu: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
 Rezerwacje: ${reportData.metaAds.reservations.toLocaleString('pl-PL')}
@@ -109,11 +123,11 @@ ${reportData.yoyComparison.googleAdsIncrease ? `- Google Ads - wartość rezerwa
 
 Koszt pozyskania rezerwacji online zatem wyniósł: ${reportData.onlineCostPercentage.toFixed(2)}%.
 
-Dodatkowo pozyskaliśmy też ${reportData.totalMicroConversions.toLocaleString('pl-PL')} mikro konwersji (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy ${reportData.estimatedOfflineReservations.toLocaleString('pl-PL')} rezerwacji i dodatkowe ok. ${Math.round(reportData.estimatedOfflineValue / 1000).toLocaleString('pl-PL')} tys. zł tą drogą.
+${offlineNarrative.highlightParagraphsText[0]}
 
-Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${reportData.finalCostPercentage.toFixed(2)}%.
+${offlineNarrative.highlightParagraphsText[1]}
 
-Zatem suma wartości rezerwacji za ${monthName} ${year} (online + offline) wynosi około: ${Math.round(reportData.totalValue / 1000).toLocaleString('pl-PL')} 000 zł.
+${offlineNarrative.totalClosingLine}
 
 W razie pytań proszę o kontakt.
 

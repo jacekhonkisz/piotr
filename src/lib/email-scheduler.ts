@@ -38,6 +38,10 @@ interface SchedulerResult {
   }[];
 }
 
+interface SendOverrideOptions {
+  reviewRecipientOverride?: string;
+}
+
 interface SystemSettings {
   global_default_frequency: string;
   global_default_send_day: number;
@@ -309,7 +313,11 @@ export class EmailScheduler {
    * Send professional monthly report with dynamic data fetching
    * Fetches Google Ads + Meta Ads data and uses the new Polish template
    */
-  private async sendProfessionalMonthlyReport(client: Client, period: ReportPeriod): Promise<void> {
+  private async sendProfessionalMonthlyReport(
+    client: Client,
+    period: ReportPeriod,
+    options?: SendOverrideOptions
+  ): Promise<{ attemptedRecipients: string[]; routedRecipients: string[]; pdfSize: number }> {
     logger.info(`📧 NEW TEMPLATE: Preparing professional report for ${client.name}`);
     logger.info(`📅 Period: ${period.start} to ${period.end}`);
 
@@ -328,17 +336,18 @@ export class EmailScheduler {
 
           if (googleResult.success && googleResult.data) {
             const stats = googleResult.data.stats;
-            const conversions = googleResult.data.conversionMetrics;
-            
+            const conversions = googleResult.data.conversionMetrics as Record<string, number> | undefined;
+            const emailClicks = conversions?.email_contacts ?? (conversions as any)?.email_clicks ?? 0;
+            const phoneClicks = conversions?.click_to_call ?? (conversions as any)?.phone_calls ?? 0;
+
             googleAdsData = {
               spend: stats.totalSpend || 0,
               impressions: stats.totalImpressions || 0,
               clicks: stats.totalClicks || 0,
-              cpc: stats.totalClicks > 0 ? stats.totalSpend / stats.totalClicks : 0,
-              ctr: stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) * 100 : 0,
-              formSubmits: conversions?.lead_form_submissions || 0,
-              emailClicks: conversions?.email_clicks || 0,
-              phoneClicks: conversions?.phone_calls || 0,
+              averageCtr: stats.averageCtr,
+              averageCpc: stats.averageCpc,
+              emailClicks,
+              phoneClicks,
               bookingStep1: conversions?.booking_step_1 || 0,
               bookingStep2: conversions?.booking_step_2 || 0,
               bookingStep3: conversions?.booking_step_3 || 0,
@@ -358,7 +367,8 @@ export class EmailScheduler {
       // Step 2: Fetch Meta Ads data
       logger.info('2️⃣ Fetching Meta Ads data...');
       let metaAdsData = null;
-      
+      let metaCampaignRows: any[] | undefined;
+
       if (client.meta_access_token) {
         try {
           const metaResult = await StandardizedDataFetcher.fetchData({
@@ -369,16 +379,22 @@ export class EmailScheduler {
           });
 
           if (metaResult.success && metaResult.data) {
+            metaCampaignRows = (metaResult.data.campaigns || []).filter(
+              (c: any) => !c.platform || c.platform === 'meta'
+            );
             const stats = metaResult.data.stats;
-            const conversions = metaResult.data.conversionMetrics;
-            
+            const conversions = metaResult.data.conversionMetrics as Record<string, number> | undefined;
+            const emailClicks = conversions?.email_contacts ?? (conversions as any)?.email_clicks ?? 0;
+            const phoneClicks = conversions?.click_to_call ?? (conversions as any)?.phone_calls ?? 0;
+
             metaAdsData = {
               spend: stats.totalSpend || 0,
               impressions: stats.totalImpressions || 0,
               linkClicks: stats.totalClicks || 0,
-              formSubmits: conversions?.lead_form_submissions || 0,
-              emailClicks: conversions?.email_clicks || 0,
-              phoneClicks: conversions?.phone_calls || 0,
+              averageCtr: stats.averageCtr,
+              averageCpc: stats.averageCpc,
+              emailClicks,
+              phoneClicks,
               reservations: conversions?.reservations || 0,
               reservationValue: conversions?.reservation_value || 0
             };
@@ -408,7 +424,9 @@ export class EmailScheduler {
         monthNumber,
         year,
         googleAdsData || undefined,
-        metaAdsData || undefined
+        metaAdsData || undefined,
+        undefined,
+        metaCampaignRows
       );
 
       logger.info('✅ Metrics calculated:', {
@@ -471,8 +489,9 @@ export class EmailScheduler {
       logger.info('✅ PDF ready for email attachment');
 
       // Step 6: Send to all contact emails
-      const contactEmails = client.contact_emails || [client.email];
+      const contactEmails = client.contact_emails?.length ? client.contact_emails : [client.email];
       logger.info(`5️⃣ Sending to ${contactEmails.length} email(s)...`);
+      const routedRecipients: string[] = [];
       
       for (const email of contactEmails) {
         try {
@@ -485,7 +504,9 @@ export class EmailScheduler {
             monthName,
             year,
             reportData,
-            pdfBuffer
+            pdfBuffer,
+            undefined,
+            options
           );
 
           if (!emailResult.success) {
@@ -493,6 +514,7 @@ export class EmailScheduler {
           }
 
           logger.info(`✅ Email sent successfully to ${email} - Message ID: ${emailResult.messageId}`);
+          routedRecipients.push(emailResult.redirectedTo || email);
 
           // Log successful email
           await this.logSchedulerSuccess(client, period);
@@ -505,6 +527,11 @@ export class EmailScheduler {
       }
 
       logger.info(`🎉 Professional report sent successfully to ${client.name}`);
+      return {
+        attemptedRecipients: contactEmails,
+        routedRecipients,
+        pdfSize: pdfBuffer.length
+      };
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -726,10 +753,18 @@ export class EmailScheduler {
   /**
    * Manual override - send report now for a specific client
    */
-  async sendManualReport(clientId: string, adminId: string, period?: ReportPeriod): Promise<{
+  async sendManualReport(
+    clientId: string,
+    adminId: string,
+    period?: ReportPeriod,
+    options?: SendOverrideOptions
+  ): Promise<{
     success: boolean;
     error?: string;
     period?: ReportPeriod;
+    attemptedRecipients?: string[];
+    routedRecipients?: string[];
+    pdfSize?: number;
   }> {
     try {
       // Get client
@@ -750,7 +785,7 @@ export class EmailScheduler {
       }
 
       // Send the report using NEW professional monthly template
-      await this.sendProfessionalMonthlyReport(client, reportPeriod);
+      const sendDetails = await this.sendProfessionalMonthlyReport(client, reportPeriod, options);
 
       // Log manual send
       await this.supabase
@@ -767,7 +802,13 @@ export class EmailScheduler {
           email_sent_at: new Date().toISOString()
         });
 
-      return { success: true, period: reportPeriod };
+      return {
+        success: true,
+        period: reportPeriod,
+        attemptedRecipients: sendDetails.attemptedRecipients,
+        routedRecipients: sendDetails.routedRecipients,
+        pdfSize: sendDetails.pdfSize
+      };
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';

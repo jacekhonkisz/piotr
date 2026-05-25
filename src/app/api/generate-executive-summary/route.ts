@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
 import logger from '../../../lib/logger';
 import { authenticateRequest } from '../../../lib/auth-middleware';
+import { cpcBlended, cpcFromStats, ctrPercentBlended, ctrPercentFromStats } from '@/lib/ctr-from-stats';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -164,26 +165,77 @@ export async function POST(request: NextRequest) {
         totalReservationValue: metaReservationValue + googleReservationValue
       });
       
+      const metaCtrPct = ctrPercentFromStats(
+        reportData.metaData?.metrics?.averageCtr,
+        metaClicks,
+        metaImpressions
+      );
+      const googleCtrPct = ctrPercentFromStats(
+        reportData.googleData?.metrics?.averageCtr,
+        googleClicks,
+        googleImpressions
+      );
+      const totalImpForCtr = metaImpressions + googleImpressions;
+      const blendedCtr =
+        totalImpForCtr > 0
+          ? ctrPercentBlended(
+              { ctr: metaCtrPct, impressions: metaImpressions },
+              { ctr: googleCtrPct, impressions: googleImpressions }
+            )
+          : 0;
+
+      const metaCpcPct = cpcFromStats(
+        reportData.metaData?.metrics?.averageCpc,
+        metaSpend,
+        metaClicks
+      );
+      const googleCpcPct = cpcFromStats(
+        reportData.googleData?.metrics?.averageCpc,
+        googleSpend,
+        googleClicks
+      );
+      const blendedCpc =
+        metaClicks > 0 && googleClicks > 0
+          ? cpcBlended(
+              { cpc: metaCpcPct, clicks: metaClicks },
+              { cpc: googleCpcPct, clicks: googleClicks }
+            )
+          : metaClicks > 0
+            ? metaCpcPct
+            : googleClicks > 0
+              ? googleCpcPct
+              : metaClicks + googleClicks > 0
+                ? (metaSpend + googleSpend) / (metaClicks + googleClicks)
+                : 0;
+
       actualReportData = {
         account_summary: {
           total_spend: metaSpend + googleSpend,
           total_impressions: metaImpressions + googleImpressions,
           total_clicks: metaClicks + googleClicks,
           total_conversions: metaReservations + googleReservations,
-          average_ctr: ((metaClicks + googleClicks) / (metaImpressions + googleImpressions)) * 100 || 0,
-          average_cpc: (metaSpend + googleSpend) / (metaClicks + googleClicks) || 0,
+          average_ctr: blendedCtr,
+          average_cpc: blendedCpc,
           average_cpa: (metaSpend + googleSpend) / (metaReservations + googleReservations) || 0,
           total_conversion_value: metaReservationValue + googleReservationValue,
           roas: (metaReservationValue + googleReservationValue) / (metaSpend + googleSpend) || 0,
-          micro_conversions: (reportData.metaData?.conversionMetrics?.booking_step_1 || 0) + (reportData.googleData?.conversionMetrics?.booking_step_1 || 0) + (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
+          micro_conversions:
+            (reportData.metaData?.conversionMetrics?.click_to_call || 0) +
+            (reportData.metaData?.conversionMetrics?.email_contacts || 0) +
+            (reportData.googleData?.conversionMetrics?.click_to_call || 0) +
+            (reportData.googleData?.conversionMetrics?.email_contacts || 0),
           meta_spend: metaSpend,
           meta_impressions: metaImpressions,
           meta_clicks: metaClicks,
           meta_conversions: metaReservations,
+          meta_average_ctr: metaCtrPct,
+          meta_average_cpc: metaCpcPct,
           google_spend: googleSpend,
           google_impressions: googleImpressions,
           google_clicks: googleClicks,
-          google_conversions: googleReservations
+          google_conversions: googleReservations,
+          google_average_ctr: googleCtrPct,
+          google_average_cpc: googleCpcPct
         }
       };
       
@@ -371,12 +423,34 @@ export async function POST(request: NextRequest) {
           actualReportData.account_summary.meta_impressions = metaData?.stats?.totalImpressions || 0;
           actualReportData.account_summary.meta_clicks = metaData?.stats?.totalClicks || 0;
           actualReportData.account_summary.meta_conversions = metaData?.stats?.totalConversions || 0;
-          
+          actualReportData.account_summary.meta_average_ctr = ctrPercentFromStats(
+            metaData?.stats?.averageCtr,
+            metaData?.stats?.totalClicks || 0,
+            metaData?.stats?.totalImpressions || 0
+          );
+
           actualReportData.account_summary.google_spend = googleData?.stats?.totalSpend || 0;
           actualReportData.account_summary.google_impressions = googleData?.stats?.totalImpressions || 0;
           actualReportData.account_summary.google_clicks = googleData?.stats?.totalClicks || 0;
           actualReportData.account_summary.google_conversions = googleData?.stats?.totalConversions || 0;
-          
+          actualReportData.account_summary.google_average_ctr = ctrPercentFromStats(
+            googleData?.stats?.averageCtr,
+            googleData?.stats?.totalClicks || 0,
+            googleData?.stats?.totalImpressions || 0
+          );
+
+          actualReportData.account_summary.meta_average_cpc = cpcFromStats(
+            metaData?.stats?.averageCpc,
+            metaData?.stats?.totalSpend || 0,
+            metaData?.stats?.totalClicks || 0
+          );
+
+          actualReportData.account_summary.google_average_cpc = cpcFromStats(
+            googleData?.stats?.averageCpc,
+            googleData?.stats?.totalSpend || 0,
+            googleData?.stats?.totalClicks || 0
+          );
+
           logger.info('✅ [AI-SUMMARY] Added platform-separated data to account_summary');
         }
       } catch (error) {
@@ -430,13 +504,17 @@ export async function POST(request: NextRequest) {
             spend: Number.isFinite(actualReportData.account_summary.meta_spend) ? actualReportData.account_summary.meta_spend : 0,
             impressions: Number.isFinite(actualReportData.account_summary.meta_impressions) ? actualReportData.account_summary.meta_impressions : 0,
             clicks: Number.isFinite(actualReportData.account_summary.meta_clicks) ? actualReportData.account_summary.meta_clicks : 0,
-            conversions: Number.isFinite(actualReportData.account_summary.meta_conversions) ? actualReportData.account_summary.meta_conversions : 0
+            conversions: Number.isFinite(actualReportData.account_summary.meta_conversions) ? actualReportData.account_summary.meta_conversions : 0,
+            averageCtr: actualReportData.account_summary.meta_average_ctr,
+            averageCpc: actualReportData.account_summary.meta_average_cpc
           },
           google: {
             spend: Number.isFinite(actualReportData.account_summary.google_spend) ? actualReportData.account_summary.google_spend : 0,
             impressions: Number.isFinite(actualReportData.account_summary.google_impressions) ? actualReportData.account_summary.google_impressions : 0,
             clicks: Number.isFinite(actualReportData.account_summary.google_clicks) ? actualReportData.account_summary.google_clicks : 0,
-            conversions: Number.isFinite(actualReportData.account_summary.google_conversions) ? actualReportData.account_summary.google_conversions : 0
+            conversions: Number.isFinite(actualReportData.account_summary.google_conversions) ? actualReportData.account_summary.google_conversions : 0,
+            averageCtr: actualReportData.account_summary.google_average_ctr,
+            averageCpc: actualReportData.account_summary.google_average_cpc
           }
         };
       } else if (hasMetaData) {

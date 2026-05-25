@@ -1,11 +1,23 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, ChevronDown, ChevronUp, Download, Eye, EyeOff, BarChart3, HelpCircle, MousePointer, PhoneCall, Mail, DollarSign, Percent, Target } from 'lucide-react';
+import { Calendar, Clock, Download, Eye, EyeOff, BarChart3, HelpCircle, MousePointer, PhoneCall, Mail, DollarSign, Percent, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useYearOverYearComparison } from '@/lib/hooks/useYearOverYearComparison';
 import ConversionFunnel from './ConversionFunnel';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
+import { useMetricsConfig } from '../lib/useMetricsConfig';
+import type { MetricSection } from '../lib/default-metrics-config';
+import {
+  getBelmontePotentialOfflineValue,
+  getMicroConversionsForOfflineModel,
+  isBelmonteClient,
+  offlineMicroPartsFromCampaigns,
+} from '@/lib/offline-reservation-estimate';
+import {
+  googleEmailContactsFromRow,
+  googlePhoneContactsFromRow,
+} from '@/lib/google-ads-contact-metrics';
 
 
 
@@ -39,6 +51,16 @@ interface Campaign {
   cost_per_reservation?: number;
 }
 
+/** Nominative plural label: "1 kampania", "2 kampanie", "5 kampanii", "12 kampanii", "22 kampanie". */
+function polishCampaignNounAfterCount(n: number): string {
+  const abs = Math.abs(Math.trunc(n));
+  if (abs === 1) return 'kampania';
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'kampanie';
+  return 'kampanii';
+}
+
 interface WeeklyReport {
   id: string;
   date_range_start: string;
@@ -55,6 +77,8 @@ interface WeeklyReport {
     booking_step_3: number;
     roas: number;
     cost_per_reservation: number;
+    conversion_value?: number;
+    total_conversion_value?: number;
     reach: number;
     offline_reservations: number;
     offline_value: number;
@@ -91,6 +115,10 @@ const formatNumber = (num: number) => {
   return num.toLocaleString('pl-PL');
 };
 
+/** Contact counts should never abbreviate to K/M — show the exact integer. */
+const formatContactCount = (num: number) =>
+  Math.round(num).toLocaleString('pl-PL');
+
 /**
  * 🎯 STANDARDIZED METHOD: Get conversion metric
  * 
@@ -124,6 +152,30 @@ const getConversionMetric = (
   }
   
   return conversionValue ?? 0;
+};
+
+const getContactMetric = (
+  report: WeeklyReport | undefined,
+  campaigns: Campaign[],
+  platform: 'meta' | 'google' | undefined,
+  metric: 'email_contacts' | 'click_to_call',
+): number => {
+  const fromMetrics = getConversionMetric(report, metric, campaigns);
+  if (fromMetrics > 0) return fromMetrics;
+
+  if (platform === 'google') {
+    const fromCampaigns = campaigns.reduce(
+      (sum, c) =>
+        sum +
+        (metric === 'email_contacts'
+          ? googleEmailContactsFromRow(c as unknown as Record<string, unknown>)
+          : googlePhoneContactsFromRow(c as unknown as Record<string, unknown>)),
+      0,
+    );
+    if (fromCampaigns > 0) return fromCampaigns;
+  }
+
+  return fromMetrics;
 };
 
 const formatDate = (dateString: string) => {
@@ -208,7 +260,7 @@ const Tooltip = ({ children, content }: { children: React.ReactNode; content: st
 };
 
 // Metric Card Component - Clean analytics product design
-const MetricCard = ({ 
+export const MetricCard = ({
   title, 
   value, 
   subtitle, 
@@ -234,36 +286,36 @@ const MetricCard = ({
   const [isHovered, setIsHovered] = useState(false);
 
   const card = (
-    <div 
-      className="relative bg-white border border-slate-200 rounded-lg p-5 transition-all duration-150 hover:border-slate-300"
+    <div
+      className="relative min-h-[104px] rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-150 hover:border-slate-300"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Title - uppercase, subtle */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">{title}</span>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <span className="text-[11px] font-medium leading-4 text-slate-500">{title}</span>
         {tooltip && (
           <Tooltip content={tooltip}>
-            <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600 transition-colors" />
+            <HelpCircle className="mt-0.5 h-3.5 w-3.5 text-slate-300 transition-colors hover:text-slate-500" />
           </Tooltip>
         )}
       </div>
       
       {/* Main Value - large, bold, clean */}
-      <div className="mb-1">
-        <p className="text-2xl font-semibold text-slate-900 tabular-nums">
+      <div>
+        <p className="text-[1.35rem] font-semibold leading-7 text-slate-950 tabular-nums">
           {value}
         </p>
       </div>
 
       {/* Change Indicator - minimal, inline - with loading state */}
       {isComparisonLoading ? (
-        <div className="text-xs text-slate-400 flex items-center gap-1">
-          <div className="animate-spin h-3 w-3 border border-slate-300 border-t-slate-500 rounded-full"></div>
+        <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+          <div className="h-3 w-3 animate-spin rounded-full border border-slate-300 border-t-slate-500"></div>
           <span>Ładuję porównanie...</span>
         </div>
-      ) : change ? (
-        <div className="text-xs font-medium tabular-nums">
+      ) : (change && change.value > 0) ? (
+        <div className="mt-1 text-[11px] font-medium tabular-nums">
           <span className={change.type === 'increase' ? 'text-green-600' : 'text-red-600'}>
             {change.type === 'increase' ? '+' : '−'}{Math.abs(change.value).toFixed(1)}%
           </span>
@@ -288,7 +340,6 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     platform 
   });
   
-  const [expandedCampaigns, setExpandedCampaigns] = useState<{ [key: string]: boolean }>({});
   const [socialInsights, setSocialInsights] = useState<{
     facebookNewFollowers: number | string;
     instagramFollowers: number;
@@ -299,6 +350,13 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
   // DEBUG: Track state changes
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
+  const [campaignTableMode, setCampaignTableMode] = useState<'outcome' | 'traffic' | 'full'>('outcome');
+  const [showAllCampaigns, setShowAllCampaigns] = useState(false);
+  const { getMetricName, isMetricVisible } = useMetricsConfig(clientData?.id ?? null, platform);
+  const metricLabel = (section: MetricSection, key: string, fallback: string) => (
+    getMetricName(section, key) || fallback || key
+  );
+  const metricVisible = (section: MetricSection, key: string) => isMetricVisible(section, key);
   
 
   
@@ -614,11 +672,8 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     };
   };
   
-  // Use hook data instead of local calculation (API is now working correctly)
-  const localYoYData = calculateLocalYoYComparison();
-  
-  // 🔧 PRODUCTION FIX: Fallback to local calculation if API fails
-  const effectiveYoYData = yoyData || localYoYData;
+  // Only use API data for comparisons — no local fallback to avoid stale/wrong comparisons
+  const effectiveYoYData = yoyData;
   
   // Debug logging for YoY hook results
   console.log('🔍 YoY Hook Debug - Results:', {
@@ -628,9 +683,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     dataKeys: yoyData ? Object.keys(yoyData) : [],
     currentSpend: yoyData?.current?.spend || 0,
     previousSpend: yoyData?.previous?.spend || 0,
-    localYoYData: localYoYData,
     effectiveYoYData: effectiveYoYData,
-    usingFallback: !yoyData && !!localYoYData,
     enabled: true, // Hook is enabled and working
     reportIds: reportIds,
     reportsKeys: Object.keys(reports)
@@ -670,7 +723,7 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
+              {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="bg-white border border-slate-200 rounded-lg p-5">
                   <div className="h-4 bg-slate-100 rounded w-24 animate-pulse mb-3"></div>
                   <div className="h-8 bg-slate-200 rounded w-32 animate-pulse mb-2"></div>
@@ -684,39 +737,32 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
     );
   }
 
-  const toggleCampaignExpansion = (reportId: string) => {
-    setExpandedCampaigns((prev: { [key: string]: boolean }) => ({
-      ...prev,
-      [reportId]: !prev[reportId]
-    }));
-  };
-
   return (
-    <div className="max-w-[1400px] mx-auto px-4 sm:px-6 space-y-6 sm:space-y-10">
+    <div className="mx-auto max-w-[1400px] space-y-5 px-0 sm:space-y-6">
       {reportIds.map((reportId) => {
         const report = reports[reportId];
         if (!report) return null;
         const campaigns = report.campaigns || [];
+        const campaignsSortedBySpend = [...campaigns]
+          .filter((c) => (Number(c.spend) || 0) > 0)
+          .sort((a, b) => (b.spend || 0) - (a.spend || 0));
         
         // Year-over-year comparison data loaded
 
         // Helper function to format comparison change for MetricCard
-        const formatComparisonChange = (changePercent: number) => {
-          // 🔧 SKIP YoY for custom date ranges - doesn't make sense to compare
+        const formatComparisonChange = (changePercent: number, currentValue?: number, previousValue?: number) => {
           if (viewType === 'custom') return undefined;
-          
-          // 🔧 PRODUCTION FIX: Use effective YoY data (API with fallback to local calculation)
           if (!effectiveYoYData) return undefined;
-          
-          // Handle special case for no historical data (-999 indicates no comparison available)
-          if (changePercent === -999) return undefined; // Don't show comparison when no historical data
-          
-          // Only show if we have meaningful change (not exactly 0)
+          if (changePercent === -999) return undefined;
           if (Math.abs(changePercent) < 0.01) return undefined;
-          
+
+          // Hide when either side has no data
+          if (currentValue === undefined || currentValue === null || currentValue === 0) return undefined;
+          if (previousValue === undefined || previousValue === null || previousValue === 0) return undefined;
+
           return {
             value: Math.abs(changePercent),
-            period: 'rok do roku', // Year-over-year comparison
+            period: 'rok do roku',
             type: changePercent >= 0 ? 'increase' as const : 'decrease' as const,
           };
         };
@@ -739,47 +785,59 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
         });
         
         // Calculate derived campaign metrics
+        const clientName = clientData?.name ?? '';
+        const metaCampaignsForOffline = campaigns.filter(
+          (c: any) => !c.platform || c.platform === 'meta'
+        );
+        /** Meta slice only — used for Belmonte PBM + Meta-only micro parts (never use Google rows). */
+        const metaMicroParts = offlineMicroPartsFromCampaigns(metaCampaignsForOffline);
 
-
-
-        const startDate = new Date(report.date_range_start);
-        const weekNumber = getWeekNumber(startDate);
-
-        // Determine report title
-        let reportTitle = 'Raport';
-        if (reportId === 'all-time') {
-          reportTitle = 'Raport - Cały Okres';
-        } else if (reportId === 'custom') {
-          reportTitle = 'Raport - Własny Zakres';
-        } else if (viewType === 'monthly') {
-          reportTitle = 'Raport - Miesiąc';
+        let offlineContactBasis: number;
+        if (isBelmonteClient(clientName)) {
+          offlineContactBasis =
+            platform === 'google'
+              ? 0
+              : getMicroConversionsForOfflineModel(
+                  clientName,
+                  {
+                    googleFormSubmits: 0,
+                    googleEmail: 0,
+                    googlePhone: 0,
+                    metaFormSubmits: 0,
+                    metaEmail: metaMicroParts.metaEmail,
+                    metaPhone: metaMicroParts.metaPhone,
+                  },
+                  { metaCampaigns: metaCampaignsForOffline }
+                );
         } else {
-          // 🔧 FIX: For weekly reports, handle both formats: "2025-W36" or "weekly-2025-W36"
-          let periodId = reportId;
-          
-          // If reportId starts with "weekly-", extract the period part
-          if (reportId.startsWith('weekly-')) {
-            periodId = reportId.replace('weekly-', '');
-          }
-          
-          // Now parse the period ID: "2025-W36" -> extract year and week number
-          const [year, weekStr] = periodId.split('-W');
-          const weekNum = parseInt(weekStr || '1');
-          const yearNum = parseInt(year || new Date().getFullYear().toString());
-          
-          // Validate parsed values to avoid NaN
-          if (isNaN(yearNum) || isNaN(weekNum)) {
-            console.error('Failed to parse weekly period ID:', { reportId, periodId, year, weekStr, yearNum, weekNum });
-            reportTitle = 'Raport - Tydzień';
-          } else {
-            reportTitle = `Raport - ${getWeekDateRange(yearNum, weekNum)}`;
-          }
+          // Must match contact cards above: prefer conversionMetrics, then Google row aliases.
+          offlineContactBasis =
+            getContactMetric(report, campaigns, platform, 'email_contacts') +
+            getContactMetric(report, campaigns, platform, 'click_to_call');
         }
 
-        // Determine how many campaigns to show
-        const isExpanded = expandedCampaigns[reportId] || false;
-        const campaignsToShow = isExpanded ? campaigns : campaigns.slice(0, 5);
-        const hasMoreCampaigns = campaigns.length > 5;
+        const emailContacts = getContactMetric(report, campaigns, platform, 'email_contacts');
+        const phoneContacts = getContactMetric(report, campaigns, platform, 'click_to_call');
+        const totalContacts = emailContacts + phoneContacts;
+        const showEmailContacts = metricVisible('contact', 'email_contacts');
+        const showPhoneContacts = metricVisible('contact', 'click_to_call');
+        const showCombinedContacts = showEmailContacts || showPhoneContacts;
+
+        // Offline metrics are client-model based (not API-backed), so keep one consistent calculation path.
+        const potentialOfflineReservations = Math.round(offlineContactBasis * 0.2);
+        const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
+        const totalReservations = getConversionMetric(report, 'reservations', campaigns);
+        const averageConversionValue = totalReservations > 0 ? onlineConversionValue / totalReservations : 0;
+        const potentialOfflineValue = isBelmonteClient(clientName)
+          ? getBelmontePotentialOfflineValue(averageConversionValue)
+          : averageConversionValue * potentialOfflineReservations;
+        const totalConversionValueWithOffline = onlineConversionValue + potentialOfflineValue;
+        const costPercentage = totalConversionValueWithOffline > 0
+          ? (campaignTotals.spend / totalConversionValueWithOffline) * 100
+          : 0;
+        const valueForRoas =
+          onlineConversionValue || getConversionMetric(report, 'reservation_value', campaigns);
+        const reportRoas = campaignTotals.spend > 0 ? valueForRoas / campaignTotals.spend : 0;
 
         // Calculate actual days in the report range
         const reportStartDate = new Date(report.date_range_start);
@@ -791,152 +849,120 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
           // console.log('   This explains why spend/metrics are higher than expected');
           // console.log('   The API may be returning a longer date range than requested');
         }
+        const visibleCampaignRows = showAllCampaigns ? campaignsSortedBySpend : campaignsSortedBySpend.slice(0, 5);
+        const showCampaignColumn = (key: string) => {
+          if (!metricVisible('campaign_table', key)) return false;
+          if (campaignTableMode === 'full') return true;
+          if (key === 'campaign_name') return true;
+          if (campaignTableMode === 'traffic') {
+            return ['totalImpressions', 'totalClicks', 'averageCtr', 'averageCpc'].includes(key);
+          }
+          return ['totalSpend', 'reservations', 'reservation_value', 'total_conversion_value', 'cost_per_reservation', 'roas'].includes(key);
+        };
 
         return (
-          <div key={reportId} className="space-y-10">
-            {/* Header Section */}
-            <div className="border-b pb-8" style={{ borderColor: '#E5E7EB' }}>
-              <div className="flex items-center justify-between">
+          <div key={reportId} className="space-y-6">
+            {/* Executive outcome section */}
+            <section id="overview" className="scroll-mt-24 space-y-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <h1 className="text-2xl text-gray-900 mb-2" style={{ fontWeight: 600 }}>
-                    {reportTitle}
-                  </h1>
-                  <div className="flex items-center space-x-6 text-sm text-gray-600">
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="w-4 h-4" />
-                      {viewType === 'weekly' && (reportId.includes('-W') || reportId.startsWith('weekly-')) ? (
-                        // 🔧 FIX: For weekly reports, calculate correct date range from reportId using safe date methods
-                        (() => {
-                          // Handle both formats: "2025-W36" or "weekly-2025-W36"
-                          let periodId = reportId;
-                          if (reportId.startsWith('weekly-')) {
-                            periodId = reportId.replace('weekly-', '');
-                          }
-                          
-                          const [year, weekStr] = periodId.split('-W');
-                          const weekNum = parseInt(weekStr || '1');
-                          const yearNum = parseInt(year || new Date().getFullYear().toString());
-                          
-                          // Validate parsed values
-                          if (isNaN(yearNum) || isNaN(weekNum)) {
-                            console.error('Failed to parse weekly period for date display:', { reportId, periodId, year, weekStr });
-                            return <span>Nieprawidłowy okres</span>;
-                          }
-                          
-                          // Calculate proper week boundaries using safe date methods
-                          const jan4 = new Date(yearNum, 0, 4);
-                          const startOfWeek1 = new Date(jan4);
-                          startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-                          const weekStartDate = new Date(startOfWeek1);
-                          weekStartDate.setDate(startOfWeek1.getDate() + (weekNum - 1) * 7);
-                          
-                          // 🔧 FIX: Use setDate instead of getTime() + milliseconds to avoid invalid dates
-                          const weekEndDate = new Date(weekStartDate);
-                          weekEndDate.setDate(weekStartDate.getDate() + 6);
-                          
-                          // Helper function for safe date formatting
-                          const formatDateSafe = (date: Date) => {
-                            try {
-                              const year = date.getFullYear();
-                              const month = String(date.getMonth() + 1).padStart(2, '0');
-                              const day = String(date.getDate()).padStart(2, '0');
-                              return `${year}-${month}-${day}`;
-                            } catch (error) {
-                              console.error('Date formatting error:', error);
-                              return 'Invalid Date';
-                            }
-                          };
-                          
-                          const weekStartDateStr = formatDateSafe(weekStartDate);
-                          const weekEndDateStr = formatDateSafe(weekEndDate);
-                          
-                          return (
-                            <span>{formatDate(weekStartDateStr)} - {formatDate(weekEndDateStr)}</span>
-                          );
-                        })()
-                      ) : (
-                        <span>{formatDate(report.date_range_start)} - {formatDate(report.date_range_end)}</span>
-                      )}
-                    </div>
-                    {/* Last Updated - Only visible in development mode */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <div className="flex items-center space-x-2">
-                        <Clock className="w-4 h-4" />
-                        <span>Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
-                      </div>
+                  <h2 className="text-lg font-semibold text-slate-950">Przegląd wyników</h2>
+                  <p className="text-[13px] text-slate-500">Najważniejsze wskaźniki biznesowe dla wybranego okresu.</p>
+                </div>
+                <div className="text-xs font-medium text-slate-500">
+                  {campaigns.length} {polishCampaignNounAfterCount(campaigns.length)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,220px))] justify-start gap-3">
+                {metricVisible('report_summary', 'reservations') && (
+                  <MetricCard
+                    title={metricLabel('report_summary', 'reservations', 'Rezerwacje')}
+                    value={formatNumber(getConversionMetric(report, 'reservations', campaigns))}
+                    tooltip={metricLabel('report_summary', 'reservations', 'Rezerwacje')}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0, effectiveYoYData?.current?.reservations, effectiveYoYData?.previous?.reservations)}
+                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
+                  />
+                )}
+
+                {metricVisible('report_summary', 'total_conversion_value') && (
+                  <MetricCard
+                    title={metricLabel('report_summary', 'total_conversion_value', 'Łączna wartość konwersji')}
+                    value={formatCurrency(getConversionMetric(report, 'total_conversion_value', campaigns))}
+                    tooltip={metricLabel('report_summary', 'total_conversion_value', 'Łączna wartość konwersji')}
+                  />
+                )}
+
+                {!metricVisible('report_summary', 'total_conversion_value') && metricVisible('report_summary', 'reservation_value') && (
+                  <MetricCard
+                    title={metricLabel('report_summary', 'reservation_value', 'Wartość rezerwacji')}
+                    value={formatCurrency(getConversionMetric(report, 'reservation_value', campaigns))}
+                    tooltip={metricLabel('report_summary', 'reservation_value', 'Wartość rezerwacji')}
+                  />
+                )}
+
+                {metricVisible('report_summary', 'roas') && (
+                  <MetricCard
+                    title={metricLabel('report_summary', 'roas', 'ROAS')}
+                    value={`${reportRoas.toFixed(2)}x`}
+                    tooltip={metricLabel('report_summary', 'roas', 'ROAS')}
+                  />
+                )}
+
+                {metricVisible('contact', 'cost_per_reservation') && (
+                  <MetricCard
+                    title={metricLabel('contact', 'cost_per_reservation', 'Koszt rezerwacji')}
+                    value={formatCurrency(
+                      getConversionMetric(report, 'reservations', campaigns) > 0
+                        ? campaignTotals.spend / getConversionMetric(report, 'reservations', campaigns)
+                        : 0
                     )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg text-gray-900" style={{ fontWeight: 600 }}>
-                    {campaigns.length}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    {campaigns.length === 1 ? 'kampania' : 'kampanii'}
-                  </div>
-                </div>
-              </div>
-            </div>
+                    tooltip={metricLabel('contact', 'cost_per_reservation', 'Koszt rezerwacji')}
+                  />
+                )}
 
-
-
-            {/* Main Metrics Section */}
-            <section className="mb-10">
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-slate-900 mb-1">Podstawowe Metryki</h2>
-                <p className="text-sm text-slate-600">Kluczowe wskaźniki efektywności kampanii</p>
-              </div>
-              
-              {/* Basic Metrics Grid - Clean 2x3 Layout */}
-              <div className="mb-8">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {metricVisible('report_summary', 'totalSpend') && (
                   <MetricCard
-                    title="Wydatki"
+                    title={metricLabel('report_summary', 'totalSpend', 'Wydatki')}
                     value={formatCurrency(campaignTotals.spend)}
-                    tooltip="Łączna kwota wydana na reklamy"
-                    change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
+                    tooltip={metricLabel('report_summary', 'totalSpend', 'Wydatki')}
+                    change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0, effectiveYoYData?.current?.spend, effectiveYoYData?.previous?.spend)}
                     isComparisonLoading={yoyLoading && viewType !== 'custom'}
                   />
-                  
-                  <MetricCard
-                    title="Wyświetlenia"
-                    value={formatNumber(campaignTotals.impressions)}
-                    tooltip="Całkowita liczba wyświetleń reklam"
-                    change={formatComparisonChange(effectiveYoYData?.changes?.impressions || 0)}
-                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
-                  />
-                  
-                  <MetricCard
-                    title="Kliknięcia"
-                    value={formatNumber(campaignTotals.clicks)}
-                    tooltip="Całkowita liczba kliknięć w linki"
-                    change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)}
-                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
-                  />
-                  
-                  <MetricCard
-                    title={platform === 'meta' ? 'Współczynnik kliknięć z linku' : 'CTR'}
-                    value={`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}
-                    tooltip="Click-Through Rate: stosunek kliknięć do wyświetleń"
-                  />
-                  
-                  <MetricCard
-                    title={platform === 'meta' ? 'Koszt kliknięcia linku' : 'CPC'}
-                    value={formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}
-                    tooltip="Cost Per Click: średni koszt kliknięcia"
-                  />
-                  
-                  <MetricCard
-                    title="Konwersje"
-                    value={getConversionMetric(report, 'reservations', campaigns).toString()}
-                    tooltip="Liczba zakończonych konwersji"
-                    change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
-                    isComparisonLoading={yoyLoading && viewType !== 'custom'}
-                  />
-                </div>
+                )}
               </div>
 
-              {/* Conversion Funnel - Second Section */}
+              <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="grid grid-cols-2 divide-y divide-slate-100 md:grid-cols-4 md:divide-x md:divide-y-0">
+                  {metricVisible('report_summary', 'totalImpressions') && (
+                    <div className="px-3 py-1.5">
+                      <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'totalImpressions', 'Wyświetlenia')}</p>
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatNumber(campaignTotals.impressions)}</p>
+                    </div>
+                  )}
+                  {metricVisible('report_summary', 'totalClicks') && (
+                    <div className="px-3 py-1.5">
+                      <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'totalClicks', 'Kliknięcia')}</p>
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatNumber(campaignTotals.clicks)}</p>
+                    </div>
+                  )}
+                  {metricVisible('report_summary', 'averageCtr') && (
+                    <div className="px-3 py-1.5">
+                      <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'averageCtr', 'CTR')}</p>
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{`${((campaignTotals.clicks / campaignTotals.impressions) * 100 || 0).toFixed(2)}%`}</p>
+                    </div>
+                  )}
+                  {metricVisible('report_summary', 'averageCpc') && (
+                    <div className="px-3 py-1.5">
+                      <p className="text-[11px] font-medium text-slate-400">{metricLabel('report_summary', 'averageCpc', 'CPC')}</p>
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900">{formatCurrency((campaignTotals.spend / campaignTotals.clicks) || 0)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section id="conversions" className="grid scroll-mt-24 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.58fr)_minmax(320px,0.92fr)]">
               <ConversionFunnel
                 step1={getConversionMetric(report, 'booking_step_1', campaigns)}
                 step2={getConversionMetric(report, 'booking_step_2', campaigns)}
@@ -945,14 +971,27 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                 reservationValue={getConversionMetric(report, 'reservation_value', campaigns)}
                 conversionValue={getConversionMetric(report, 'conversion_value', campaigns)}
                 totalConversionValue={getConversionMetric(report, 'total_conversion_value', campaigns)}
-                roas={(() => {
-                  const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                  const totalValue = getConversionMetric(report, 'conversion_value', campaigns) || getConversionMetric(report, 'reservation_value', campaigns);
-                  return totalSpend > 0 ? totalValue / totalSpend : 0;
-                })()}
+                roas={reportRoas}
                 platform={platform}
+                labels={{
+                  booking_step_1: metricLabel('funnel', 'booking_step_1', platform === 'google' ? 'Booking step 1' : 'Wyszukiwania'),
+                  booking_step_2: metricLabel('funnel', 'booking_step_2', platform === 'google' ? 'Booking step 2' : 'Wyświetlenia zawartości'),
+                  booking_step_3: metricLabel('funnel', 'booking_step_3', platform === 'google' ? 'Booking step 3' : 'Zainicjowane przejścia do kasy'),
+                  reservations: metricLabel('funnel', 'reservations', 'Ilość rezerwacji'),
+                  reservation_value: metricLabel('funnel', 'reservation_value', 'Wartość rezerwacji'),
+                  total_conversion_value: metricLabel('funnel', 'total_conversion_value', 'Łączna wartość rezerwacji'),
+                  roas: metricLabel('funnel', 'roas', 'ROAS'),
+                }}
+                visible={{
+                  booking_step_1: metricVisible('funnel', 'booking_step_1'),
+                  booking_step_2: metricVisible('funnel', 'booking_step_2'),
+                  booking_step_3: metricVisible('funnel', 'booking_step_3'),
+                  reservations: metricVisible('funnel', 'reservations'),
+                  reservation_value: metricVisible('funnel', 'reservation_value'),
+                  total_conversion_value: metricVisible('funnel', 'total_conversion_value'),
+                  roas: metricVisible('funnel', 'roas'),
+                }}
                 previousYear={yoyData ? {
-                  // Use real booking step data from hook
                   step1: yoyData.previous.booking_step_1,
                   step2: yoyData.previous.booking_step_2,
                   step3: yoyData.previous.booking_step_3,
@@ -964,8 +1003,100 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   step3: yoyData.changes.booking_step_3,
                   reservations: yoyData.changes.reservations
                 } : undefined}
-                className="mb-8"
+                className="h-full"
               />
+
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-950">Kontakt i konwersje</h3>
+                  <p className="text-[13px] text-slate-500">Działania użytkowników i potencjał offline.</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold text-slate-400">Kontakt</p>
+                    {showCombinedContacts && (
+                      <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                        <p className="text-xs text-slate-500">Kontakty łącznie</p>
+                        <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">
+                          {formatContactCount(totalContacts)}
+                        </p>
+                        {showEmailContacts && showPhoneContacts && (
+                          <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
+                            {formatContactCount(emailContacts)} {metricLabel('contact', 'email_contacts', 'e-mail').toLowerCase()} / {formatContactCount(phoneContacts)} {metricLabel('contact', 'click_to_call', 'telefon').toLowerCase()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {showEmailContacts && (
+                        <div className="rounded-lg bg-slate-50 p-2.5">
+                          <p className="text-xs text-slate-500">{metricLabel('contact', 'email_contacts', 'E-mail')}</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatContactCount(emailContacts)}</p>
+                        </div>
+                      )}
+                      {showPhoneContacts && (
+                        <div className="rounded-lg bg-slate-50 p-2.5">
+                          <p className="text-xs text-slate-500">{metricLabel('contact', 'click_to_call', 'Telefon')}</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatContactCount(phoneContacts)}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold text-slate-400">Rezerwacje</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {metricVisible('contact', 'reservations') && (
+                        <div className="rounded-lg bg-slate-50 p-2.5">
+                          <p className="text-xs text-slate-500">{metricLabel('contact', 'reservations', 'Rezerwacje')}</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(getConversionMetric(report, 'reservations', campaigns))}</p>
+                        </div>
+                      )}
+                      {metricVisible('contact', 'cost_per_reservation') && (
+                        <div className="rounded-lg bg-slate-50 p-2.5">
+                          <p className="text-xs text-slate-500">{metricLabel('contact', 'cost_per_reservation', 'Koszt rezerwacji')}</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatCurrency(totalReservations > 0 ? campaignTotals.spend / totalReservations : 0)}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {(metricVisible('contact', 'offline_reservations') || metricVisible('contact', 'offline_value')) && (
+                    <div>
+                      <p className="mb-1.5 text-[11px] font-semibold text-slate-400">Potencjał offline</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {metricVisible('contact', 'offline_reservations') && (
+                          <div className="rounded-lg bg-blue-50 p-2.5">
+                            <p className="text-xs text-blue-700">{metricLabel('contact', 'offline_reservations', 'Rezerwacje offline')}</p>
+                            <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatNumber(potentialOfflineReservations)}</p>
+                          </div>
+                        )}
+                        {metricVisible('contact', 'offline_value') && (
+                          <div className="rounded-lg bg-blue-50 p-2.5">
+                            <p className="text-xs text-blue-700">{metricLabel('contact', 'offline_value', 'Wartość offline')}</p>
+                            <p className="mt-0.5 text-lg font-semibold tabular-nums text-slate-950">{formatCurrency(potentialOfflineValue)}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {(metricVisible('contact', 'total_value_with_offline') || metricVisible('contact', 'cost_percentage')) && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-950 p-3.5 text-white">
+                      <p className="text-[11px] font-semibold text-slate-300">Łączna wartość</p>
+                      {metricVisible('contact', 'total_value_with_offline') && (
+                        <p className="mt-1 text-xl font-semibold tabular-nums">{formatCurrency(totalConversionValueWithOffline)}</p>
+                      )}
+                      {metricVisible('contact', 'cost_percentage') && (
+                        <p className="mt-1 text-xs text-slate-300">
+                          {metricLabel('contact', 'cost_percentage', 'Koszt pozyskania rezerwacji')}: {costPercentage.toFixed(1)}%
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
 
 
               {/* Social Media Metrics - Temporarily Hidden */}
@@ -1039,225 +1170,118 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
 
             </section>
 
-            {/* Contact & Conversions Section */}
-            <section className="mb-10">
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-slate-900 mb-1">Kontakt & Konwersje</h2>
-                <p className="text-sm text-slate-600">Metryki kontaktu i zakończonych konwersji</p>
-              </div>
-              
-              {/* Contact & Conversion Metrics Grid - 2x2 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                <MetricCard
-                  title="E-mail"
-                  value={getConversionMetric(report, 'email_contacts', campaigns).toString()}
-                  tooltip="Liczba kliknięć w adres e-mail"
-                />
-                
-                <MetricCard
-                  title="Telefon"
-                  value={getConversionMetric(report, 'click_to_call', campaigns).toString()}
-                  tooltip="Liczba kliknięć w numer telefonu"
-                />
-                
-                <MetricCard
-                  title="Rezerwacje"
-                  value={getConversionMetric(report, 'reservations', campaigns).toString()}
-                  tooltip="Liczba zakończonych rezerwacji"
-                  change={formatComparisonChange(effectiveYoYData?.changes?.reservations || 0)}
-                  isComparisonLoading={yoyLoading && viewType !== 'custom'}
-                />
-                
-                <MetricCard
-                  title="Łączna wartość konwersji"
-                  value={formatCurrency(getConversionMetric(report, 'total_conversion_value', campaigns))}
-                  tooltip="Łączna wartość wszystkich konwersji (all_conversions_value)"
-                />
-              </div>
-
-              {/* Potential Offline Metrics - Summary Box */}
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 mb-8">
-                <h3 className="text-sm font-medium text-slate-900 mb-4">Potencjalne Metryki Offline</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+            {/* Campaigns Table — only rows with wydatki (spend) > 0 */}
+            {campaignsSortedBySpend.length > 0 && (
+              <section id="campaigns" className="scroll-mt-24">
+                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Rezerwacje offline</div>
-                    <div className="text-lg font-semibold text-slate-900 tabular-nums">
-                      {(() => {
-                        const totalEmailContacts = campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-                        const totalPhoneContacts = campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-                        const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        return potentialOfflineReservations;
-                      })()}
-                    </div>
+                    <h2 className="text-lg font-semibold text-slate-950">Kampanie</h2>
+                    <p className="text-[13px] text-slate-500">
+                      {campaignsSortedBySpend.length}{' '}
+                      {polishCampaignNounAfterCount(campaignsSortedBySpend.length)} z wydatkami w wybranym okresie.
+                    </p>
                   </div>
-                  <div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Wartość offline</div>
-                    <div className="text-lg font-semibold text-slate-900 tabular-nums">
-                      {(() => {
-                        const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
-                        const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
-                        const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                        const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                        const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
-                        const totalPotentialOfflineValue = averageConversionValue * potentialOfflineReservations;
-                        return formatCurrency(totalPotentialOfflineValue);
-                      })()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Łączna wartość</div>
-                    <div className="text-lg font-semibold text-slate-900 tabular-nums">
-                      {(() => {
-                        const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
-                        const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
-                        const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                        const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                        const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                        const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
-                        const potentialOfflineValue = averageConversionValue * potentialOfflineReservations;
-                        const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                        return formatCurrency(potentialOfflineValue + onlineConversionValue);
-                      })()}
-                    </div>
+                  <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-white p-0.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    {[
+                      { id: 'outcome' as const, label: 'Wynik' },
+                      { id: 'traffic' as const, label: 'Ruch' },
+                      { id: 'full' as const, label: 'Pełne dane' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setCampaignTableMode(mode.id)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                          campaignTableMode === mode.id
+                            ? 'bg-slate-950 text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              </div>
               
-              {/* Cost Acquisition Metric - Moved to lower position */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                <MetricCard
-                  title="Koszt pozyskania rezerwacji"
-                  value={(() => {
-                    // Calculate offline value
-                    let potentialOfflineValue = 0;
-                    if (report.conversionMetrics?.offline_value !== undefined) {
-                      potentialOfflineValue = report.conversionMetrics.offline_value;
-                    } else {
-                      const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
-                      const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
-                      const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                      
-                      const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                      const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                      
-                      const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
-                      potentialOfflineValue = potentialOfflineReservations * averageConversionValue;
-                    }
-                    
-                    // Calculate online value using total_conversion_value
-                    const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                    
-                    // Total potential value
-                    const totalPotentialValue = potentialOfflineValue + onlineConversionValue;
-                    
-                    // Calculate cost percentage
-                    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
-                    const costPercentage = totalPotentialValue > 0 ? (totalSpend / totalPotentialValue) * 100 : 0;
-                    
-                    return `${costPercentage.toFixed(1)}%`;
-                  })()}
-                  subtitle="(wydana kwota / łączna wartość konwersji) × 100"
-                  tooltip="Procentowy koszt pozyskania w stosunku do łącznej wartości konwersji"
-                  icon={<Percent className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(effectiveYoYData?.changes?.spend || 0)}
-                  isComparisonLoading={yoyLoading && viewType !== 'custom'}
-                />
-                
-                <MetricCard
-                  title="Łączna wartość konwersji online + offline"
-                  value={(() => {
-                    // Calculate offline value
-                    const totalEmailContacts = getConversionMetric(report, 'email_contacts', campaigns);
-                    const totalPhoneContacts = getConversionMetric(report, 'click_to_call', campaigns);
-                    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
-                    
-                    const totalConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                    const totalReservations = getConversionMetric(report, 'reservations', campaigns);
-                    const averageConversionValue = totalReservations > 0 ? totalConversionValue / totalReservations : 0;
-                    const potentialOfflineValue = averageConversionValue * potentialOfflineReservations;
-                    
-                    // Calculate online value using total_conversion_value
-                    const onlineConversionValue = getConversionMetric(report, 'total_conversion_value', campaigns);
-                    
-                    // Total potential value (offline + online)
-                    const totalPotentialValue = potentialOfflineValue + onlineConversionValue;
-                    
-                    return formatCurrency(totalPotentialValue);
-                  })()}
-                  subtitle="Suma łącznej wartości konwersji online i offline"
-                  tooltip="Łączna wartość wszystkich konwersji (online + potencjalne offline)"
-                  icon={<DollarSign className="w-5 h-5 text-slate-600" />}
-                  change={formatComparisonChange(effectiveYoYData?.changes?.clicks || 0)} // Using clicks as proxy
-                  isComparisonLoading={yoyLoading && viewType !== 'custom'}
-                />
-              </div>
-              
-              {/* Main Campaign Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                
-
-              </div>
-
-
-            </section>
-
-            {/* Campaigns Table */}
-            {campaigns.length > 0 && (
-              <section>
-                <div className="mb-8">
-                  <h2 className="text-lg text-gray-900 mb-2" style={{ fontWeight: 600 }}>Szczegóły Kampanii</h2>
-                  <p className="text-sm text-gray-600">
-                    Top kampanie według wydajności • {campaigns.length} aktywnych kampanii
-                    {hasMoreCampaigns && !isExpanded && ` • Pokazano top 5`}
-                  </p>
-                </div>
-              
-                <div className="overflow-x-auto" style={{ backgroundColor: '#FFFFFF', border: '1px solid #F0F0F0', borderRadius: '8px' }}>
+                <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead style={{ backgroundColor: '#FAFBFC' }} className="sticky top-0">
+                    <thead className="sticky top-0 bg-slate-50">
                       <tr>
-                        <th className="text-left py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Nazwa Kampanii
+                        {showCampaignColumn('campaign_name') && (
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'campaign_name', 'Nazwa Kampanii')}
                         </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Wydatki
+                        )}
+                        {showCampaignColumn('totalSpend') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'totalSpend', 'Wydatki')}
                         </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Wyświetlenia
+                        )}
+                        {showCampaignColumn('totalImpressions') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'totalImpressions', 'Wyświetlenia')}
                         </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Kliknięcia
+                        )}
+                        {showCampaignColumn('totalClicks') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'totalClicks', 'Kliknięcia')}
                         </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Ilość Rezerwacji
+                        )}
+                        {showCampaignColumn('totalConversions') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'totalConversions', 'Konwersje')}
                         </th>
-                        <th className="text-right py-4 px-5 text-xs font-medium text-gray-600 uppercase tracking-wide">
-                          Wartość Rezerwacji
+                        )}
+                        {showCampaignColumn('averageCtr') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'averageCtr', 'CTR')}
                         </th>
+                        )}
+                        {showCampaignColumn('averageCpc') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'averageCpc', 'CPC')}
+                        </th>
+                        )}
+                        {showCampaignColumn('reservations') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'reservations', 'Ilość Rezerwacji')}
+                        </th>
+                        )}
+                        {showCampaignColumn('reservation_value') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'reservation_value', 'Wartość Rezerwacji')}
+                        </th>
+                        )}
+                        {showCampaignColumn('total_conversion_value') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'total_conversion_value', 'Łączna wartość konwersji')}
+                        </th>
+                        )}
+                        {showCampaignColumn('cost_per_reservation') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'cost_per_reservation', 'Koszt rezerwacji')}
+                        </th>
+                        )}
+                        {showCampaignColumn('roas') && (
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">
+                          {metricLabel('campaign_table', 'roas', 'ROAS')}
+                        </th>
+                        )}
                       </tr>
                     </thead>
-                    <tbody style={{ backgroundColor: '#FFFFFF' }}>
-                      {campaignsToShow.map((campaign, index) => {
+                    <tbody className="bg-white">
+                      {visibleCampaignRows.map((campaign, index) => {
                         return (
                           <tr 
                             key={`${reportId}-${campaign.campaign_id}-${index}`} 
-                            className="transition-all duration-150 border-t border-gray-100"
-                            onMouseEnter={(e: React.MouseEvent<HTMLTableRowElement>) => {
-                              e.currentTarget.style.backgroundColor = '#F8F9FA';
-                              e.currentTarget.style.borderLeftColor = '#244583';
-                              e.currentTarget.style.borderLeftWidth = '3px';
-                            }}
-                            onMouseLeave={(e: React.MouseEvent<HTMLTableRowElement>) => {
-                              e.currentTarget.style.backgroundColor = '#FFFFFF';
-                              e.currentTarget.style.borderLeftColor = 'transparent';
-                              e.currentTarget.style.borderLeftWidth = '0px';
-                            }}
+                            className="border-t border-slate-100 transition-colors hover:bg-slate-50"
                           >
-                            <td className="py-4 px-5">
-                              <div className="flex items-center space-x-3">
-                                <div 
-                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs"
+                            {showCampaignColumn('campaign_name') && (
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center space-x-2.5">
+                                <div
+                                  className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] text-white"
                                   style={{
                                     backgroundColor: 
                                       index === 0 ? '#F8992B' :
@@ -1270,58 +1294,97 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                                   {index + 1}
                                 </div>
                                 <div>
-                                  <div className="text-sm text-gray-900" style={{ fontWeight: 500 }}>
+                                  <div className="text-[13px] font-medium text-slate-900">
                                     {campaign.campaign_name}
                                   </div>
-                                  <div className="text-xs text-gray-500 mt-0.5">
+                                  <div className="mt-0.5 text-[11px] text-slate-400">
                                     {campaign.objective || 'N/A'}
                                   </div>
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            )}
+                            {showCampaignColumn('totalSpend') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatCurrency(campaign.spend)}
                             </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            )}
+                            {showCampaignColumn('totalImpressions') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatNumber(campaign.impressions)}
                             </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                            )}
+                            {showCampaignColumn('totalClicks') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] font-medium text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatNumber(campaign.clicks)}
                             </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                            )}
+                            {showCampaignColumn('totalConversions') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] font-medium text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatNumber(campaign.conversions || 0)}
+                            </td>
+                            )}
+                            {showCampaignColumn('averageCtr') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {`${(campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0).toFixed(2)}%`}
+                            </td>
+                            )}
+                            {showCampaignColumn('averageCpc') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatCurrency(campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0)}
+                            </td>
+                            )}
+                            {showCampaignColumn('reservations') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] font-medium text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatNumber(campaign.reservations || 0)}
                             </td>
-                            <td className="py-4 px-5 text-sm text-gray-900 text-right" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
+                            )}
+                            {showCampaignColumn('reservation_value') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] font-medium text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
                               {formatCurrency(campaign.reservation_value || 0)}
                             </td>
+                            )}
+                            {showCampaignColumn('total_conversion_value') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] font-medium text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatCurrency((campaign as any).total_conversion_value || (campaign as any).conversion_value || campaign.reservation_value || 0)}
+                            </td>
+                            )}
+                            {showCampaignColumn('cost_per_reservation') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatCurrency(campaign.cost_per_reservation || ((campaign.reservations || 0) > 0 ? campaign.spend / (campaign.reservations || 1) : 0))}
+                            </td>
+                            )}
+                            {showCampaignColumn('roas') && (
+                            <td className="px-4 py-2.5 text-right text-[13px] font-medium text-slate-900" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {`${(
+                                campaign.roas ||
+                                (campaign.spend > 0
+                                  ? ((campaign as any).total_conversion_value ??
+                                      (campaign as any).conversion_value ??
+                                      campaign.reservation_value ??
+                                      0) / campaign.spend
+                                  : 0)
+                              ).toFixed(2)}x`}
+                            </td>
+                            )}
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-
-                {/* See More/Less Button */}
-                {hasMoreCampaigns && (
-                  <div className="flex justify-center mt-6">
+                {campaignsSortedBySpend.length > 5 && (
+                  <div className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-center">
                     <button
-                      onClick={() => toggleCampaignExpansion(reportId)}
-                      className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
+                      type="button"
+                      onClick={() => setShowAllCampaigns((value) => !value)}
+                      className="text-xs font-medium text-slate-700 hover:text-slate-950"
                     >
-                      {isExpanded ? (
-                        <>
-                          <ChevronUp className="w-4 h-4" />
-                          <span>Pokaż mniej</span>
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-4 h-4" />
-                          <span>Zobacz więcej ({campaigns.length - 5} więcej)</span>
-                        </>
-                      )}
+                      {showAllCampaigns ? 'Pokaż mniej' : 'Zobacz wszystkie kampanie'}
                     </button>
                   </div>
                 )}
+                </div>
               </section>
             )}
 
@@ -1332,6 +1395,18 @@ export default function WeeklyReportView({ reports, viewType = 'weekly', clientD
                   <h3 className="text-lg font-medium text-gray-900 mb-2">Brak Kampanii</h3>
                   <p className="text-gray-600">
                     Nie znaleziono aktywnych kampanii w wybranym okresie.
+                  </p>
+                </div>
+              </section>
+            )}
+
+            {campaigns.length > 0 && campaignsSortedBySpend.length === 0 && (
+              <section>
+                <div className="text-center py-12">
+                  <BarChart3 className="h-8 w-8 text-gray-400 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Brak kosztów reklamowych</h3>
+                  <p className="text-gray-600">
+                    W wybranym okresie kampanie nie generowały wydatków na reklamy.
                   </p>
                 </div>
               </section>

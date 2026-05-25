@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_dashboard_config: {
+        Row: {
+          id: string
+          client_id: string
+          metrics_config: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          metrics_config?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          metrics_config?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_dashboard_config_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_summaries: {
         Row: {
           active_campaigns: number
@@ -24,6 +56,8 @@ export type Database = {
           client_id: string
           created_at: string
           data_source: string | null
+          google_dynamic_metric_rows: Json
+          google_dynamic_metric_values: Json
           id: string
           last_updated: string | null
           meta_tables: Json | null
@@ -44,6 +78,8 @@ export type Database = {
           client_id: string
           created_at?: string
           data_source?: string | null
+          google_dynamic_metric_rows?: Json
+          google_dynamic_metric_values?: Json
           id?: string
           last_updated?: string | null
           meta_tables?: Json | null
@@ -64,6 +100,8 @@ export type Database = {
           client_id?: string
           created_at?: string
           data_source?: string | null
+          google_dynamic_metric_rows?: Json
+          google_dynamic_metric_values?: Json
           id?: string
           last_updated?: string | null
           meta_tables?: Json | null
@@ -1072,6 +1110,7 @@ export type Database = {
           date_range_start: string
           demographic_performance: Json | null
           device_performance: Json | null
+          geographic_performance: Json | null
           hourly_performance: Json | null
           id: string
           keywords_performance: Json | null
@@ -1086,6 +1125,7 @@ export type Database = {
           date_range_start: string
           demographic_performance?: Json | null
           device_performance?: Json | null
+          geographic_performance?: Json | null
           hourly_performance?: Json | null
           id?: string
           keywords_performance?: Json | null
@@ -1100,6 +1140,7 @@ export type Database = {
           date_range_start?: string
           demographic_performance?: Json | null
           device_performance?: Json | null
+          geographic_performance?: Json | null
           hourly_performance?: Json | null
           id?: string
           keywords_performance?: Json | null

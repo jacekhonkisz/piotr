@@ -302,6 +302,48 @@ export class MetaAPIServiceOptimized {
   }
 
   /**
+   * Fetch all pages of an insights endpoint (Graph API default limit would truncate campaigns).
+   * Follows `paging.next` until exhausted. Same auth as makeRequest.
+   */
+  private async fetchAllInsightsPages(firstUrl: string): Promise<MetaAPIResponse> {
+    const merged: any[] = [];
+    let url: string | undefined = firstUrl;
+    let page = 0;
+    const maxPages = 100; // safety: 100 × 500 = 50k campaigns
+
+    while (url && page < maxPages) {
+      const response = await this.makeRequest(url);
+      page++;
+
+      if (response.error) {
+        if (page === 1) {
+          return response;
+        }
+        logger.warn('Meta API: Insights pagination error after partial fetch; returning rows retrieved so far', {
+          page,
+          rows: merged.length,
+          error: response.error
+        });
+        return { data: merged };
+      }
+
+      const chunk = response.data || [];
+      merged.push(...chunk);
+
+      const next = response.paging?.next;
+      if (!next || chunk.length === 0) {
+        return { data: merged, paging: response.paging };
+      }
+      url = next;
+    }
+
+    if (page >= maxPages) {
+      logger.warn(`Meta API: Insights pagination stopped at ${maxPages} pages (${merged.length} rows)`);
+    }
+    return { data: merged };
+  }
+
+  /**
    * Make API request with timeout and error handling
    */
   private async makeRequest(url: string, options: RequestInit = {}): Promise<MetaAPIResponse> {
@@ -491,7 +533,9 @@ export class MetaAPIServiceOptimized {
     // action_values contains "Zakupy w witrynie - wartość konwersji" (website purchase conversion value)
     // ✅ CRITICAL: Request inline_link_clicks and inline_link_click_ctr to match Meta Business Suite
     // Meta Business Suite uses "link clicks" not "all clicks" for CTR/CPC calculations
-    const params = `level=campaign&time_range={"since":"${dateStart}","until":"${dateEnd}"}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,ctr,inline_link_click_ctr,cpc,cost_per_inline_link_click,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type`;
+    // ✅ Ads Manager parity (Marketing API /adaccount/insights): unified attribution matches Ads Manager;
+    //    limit + full pagination so exports are not truncated at the default ~25 rows per page.
+    const params = `level=campaign&time_range={"since":"${dateStart}","until":"${dateEnd}"}${timeIncrementParam}&fields=campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,ctr,inline_link_click_ctr,cpc,cost_per_inline_link_click,cpm,cpp,reach,frequency,conversions,actions,action_values,cost_per_action_type&limit=500&use_unified_attribution_setting=true`;
     const cacheKey = this.getCacheKey(endpoint, params);
 
     // Check cache first
@@ -504,7 +548,7 @@ export class MetaAPIServiceOptimized {
     logger.info(`Meta API: Fetching campaign insights from API for ${dateStart} to ${dateEnd}`);
     
     const url = `${this.baseUrl}/${endpoint}?${params}&access_token=${this.accessToken}`;
-    const response = await this.makeRequest(url);
+    const response = await this.fetchAllInsightsPages(url);
 
     if (response.error) {
       logger.error('Meta API: Campaign insights fetch failed:', response.error);
@@ -514,7 +558,7 @@ export class MetaAPIServiceOptimized {
     const insights = response.data || [];
     this.setCachedResponse(cacheKey, insights);
     
-    logger.info(`Meta API: Fetched ${insights.length} campaign insights`);
+    logger.info(`Meta API: Fetched ${insights.length} campaign insights (Ads Manager attribution + paginated)`);
     return insights;
   }
 

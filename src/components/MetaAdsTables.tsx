@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, 
-  Award,
   AlertCircle,
   BarChart3,
   RefreshCw,
@@ -13,9 +12,11 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import DemographicPieCharts from './DemographicPieCharts';
+import { useMetricsConfig } from '../lib/useMetricsConfig';
+import type { MetricSection } from '../lib/default-metrics-config';
+import { hasConfiguredColumns } from '../lib/configured-report-columns';
 
 interface PlacementPerformance {
   placement: string;
@@ -66,6 +67,11 @@ interface MetaAdsTablesProps {
   dateStart: string;
   dateEnd: string;
   clientId?: string;
+  preloadedTablesData?: {
+    placementPerformance?: PlacementPerformance[];
+    demographicPerformance?: DemographicPerformance[];
+    adRelevanceResults?: AdRelevanceResult[];
+  } | null;
   onDataLoaded?: (data: {
     placementPerformance: PlacementPerformance[];
     demographicPerformance: DemographicPerformance[];
@@ -73,10 +79,9 @@ interface MetaAdsTablesProps {
   }) => void;
 }
 
-const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded }) => {
+const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clientId, preloadedTablesData, onDataLoaded }) => {
   const [placementData, setPlacementData] = useState<PlacementPerformance[]>([]);
   const [demographicData, setDemographicData] = useState<DemographicPerformance[]>([]);
-  const [adRelevanceData, setAdRelevanceData] = useState<AdRelevanceResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<string>('unknown');
@@ -100,15 +105,32 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     if (label === 'Nieznane' || label === 'Unknown' || label === 'unknown') return 'Nieznane';
     return label; // Age ranges like "25-34" don't need translation
   };
-  const [activeTab, setActiveTab] = useState<'placement' | 'demographic' | 'adRelevance'>('placement');
   // 🔧 FIX: Default to 'spend' since reservation_value not available in demographic breakdowns
   const [demographicMetric, setDemographicMetric] = useState<'impressions' | 'clicks' | 'spend'>('spend');
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
+  const { config: metricsConfig, getMetricName, isMetricVisible } = useMetricsConfig(clientId || null, 'meta');
+  const label = (section: MetricSection, key: string, fallback: string) =>
+    getMetricName(section, key) || fallback;
+  const visible = (section: MetricSection, key: string) => isMetricVisible(section, key);
+  const sectionVisible = (section: MetricSection) => hasConfiguredColumns(metricsConfig, section);
 
   useEffect(() => {
+    if (preloadedTablesData) {
+      const placementPerformance = preloadedTablesData.placementPerformance || [];
+      const demographicPerformance = preloadedTablesData.demographicPerformance || [];
+      const adRelevanceResults = preloadedTablesData.adRelevanceResults || [];
+      setPlacementData(placementPerformance);
+      setDemographicData(demographicPerformance);
+      setDataSource('sample-preview');
+      setCacheAge(null);
+      setLoading(false);
+      onDataLoaded?.({ placementPerformance, demographicPerformance, adRelevanceResults });
+      return;
+    }
+
     console.log('📊 MetaAdsTables: Fetching data for client:', clientId, 'dates:', dateStart, 'to', dateEnd);
     fetchMetaTablesData();
-  }, [dateStart, dateEnd, clientId]); // 🔧 FIX: Add clientId to dependencies
+  }, [dateStart, dateEnd, clientId, preloadedTablesData]); // 🔧 FIX: Add clientId to dependencies
 
   const fetchMetaTablesData = async () => {
     try {
@@ -157,7 +179,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
         const placementArray = result.data.metaTables?.placementPerformance || [];
         const rawDemographicArray = result.data.metaTables?.demographicPerformance || [];
-        const adRelevanceArray = result.data.metaTables?.adRelevanceResults || [];
         
         // 🔍 DEBUG: Log placement data to verify transformation
         console.log('🔍 PLACEMENT DATA DEBUG:', {
@@ -187,7 +208,6 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         
         setPlacementData(placementArray);
         setDemographicData(demographicArray);
-        setAdRelevanceData(adRelevanceArray);
         
         // Call the callback with the loaded data
         if (onDataLoaded) {
@@ -247,16 +267,16 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
     
     const getBadgeStyle = (index: number) => {
       const baseStyle = {
-        width: '32px',
-        height: '32px',
+        width: '22px',
+        height: '22px',
         borderRadius: '50%',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '12px',
+        fontSize: '10px',
         fontWeight: 600,
         transition: 'all 0.2s ease',
-        marginRight: '12px'
+        marginRight: '8px'
       };
 
       switch (index) {
@@ -350,7 +370,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   }
 
   // Check if all tables have no data
-  const hasNoData = placementData.length === 0 && demographicData.length === 0 && adRelevanceData.length === 0;
+  const hasNoData = placementData.length === 0 && demographicData.length === 0;
   
   if (hasNoData && !loading) {
     return (
@@ -383,7 +403,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
   const cacheAgeDisplay = formatCacheAge(cacheAge);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {/* Cache Status Indicator */}
       {dataSource && (
         <div className="flex items-center justify-end gap-2 text-xs">
@@ -402,64 +422,23 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
         </div>
       )}
       
-      {/* Tab Navigation - Premium Design */}
-      <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl">
-        <button
-          onClick={() => setActiveTab('placement')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'placement'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <BarChart3 className="h-4 w-4" />
-          <span>Najlepsze Miejsca Docelowe</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('demographic')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'demographic'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          <span>Wyniki Demograficzne</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('adRelevance')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'adRelevance'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Award className="h-4 w-4" />
-          <span>Trafność Reklam i Wyniki</span>
-        </button>
-      </div>
-
-      {/* Table Content - Premium Card Design */}
-      <motion.div
-        key={activeTab}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
-      >
-        {activeTab === 'placement' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+      <div className="space-y-4">
+        {sectionVisible('placement_table') && (
+          <div
+            id="meta-placements"
+            className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Najlepsze Miejsca Docelowe</h3>
-                <p className="text-sm text-slate-600">
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Najlepsze Miejsca Docelowe</h3>
+                <p className="text-xs text-slate-500">
                   Skuteczność reklam według placementów
                   {placementData.length > 5 && !expandedSections['placement'] && ` • Pokazano top 5`}
                 </p>
               </div>
               <button
                 onClick={() => exportToCSV(placementData, 'placement-performance')}
-                className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium"
+                className="flex items-center space-x-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
               >
                 <FileSpreadsheet className="h-4 w-4" />
                 <span>Eksportuj CSV</span>
@@ -472,30 +451,14 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                   <table className="w-full">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        <th className="px-6 py-4 text-left text-sm font-medium text-slate-700">
-                          Miejsce Docelowe
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Wydatki
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Wyświetlenia
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Kliknięcia
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Współczynnik kliknięć z linku
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Koszt kliknięcia linku
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Ilość rezerwacji
-                        </th>
-                        <th className="px-6 py-4 text-right text-sm font-medium text-slate-700">
-                          Wartość rezerwacji
-                        </th>
+                        {visible('placement_table', 'placement') && <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('placement_table', 'placement', 'Miejsce Docelowe')}</th>}
+                        {visible('placement_table', 'totalSpend') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'totalSpend', 'Wydatki')}</th>}
+                        {visible('placement_table', 'totalImpressions') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'totalImpressions', 'Wyświetlenia')}</th>}
+                        {visible('placement_table', 'totalClicks') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'totalClicks', 'Kliknięcia')}</th>}
+                        {visible('placement_table', 'averageCtr') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'averageCtr', 'Współczynnik kliknięć z linku')}</th>}
+                        {visible('placement_table', 'averageCpc') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'averageCpc', 'Koszt kliknięcia linku')}</th>}
+                        {visible('placement_table', 'reservations') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'reservations', 'Ilość rezerwacji')}</th>}
+                        {visible('placement_table', 'reservation_value') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('placement_table', 'reservation_value', 'Wartość rezerwacji')}</th>}
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
@@ -507,33 +470,33 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                             key={index} 
                             className={`hover:bg-slate-50 transition-colors ${index % 2 === 1 ? 'bg-slate-50/30' : ''}`}
                           >
-                            <td className="px-6 py-4">
+                            {visible('placement_table', 'placement') && <td className="px-4 py-2.5">
                               <div className="flex items-center">
                                 <RankingBadge rank={index + 1} index={index} />
-                                <span className="text-sm font-medium text-slate-900">{placement.placement}</span>
+                                <span className="text-[13px] font-medium text-slate-900">{placement.placement}</span>
                               </div>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm font-semibold text-slate-900 tabular-nums">{formatCurrency(placement.spend)}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{formatNumber(placement.impressions)}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{formatNumber(placement.clicks)}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{formatPercentage(placement.ctr)}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{formatCurrency(placement.cpc)}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{placement.reservations || 0}</span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="text-sm text-slate-900 tabular-nums">{formatCurrency(placement.reservation_value || 0)}</span>
-                            </td>
+                            </td>}
+                            {visible('placement_table', 'totalSpend') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] font-semibold text-slate-900 tabular-nums">{formatCurrency(placement.spend)}</span>
+                            </td>}
+                            {visible('placement_table', 'totalImpressions') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] text-slate-900 tabular-nums">{formatNumber(placement.impressions)}</span>
+                            </td>}
+                            {visible('placement_table', 'totalClicks') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] text-slate-900 tabular-nums">{formatNumber(placement.clicks)}</span>
+                            </td>}
+                            {visible('placement_table', 'averageCtr') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] text-slate-900 tabular-nums">{formatPercentage(placement.ctr)}</span>
+                            </td>}
+                            {visible('placement_table', 'averageCpc') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] text-slate-900 tabular-nums">{formatCurrency(placement.cpc)}</span>
+                            </td>}
+                            {visible('placement_table', 'reservations') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] text-slate-900 tabular-nums">{placement.reservations || 0}</span>
+                            </td>}
+                            {visible('placement_table', 'reservation_value') && <td className="px-4 py-2.5 text-right">
+                              <span className="text-[13px] text-slate-900 tabular-nums">{formatCurrency(placement.reservation_value || 0)}</span>
+                            </td>}
                           </tr>
                         ))}
                     </tbody>
@@ -542,10 +505,10 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
 
                 {/* See More/Less Button for Placement */}
                 {placementData.length > 5 && (
-                  <div className="flex justify-center py-4 border-t border-gray-100">
+                  <div className="flex justify-center border-t border-gray-100 py-2.5">
                     <button
                       onClick={() => toggleSectionExpansion('placement')}
-                      className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
+                      className="flex items-center space-x-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-all duration-200 hover:border-gray-400 hover:bg-gray-50"
                     >
                       {expandedSections['placement'] ? (
                         <>
@@ -572,66 +535,69 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
           </div>
         )}
 
-        {activeTab === 'demographic' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        {sectionVisible('demographic_breakdown') && (
+          <div
+            id="meta-demographics"
+            className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Wyniki Demograficzne</h3>
-                <p className="text-sm text-slate-600">
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Wyniki demograficzne</h3>
+                <p className="text-xs text-slate-500">
                   Skuteczność reklam według demografii
                   {demographicData.length > 5 && !expandedSections['demographic'] && ` • Pokazano top 5`}
                 </p>
 
               </div>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
                 {/* Enhanced Metric Selector */}
-                <div className="flex items-center space-x-2 bg-slate-100 rounded-xl p-1">
-                  <button
+                <div className="flex items-center space-x-1 rounded-lg bg-slate-100 p-0.5">
+                  {visible('demographic_breakdown', 'totalSpend') && <button
                     onClick={() => setDemographicMetric('spend')}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
                       demographicMetric === 'spend'
                         ? 'bg-slate-900 text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
                   >
-                    <div className="flex items-center space-x-2">
-                      <BarChart3 className="h-4 w-4" />
-                      <span>Wydatki</span>
+                    <div className="flex items-center space-x-1.5">
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      <span>{label('demographic_breakdown', 'totalSpend', 'Wydatki')}</span>
                     </div>
-                  </button>
+                  </button>}
 
-                  <button
+                  {visible('demographic_breakdown', 'totalImpressions') && <button
                     onClick={() => setDemographicMetric('impressions')}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
                       demographicMetric === 'impressions'
                         ? 'bg-slate-900 text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
                   >
-                    <div className="flex items-center space-x-2">
-                      <Eye className="h-4 w-4" />
-                      <span>Wyświetlenia</span>
+                    <div className="flex items-center space-x-1.5">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>{label('demographic_breakdown', 'totalImpressions', 'Wyświetlenia')}</span>
                     </div>
-                  </button>
+                  </button>}
 
-                  <button
+                  {visible('demographic_breakdown', 'totalClicks') && <button
                     onClick={() => setDemographicMetric('clicks')}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-200 ${
                       demographicMetric === 'clicks'
                         ? 'bg-slate-900 text-white shadow-sm'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
                     
                   >
-                    <div className="flex items-center space-x-2">
-                      <MousePointer className="h-4 w-4" />
-                      <span>Kliknięcia</span>
+                    <div className="flex items-center space-x-1.5">
+                      <MousePointer className="h-3.5 w-3.5" />
+                      <span>{label('demographic_breakdown', 'totalClicks', 'Kliknięcia')}</span>
                     </div>
-                  </button>
+                  </button>}
                 </div>
                 <button
                   onClick={() => exportToCSV(demographicData, 'demographic-performance')}
-                  className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
+                  className="flex items-center space-x-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-all duration-200 hover:bg-slate-50 hover:text-slate-900"
                 >
                   <FileSpreadsheet className="h-4 w-4" />
                   <span>Eksportuj CSV</span>
@@ -642,54 +608,32 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             {demographicData.length > 0 ? (
               <div>
                 {/* Demographic Charts Section */}
-                <div className="p-6 border-b border-slate-100">
+                <div className="border-b border-slate-100 p-4">
                   <DemographicPieCharts data={demographicData} metric={demographicMetric} />
                 </div>
 
                 {/* Detailed Table Section */}
-                <div className="p-6">
-                  <div className="mb-6">
-                    <h4 className="text-lg font-bold text-slate-900 mb-2">Szczegółowe Dane Demograficzne</h4>
-                    <p className="text-sm text-slate-600">Tabela z wszystkimi danymi demograficznymi</p>
+                <div className="p-4">
+                  <div className="mb-3">
+                    <h4 className="text-sm font-semibold text-slate-900">Szczegółowe dane demograficzne</h4>
+                    <p className="text-xs text-slate-500">Tabela z wszystkimi danymi demograficznymi</p>
                   </div>
                   
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Wiek
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Płeć
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Wydatki
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Kliknięcia
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Rezerwacje
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Wartość Rezerwacji
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            ROAS
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Koszt/Rezerwacja
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Etap 1
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Etap 2
-                          </th>
-                          <th className="px-4 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                            Etap 3
-                          </th>
+                          {visible('demographic_breakdown', 'age') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'age', 'Wiek')}</th>}
+                          {visible('demographic_breakdown', 'gender') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'gender', 'Płeć')}</th>}
+                          {visible('demographic_breakdown', 'totalSpend') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'totalSpend', 'Wydatki')}</th>}
+                          {visible('demographic_breakdown', 'totalClicks') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'totalClicks', 'Kliknięcia')}</th>}
+                          {visible('demographic_breakdown', 'reservations') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'reservations', 'Rezerwacje')}</th>}
+                          {visible('demographic_breakdown', 'reservation_value') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'reservation_value', 'Wartość Rezerwacji')}</th>}
+                          {visible('demographic_breakdown', 'roas') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'roas', 'ROAS')}</th>}
+                          {visible('demographic_breakdown', 'cost_per_reservation') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'cost_per_reservation', 'Koszt/Rezerwacja')}</th>}
+                          {visible('demographic_breakdown', 'booking_step_1') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'booking_step_1', 'Etap 1')}</th>}
+                          {visible('demographic_breakdown', 'booking_step_2') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'booking_step_2', 'Etap 2')}</th>}
+                          {visible('demographic_breakdown', 'booking_step_3') && <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('demographic_breakdown', 'booking_step_3', 'Etap 3')}</th>}
                         </tr>
                       </thead>
                       <tbody className="bg-white">
@@ -702,46 +646,46 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
                               className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
                               style={{ borderColor: '#E7EAF3', height: '56px' }}
                             >
-                              <td className="px-4 py-4">
+                              {visible('demographic_breakdown', 'age') && <td className="px-4 py-4">
                                 <div className="flex items-center">
                                   <RankingBadge rank={index + 1} index={index} />
                                   <span className="text-sm font-medium text-slate-900">{translateAgeLabel(demographic.age)}</span>
                                 </div>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'gender') && <td className="px-4 py-4">
                                 <span className="text-sm text-slate-900">{translateGenderLabel(demographic.gender)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'totalSpend') && <td className="px-4 py-4">
                                 <span className="text-sm font-semibold text-slate-900">{formatCurrency(demographic.spend)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'totalClicks') && <td className="px-4 py-4">
                                 <span className="text-sm text-slate-900">{formatNumber(demographic.clicks)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'reservations') && <td className="px-4 py-4">
                                 <span className="text-sm font-bold text-blue-600">{formatNumber(demographic.reservations)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'reservation_value') && <td className="px-4 py-4">
                                 <span className="text-sm font-bold text-green-600">{formatCurrency(demographic.reservation_value)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'roas') && <td className="px-4 py-4">
                                 <span className={`text-sm font-semibold tabular-nums ${demographic.roas > 2 ? 'text-slate-900' : demographic.roas > 1 ? 'text-slate-700' : 'text-orange-600'}`}>
                                   {demographic.roas > 0 ? `${demographic.roas.toFixed(2)}x` : '-'}
                                 </span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'cost_per_reservation') && <td className="px-4 py-4">
                                 <span className="text-sm text-slate-900">
                                   {demographic.cost_per_reservation > 0 ? formatCurrency(demographic.cost_per_reservation) : '-'}
                                 </span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'booking_step_1') && <td className="px-4 py-4">
                                 <span className="text-sm text-gray-700">{formatNumber(demographic.booking_step_1)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'booking_step_2') && <td className="px-4 py-4">
                                 <span className="text-sm text-gray-700">{formatNumber(demographic.booking_step_2)}</span>
-                              </td>
-                              <td className="px-4 py-4">
+                              </td>}
+                              {visible('demographic_breakdown', 'booking_step_3') && <td className="px-4 py-4">
                                 <span className="text-sm text-gray-700">{formatNumber(demographic.booking_step_3)}</span>
-                              </td>
+                              </td>}
                             </tr>
                           ))}
                       </tbody>
@@ -780,127 +724,7 @@ const MetaAdsTables: React.FC<MetaAdsTablesProps> = ({ dateStart, dateEnd, clien
             )}
           </div>
         )}
-
-        {activeTab === 'adRelevance' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900 mb-1">Trafność Reklam i Wyniki</h3>
-                <p className="text-sm text-slate-600">
-                  Skuteczność reklam według relevance
-                  {adRelevanceData.length > 5 && !expandedSections['adRelevance'] && ` • Pokazano top 5`}
-                </p>
-              </div>
-              <button
-                onClick={() => exportToCSV(adRelevanceData, 'ad-relevance-results')}
-                className="flex items-center space-x-2 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 px-4 py-2 rounded-lg transition-all duration-200 font-medium"
-              >
-                <FileSpreadsheet className="h-4 w-4" />
-                <span>Eksportuj CSV</span>
-              </button>
-            </div>
-            
-            {adRelevanceData.length > 0 ? (
-              <div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Nazwa Reklamy
-                        </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Wydatki
-                        </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Wyświetlenia
-                        </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Kliknięcia
-                        </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Koszt kliknięcia linku
-                        </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Ilość rezerwacji
-                        </th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                          Wartość rezerwacji
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white">
-                      {adRelevanceData
-                        .sort((a, b) => b.spend - a.spend)
-                        .slice(0, expandedSections['adRelevance'] ? undefined : 5)
-                        .map((ad, index) => (
-                          <tr 
-                            key={index} 
-                            className="border-t border-gray-100 hover:bg-gray-50 transition-colors"
-                            style={{ borderColor: '#E7EAF3', height: '56px' }}
-                          >
-                            <td className="px-6 py-4">
-                              <div className="flex items-center">
-                                <RankingBadge rank={index + 1} index={index} />
-                                <span className="text-sm font-medium text-slate-900">{ad.ad_name}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm font-semibold text-slate-900">{formatCurrency(ad.spend)}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-slate-900">{formatNumber(ad.impressions)}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-slate-900">{formatNumber(ad.clicks)}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-slate-900">{ad.cpc ? formatCurrency(ad.cpc) : 'N/A'}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-slate-900">{formatNumber(ad.reservations || 0)}</span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm text-slate-900">{formatCurrency(ad.reservation_value || 0)}</span>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* See More/Less Button for Ad Relevance */}
-                {adRelevanceData.length > 5 && (
-                  <div className="flex justify-center py-4 border-t border-gray-100">
-                    <button
-                      onClick={() => toggleSectionExpansion('adRelevance')}
-                      className="flex items-center space-x-2 px-6 py-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium text-gray-700"
-                    >
-                      {expandedSections['adRelevance'] ? (
-                        <>
-                          <ChevronUp className="w-4 h-4" />
-                          <span>Pokaż mniej</span>
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-4 h-4" />
-                          <span>Zobacz więcej ({adRelevanceData.length - 5} więcej)</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Award className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-slate-900 mb-2">Brak danych o trafności</h3>
-                <p className="text-slate-600">Nie znaleziono danych o trafności reklam dla wybranego okresu.</p>
-              </div>
-            )}
-          </div>
-        )}
-      </motion.div>
+      </div>
     </div>
   );
 };

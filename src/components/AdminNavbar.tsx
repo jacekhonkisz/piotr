@@ -10,7 +10,9 @@ import {
   LogOut,
   BarChart3,
   Users,
-  Shield
+  Shield,
+  SlidersHorizontal,
+  GitCompare,
 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 
@@ -42,6 +44,8 @@ export default function AdminNavbar({ isCondensed = false }: AdminNavbarProps) {
   const isReportsActive = pathname?.includes('/reports') || pathname?.includes('/raporty');
   const isClientsActive = pathname === '/admin' || pathname?.includes('/clients') || pathname?.includes('/klienci');
   const isMonitoringActive = pathname?.includes('/monitoring');
+  const isMetricsConfigActive = pathname?.includes('/metrics-config');
+  const isMetricsAuditActive = pathname?.includes('/metrics-audit');
 
   // Get user initials for avatar
   const getUserInitials = () => {
@@ -94,6 +98,30 @@ export default function AdminNavbar({ isCondensed = false }: AdminNavbarProps) {
             >
               <Shield className="h-4 w-4" />
               <span className="hidden sm:inline">Monitoring</span>
+            </button>
+
+            <button
+              onClick={() => router.push('/admin/metrics-config')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                isMetricsConfigActive
+                  ? 'bg-[#EEF4FF] text-[#1F3D8A] shadow-sm'
+                  : 'text-[#667085] hover:bg-[#F8FAFC] hover:text-[#1F3D8A]'
+              }`}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              <span className="hidden sm:inline">Metryki</span>
+            </button>
+
+            <button
+              onClick={() => router.push('/admin/metrics-audit')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                isMetricsAuditActive
+                  ? 'bg-[#EEF4FF] text-[#1F3D8A] shadow-sm'
+                  : 'text-[#667085] hover:bg-[#F8FAFC] hover:text-[#1F3D8A]'
+              }`}
+            >
+              <GitCompare className="h-4 w-4" />
+              <span className="hidden sm:inline">Audit</span>
             </button>
           </div>
 

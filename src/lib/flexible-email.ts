@@ -4,6 +4,8 @@ import logger from './logger';
 import { RateLimiter } from './rate-limiter';
 import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject, getEmailRecipientsAsync, getEmailSubjectAsync } from './email-config';
 import { createClient } from '@supabase/supabase-js';
+import { formatPlnWhole } from './email-helpers';
+import { getMonthlyOfflineNarrative } from './monthly-report-offline-narrative';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -156,11 +158,18 @@ export class FlexibleEmailService {
    * Send email using the determined provider.
    * Applies review-mode redirect automatically (async DB check).
    */
-  async sendEmail(emailData: EmailData, provider?: EmailProvider): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string }> {
+  async sendEmail(
+    emailData: EmailData,
+    provider?: EmailProvider,
+    options?: { reviewRecipientOverride?: string }
+  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string }> {
     const selectedProvider = provider || this.determineProvider(emailData.to);
 
     // Apply review-mode redirect (async, always fresh)
-    const { recipients, originalRecipient, isRedirected } = await getEmailRecipientsAsync(emailData.to);
+    const { recipients, originalRecipient, isRedirected } = await getEmailRecipientsAsync(
+      emailData.to,
+      options?.reviewRecipientOverride
+    );
     const resolvedSubject = await getEmailSubjectAsync(emailData.subject, isRedirected ? originalRecipient : undefined);
 
     const resolvedEmailData: EmailData = {
@@ -1097,7 +1106,6 @@ Piotr Bajerlein`;
         clicks: number;
         cpc: number;
         ctr: number;
-        formSubmits: number;
         emailClicks: number;
         phoneClicks: number;
         bookingStep1: number;
@@ -1111,7 +1119,8 @@ Piotr Bajerlein`;
         spend: number;
         impressions: number;
         linkClicks: number;
-        formSubmits: number;
+        ctr: number;
+        cpc: number;
         emailClicks: number;
         phoneClicks: number;
         reservations: number;
@@ -1132,8 +1141,9 @@ Piotr Bajerlein`;
       totalValue: number;
     },
     pdfBuffer: Buffer,
-    provider?: EmailProvider
-  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string }> {
+    provider?: EmailProvider,
+    options?: { reviewRecipientOverride?: string }
+  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string }> {
     
     // 🔒 MANDATORY VALIDATION: PDF must be provided
     if (!pdfBuffer || pdfBuffer.length === 0) {
@@ -1179,7 +1189,7 @@ Piotr Bajerlein`;
       }];
     }
 
-    return this.sendEmail(emailData, provider);
+    return this.sendEmail(emailData, provider, options);
   }
 
   /**
@@ -1192,266 +1202,483 @@ Piotr Bajerlein`;
     reportData: any
   ): { subject: string; html: string; text: string } {
     const subject = `Podsumowanie miesiąca - ${monthName} ${year} | ${clientName}`;
-    
+    // Unique first line per send — reduces Gmail collapsing the body in threaded / similar messages
+    const sentAtLabel = new Date().toLocaleString('pl-PL', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const offlineNarrative = getMonthlyOfflineNarrative(clientName, {
+      totalMicroConversions: reportData.totalMicroConversions,
+      estimatedOfflineReservations: reportData.estimatedOfflineReservations,
+      estimatedOfflineValue: reportData.estimatedOfflineValue,
+      finalCostPercentage: reportData.finalCostPercentage,
+      totalValue: reportData.totalValue,
+      monthName,
+      year,
+      metaReservationValue: reportData.metaAds?.reservationValue ?? 0
+    });
+    const metricLabel = (
+      platform: 'googleAds' | 'metaAds',
+      key: string,
+      fallback: string
+    ) => reportData.metricLabels?.[platform]?.[key] || fallback;
+
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="x-apple-disable-message-reformatting">
         <title>${subject}</title>
         <style>
-          body { 
-            font-family: Arial, sans-serif; 
-            line-height: 1.8; 
-            color: #333; 
-            margin: 0; 
-            padding: 20px;
-            background-color: #f5f5f5;
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background-color: #f4f7fb;
+            color: #152238;
+            font-family: Arial, Helvetica, sans-serif;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
           }
-          .container { 
-            max-width: 650px; 
-            margin: 0 auto; 
-            background: #ffffff;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          table {
+            border-collapse: collapse;
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+          }
+          img {
+            border: 0;
+            outline: none;
+            text-decoration: none;
+          }
+          a {
+            color: #0b5fc7;
+            text-decoration: none;
+          }
+          p {
+            margin: 0 0 14px 0;
+          }
+          .email-shell {
+            width: 100%;
+            background-color: #f4f7fb;
+            padding: 24px 0;
+          }
+          .container {
+            width: 100%;
+            max-width: 660px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 10px 32px rgba(18, 38, 63, 0.08);
+          }
+          .inner {
+            padding: 28px 32px 34px 32px;
+          }
+          .report-header {
+            background-color: #f1f7ff;
+            border-bottom: 1px solid #e2edf9;
+            padding: 22px 32px;
+          }
+          .header-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background-color: #dbeafe;
+            color: #0b5fc7;
+            font-size: 20px;
+            font-weight: 700;
+            text-align: center;
+            vertical-align: middle;
+          }
+          .header-title {
+            font-size: 20px;
+            line-height: 1.25;
+            font-weight: 700;
+            color: #111827;
+            margin: 0;
+          }
+          .header-subtitle {
+            font-size: 14px;
+            line-height: 1.45;
+            color: #2563eb;
+            font-weight: 600;
+            margin: 4px 0 0 0;
+          }
+          .header-meta {
+            font-size: 12px;
+            line-height: 1.45;
+            color: #64748b;
+            margin: 2px 0 0 0;
           }
           .greeting {
             font-size: 16px;
-            margin-bottom: 20px;
+            line-height: 1.55;
+            color: #111827;
+            font-weight: 700;
+            margin-bottom: 16px;
           }
           .intro {
-            margin-bottom: 30px;
-            line-height: 1.8;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #263445;
+            margin-bottom: 22px;
           }
-          .section {
-            margin: 30px 0;
-            padding: 20px;
-            background: #f9f9f9;
-            border-left: 4px solid #4285f4;
-            border-radius: 4px;
+          .cta-button {
+            display: inline-block;
+            background-color: #0b5fc7;
+            color: #ffffff !important;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 12px 18px;
+            border-radius: 6px;
+            margin-left: 8px;
+            white-space: nowrap;
           }
-          .section.meta {
+          .platform-card {
+            background-color: #ffffff;
+            border: 1px solid #e5ebf3;
+            border-left: 4px solid #1a73e8;
+            border-radius: 10px;
+            margin: 18px 0 0 0;
+            box-shadow: 0 4px 14px rgba(18, 38, 63, 0.06);
+          }
+          .platform-card.meta {
             border-left-color: #1877f2;
           }
-          .section.summary {
-            border-left-color: #34a853;
-            background: #f0f8f4;
+          .card-inner {
+            padding: 20px 18px;
+          }
+          .platform-icon {
+            width: 26px;
+            height: 26px;
+            border-radius: 7px;
+            text-align: center;
+            vertical-align: middle;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 26px;
+          }
+          .google-icon {
+            background-color: #1a73e8;
+          }
+          .meta-icon {
+            background-color: #1877f2;
           }
           .section-title {
-            font-size: 20px;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: #1a1a1a;
+            font-size: 18px;
+            line-height: 1.3;
+            font-weight: 700;
+            color: #111827;
+            margin: 0;
           }
-          .metric-line {
-            margin: 8px 0;
-            font-size: 15px;
+          .metric-columns {
+            width: 100%;
+            margin-top: 14px;
+          }
+          .metric-column {
+            width: 50%;
+            vertical-align: top;
+          }
+          .metric-column-left {
+            padding-right: 18px;
+            border-right: 1px solid #edf1f7;
+          }
+          .metric-column-right {
+            padding-left: 18px;
+          }
+          .metric-row {
+            width: 100%;
+          }
+          .metric-row td {
+            padding: 5px 0;
+            font-size: 13px;
+            line-height: 1.35;
+            vertical-align: top;
           }
           .metric-label {
-            display: inline-block;
-            width: 200px;
-            color: #555;
+            color: #5b6678;
+            padding-right: 10px;
           }
           .metric-value {
-            font-weight: 600;
-            color: #1a1a1a;
+            color: #111827;
+            font-weight: 700;
+            text-align: right;
+            white-space: nowrap;
           }
-          .highlight {
-            background: #fff3cd;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 20px 0;
-            border-left: 4px solid #ffc107;
+          .summary-card {
+            background-color: #effaf4;
+            border-left: 4px solid #22a865;
+            border-radius: 10px;
+            margin-top: 20px;
+            padding: 20px 20px 18px 20px;
+            color: #173524;
+            font-size: 15px;
+            line-height: 1.6;
           }
-          .link {
-            color: #4285f4;
-            text-decoration: none;
-            font-weight: 600;
-          }
-          .link:hover {
-            text-decoration: underline;
-          }
-          .closing {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e0e0e0;
+          .summary-card .section-title {
+            color: #173524;
+            margin-bottom: 10px;
           }
           .comparison {
-            margin: 15px 0;
-            padding-left: 20px;
+            margin: 12px 0 16px 0;
+            color: #173524;
+          }
+          .note-box {
+            background-color: #fff9e8;
+            border-left: 4px solid #f7c948;
+            border-radius: 10px;
+            margin-top: 16px;
+            padding: 18px 20px;
+            color: #4a3b12;
+            font-size: 14px;
+            line-height: 1.6;
           }
           .total-box {
-            background: #e8f5e9;
-            padding: 20px;
-            border-radius: 6px;
-            margin: 20px 0;
+            background-color: #f3fbf6;
+            border: 1px solid #b7e1c8;
+            border-radius: 10px;
+            margin-top: 18px;
+            padding: 20px 22px;
             text-align: center;
-            border: 2px solid #4caf50;
           }
-          .total-box .amount {
+          .total-label {
+            margin: 0;
+            font-size: 15px;
+            line-height: 1.45;
+            color: #25543a;
+          }
+          .amount {
             font-size: 28px;
-            font-weight: bold;
-            color: #2e7d32;
-            margin: 10px 0;
+            line-height: 1.2;
+            font-weight: 800;
+            color: #16833f;
+            margin: 10px 0 0 0;
+          }
+          .closing {
+            margin-top: 26px;
+            padding-top: 8px;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #263445;
+          }
+          @media only screen and (max-width: 600px) {
+            .email-shell {
+              padding: 0 !important;
+            }
+            .container {
+              width: 100% !important;
+              max-width: 100% !important;
+              border-radius: 0 !important;
+              box-shadow: none !important;
+            }
+            .report-header {
+              padding: 18px 18px !important;
+            }
+            .inner {
+              padding: 20px 16px 28px 16px !important;
+            }
+            .header-icon {
+              width: 36px !important;
+              height: 36px !important;
+              font-size: 17px !important;
+            }
+            .header-title {
+              font-size: 17px !important;
+            }
+            .header-subtitle,
+            .intro,
+            .summary-card,
+            .closing {
+              font-size: 14px !important;
+            }
+            .cta-button {
+              display: block !important;
+              margin: 10px 0 0 0 !important;
+              text-align: center !important;
+              padding: 13px 16px !important;
+            }
+            .card-inner {
+              padding: 16px 14px !important;
+            }
+            .section-title {
+              font-size: 16px !important;
+            }
+            .metric-column,
+            .metric-column-left,
+            .metric-column-right {
+              display: block !important;
+              width: 100% !important;
+              padding-left: 0 !important;
+              padding-right: 0 !important;
+              border-right: 0 !important;
+            }
+            .metric-column-right {
+              padding-top: 4px !important;
+            }
+            .metric-row td {
+              font-size: 12px !important;
+              padding: 5px 0 !important;
+            }
+            .metric-value {
+              white-space: normal !important;
+              text-align: right !important;
+            }
+            .summary-card,
+            .note-box,
+            .total-box {
+              padding: 16px 14px !important;
+            }
+            .amount {
+              font-size: 24px !important;
+            }
           }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="greeting">
-            Dzień dobry,
-          </div>
-          
-          <div class="intro">
-            <p>poniżej przesyłam podsumowanie najważniejszych danych z poprzedniego miesiąca.</p>
-            
-            <p>Szczegółowe raporty za działania znajdą Państwo w panelu klienta - <a href="${reportData.dashboardUrl}" class="link">TUTAJ</a></p>
-            
-            <p>W załączniku przesyłam też szczegółowy raport PDF.</p>
-          </div>
-
-          ${reportData.googleAds ? `
-          <!-- Google Ads Section -->
-          <div class="section">
-            <div class="section-title">1. Google Ads</div>
-            
-            <div class="metric-line">
-              <span class="metric-label">Wydana kwota:</span>
-              <span class="metric-value">${reportData.googleAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Wyświetlenia:</span>
-              <span class="metric-value">${reportData.googleAds.impressions.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Kliknięcia:</span>
-              <span class="metric-value">${reportData.googleAds.clicks.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">CPC:</span>
-              <span class="metric-value">${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">CTR:</span>
-              <span class="metric-value">${reportData.googleAds.ctr.toFixed(2)}%</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Wysłanie formularza:</span>
-              <span class="metric-value">${reportData.googleAds.formSubmits.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Kliknięcia w adres e-mail:</span>
-              <span class="metric-value">${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Kliknięcia w numer telefonu:</span>
-              <span class="metric-value">${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Booking Engine krok 1:</span>
-              <span class="metric-value">${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Booking Engine krok 2:</span>
-              <span class="metric-value">${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Booking Engine krok 3:</span>
-              <span class="metric-value">${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Rezerwacje:</span>
-              <span class="metric-value">${reportData.googleAds.reservations.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Wartość rezerwacji:</span>
-              <span class="metric-value">${reportData.googleAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">ROAS:</span>
-              <span class="metric-value">${reportData.googleAds.roas.toFixed(2)} (${(reportData.googleAds.roas * 100).toFixed(0)}%)</span>
-            </div>
-          </div>
-          ` : ''}
-
-          ${reportData.metaAds ? `
-          <!-- Meta Ads Section -->
-          <div class="section meta">
-            <div class="section-title">2. Meta Ads</div>
-            
-            <div class="metric-line">
-              <span class="metric-label">Wydana kwota:</span>
-              <span class="metric-value">${reportData.metaAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Wyświetlenia:</span>
-              <span class="metric-value">${reportData.metaAds.impressions.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Kliknięcia linku:</span>
-              <span class="metric-value">${reportData.metaAds.linkClicks.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Wysłanie formularza:</span>
-              <span class="metric-value">${reportData.metaAds.formSubmits.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Kliknięcia w adres e-mail:</span>
-              <span class="metric-value">${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Kliknięcia w numer telefonu:</span>
-              <span class="metric-value">${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Rezerwacje:</span>
-              <span class="metric-value">${reportData.metaAds.reservations.toLocaleString('pl-PL')}</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">Wartość rezerwacji:</span>
-              <span class="metric-value">${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</span>
-            </div>
-            <div class="metric-line">
-              <span class="metric-label">ROAS:</span>
-              <span class="metric-value">${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)</span>
-            </div>
-          </div>
-          ` : ''}
-
-          <!-- Summary Section -->
-          <div class="section summary">
-            <div class="section-title">Podsumowanie ogólne</div>
-            
-            ${reportData.yoyComparison && (reportData.yoyComparison.googleAdsIncrease || reportData.yoyComparison.metaAdsIncrease) ? `
-            <p><strong>Porównanie naszych wyników rok do roku wygląda następująco:</strong></p>
-            <div class="comparison">
-              ${reportData.yoyComparison.googleAdsIncrease ? `• Google Ads - wartość rezerwacji jest wyższa aż o <strong>${reportData.yoyComparison.googleAdsIncrease.toFixed(0)}%</strong>.<br>` : ''}
-              ${reportData.yoyComparison.metaAdsIncrease ? `• Facebook Ads - wartość rezerwacji jest wyższa aż o <strong>${reportData.yoyComparison.metaAdsIncrease.toFixed(0)}%</strong>.` : ''}
-            </div>
-            ` : ''}
-
-            <div style="margin: 25px 0;">
-              <p>Poprzedni miesiąc przyniósł nam łącznie <strong>${reportData.totalOnlineReservations.toLocaleString('pl-PL')} rezerwacji online</strong> o łącznej wartości ponad <strong>${Math.round(reportData.totalOnlineValue / 1000).toLocaleString('pl-PL')} tys. zł</strong>.</p>
-              <p>Koszt pozyskania rezerwacji online zatem wyniósł: <strong>${reportData.onlineCostPercentage.toFixed(2)}%</strong>.</p>
+        <div class="email-shell">
+          <div class="container">
+            <div class="report-header">
+              <table role="presentation" width="100%">
+                <tr>
+                  <td width="52" valign="top">
+                    <div class="header-icon">▥</div>
+                  </td>
+                  <td valign="top">
+                    <p class="header-title">${clientName}</p>
+                    <p class="header-subtitle">Raport za ${monthName} ${year}</p>
+                    <p class="header-meta">Wysłano: ${sentAtLabel}</p>
+                  </td>
+                </tr>
+              </table>
             </div>
 
-            <div class="highlight">
-              <p>Dodatkowo pozyskaliśmy też <strong>${reportData.totalMicroConversions.toLocaleString('pl-PL')} mikro konwersji</strong> (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy <strong>${reportData.estimatedOfflineReservations.toLocaleString('pl-PL')} rezerwacji</strong> i dodatkowe ok. <strong>${Math.round(reportData.estimatedOfflineValue / 1000).toLocaleString('pl-PL')} tys. zł</strong> tą drogą.</p>
-              
-              <p>Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. <strong>${reportData.finalCostPercentage.toFixed(2)}%</strong>.</p>
-            </div>
+            <div class="inner">
+              <div class="greeting">Dzień dobry,</div>
 
-            <div class="total-box">
-              <p style="margin: 0; font-size: 18px; color: #555;">Suma wartości rezerwacji za ${monthName} ${year} (online + offline):</p>
-              <div class="amount">około ${Math.round(reportData.totalValue / 1000).toLocaleString('pl-PL')} 000 zł</div>
-            </div>
-          </div>
+              <div class="intro">
+                <p>poniżej przesyłam podsumowanie najważniejszych danych z poprzedniego miesiąca.</p>
 
-          <div class="closing">
-            <p>W razie pytań proszę o kontakt.</p>
-            <p>Pozdrawiam<br><strong>Piotr</strong></p>
+                <p>Szczegółowe raporty za działania znajdą Państwo w panelu klienta - <a href="${reportData.dashboardUrl}" class="cta-button">Otwórz panel klienta</a></p>
+
+                <p>W załączniku przesyłam też szczegółowy raport PDF.</p>
+              </div>
+
+              ${reportData.googleAds ? `
+              <!-- Google Ads Section -->
+              <div class="platform-card">
+                <div class="card-inner">
+                  <table role="presentation" width="100%">
+                    <tr>
+                      <td width="34" valign="middle"><div class="platform-icon google-icon">G</div></td>
+                      <td valign="middle"><p class="section-title">1. Google Ads</p></td>
+                    </tr>
+                  </table>
+
+                  <table role="presentation" class="metric-columns">
+                    <tr>
+                      <td class="metric-column metric-column-left">
+                        <table role="presentation" class="metric-row">
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'totalSpend', 'Wydana kwota')}:</td><td class="metric-value">${reportData.googleAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'totalImpressions', 'Wyświetlenia')}:</td><td class="metric-value">${reportData.googleAds.impressions.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'totalClicks', 'Kliknięcia')}:</td><td class="metric-value">${reportData.googleAds.clicks.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'averageCpc', 'CPC')}:</td><td class="metric-value">${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'averageCtr', 'CTR')}:</td><td class="metric-value">${reportData.googleAds.ctr.toFixed(2)}%</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'email_contacts', 'Kliknięcia w adres e-mail')}:</td><td class="metric-value">${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'click_to_call', 'Kliknięcia w numer telefonu')}:</td><td class="metric-value">${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}</td></tr>
+                        </table>
+                      </td>
+                      <td class="metric-column metric-column-right">
+                        <table role="presentation" class="metric-row">
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'booking_step_1', 'Booking step 1')}:</td><td class="metric-value">${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'booking_step_2', 'Booking step 2')}:</td><td class="metric-value">${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'booking_step_3', 'Booking step 3')}:</td><td class="metric-value">${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'reservations', 'Rezerwacje')}:</td><td class="metric-value">${reportData.googleAds.reservations.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'reservation_value', 'Wartość rezerwacji')}:</td><td class="metric-value">${reportData.googleAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'roas', 'ROAS')}:</td><td class="metric-value">${reportData.googleAds.roas.toFixed(2)} (${(reportData.googleAds.roas * 100).toFixed(0)}%)</td></tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+              </div>
+              ` : ''}
+
+              ${reportData.metaAds ? `
+              <!-- Meta Ads Section -->
+              <div class="platform-card meta">
+                <div class="card-inner">
+                  <table role="presentation" width="100%">
+                    <tr>
+                      <td width="34" valign="middle"><div class="platform-icon meta-icon">M</div></td>
+                      <td valign="middle"><p class="section-title">2. Meta Ads</p></td>
+                    </tr>
+                  </table>
+
+                  <table role="presentation" class="metric-columns">
+                    <tr>
+                      <td class="metric-column metric-column-left">
+                        <table role="presentation" class="metric-row">
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'totalSpend', 'Wydana kwota')}:</td><td class="metric-value">${reportData.metaAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'totalImpressions', 'Wyświetlenia')}:</td><td class="metric-value">${reportData.metaAds.impressions.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'totalClicks', 'Kliknięcia linku')}:</td><td class="metric-value">${reportData.metaAds.linkClicks.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'averageCtr', 'CTR (link)')}:</td><td class="metric-value">${reportData.metaAds.ctr.toFixed(2)}%</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'averageCpc', 'CPC (link)')}:</td><td class="metric-value">${reportData.metaAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'email_contacts', 'Kliknięcia w adres e-mail')}:</td><td class="metric-value">${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'click_to_call', 'Kliknięcia w numer telefonu')}:</td><td class="metric-value">${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}</td></tr>
+                        </table>
+                      </td>
+                      <td class="metric-column metric-column-right">
+                        <table role="presentation" class="metric-row">
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'reservations', 'Rezerwacje')}:</td><td class="metric-value">${reportData.metaAds.reservations.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'reservation_value', 'Wartość rezerwacji')}:</td><td class="metric-value">${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'roas', 'ROAS')}:</td><td class="metric-value">${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)</td></tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+              </div>
+              ` : ''}
+
+              <!-- Summary Section -->
+              <div class="summary-card">
+                <p class="section-title">Podsumowanie ogólne</p>
+
+                ${reportData.yoyComparison && (reportData.yoyComparison.googleAdsIncrease || reportData.yoyComparison.metaAdsIncrease) ? `
+                <p><strong>Porównanie naszych wyników rok do roku wygląda następująco:</strong></p>
+                <div class="comparison">
+                  ${reportData.yoyComparison.googleAdsIncrease ? `• Google Ads - wartość rezerwacji jest wyższa aż o <strong>${reportData.yoyComparison.googleAdsIncrease.toFixed(0)}%</strong>.<br>` : ''}
+                  ${reportData.yoyComparison.metaAdsIncrease ? `• Facebook Ads - wartość rezerwacji jest wyższa aż o <strong>${reportData.yoyComparison.metaAdsIncrease.toFixed(0)}%</strong>.` : ''}
+                </div>
+                ` : ''}
+
+                <p>Poprzedni miesiąc przyniósł nam łącznie <strong>${reportData.totalOnlineReservations.toLocaleString('pl-PL')} rezerwacji online</strong> o łącznej wartości ponad <strong>${Math.round(reportData.totalOnlineValue / 1000).toLocaleString('pl-PL')} tys. zł</strong>.</p>
+                <p style="margin-bottom: 0;">Koszt pozyskania rezerwacji online zatem wyniósł: <strong>${reportData.onlineCostPercentage.toFixed(2)}%</strong>.</p>
+              </div>
+
+              <div class="note-box">
+                <p>${offlineNarrative.highlightParagraphsText[0]}</p>
+                <p style="margin-bottom: 0;">${offlineNarrative.highlightParagraphsText[1]}</p>
+              </div>
+
+              <div class="total-box">
+                <p class="total-label">${offlineNarrative.totalBoxLabel}</p>
+                <div class="amount">około ${formatPlnWhole(reportData.totalValue)}</div>
+              </div>
+
+              <div class="closing">
+                <p>W razie pytań proszę o kontakt.</p>
+                <p>Pozdrawiam<br><strong>Piotr</strong></p>
+              </div>
+            </div>
           </div>
         </div>
       </body>
@@ -1459,7 +1686,9 @@ Piotr Bajerlein`;
     `;
 
     // Text version
-    const text = `Dzień dobry,
+    const text = `${clientName} · ${monthName} ${year} · wysłano: ${sentAtLabel}
+
+Dzień dobry,
 
 poniżej przesyłam podsumowanie najważniejszych danych z poprzedniego miesiąca.
 
@@ -1470,34 +1699,34 @@ W załączniku przesyłam też szczegółowy raport PDF.
 ${reportData.googleAds ? `
 1. Google Ads
 
-Wydana kwota: ${reportData.googleAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-Wyświetlenia: ${reportData.googleAds.impressions.toLocaleString('pl-PL')}
-Kliknięcia: ${reportData.googleAds.clicks.toLocaleString('pl-PL')}
-CPC: ${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-CTR: ${reportData.googleAds.ctr.toFixed(2)}%
-Wysłanie formularza: ${reportData.googleAds.formSubmits.toLocaleString('pl-PL')}
-Kliknięcia w adres e-mail: ${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}
-Kliknięcia w numer telefonu: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
-Booking Engine krok 1: ${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}
-Booking Engine krok 2: ${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}
-Booking Engine krok 3: ${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}
-Rezerwacje: ${reportData.googleAds.reservations.toLocaleString('pl-PL')}
-Wartość rezerwacji: ${reportData.googleAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-ROAS: ${reportData.googleAds.roas.toFixed(2)} (${(reportData.googleAds.roas * 100).toFixed(0)}%)
+${metricLabel('googleAds', 'totalSpend', 'Wydana kwota')}: ${reportData.googleAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+${metricLabel('googleAds', 'totalImpressions', 'Wyświetlenia')}: ${reportData.googleAds.impressions.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'totalClicks', 'Kliknięcia')}: ${reportData.googleAds.clicks.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'averageCpc', 'CPC')}: ${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+${metricLabel('googleAds', 'averageCtr', 'CTR')}: ${reportData.googleAds.ctr.toFixed(2)}%
+${metricLabel('googleAds', 'email_contacts', 'Kliknięcia w adres e-mail')}: ${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'click_to_call', 'Kliknięcia w numer telefonu')}: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'booking_step_1', 'Booking step 1')}: ${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'booking_step_2', 'Booking step 2')}: ${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'booking_step_3', 'Booking step 3')}: ${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'reservations', 'Rezerwacje')}: ${reportData.googleAds.reservations.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'reservation_value', 'Wartość rezerwacji')}: ${reportData.googleAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+${metricLabel('googleAds', 'roas', 'ROAS')}: ${reportData.googleAds.roas.toFixed(2)} (${(reportData.googleAds.roas * 100).toFixed(0)}%)
 ` : ''}
 
 ${reportData.metaAds ? `
 2. Meta Ads
 
-Wydana kwota: ${reportData.metaAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-Wyświetlenia: ${reportData.metaAds.impressions.toLocaleString('pl-PL')}
-Kliknięcia linku: ${reportData.metaAds.linkClicks.toLocaleString('pl-PL')}
-Wysłanie formularza: ${reportData.metaAds.formSubmits.toLocaleString('pl-PL')}
-Kliknięcia w adres e-mail: ${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}
-Kliknięcia w numer telefonu: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
-Rezerwacje: ${reportData.metaAds.reservations.toLocaleString('pl-PL')}
-Wartość rezerwacji: ${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
-ROAS: ${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)
+${metricLabel('metaAds', 'totalSpend', 'Wydana kwota')}: ${reportData.metaAds.spend.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+${metricLabel('metaAds', 'totalImpressions', 'Wyświetlenia')}: ${reportData.metaAds.impressions.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'totalClicks', 'Kliknięcia linku')}: ${reportData.metaAds.linkClicks.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'averageCtr', 'CTR (link)')}: ${reportData.metaAds.ctr.toFixed(2)}%
+${metricLabel('metaAds', 'averageCpc', 'CPC (link)')}: ${reportData.metaAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+${metricLabel('metaAds', 'email_contacts', 'Kliknięcia w adres e-mail')}: ${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'click_to_call', 'Kliknięcia w numer telefonu')}: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'reservations', 'Rezerwacje')}: ${reportData.metaAds.reservations.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'reservation_value', 'Wartość rezerwacji')}: ${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
+${metricLabel('metaAds', 'roas', 'ROAS')}: ${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)
 ` : ''}
 
 Podsumowanie ogólne
@@ -1510,11 +1739,11 @@ Poprzedni miesiąc przyniósł nam łącznie ${reportData.totalOnlineReservation
 
 Koszt pozyskania rezerwacji online zatem wyniósł: ${reportData.onlineCostPercentage.toFixed(2)}%.
 
-Dodatkowo pozyskaliśmy też ${reportData.totalMicroConversions.toLocaleString('pl-PL')} mikro konwersji (telefonów, email i formularzy), które z pewnością przyczyniły się do pozyskania dodatkowych rezerwacji offline. Nawet jeśli tylko 20% z nich zakończyło się rezerwacją, to pozyskaliśmy ${reportData.estimatedOfflineReservations.toLocaleString('pl-PL')} rezerwacji i dodatkowe ok. ${Math.round(reportData.estimatedOfflineValue / 1000).toLocaleString('pl-PL')} tys. zł tą drogą.
+${offlineNarrative.highlightParagraphsText[0]}
 
-Dodając te potencjalne rezerwacje do rezerwacji online, to koszt pozyskania rezerwacji spada do poziomu ok. ${reportData.finalCostPercentage.toFixed(2)}%.
+${offlineNarrative.highlightParagraphsText[1]}
 
-Zatem suma wartości rezerwacji za ${monthName} ${year} (online + offline) wynosi około: ${Math.round(reportData.totalValue / 1000).toLocaleString('pl-PL')} 000 zł.
+${offlineNarrative.totalClosingLine}
 
 W razie pytań proszę o kontakt.
 

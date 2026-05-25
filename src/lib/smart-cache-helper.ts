@@ -1245,11 +1245,12 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     }
 
     // Calculate stats with sanitized numbers
-    // ✅ CRITICAL: Use inline_link_clicks instead of clicks to match Meta Business Suite
+    // Canonical metric contract v1: total_clicks = inline_link_clicks (fallback to clicks).
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.spend), 0);
     const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.impressions), 0);
     const totalClicks = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.inline_link_clicks || campaign.clicks), 0);
-    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.conversions), 0);
+    // Raw API conversions kept for diagnostic; final stats use parsed reservations below.
+    const rawApiConversionsWeekly = campaignInsights.reduce((sum, campaign) => sum + sanitizeNumber(campaign.conversions), 0);
     
     // ✅ CRITICAL FIX: Meta CPC/CTR MUST come ONLY from API directly
     // NO calculations, NO fallbacks - ONLY API data
@@ -1402,7 +1403,7 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         spend: totalSpend,
         impressions: totalImpressions,
         clicks: totalClicks,
-        conversions: totalConversions,
+        conversions: conversionMetrics.reservations,
         ctr: averageCtr,
         cpc: averageCpc,
         cpp: totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0,
@@ -1472,7 +1473,8 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
         totalSpend,
         totalImpressions,
         totalClicks,
-        totalConversions,
+        // Canonical: weekly stats.totalConversions = parsed reservations (matches monthly + live API).
+        totalConversions: conversionMetrics.reservations,
         averageCtr,
         averageCpc
       },

@@ -1,7 +1,18 @@
 import { GoogleAdsApi } from 'google-ads-api';
 import logger from './logger';
 import { RateLimiter } from './rate-limiter';
-import { parseGoogleAdsConversions } from './google-ads-actions-parser';
+import {
+  isGoogleAdsEmailAddressClickConversion,
+  isGoogleAdsPhoneOrCallConversion,
+  isGoogleAdsFormConversion,
+  parseGoogleAdsConversions,
+  sumGoogleConversionsExcludingForms,
+} from './google-ads-actions-parser';
+import {
+  coerceGoogleAdsDeviceSegment,
+  googleAdsDeviceLabelPl,
+  mergeGoogleAdsDevicePerformanceRows,
+} from './google-ads-device-pl';
 
 // Cache duration for API responses
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -78,9 +89,17 @@ interface GoogleAdsNetworkPerformance {
   display_impression_share?: number;
 }
 
+// Each row represents a single demographic dimension breakdown (gender OR age),
+// not both at once. Google Ads API exposes gender_view and age_range_view as
+// independent reporting resources, so each row carries one of `gender` or
+// `ageRange` but never both. Renderers must filter on the dimension before
+// aggregating to avoid double-counting.
 interface GoogleAdsDemographicPerformance {
-  age_range: string;
-  gender: string;
+  // Dimension marker - exactly one of these is set per row
+  gender?: string;      // "Mężczyźni" | "Kobiety" | "Nieznane"
+  ageRange?: string;    // "18-24" | "25-34" | ... | "65+" | "Nieznane"
+  age?: string;         // alias of ageRange for PDF helper compatibility
+  // Metrics (named to match Meta demographic rows so PDF helpers can be shared)
   spend: number;
   impressions: number;
   clicks: number;
@@ -88,6 +107,8 @@ interface GoogleAdsDemographicPerformance {
   cpc: number;
   conversions: number;
   conversion_value: number;
+  reservations: number;
+  reservation_value: number;
   roas: number;
 }
 
@@ -105,7 +126,7 @@ interface GoogleAdsQualityMetrics {
 }
 
 interface GoogleAdsDevicePerformance {
-  device: string; // Mobile, Desktop, Tablet
+  device: string; // PL labels: Telefony komórkowe, Komputery, Tablety, …
   spend: number;
   impressions: number;
   clicks: number;
@@ -113,6 +134,32 @@ interface GoogleAdsDevicePerformance {
   cpc: number;
   conversions: number;
   conversion_value: number;
+  roas: number;
+}
+
+// Per-row geographic performance (geographic_view).
+// One row = one (city, region) pair within a country, aggregated across all
+// campaigns/ad groups that targeted users physically present in that geo.
+// `regionCode` is a voivodeship code (e.g. 'PL-MZ' for Mazowieckie) when
+// resolvable from geo_target_constant; otherwise null.
+interface GoogleAdsGeographicPerformance {
+  geoTargetCityId: string | null;       // e.g. "1011892"
+  geoTargetRegionId: string | null;     // e.g. "20973" (Mazowieckie)
+  geoTargetCountryId: string | null;    // e.g. "2616" (Poland)
+  cityName: string;                     // "Warszawa" | "(nieznane)"
+  regionName: string;                   // "Mazowieckie" | "(nieznane)"
+  countryName: string;                  // "Poland" | "(nieznane)"
+  countryCode: string | null;           // "PL"
+  regionCode: string | null;            // "PL-MZ" (voivodeship code) when matchable
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  conversion_value: number;
+  reservations: number;
+  reservation_value: number;
   roas: number;
 }
 
@@ -490,29 +537,18 @@ export class GoogleAdsAPIService {
           campaign.name,
           campaign.status,
           campaign.advertising_channel_type,
-          
-          -- Core performance metrics
           metrics.cost_micros,
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          
-          -- Interaction metrics
           metrics.conversions_from_interactions_rate,
           metrics.interactions,
           metrics.interaction_rate,
-          
-          -- Conversion metrics (removed conversions)
           metrics.cost_per_conversion,
           metrics.search_impression_share,
           metrics.view_through_conversions,
-          
-          -- Conversion values (removed)
-          
-          -- Quality metrics
           metrics.search_budget_lost_impression_share
-          
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         ORDER BY metrics.cost_micros DESC
@@ -586,13 +622,6 @@ export class GoogleAdsAPIService {
         const impressions = metrics.impressions || 0;
         const clicks = metrics.clicks || 0;
         
-        // Conversions removed - set to 0
-        const conversions = 0;
-        const conversionValue = 0;
-        
-        // Log attribution info for debugging
-        const interactions = metrics.interactions || clicks;
-        
         // Get conversion breakdown for this campaign - REAL DATA ONLY
         // ✅ FIX: Convert campaign ID to string for consistent key matching
         // breakdown keys are stored as strings (from String(campaignId))
@@ -604,10 +633,10 @@ export class GoogleAdsAPIService {
           booking_step_2: 0,
           booking_step_3: 0,
           reservations: 0,
-          reservation_value: 0
+          reservation_value: 0,
+          total_conversion_value: 0,
+          total_non_form_conversions: 0,
         };
-        
-        // Conversions removed - keep zeros for all conversion metrics
         
         logger.info(`📊 Using conversion data for campaign ${campaign.name}: ${JSON.stringify(campaignConversions)}`);
         
@@ -633,7 +662,7 @@ export class GoogleAdsAPIService {
           // After aggregating multiple daily rows, we must recalculate percentages/averages
           ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
           cpc: clicks > 0 ? spend / clicks : 0,
-          conversions: 0,  // Conversions removed
+          conversions: finalConversions.total_non_form_conversions ?? 0,
 
           search_impression_share: metrics.searchImpressionShare || 0,
           view_through_conversions: metrics.viewThroughConversions || 0,
@@ -756,8 +785,17 @@ export class GoogleAdsAPIService {
           metrics.all_conversions_value
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
-          AND metrics.all_conversions > 0
         ORDER BY campaign.id, segments.conversion_action_name
+      `;
+      const fallbackCustomerQuery = `
+        SELECT
+          segments.conversion_action_name,
+          segments.date,
+          metrics.all_conversions,
+          metrics.all_conversions_value
+        FROM customer
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+        ORDER BY segments.conversion_action_name
       `;
       
       let response;
@@ -769,6 +807,34 @@ export class GoogleAdsAPIService {
         logger.warn('⚠️  Continuing with empty conversion data - will use fallback tracking');
         response = [];
       }
+
+      if (!response || response.length === 0) {
+        logger.warn(
+          '⚠️ Campaign conversion query returned 0 rows, trying customer-level fallback query'
+        );
+        try {
+          const customerRows = await this.executeQuery(fallbackCustomerQuery);
+          if (customerRows?.length) {
+            logger.info(
+              `✅ Customer-level fallback returned ${customerRows.length} conversion rows`
+            );
+          }
+          // Keep original shape expectations below (`row.campaign.id`, `row.campaign.name`)
+          response = (customerRows || []).map((row: any) => ({
+            campaign: {
+              id: String(row.segments?.conversion_action_name || 'customer'),
+              name: String(row.segments?.conversion_action_name || 'customer'),
+            },
+            segments: row.segments,
+            metrics: row.metrics,
+          }));
+        } catch (fallbackErr) {
+          logger.warn(
+            '⚠️ Customer-level fallback conversion query failed',
+            fallbackErr
+          );
+        }
+      }
       
       const breakdown: { [campaignId: string]: any } = {};
       
@@ -779,8 +845,8 @@ export class GoogleAdsAPIService {
         logger.warn('⚠️  No conversion data returned from query - campaigns will use fallback conversion tracking');
       }
       
-      // Conversion action mapping (Google → Meta format)
-      // Comprehensive mapping to catch all possible conversion action names
+      // Legacy broad patterns for DEBUG "unmapped actions" only. E-mail / Telefon totals
+      // are computed exclusively in parseGoogleAdsConversions + isGoogleAds* matchers.
       const conversionMapping = {
         // Phone conversions - expanded patterns
         'click_to_call': [
@@ -788,12 +854,11 @@ export class GoogleAdsAPIService {
           'telefon click', 'phone_click', 'call', 'phone', 'telephone', 'click_to_call',
           'call_extension', 'call_tracking', 'phone_number_click'
         ],
-        // Email conversions - expanded patterns
+        // Email conversions - expanded patterns (forms / form_submit listed here are DEBUG hints only;
+        // parseGoogleAdsConversions excludes forms — do not use this map for totals)
         'email_contacts': [
-          'email', 'contact_form', 'email_click', 'mailto', 'form_submit', 
-          'form submit', 'form_submit_success', 'contact', 'email_contact',
-          'lead_form', 'contact_us', 'inquiry', 'request_info',
-          // Polish email actions
+          'email', 'email_click', 'mailto',
+          // Polish email clicks (strict matchers also in isGoogleAdsEmailAddressClickConversion)
           'kliknięcie w e-mail', 'klikniecie w e-mail', 'kliknięcie w email',
           'kliknięcie w adres e-mail', 'klikniecie w adres e-mail'
         ],
@@ -809,10 +874,10 @@ export class GoogleAdsAPIService {
           '1 krok rezerwacyjny', 'pierwszy_krok_rezerwacji'
         ],
         'booking_step_2': [
-          'pobranie oferty mice', 'form_submit', 
+          'pobranie oferty mice',
           'www.belmonte.com.pl (web) form_submit_success', 'step 2 w be', 
           'view_content', 'booking_step_2', 'add_to_cart', 'add_payment_info',
-          'payment_info', 'checkout_progress', 'form_completion',
+          'payment_info', 'checkout_progress',
           'download', 'file_download', 'offer_download',
           // Polish patterns
           'drugi krok', 'drugi_krok', '2 krok', '2 krok silnik', 
@@ -876,6 +941,7 @@ export class GoogleAdsAPIService {
       
       // Now group aggregated data by campaign for parser
       const campaignConversionData: { [campaignId: string]: any[] } = {};
+      const campaignNamesById: Record<string, string> = {};
       // ✅ NEW: Track total conversion value (all_conversions_value) per campaign
       const campaignTotalConversionValue: { [campaignId: string]: number } = {};
       
@@ -891,11 +957,14 @@ export class GoogleAdsAPIService {
         if (!campaignConversionData[campaignId]) {
           campaignConversionData[campaignId] = [];
           campaignTotalConversionValue[campaignId] = 0;
+          campaignNamesById[String(campaignId)] = campaignName;
         }
         
-        // ✅ FIX: Sum all_conversions_value across all conversion actions for this campaign
-        // This gives us the total "Wartość konwersji" from Google Ads console
-        campaignTotalConversionValue[campaignId] += conversionValue;
+        // ✅ Sum value excluding form-type actions (reports must not count forms)
+        if (!isGoogleAdsFormConversion(conversionName)) {
+          campaignTotalConversionValue[campaignId] =
+            (campaignTotalConversionValue[campaignId] || 0) + conversionValue;
+        }
         
         campaignConversionData[campaignId].push({
           conversion_name: conversionName,
@@ -908,14 +977,14 @@ export class GoogleAdsAPIService {
       
       // ✅ NEW: Use the parser for each campaign
       Object.entries(campaignConversionData).forEach(([campaignId, conversions]) => {
-        const campaignName = conversions[0]?.name || campaignId;
+        const campaignName = campaignNamesById[campaignId] || campaignId;
         
         // Parse conversions using our new parser
         const parsed = parseGoogleAdsConversions(conversions, campaignName);
         
-        // ✅ FIX: Add total_conversion_value (sum of all_conversions_value from all actions)
-        // This is the "Wartość konwersji" from Google Ads console - used for "łączna wartość rezerwacji"
+        // ✅ total_conversion_value: all_conversions_value minus form actions only
         parsed.total_conversion_value = campaignTotalConversionValue[campaignId] || 0;
+        parsed.total_non_form_conversions = sumGoogleConversionsExcludingForms(conversions);
         
         // ✅ FIX: Convert campaign ID to string for consistent key matching
         // JavaScript object keys are strings, but campaign IDs from API are numbers
@@ -950,6 +1019,13 @@ export class GoogleAdsAPIService {
               mapped = true;
             }
           });
+          if (
+            !mapped &&
+            (isGoogleAdsEmailAddressClickConversion(actionName) ||
+              isGoogleAdsPhoneOrCallConversion(actionName))
+          ) {
+            mapped = true;
+          }
           
           if (!mapped) {
             unmappedActions.add(row.segments.conversion_action_name);
@@ -1003,6 +1079,122 @@ export class GoogleAdsAPIService {
   }
 
   /**
+   * All conversion action names with totals for the date range (account-wide).
+   * Used by admin metrics discovery so new Google conversions appear without code changes.
+   */
+  async getAggregatedConversionActionsByName(
+    dateStart: string,
+    dateEnd: string
+  ): Promise<{
+    actions: Array<{ name: string; conversions: number; value: number }>;
+    fetchOk: boolean;
+    error?: string;
+  }> {
+    try {
+      const query = `
+        SELECT
+          campaign.id,
+          segments.conversion_action_name,
+          segments.date,
+          metrics.all_conversions,
+          metrics.all_conversions_value
+        FROM campaign
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+        ORDER BY segments.conversion_action_name
+      `;
+      const fallbackCustomerQuery = `
+        SELECT
+          segments.conversion_action_name,
+          segments.date,
+          metrics.all_conversions,
+          metrics.all_conversions_value
+        FROM customer
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+        ORDER BY segments.conversion_action_name
+      `;
+
+      const response = await this.executeQuery(query);
+      const byName = new Map<string, { conversions: number; value: number }>();
+
+      for (const row of response || []) {
+        const name = String(row.segments?.conversion_action_name || '').trim();
+        if (!name) continue;
+        const conv = parseFloat(row.metrics?.all_conversions || '0') || 0;
+        const val = parseFloat(row.metrics?.all_conversions_value || '0') || 0;
+        const cur = byName.get(name) || { conversions: 0, value: 0 };
+        cur.conversions += conv;
+        cur.value += val;
+        byName.set(name, cur);
+      }
+
+      if (byName.size === 0) {
+        logger.warn(
+          '⚠️ getAggregatedConversionActionsByName: campaign query returned 0 rows, trying customer fallback'
+        );
+        try {
+          const customerRows = await this.executeQuery(fallbackCustomerQuery);
+          for (const row of customerRows || []) {
+            const name = String(row.segments?.conversion_action_name || '').trim();
+            if (!name) continue;
+            const conv = parseFloat(row.metrics?.all_conversions || '0') || 0;
+            const val = parseFloat(row.metrics?.all_conversions_value || '0') || 0;
+            const cur = byName.get(name) || { conversions: 0, value: 0 };
+            cur.conversions += conv;
+            cur.value += val;
+            byName.set(name, cur);
+          }
+        } catch (fallbackErr) {
+          logger.warn(
+            '⚠️ getAggregatedConversionActionsByName: customer fallback failed',
+            fallbackErr
+          );
+        }
+      }
+
+      // Fallback: if GAQL with conversion_action_name returned no rows,
+      // still surface enabled conversion actions so admin can map all metrics.
+      if (byName.size === 0) {
+        logger.warn(
+          '⚠️ getAggregatedConversionActionsByName: no conversion rows in range, falling back to enabled conversion_action list'
+        );
+        try {
+          const actionsResponse = await this.executeQuery(`
+            SELECT
+              conversion_action.name
+            FROM conversion_action
+            WHERE conversion_action.status = 'ENABLED'
+            ORDER BY conversion_action.name
+          `);
+          for (const row of actionsResponse || []) {
+            const name = String(row.conversion_action?.name || '').trim();
+            if (!name || byName.has(name)) continue;
+            byName.set(name, { conversions: 0, value: 0 });
+          }
+        } catch (fallbackErr) {
+          logger.warn(
+            '⚠️ getAggregatedConversionActionsByName: fallback conversion_action query failed',
+            fallbackErr
+          );
+        }
+      }
+
+      const actions = Array.from(byName.entries())
+        .map(([name, o]) => ({
+          name,
+          conversions: o.conversions,
+          value: o.value,
+        }))
+        .sort((a, b) => b.conversions - a.conversions || a.name.localeCompare(b.name));
+
+      return { actions, fetchOk: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('❌ getAggregatedConversionActionsByName failed:', error);
+      return { actions: [], fetchOk: false, error: message };
+    }
+  }
+
+  /**
    * Get network performance data (equivalent to Meta's placement performance)
    */
   async getNetworkPerformance(dateStart: string, dateEnd: string): Promise<GoogleAdsNetworkPerformance[]> {
@@ -1014,8 +1206,7 @@ export class GoogleAdsAPIService {
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.average_cpc
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1075,7 +1266,15 @@ export class GoogleAdsAPIService {
 
 
   /**
-   * Get device performance data
+   * Get device performance data.
+   *
+   * Returns spend/impressions/clicks AND conversions/value broken down by
+   * device type. Uses `metrics.all_conversions` + `metrics.all_conversions_value`
+   * to match the Google Ads UI "Wszystkie konwersje" / "Wartość konwersji"
+   * columns (same convention as getCampaignData / getConversionBreakdown).
+   *
+   * Google Ads API returns all numeric metrics as strings - we parseFloat
+   * everything to avoid silent string concatenation in the aggregator.
    */
   async getDevicePerformance(dateStart: string, dateEnd: string): Promise<GoogleAdsDevicePerformance[]> {
     try {
@@ -1085,94 +1284,589 @@ export class GoogleAdsAPIService {
           metrics.cost_micros,
           metrics.impressions,
           metrics.clicks,
-          metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.all_conversions,
+          metrics.all_conversions_value
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
-        AND metrics.impressions > 0
+          AND metrics.impressions > 0
         ORDER BY metrics.cost_micros DESC
       `;
 
       const response = await this.executeQuery(query);
 
-      // Group by device and aggregate metrics
-      const deviceStats: { [device: string]: any } = {};
-      
+      const deviceStats: { [device: string]: {
+        spend: number; impressions: number; clicks: number;
+        conversions: number; conversion_value: number;
+      } } = {};
+
       response?.forEach((row: any) => {
-        const rawDevice = row.segments?.device || 'UNKNOWN';
-        const deviceName = this.getDeviceDisplayName(rawDevice);
-        const metrics = row.metrics;
-        
-        if (!deviceStats[deviceName]) {
-          deviceStats[deviceName] = {
-            spend: 0,
-            impressions: 0,
-            clicks: 0,
-            conversions: 0,
-            conversion_value: 0
-          };
-        }
-        
-        deviceStats[deviceName].spend += (metrics.cost_micros || metrics.costMicros || 0) / 1000000;
-        deviceStats[deviceName].impressions += metrics.impressions || 0;
-        deviceStats[deviceName].clicks += metrics.clicks || 0;
-        // Conversions removed
-        deviceStats[deviceName].conversions = 0;
-        deviceStats[deviceName].conversion_value = 0;
+        const deviceName = googleAdsDeviceLabelPl(coerceGoogleAdsDeviceSegment(row.segments?.device))
+          .trim()
+          .replace(/\s+/g, ' ');
+        const metrics = row.metrics || {};
+
+        const bucket = deviceStats[deviceName] ?? {
+          spend: 0,
+          impressions: 0,
+          clicks: 0,
+          conversions: 0,
+          conversion_value: 0,
+        };
+
+        bucket.spend += (parseFloat(metrics.cost_micros || '0') || 0) / 1_000_000;
+        bucket.impressions += parseFloat(metrics.impressions || '0') || 0;
+        bucket.clicks += parseFloat(metrics.clicks || '0') || 0;
+        bucket.conversions += parseFloat(metrics.all_conversions || '0') || 0;
+        bucket.conversion_value += parseFloat(metrics.all_conversions_value || '0') || 0;
+
+        deviceStats[deviceName] = bucket;
       });
 
-      const devices: GoogleAdsDevicePerformance[] = Object.entries(deviceStats).map(([device, stats]) => ({
-        device,
-        spend: stats.spend,
-        impressions: stats.impressions,
-        clicks: stats.clicks,
-        ctr: stats.impressions > 0 ? (stats.clicks / stats.impressions) * 100 : 0,
-        cpc: stats.clicks > 0 ? stats.spend / stats.clicks : 0,
-        conversions: 0, // Conversions removed
-        conversion_value: 0, // Conversions removed
-        roas: 0, // Conversions removed
+      const merged = mergeGoogleAdsDevicePerformanceRows(
+        Object.entries(deviceStats).map(([device, stats]) => ({
+          device,
+          spend: stats.spend,
+          impressions: stats.impressions,
+          clicks: stats.clicks,
+          conversions: stats.conversions,
+          conversionValue: stats.conversion_value,
+          conversion_value: stats.conversion_value,
+        })),
+      );
+
+      const devices: GoogleAdsDevicePerformance[] = merged.map((d) => ({
+        device: d.device,
+        spend: d.spend,
+        impressions: d.impressions,
+        clicks: d.clicks,
+        ctr: d.ctr,
+        cpc: d.cpc,
+        conversions: d.conversions,
+        conversion_value: d.conversionValue,
+        roas: d.roas,
       }));
 
-      logger.info(`✅ Fetched ${devices.length} real device performance segments from Google Ads`);
+      logger.info(`✅ Fetched ${devices.length} device performance segments from Google Ads`, {
+        totalSpend: devices.reduce((s, d) => s + d.spend, 0),
+        totalConversionValue: devices.reduce((s, d) => s + d.conversion_value, 0),
+      });
       return devices;
     } catch (error) {
       logger.error('❌ Error fetching device performance:', error);
-      logger.info('ℹ️ No device data available - returning empty array');
       return [];
     }
   }
 
   /**
-   * Get demographic performance data (age and gender breakdown)
-   * 
-   * ⚠️ IMPORTANT LIMITATION: Google Ads API does NOT provide demographic performance data
-   * (performance broken down by age/gender) through the standard reporting API.
-   * 
-   * Demographic performance data is only available in the Google Ads UI, not via API.
-   * The API only allows you to:
-   * 1. See demographic targeting criteria (what demographics you're targeting)
-   * 2. Get audience insights through the Insights API (requires special access)
-   * 
-   * This method returns an empty array to indicate that demographic performance data
-   * is not available via the standard Google Ads Reporting API.
-   * 
-   * Alternative: Use Google Analytics API which provides demographic data for website visitors.
+   * Get demographic performance data (age range + gender) via Google Ads API v21.
+   *
+   * Source resources (verified against developers.google.com/google-ads/api/fields/v21):
+   *   - gender_view       → metrics segmented by ad_group_criterion.gender.type
+   *   - age_range_view    → metrics segmented by ad_group_criterion.age_range.type
+   *
+   * These are TWO independent dimensions (Google Ads API does not expose an
+   * age×gender cross-tab). We fetch them in parallel, aggregate per dimension
+   * value, and merge into a single array where each row carries one of
+   * `gender` or `ageRange` (never both). Renderers must filter on dimension
+   * before aggregating - see GoogleAdsDemographicPerformance interface.
+   *
+   * Coverage caveat: gender/age splits are only populated for campaigns that
+   * use demographic targeting / bidding (Display, Discovery, Video,
+   * Performance Max, Search with demographic bid modifiers). Plain Search
+   * campaigns without demographic adjustments return UNDETERMINED-only.
    */
   async getDemographicPerformance(dateStart: string, dateEnd: string): Promise<GoogleAdsDemographicPerformance[]> {
     try {
-      logger.info(`📊 Attempting to fetch demographic performance from ${dateStart} to ${dateEnd}`);
-      logger.warn('⚠️  Google Ads API LIMITATION: Demographic performance data is NOT available via standard reporting API');
-      logger.warn('⚠️  This data is only available in Google Ads UI, not programmatically');
-      logger.warn('⚠️  Alternative: Use Google Analytics API for demographic insights on website visitors');
-      
-      // Return empty array - demographic performance data is not available via API
-      logger.info('ℹ️ Returning empty array - demographic performance data not available via Google Ads API');
-      return [];
+      logger.info(`📊 Fetching Google Ads demographic performance from ${dateStart} to ${dateEnd}`);
+
+      const genderQuery = `
+        SELECT
+          ad_group_criterion.gender.type,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.all_conversions,
+          metrics.all_conversions_value
+        FROM gender_view
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+          AND metrics.impressions > 0
+      `;
+
+      const ageQuery = `
+        SELECT
+          ad_group_criterion.age_range.type,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.all_conversions,
+          metrics.all_conversions_value
+        FROM age_range_view
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+          AND metrics.impressions > 0
+      `;
+
+      // Fetch in parallel; each is independent. Use Promise.allSettled so one
+      // dimension failure does not block the other.
+      const [genderResult, ageResult] = await Promise.allSettled([
+        this.executeQuery(genderQuery),
+        this.executeQuery(ageQuery),
+      ]);
+
+      const genderRows = genderResult.status === 'fulfilled' ? (genderResult.value || []) : [];
+      const ageRows = ageResult.status === 'fulfilled' ? (ageResult.value || []) : [];
+
+      if (genderResult.status === 'rejected') {
+        logger.warn('⚠️  gender_view query failed:', genderResult.reason);
+      }
+      if (ageResult.status === 'rejected') {
+        logger.warn('⚠️  age_range_view query failed:', ageResult.reason);
+      }
+
+      // Aggregate by dimension value across all ad groups
+      const genderTotals = new Map<string, {
+        spend: number; impressions: number; clicks: number;
+        conversions: number; conversion_value: number;
+      }>();
+
+      for (const row of genderRows) {
+        const label = this.getGenderDisplayName(row.ad_group_criterion?.gender?.type);
+        // Google Ads metrics arrive as strings - always parseFloat
+        const spend = (parseFloat(row.metrics?.cost_micros || '0') || 0) / 1_000_000;
+        const impressions = parseFloat(row.metrics?.impressions || '0') || 0;
+        const clicks = parseFloat(row.metrics?.clicks || '0') || 0;
+        const conversions = parseFloat(row.metrics?.all_conversions || '0') || 0;
+        const conversionValue = parseFloat(row.metrics?.all_conversions_value || '0') || 0;
+
+        const current = genderTotals.get(label) || { spend: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0 };
+        current.spend += spend;
+        current.impressions += impressions;
+        current.clicks += clicks;
+        current.conversions += conversions;
+        current.conversion_value += conversionValue;
+        genderTotals.set(label, current);
+      }
+
+      const ageTotals = new Map<string, {
+        spend: number; impressions: number; clicks: number;
+        conversions: number; conversion_value: number;
+      }>();
+
+      for (const row of ageRows) {
+        const label = this.getAgeRangeDisplayName(row.ad_group_criterion?.age_range?.type);
+        const spend = (parseFloat(row.metrics?.cost_micros || '0') || 0) / 1_000_000;
+        const impressions = parseFloat(row.metrics?.impressions || '0') || 0;
+        const clicks = parseFloat(row.metrics?.clicks || '0') || 0;
+        const conversions = parseFloat(row.metrics?.all_conversions || '0') || 0;
+        const conversionValue = parseFloat(row.metrics?.all_conversions_value || '0') || 0;
+
+        const current = ageTotals.get(label) || { spend: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0 };
+        current.spend += spend;
+        current.impressions += impressions;
+        current.clicks += clicks;
+        current.conversions += conversions;
+        current.conversion_value += conversionValue;
+        ageTotals.set(label, current);
+      }
+
+      const rows: GoogleAdsDemographicPerformance[] = [];
+
+      for (const [label, totals] of genderTotals.entries()) {
+        rows.push({
+          gender: label,
+          spend: totals.spend,
+          impressions: totals.impressions,
+          clicks: totals.clicks,
+          ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+          cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+          conversions: totals.conversions,
+          conversion_value: totals.conversion_value,
+          // For hotel/booking clients the dominant conversion action is the
+          // reservation, so all_conversions ≈ reservations at the dimension
+          // level. We expose both names so the existing Meta-style PDF helpers
+          // (which read reservation_value) work out of the box.
+          reservations: totals.conversions,
+          reservation_value: totals.conversion_value,
+          roas: totals.spend > 0 ? totals.conversion_value / totals.spend : 0,
+        });
+      }
+
+      for (const [label, totals] of ageTotals.entries()) {
+        rows.push({
+          ageRange: label,
+          age: label,
+          spend: totals.spend,
+          impressions: totals.impressions,
+          clicks: totals.clicks,
+          ctr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
+          cpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+          conversions: totals.conversions,
+          conversion_value: totals.conversion_value,
+          reservations: totals.conversions,
+          reservation_value: totals.conversion_value,
+          roas: totals.spend > 0 ? totals.conversion_value / totals.spend : 0,
+        });
+      }
+
+      logger.info('✅ Fetched Google Ads demographic performance', {
+        genderRows: genderTotals.size,
+        ageRows: ageTotals.size,
+        totalRows: rows.length,
+      });
+
+      return rows;
     } catch (error) {
-      logger.error('❌ Error in demographic performance method:', error);
+      logger.error('❌ Error fetching demographic performance:', error);
       return [];
     }
+  }
+
+  /**
+   * Convert Google Ads GenderType enum/string to a Polish display label.
+   * Accepts both string constants (MALE/FEMALE/UNDETERMINED) and numeric
+   * proto values (10/11/20) - the library returns the numeric form when
+   * grpc decoding is enabled.
+   */
+  private getGenderDisplayName(genderType: string | number | undefined | null): string {
+    if (genderType === undefined || genderType === null) return 'Nieznane';
+    const key = String(genderType).toUpperCase();
+    const map: { [key: string]: string } = {
+      'MALE': 'Mężczyźni',
+      'FEMALE': 'Kobiety',
+      'UNDETERMINED': 'Nieznane',
+      'UNKNOWN': 'Nieznane',
+      'UNSPECIFIED': 'Nieznane',
+      // Numeric proto values
+      '10': 'Mężczyźni',
+      '11': 'Kobiety',
+      '20': 'Nieznane',
+      '0': 'Nieznane',
+      '1': 'Nieznane',
+    };
+    return map[key] || 'Nieznane';
+  }
+
+  /**
+   * Convert Google Ads AgeRangeType enum/string to a human-readable label.
+   * Source: enum AgeRangeType in node_modules/google-ads-api/.../enums.d.ts
+   */
+  private getAgeRangeDisplayName(ageRangeType: string | number | undefined | null): string {
+    if (ageRangeType === undefined || ageRangeType === null) return 'Nieznane';
+    const key = String(ageRangeType).toUpperCase();
+    const map: { [key: string]: string } = {
+      'AGE_RANGE_18_24': '18-24',
+      'AGE_RANGE_25_34': '25-34',
+      'AGE_RANGE_35_44': '35-44',
+      'AGE_RANGE_45_54': '45-54',
+      'AGE_RANGE_55_64': '55-64',
+      'AGE_RANGE_65_UP': '65+',
+      'AGE_RANGE_UNDETERMINED': 'Nieznane',
+      'UNKNOWN': 'Nieznane',
+      'UNSPECIFIED': 'Nieznane',
+      // Numeric proto values
+      '503001': '18-24',
+      '503002': '25-34',
+      '503003': '35-44',
+      '503004': '45-54',
+      '503005': '55-64',
+      '503006': '65+',
+      '503999': 'Nieznane',
+      '0': 'Nieznane',
+      '1': 'Nieznane',
+    };
+    return map[key] || 'Nieznane';
+  }
+
+  /**
+   * Fetch geographic (city/region/country) performance via geographic_view.
+   *
+   * GAQL fields verified against developers.google.com/google-ads/api/fields/v21:
+   *   FROM geographic_view
+   *   - segments.geo_target_city           → resource name "geoTargetConstants/<id>"
+   *   - segments.geo_target_region         → resource name "geoTargetConstants/<id>"
+   *   - segments.geo_target_country        → resource name "geoTargetConstants/<id>"
+   *   - geographic_view.location_type      → LOCATION_OF_PRESENCE | AREA_OF_INTEREST
+   *
+   * We filter by LOCATION_OF_PRESENCE because the user's stated goal is to
+   * understand WHERE the people who clicked/converted are - not what areas
+   * the ads were targeted at. (AREA_OF_INTEREST would also include intent
+   * signals from search content.)
+   *
+   * Two-step lookup:
+   *   1) geographic_view query → returns segment IDs + metrics
+   *   2) geo_target_constant batch query → resolves IDs to display names
+   *      and country/region metadata
+   *
+   * Step 2 results are cached in-memory per service instance so repeated
+   * date-range fetches for the same client don't re-query the same constants.
+   */
+  async getGeographicPerformance(dateStart: string, dateEnd: string): Promise<GoogleAdsGeographicPerformance[]> {
+    try {
+      logger.info(`🌍 Fetching Google Ads geographic performance from ${dateStart} to ${dateEnd}`);
+
+      const query = `
+        SELECT
+          segments.geo_target_city,
+          segments.geo_target_region,
+          geographic_view.country_criterion_id,
+          metrics.cost_micros,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.all_conversions,
+          metrics.all_conversions_value
+        FROM geographic_view
+        WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
+          AND geographic_view.location_type = 'LOCATION_OF_PRESENCE'
+          AND metrics.impressions > 0
+      `;
+
+      const rows = await this.executeQuery(query);
+
+      if (!rows || rows.length === 0) {
+        logger.info('ℹ️ geographic_view returned no rows for this period');
+        return [];
+      }
+
+      // Collect every geo_target_constant resource name we need to resolve.
+      // Each segment returns the full "geoTargetConstants/<id>" path; we keep
+      // them as-is for the batch lookup.
+      const resourceNames = new Set<string>();
+      for (const row of rows) {
+        const city = row.segments?.geo_target_city;
+        const region = row.segments?.geo_target_region;
+        const countryId = row.geographic_view?.country_criterion_id;
+        const country = countryId ? `geoTargetConstants/${countryId}` : null;
+        if (city) resourceNames.add(city);
+        if (region) resourceNames.add(region);
+        if (country) resourceNames.add(country);
+      }
+
+      const constants = await this.resolveGeoTargetConstants(Array.from(resourceNames));
+
+      // Aggregate (city,region,country) → metrics. The geographic_view is
+      // already segmented by date+ad_group+criterion combinations, so we sum
+      // across those internal splits.
+      type Bucket = {
+        cityRes: string | null; regionRes: string | null; countryRes: string | null;
+        spend: number; impressions: number; clicks: number;
+        conversions: number; conversion_value: number;
+      };
+      const buckets = new Map<string, Bucket>();
+
+      for (const row of rows) {
+        const cityRes = row.segments?.geo_target_city || null;
+        const regionRes = row.segments?.geo_target_region || null;
+        const countryCriterionId = row.geographic_view?.country_criterion_id;
+        const countryRes = countryCriterionId ? `geoTargetConstants/${countryCriterionId}` : null;
+        const key = `${cityRes ?? '∅'}|${regionRes ?? '∅'}|${countryRes ?? '∅'}`;
+
+        const spend = (parseFloat(row.metrics?.cost_micros || '0') || 0) / 1_000_000;
+        const impressions = parseFloat(row.metrics?.impressions || '0') || 0;
+        const clicks = parseFloat(row.metrics?.clicks || '0') || 0;
+        const conversions = parseFloat(row.metrics?.all_conversions || '0') || 0;
+        const conversionValue = parseFloat(row.metrics?.all_conversions_value || '0') || 0;
+
+        const existing = buckets.get(key);
+        if (existing) {
+          existing.spend += spend;
+          existing.impressions += impressions;
+          existing.clicks += clicks;
+          existing.conversions += conversions;
+          existing.conversion_value += conversionValue;
+        } else {
+          buckets.set(key, {
+            cityRes, regionRes, countryRes,
+            spend, impressions, clicks,
+            conversions, conversion_value: conversionValue,
+          });
+        }
+      }
+
+      const result: GoogleAdsGeographicPerformance[] = [];
+      for (const b of buckets.values()) {
+        const cityConst = b.cityRes ? constants.get(b.cityRes) : null;
+        const regionConst = b.regionRes ? constants.get(b.regionRes) : null;
+        const countryConst = b.countryRes ? constants.get(b.countryRes) : null;
+
+        const cityId = b.cityRes ? this.extractGeoTargetId(b.cityRes) : null;
+        const regionId = b.regionRes ? this.extractGeoTargetId(b.regionRes) : null;
+        const countryId = b.countryRes ? this.extractGeoTargetId(b.countryRes) : null;
+
+        const countryCode = countryConst?.country_code || null;
+        const regionCode = regionConst ? this.deriveVoivodeshipCode(regionConst.name, regionConst.canonical_name) : null;
+
+        result.push({
+          geoTargetCityId: cityId,
+          geoTargetRegionId: regionId,
+          geoTargetCountryId: countryId,
+          cityName: cityConst?.name || '(nieznane)',
+          regionName: regionConst?.name || '(nieznane)',
+          countryName: countryConst?.name || '(nieznane)',
+          countryCode,
+          regionCode,
+          spend: b.spend,
+          impressions: b.impressions,
+          clicks: b.clicks,
+          ctr: b.impressions > 0 ? (b.clicks / b.impressions) * 100 : 0,
+          cpc: b.clicks > 0 ? b.spend / b.clicks : 0,
+          conversions: b.conversions,
+          conversion_value: b.conversion_value,
+          reservations: b.conversions,
+          reservation_value: b.conversion_value,
+          roas: b.spend > 0 ? b.conversion_value / b.spend : 0,
+        });
+      }
+
+      // Sort descending by spend for stable presentation in tables/UI.
+      result.sort((a, b) => b.spend - a.spend);
+
+      logger.info('✅ Fetched Google Ads geographic performance', {
+        rawRows: rows.length,
+        uniqueBuckets: result.length,
+        resolvedConstants: constants.size,
+        topCity: result[0]?.cityName,
+        topSpend: result[0]?.spend,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('❌ Error fetching geographic performance:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Batch-resolve geo_target_constant resource names to display metadata.
+   *
+   * Uses GAQL `WHERE geo_target_constant.resource_name IN (...)` which is
+   * supported on the geo_target_constant resource (verified against v21
+   * field documentation). We chunk to 200 names per query to stay well
+   * under the GAQL clause limit.
+   *
+   * Results cached in-memory on the service instance via `geoTargetCache`,
+   * so subsequent fetches for the same date range / different periods reuse
+   * lookups for stable IDs.
+   */
+  private geoTargetCache: Map<string, { name: string; canonical_name: string; country_code: string | null; target_type: string | null }> = new Map();
+
+  private async resolveGeoTargetConstants(resourceNames: string[]): Promise<Map<string, { name: string; canonical_name: string; country_code: string | null; target_type: string | null }>> {
+    const result = new Map(this.geoTargetCache);
+
+    // Filter to only the names we don't have yet
+    const missing = resourceNames.filter((n) => !this.geoTargetCache.has(n));
+    if (missing.length === 0) {
+      return result;
+    }
+
+    const CHUNK_SIZE = 200;
+    for (let i = 0; i < missing.length; i += CHUNK_SIZE) {
+      const chunk = missing.slice(i, i + CHUNK_SIZE);
+      const inClause = chunk.map((n) => `'${n}'`).join(', ');
+      const query = `
+        SELECT
+          geo_target_constant.resource_name,
+          geo_target_constant.name,
+          geo_target_constant.canonical_name,
+          geo_target_constant.country_code,
+          geo_target_constant.target_type
+        FROM geo_target_constant
+        WHERE geo_target_constant.resource_name IN (${inClause})
+      `;
+
+      try {
+        const rows = await this.executeQuery(query);
+        for (const row of rows || []) {
+          const rn = row.geo_target_constant?.resource_name;
+          if (!rn) continue;
+          const entry = {
+            name: row.geo_target_constant?.name || '(nieznane)',
+            canonical_name: row.geo_target_constant?.canonical_name || '',
+            country_code: row.geo_target_constant?.country_code || null,
+            target_type: row.geo_target_constant?.target_type || null,
+          };
+          this.geoTargetCache.set(rn, entry);
+          result.set(rn, entry);
+        }
+      } catch (err) {
+        logger.warn(`⚠️ geo_target_constant chunk ${i / CHUNK_SIZE} failed:`, err);
+        // Continue with remaining chunks - one failure doesn't poison the rest
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Extract the numeric ID from a geo_target_constant resource path.
+   * "geoTargetConstants/1011892" → "1011892"
+   */
+  private extractGeoTargetId(resourceName: string | null | undefined): string | null {
+    if (!resourceName) return null;
+    const match = resourceName.match(/geoTargetConstants\/(\d+)/);
+    return match?.[1] ?? null;
+  }
+
+  /**
+   * Map a Polish voivodeship display name (or canonical name) to an ISO
+   * 3166-2 code (e.g. "Mazowieckie" → "PL-MZ"). Returns null for non-Polish
+   * regions or names we can't match.
+   *
+   * Google returns region names without diacritics sometimes and the
+   * canonical_name is usually "Mazowieckie,Poland" - we accept either. This
+   * map is the source of truth for region-name normalization used by the
+   * Poland map UI component.
+   */
+  private deriveVoivodeshipCode(name: string | null | undefined, canonicalName: string | null | undefined): string | null {
+    if (!name && !canonicalName) return null;
+    const candidate = (name || canonicalName || '')
+      .split(',')[0]                      // strip ",Poland"
+      ?.trim()
+      .toLowerCase()
+      .replace(/ą/g, 'a').replace(/ć/g, 'c').replace(/ę/g, 'e')
+      .replace(/ł/g, 'l').replace(/ń/g, 'n').replace(/ó/g, 'o')
+      .replace(/ś/g, 's').replace(/ź/g, 'z').replace(/ż/g, 'z');
+    if (!candidate) return null;
+
+    const map: { [key: string]: string } = {
+      'dolnoslaskie': 'PL-DS',
+      'lower silesian voivodeship': 'PL-DS',
+      'lower silesia': 'PL-DS',
+      'kujawsko-pomorskie': 'PL-KP',
+      'kuyavian-pomeranian voivodeship': 'PL-KP',
+      'lubelskie': 'PL-LU',
+      'lublin voivodeship': 'PL-LU',
+      'lubuskie': 'PL-LB',
+      'lubusz voivodeship': 'PL-LB',
+      'lodzkie': 'PL-LD',
+      'lodz voivodeship': 'PL-LD',
+      'malopolskie': 'PL-MA',
+      'lesser poland voivodeship': 'PL-MA',
+      'mazowieckie': 'PL-MZ',
+      'masovian voivodeship': 'PL-MZ',
+      'masovia': 'PL-MZ',
+      'warsaw': 'PL-MZ',
+      'opolskie': 'PL-OP',
+      'opole voivodeship': 'PL-OP',
+      'podkarpackie': 'PL-PK',
+      'podkarpackie voivodeship': 'PL-PK',
+      'subcarpathian voivodeship': 'PL-PK',
+      'podlaskie': 'PL-PD',
+      'podlaskie voivodeship': 'PL-PD',
+      'podlasie voivodeship': 'PL-PD',
+      'pomorskie': 'PL-PM',
+      'pomeranian voivodeship': 'PL-PM',
+      'slaskie': 'PL-SL',
+      'silesian voivodeship': 'PL-SL',
+      'swietokrzyskie': 'PL-SK',
+      'swietokrzyskie voivodeship': 'PL-SK',
+      'holy cross voivodeship': 'PL-SK',
+      'warminsko-mazurskie': 'PL-WN',
+      'warmian-masurian voivodeship': 'PL-WN',
+      'wielkopolskie': 'PL-WP',
+      'greater poland voivodeship': 'PL-WP',
+      'zachodniopomorskie': 'PL-ZP',
+      'west pomeranian voivodeship': 'PL-ZP',
+    };
+    return map[candidate] || null;
   }
 
   /**
@@ -1228,6 +1922,8 @@ export class GoogleAdsAPIService {
         // 🔧 FIX: Use all_conversions for accurate conversion data
         const crossPlatformConversions = parseFloat(row.metrics?.conversions || '0');
         const allConversions = parseFloat(row.metrics?.all_conversions || '0');
+        // Daily rows have no conversion_action breakdown — forms still included here.
+        // Period-level `getCampaignData()` + `getConversionBreakdown()` exclude forms.
         const conversions = allConversions > 0 ? allConversions : crossPlatformConversions;
         
         const crossPlatformValue = parseFloat(row.metrics?.conversions_value || '0');
@@ -1292,8 +1988,7 @@ export class GoogleAdsAPIService {
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.average_cpc
         FROM keyword_view
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1310,8 +2005,8 @@ export class GoogleAdsAPIService {
         // Fallback to search terms query
         const searchTermsQuery = `
           SELECT
+            search_term_view.search_term,
             segments.search_term_match_type,
-            segments.search_term,
             campaign.name,
             metrics.cost_micros,
             metrics.impressions,
@@ -1341,7 +2036,7 @@ export class GoogleAdsAPIService {
             const conversionValue = metrics.conversions_value || metrics.conversionsValue || 0;
             
             return {
-              keyword: segments.search_term || 'Unknown Search Term',
+              keyword: row.search_term_view?.search_term || segments.search_term || 'Unknown Search Term',
               matchType: this.getMatchTypeDisplayName(segments.search_term_match_type || 'UNKNOWN'),
               spend,
               impressions: metrics.impressions || 0,
@@ -1405,8 +2100,7 @@ export class GoogleAdsAPIService {
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.average_cpc
         FROM campaign
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -1579,27 +2273,6 @@ export class GoogleAdsAPIService {
   }
 
   /**
-   * Helper method to convert device type to display name
-   */
-  private getDeviceDisplayName(deviceType: string): string {
-    const deviceMap: { [key: string]: string } = {
-      'MOBILE': 'Mobile',
-      'DESKTOP': 'Desktop',
-      'TABLET': 'Tablet',
-      'CONNECTED_TV': 'Connected TV',
-      'OTHER': 'Other',
-      // Handle numeric device IDs that might come from API
-      '1': 'Desktop',
-      '2': 'Mobile', 
-      '3': 'Tablet',
-      '4': 'Connected TV',
-      'UNKNOWN': 'Unknown',
-    };
-    
-    return deviceMap[deviceType] || deviceType;
-  }
-
-  /**
    * Helper method to convert match type to display name
    */
   private getMatchTypeDisplayName(matchType: string): string {
@@ -1616,99 +2289,58 @@ export class GoogleAdsAPIService {
 
   /**
    * Get Google Ads tables data (equivalent to Meta tables)
-   * Each table is fetched independently to avoid one failure affecting others
-   * Note: Demographics removed as it's not available through Google Ads API
+   * Each table is fetched independently to avoid one failure affecting others.
    */
   async getGoogleAdsTables(dateStart: string, dateEnd: string): Promise<any> {
     logger.info('📊 Fetching Google Ads tables data');
-    
-    // Fetch each table independently with individual error handling and detailed logging
-    logger.info('🚀 Starting Network Performance fetch...');
-    const networkPromise = this.getNetworkPerformance(dateStart, dateEnd).then(result => {
-      logger.info('✅ Network Performance completed');
-      return result;
-    }).catch(error => {
-      logger.error('❌ Network Performance failed:', error);
-      throw error;
-    });
-    
-    logger.info('🚀 Starting Quality Metrics fetch...');
-    const qualityPromise = this.getQualityScoreMetrics(dateStart, dateEnd).then(result => {
-      logger.info('✅ Quality Metrics completed');
-      return result;
-    }).catch(error => {
-      logger.error('❌ Quality Metrics failed:', error);
-      throw error;
-    });
-    
-    logger.info('🚀 Starting Device Performance fetch...');
-    const devicePromise = this.getDevicePerformance(dateStart, dateEnd).then(result => {
-      logger.info('✅ Device Performance completed');
-      return result;
-    }).catch(error => {
-      logger.error('❌ Device Performance failed:', error);
-      throw error;
-    });
-    
-    logger.info('🚀 Starting Keyword Performance fetch...');
-    const keywordPromise = this.getKeywordPerformance(dateStart, dateEnd).then(result => {
-      logger.info('✅ Keyword Performance completed');
-      return result;
-    }).catch(error => {
-      logger.error('❌ Keyword Performance failed:', error);
-      throw error;
-    });
-    
-    logger.info('🚀 Starting Search Term Performance fetch...');
-    const searchTermPromise = this.getSearchTermPerformance(dateStart, dateEnd).then(result => {
-      logger.info('✅ Search Term Performance completed');
-      return result;
-    }).catch(error => {
-      logger.error('❌ Search Term Performance failed:', error);
-      throw error;
-    });
-    
-    // Demographics removed as it's not supported by Google Ads API
+
+    // Run all queries in parallel; each is independent. Promise.allSettled
+    // guarantees one failure does not kill the rest of the payload.
     const results = await Promise.allSettled([
-      networkPromise,
-      qualityPromise,
-      devicePromise,
-      keywordPromise,
-      searchTermPromise
+      this.getNetworkPerformance(dateStart, dateEnd),
+      this.getQualityScoreMetrics(dateStart, dateEnd),
+      this.getDevicePerformance(dateStart, dateEnd),
+      this.getKeywordPerformance(dateStart, dateEnd),
+      this.getSearchTermPerformance(dateStart, dateEnd),
+      this.getDemographicPerformance(dateStart, dateEnd),
+      this.getGeographicPerformance(dateStart, dateEnd),
     ]);
-    
-    // Extract results, using empty arrays for failed requests
-    const [networkResult, qualityResult, deviceResult, keywordResult, searchTermResult] = results;
-    
+
+    const [networkResult, qualityResult, deviceResult, keywordResult, searchTermResult, demographicResult, geographicResult] = results;
+
     const networkPerformance = networkResult.status === 'fulfilled' ? networkResult.value : [];
     const qualityMetrics = qualityResult.status === 'fulfilled' ? qualityResult.value : [];
     const devicePerformance = deviceResult.status === 'fulfilled' ? deviceResult.value : [];
     const keywordPerformance = keywordResult.status === 'fulfilled' ? keywordResult.value : [];
     const searchTermPerformance = searchTermResult.status === 'fulfilled' ? searchTermResult.value : [];
-    
-    // Log individual results
-    logger.info(`📊 Google Ads tables results:`, {
+    const demographicPerformance = demographicResult.status === 'fulfilled' ? demographicResult.value : [];
+    const geographicPerformance = geographicResult.status === 'fulfilled' ? geographicResult.value : [];
+
+    logger.info('📊 Google Ads tables results:', {
       networkPerformance: networkPerformance.length,
       qualityMetrics: qualityMetrics.length,
       devicePerformance: devicePerformance.length,
       keywordPerformance: keywordPerformance.length,
-      searchTermPerformance: searchTermPerformance.length
+      searchTermPerformance: searchTermPerformance.length,
+      demographicPerformance: demographicPerformance.length,
+      geographicPerformance: geographicPerformance.length,
     });
-    
-    // Log any failures
+
     results.forEach((result, index) => {
-      const tableNames = ['Network', 'Quality', 'Device', 'Keyword', 'SearchTerm'];
+      const tableNames = ['Network', 'Quality', 'Device', 'Keyword', 'SearchTerm', 'Demographic', 'Geographic'];
       if (result.status === 'rejected') {
         logger.warn(`⚠️ ${tableNames[index]} performance fetch failed:`, result.reason?.message || result.reason);
       }
     });
-    
+
     return {
       networkPerformance,       // Equivalent to Meta's placementPerformance (Sieci Reklamowe)
       qualityMetrics,           // Equivalent to Meta's adRelevanceResults
-      devicePerformance,        // Device breakdown (Urządzenia)
+      devicePerformance,        // Device breakdown with conversions (Urządzenia)
       keywordPerformance,       // Keyword breakdown (Słowa Kluczowe)
-      searchTermPerformance     // RMF R.70: Search Term performance (Wyszukiwane hasła)
+      searchTermPerformance,    // RMF R.70: Search Term performance (Wyszukiwane hasła)
+      demographicPerformance,   // R.100 Gender + Age breakdown (rows tagged with `gender` OR `ageRange`)
+      geographicPerformance,    // City/region/country breakdown via geographic_view
     };
   }
 
@@ -1729,7 +2361,6 @@ export class GoogleAdsAPIService {
           metrics.clicks,
           metrics.ctr,
           metrics.average_cpc,
-          -- Conversions removed,
           metrics.cost_per_conversion
         FROM customer
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
@@ -1812,8 +2443,7 @@ export class GoogleAdsAPIService {
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.average_cpc
         FROM ad_group
         WHERE campaign.id = ${campaignId}
         AND segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
@@ -1892,8 +2522,7 @@ export class GoogleAdsAPIService {
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.average_cpc
         FROM ad_group_ad
         WHERE ad_group.id = ${adGroupId}
         AND segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
@@ -1976,7 +2605,7 @@ export class GoogleAdsAPIService {
 
       const query = `
         SELECT
-          segments.search_term,
+          search_term_view.search_term,
           segments.search_term_match_type,
           campaign.name,
           ad_group.name,
@@ -1984,8 +2613,7 @@ export class GoogleAdsAPIService {
           metrics.impressions,
           metrics.clicks,
           metrics.ctr,
-          metrics.average_cpc,
-          -- Conversions removed
+          metrics.average_cpc
         FROM search_term_view
         WHERE segments.date BETWEEN '${dateStart}' AND '${dateEnd}'
         AND metrics.impressions > 0
@@ -2007,7 +2635,7 @@ export class GoogleAdsAPIService {
         const conversionValue = metrics.conversions_value || 0;
         
         return {
-          search_term: segments.search_term || 'Unknown',
+          search_term: row.search_term_view?.search_term || segments.search_term || 'Unknown',
           match_type: this.getMatchTypeDisplayName(segments.search_term_match_type || 'UNKNOWN'),
           campaign_name: campaign.name || 'Unknown Campaign',
           ad_group_name: adGroup.name || 'Unknown Ad Group',

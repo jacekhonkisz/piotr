@@ -3,6 +3,13 @@
  * Utility functions for email generation
  */
 
+import {
+  getBelmontePotentialOfflineValue,
+  getMicroConversionsForOfflineModel,
+  isBelmonteClient
+} from './offline-reservation-estimate';
+import { cpcFromStats, ctrPercentFromStats } from './ctr-from-stats';
+
 /**
  * Polish month names
  */
@@ -29,6 +36,14 @@ export function getPolishMonthName(monthNumber: number): string {
 }
 
 /**
+ * Whole PLN amounts with Polish digit grouping (e.g. 2 495 000 zł).
+ * Use this instead of `Math.round(n/1000) + ' 000 zł'`, which reads poorly.
+ */
+export function formatPlnWhole(amount: number): string {
+  return `${Math.round(Number(amount) || 0).toLocaleString('pl-PL')} zł`;
+}
+
+/**
  * Get month number from date string (YYYY-MM-DD)
  */
 export function getMonthFromDateString(dateString: string): number {
@@ -46,7 +61,9 @@ export function prepareClientMonthlyReportData(
   year: number,
   googleAdsData?: any,
   metaAdsData?: any,
-  previousYearData?: any
+  previousYearData?: any,
+  /** Per-campaign Meta rows with `actions` (Belmonte offline micro from custom conversions). */
+  metaCampaigns?: any[]
 ) {
   // Calculate totals
   const googleSpend = googleAdsData?.spend || 0;
@@ -67,29 +84,37 @@ export function prepareClientMonthlyReportData(
     : 0;
   
   // Calculate micro conversions
-  const googleMicro = (googleAdsData?.formSubmits || 0) + 
-                      (googleAdsData?.emailClicks || 0) + 
-                      (googleAdsData?.phoneClicks || 0);
-  const metaMicro = (metaAdsData?.formSubmits || 0) + 
-                    (metaAdsData?.emailClicks || 0) + 
-                    (metaAdsData?.phoneClicks || 0);
-  const totalMicroConversions = googleMicro + metaMicro;
-  
-  // Calculate 20% offline estimate
+  const totalMicroConversions = getMicroConversionsForOfflineModel(
+    clientName,
+    {
+      googleFormSubmits: 0,
+      googleEmail: googleAdsData?.emailClicks || 0,
+      googlePhone: googleAdsData?.phoneClicks || 0,
+      metaFormSubmits: 0,
+      metaEmail: metaAdsData?.emailClicks || 0,
+      metaPhone: metaAdsData?.phoneClicks || 0
+    },
+    { metaCampaigns }
+  );
+
+  // Calculate 20% offline estimate (display; Belmonte offline *value* uses 10× avg — see below)
   const estimatedOfflineReservations = Math.round(totalMicroConversions * 0.2);
-  
-  // Calculate average reservation value for offline estimate
-  const avgReservationValue = totalOnlineReservations > 0 
-    ? totalOnlineValue / totalOnlineReservations 
-    : 0;
-  const estimatedOfflineValue = estimatedOfflineReservations * avgReservationValue;
-  
-  // Calculate final totals with offline
+
+  let avgReservationValue =
+    totalOnlineReservations > 0 ? totalOnlineValue / totalOnlineReservations : 0;
+  if (isBelmonteClient(clientName) && metaReservations > 0) {
+    avgReservationValue = metaValue / metaReservations;
+  }
+  const estimatedOfflineValue = isBelmonteClient(clientName)
+    ? getBelmontePotentialOfflineValue(avgReservationValue)
+    : estimatedOfflineReservations * avgReservationValue;
+
   const totalReservations = totalOnlineReservations + estimatedOfflineReservations;
-  const totalValue = totalOnlineValue + estimatedOfflineValue;
-  const finalCostPercentage = totalValue > 0 
-    ? (totalSpend / totalValue) * 100 
-    : 0;
+  const totalValue = isBelmonteClient(clientName)
+    ? estimatedOfflineValue + metaValue
+    : totalOnlineValue + estimatedOfflineValue;
+  const spendForCost = isBelmonteClient(clientName) ? metaSpend || totalSpend : totalSpend;
+  const finalCostPercentage = totalValue > 0 ? (spendForCost / totalValue) * 100 : 0;
   
   // Year-over-year comparison (if previous year data available)
   let yoyComparison = undefined;
@@ -116,9 +141,16 @@ export function prepareClientMonthlyReportData(
       spend: googleSpend,
       impressions: googleAdsData.impressions || 0,
       clicks: googleAdsData.clicks || 0,
-      cpc: googleAdsData.cpc || 0,
-      ctr: googleAdsData.ctr || 0,
-      formSubmits: googleAdsData.formSubmits || 0,
+      cpc: cpcFromStats(
+        googleAdsData.averageCpc,
+        googleSpend,
+        googleAdsData.clicks || 0
+      ),
+      ctr: ctrPercentFromStats(
+        googleAdsData.averageCtr,
+        googleAdsData.clicks || 0,
+        googleAdsData.impressions || 0
+      ),
       emailClicks: googleAdsData.emailClicks || 0,
       phoneClicks: googleAdsData.phoneClicks || 0,
       bookingStep1: googleAdsData.bookingStep1 || 0,
@@ -132,7 +164,16 @@ export function prepareClientMonthlyReportData(
       spend: metaSpend,
       impressions: metaAdsData.impressions || 0,
       linkClicks: metaAdsData.linkClicks || metaAdsData.clicks || 0,
-      formSubmits: metaAdsData.formSubmits || 0,
+      ctr: ctrPercentFromStats(
+        metaAdsData.averageCtr,
+        metaAdsData.linkClicks || metaAdsData.clicks || 0,
+        metaAdsData.impressions || 0
+      ),
+      cpc: cpcFromStats(
+        metaAdsData.averageCpc,
+        metaSpend,
+        metaAdsData.linkClicks || metaAdsData.clicks || 0
+      ),
       emailClicks: metaAdsData.emailClicks || 0,
       phoneClicks: metaAdsData.phoneClicks || 0,
       reservations: metaReservations,

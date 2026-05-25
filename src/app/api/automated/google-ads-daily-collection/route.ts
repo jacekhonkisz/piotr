@@ -3,6 +3,10 @@ import { supabaseAdmin } from '../../../../lib/supabase';
 import { GoogleAdsAPIService } from '../../../../lib/google-ads-api';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
+import {
+  fetchGoogleDynamicConversionRowsWithService,
+  googleDynamicRowsToMetricMap,
+} from '../../../../lib/google-dynamic-conversion-fetch';
 
 // 🔒 SECURITY: This endpoint is PROTECTED with CRON_SECRET authentication
 // Only authorized cron jobs can call this endpoint
@@ -166,6 +170,24 @@ export async function POST(request: NextRequest) {
             conversion_value: 0, total_conversion_value: 0,
           });
 
+          let dynamicMetricValues: Record<string, number> = {};
+          let dynamicMetricRows: Array<{ key: string; id: string; label: string; count: number; value: number }> = [];
+          try {
+            const dyn = await fetchGoogleDynamicConversionRowsWithService(
+              googleAdsAPI,
+              targetDate!,
+              targetDate!
+            );
+            if (dyn.fetchOk) {
+              dynamicMetricValues = googleDynamicRowsToMetricMap(dyn.rows);
+              dynamicMetricRows = dyn.rows;
+            } else {
+              logger.warn('⚠️ Google Ads daily dynamic metrics skipped', { reason: dyn.skipReason });
+            }
+          } catch (dynamicError) {
+            logger.warn('⚠️ Google Ads daily dynamic metrics failed:', dynamicError);
+          }
+
           // Calculate derived metrics
           const ctr = dailyTotals.clicks > 0 ? (dailyTotals.clicks / dailyTotals.impressions) * 100 : 0;
           const cpc = dailyTotals.clicks > 0 ? dailyTotals.spend / dailyTotals.clicks : 0;
@@ -195,6 +217,8 @@ export async function POST(request: NextRequest) {
             conversion_value: Math.round(dailyTotals.conversion_value * 100) / 100,
             total_conversion_value: Math.round(dailyTotals.total_conversion_value * 100) / 100,
             campaign_data: campaigns as any, // Type assertion for JSON compatibility
+            google_dynamic_metric_values: dynamicMetricValues,
+            google_dynamic_metric_rows: dynamicMetricRows,
             last_updated: new Date().toISOString()
           };
 

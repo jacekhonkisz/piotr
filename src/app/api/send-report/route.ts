@@ -11,6 +11,8 @@ import {
 } from '@/lib/offline-reservation-estimate';
 import { adaptCampaignSummary } from '@/lib/report-adapters';
 import { evaluatePreSend } from '@/lib/report-presend-guard';
+import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from '@/lib/google-ads-contact-metrics';
+import { cpcFromStats, ctrPercentFromStats } from '@/lib/ctr-from-stats';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -123,11 +125,11 @@ export async function POST(request: NextRequest) {
       const totalReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
       const totalReservations = campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0);
       const metaOnlineReservationValue = metaCampaigns.reduce(
-        (s, c: any) => s + (Number(c.reservation_value) || 0),
+        (s: number, c: any) => s + (Number(c.reservation_value) || 0),
         0
       );
       const metaReservationsCount = metaCampaigns.reduce(
-        (s, c: any) => s + (Number(c.reservations) || 0),
+        (s: number, c: any) => s + (Number(c.reservations) || 0),
         0
       );
       let averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
@@ -140,7 +142,7 @@ export async function POST(request: NextRequest) {
       const totalPotentialValue = isBelmonteClient(cn)
         ? potentialOfflineValue + metaOnlineReservationValue
         : potentialOfflineValue + totalReservationValue;
-      const metaSpend = metaCampaigns.reduce((s, c: any) => s + (Number(c.spend) || 0), 0);
+      const metaSpend = metaCampaigns.reduce((s: number, c: any) => s + (Number(c.spend) || 0), 0);
       const spendForCost = isBelmonteClient(cn) ? metaSpend || stats.totalSpend || 0 : stats.totalSpend || 0;
       const costPercentage = totalPotentialValue > 0 ? (spendForCost / totalPotentialValue) * 100 : 0;
       
@@ -149,8 +151,16 @@ export async function POST(request: NextRequest) {
         totalSpend: stats.totalSpend || 0,
         totalImpressions: stats.totalImpressions || 0,
         totalClicks: stats.totalClicks || 0,
-        ctr: stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) : 0,
-        cpc: stats.totalClicks > 0 ? (stats.totalSpend / stats.totalClicks) : 0,
+        ctr: ctrPercentFromStats(
+          stats.averageCtr ?? stats.average_ctr,
+          stats.totalClicks ?? 0,
+          stats.totalImpressions ?? 0
+        ),
+        cpc: cpcFromStats(
+          stats.averageCpc ?? stats.average_cpc,
+          stats.totalSpend ?? 0,
+          stats.totalClicks ?? 0
+        ),
         // New metrics
         potentialOfflineReservations,
         totalPotentialValue,
@@ -184,7 +194,8 @@ export async function POST(request: NextRequest) {
             const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
               clientId: client.id,
               dateRange,
-              reason: 'send-report-offline-google'
+              reason: 'send-report-offline-google',
+              sessionToken: token
             });
             if (googleResult.success && googleResult.data) {
               googleMetrics = googleResult.data.conversionMetrics;
@@ -240,8 +251,16 @@ export async function POST(request: NextRequest) {
             totalImpressions: stats.totalImpressions || 0,
             totalClicks: stats.totalClicks || 0,
             totalConversions: stats.totalConversions || 0,
-            ctr: stats.totalImpressions > 0 ? (stats.totalClicks / stats.totalImpressions) : 0,
-            cpc: stats.totalClicks > 0 ? (stats.totalSpend / stats.totalClicks) : 0,
+            ctr: ctrPercentFromStats(
+              stats.averageCtr,
+              stats.totalClicks ?? 0,
+              stats.totalImpressions ?? 0
+            ),
+            cpc: cpcFromStats(
+              stats.averageCpc,
+              stats.totalSpend ?? 0,
+              stats.totalClicks ?? 0
+            ),
             // New metrics
             potentialOfflineReservations,
             totalPotentialValue,
@@ -427,11 +446,18 @@ export async function POST(request: NextRequest) {
       if (gSpend > 0 || gImpressions > 0) {
         googleAdsSection = {
           spend: gSpend, impressions: gImpressions, clicks: gClicks,
-          cpc: gClicks > 0 ? gSpend / gClicks : 0,
-          ctr: gImpressions > 0 ? (gClicks / gImpressions) * 100 : 0,
-          formSubmits: Number(gData.total_form_submissions || gData.booking_step_1 || 0),
-          emailClicks: Number(gData.total_email_clicks || gData.email_contacts || 0),
-          phoneClicks: Number(gData.total_phone_clicks || gData.click_to_call || 0),
+          cpc: cpcFromStats(
+            (gData as { average_cpc?: number }).average_cpc,
+            gSpend,
+            gClicks
+          ),
+          ctr: ctrPercentFromStats(
+            (gData as { average_ctr?: number }).average_ctr,
+            gClicks,
+            gImpressions
+          ),
+          emailClicks: googleEmailContactsFromRow(gData as Record<string, unknown>),
+          phoneClicks: googlePhoneContactsFromRow(gData as Record<string, unknown>),
           bookingStep1: Number(gData.total_booking_step_1 || gData.booking_step_1 || 0),
           bookingStep2: Number(gData.total_booking_step_2 || gData.booking_step_2 || 0),
           bookingStep3: Number(gData.total_booking_step_3 || gData.booking_step_3 || 0),
@@ -450,7 +476,16 @@ export async function POST(request: NextRequest) {
       if (mSpend > 0 || mImpressions > 0) {
         metaAdsSection = {
           spend: mSpend, impressions: mImpressions, linkClicks: mClicks,
-          formSubmits: Number(metaSummary.booking_step_1 || 0),
+          cpc: cpcFromStats(
+            (metaSummary as { average_cpc?: number }).average_cpc,
+            mSpend,
+            mClicks
+          ),
+          ctr: ctrPercentFromStats(
+            (metaSummary as { average_ctr?: number }).average_ctr,
+            mClicks,
+            mImpressions
+          ),
           emailClicks: Number(metaSummary.email_contacts || 0),
           phoneClicks: Number(metaSummary.click_to_call || 0),
           reservations: Number(metaSummary.reservations || 0),
@@ -464,10 +499,8 @@ export async function POST(request: NextRequest) {
     // Validates per-platform monthly summary against fresh live API baseline.
     try {
       const dateRange = {
-        start: prevMonthStr,
-        end: new Date(Date.UTC(prevMonthDate.getUTCFullYear(), prevMonthDate.getUTCMonth() + 1, 0))
-          .toISOString()
-          .slice(0, 10)
+        start: startDate.toISOString().split('T')[0]!,
+        end: endDate.toISOString().split('T')[0]!
       };
       const guardChecks: Promise<unknown>[] = [];
       if (metaSummary) {
@@ -535,10 +568,10 @@ export async function POST(request: NextRequest) {
     const totalMicroConversions = getMicroConversionsForOfflineModel(
       clientNm,
       {
-        googleFormSubmits: googleAdsSection?.formSubmits || 0,
+        googleFormSubmits: 0,
         googleEmail: googleAdsSection?.emailClicks || 0,
         googlePhone: googleAdsSection?.phoneClicks || 0,
-        metaFormSubmits: metaAdsSection?.formSubmits || 0,
+        metaFormSubmits: 0,
         metaEmail: metaAdsSection?.emailClicks || 0,
         metaPhone: metaAdsSection?.phoneClicks || 0
       },
@@ -574,6 +607,13 @@ export async function POST(request: NextRequest) {
       finalCostPercentage: finalCostPct,
       totalValue
     };
+
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return NextResponse.json({
+        error: 'Failed to generate PDF attachment',
+        details: 'PDF attachment is mandatory for monthly report emails'
+      }, { status: 500 });
+    }
     
     let emailResults = [];
     for (const email of contactEmails) {

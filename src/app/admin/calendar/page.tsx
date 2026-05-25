@@ -122,6 +122,7 @@ export default function AdminCalendarPage() {
     details?: any;
   } | null>(null);
   const [testClientId, setTestClientId] = useState('');
+  const [testInternalRecipient, setTestInternalRecipient] = useState('jac.honkisz@gmail.com');
   const [showTestModal, setShowTestModal] = useState(false);
 
   const getAuthToken = useCallback(async () => {
@@ -182,7 +183,11 @@ export default function AdminCalendarPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ clientId: clientId || testClientId || undefined, includePdf: true })
+        body: JSON.stringify({
+          clientId: clientId || testClientId || undefined,
+          includePdf: true,
+          testRecipient: testInternalRecipient
+        })
       });
       const data = await res.json();
       setTestResult({
@@ -200,7 +205,7 @@ export default function AdminCalendarPage() {
     } finally {
       setTestSending(false);
     }
-  }, [getAuthToken, testClientId]);
+  }, [getAuthToken, testClientId, testInternalRecipient]);
 
   // Function to cleanup old errors (older than 3 days)
   const cleanupOldErrors = useCallback(async () => {
@@ -979,20 +984,20 @@ export default function AdminCalendarPage() {
                       Wyślij testowy e-mail z raportem PDF aby zweryfikować czy system działa poprawnie.
                       {reviewMode && (
                         <span className="block mt-1 text-amber-700 font-medium">
-                          Tryb weryfikacji: e-mail trafi do {reviewEmail}
+                          Tryb weryfikacji: wybierz odbiorcę testu poniżej
                         </span>
                       )}
                     </p>
 
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Wybierz klienta (opcjonalnie — dla danych PDF)
+                      Wybierz klienta (wymagane dla testu 1:1)
                     </label>
                     <select
                       value={testClientId}
                       onChange={(e) => setTestClientId(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     >
-                      <option value="">Bez klienta (test bez PDF)</option>
+                      <option value="">Wybierz klienta</option>
                       {clients.map(client => (
                         <option key={client.id} value={client.id}>
                           {client.name} ({client.email})
@@ -1000,6 +1005,23 @@ export default function AdminCalendarPage() {
                       ))}
                     </select>
                   </div>
+
+                  {reviewMode && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Odbiorca testu wewnętrznego
+                      </label>
+                      <select
+                        value={testInternalRecipient}
+                        onChange={(e) => setTestInternalRecipient(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        <option value="jac.honkisz@gmail.com">jac.honkisz@gmail.com</option>
+                        <option value="kontakt@piotrbajerlein.pl">kontakt@piotrbajerlein.pl</option>
+                        <option value="pbajerlein@gmail.com">pbajerlein@gmail.com</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* SMTP Info */}
                   <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-2">
@@ -1015,7 +1037,7 @@ export default function AdminCalendarPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Odbiorca:</span>
-                      <span className="font-medium">{reviewMode ? reviewEmail : (testClientId ? 'e-mail klienta' : reviewEmail)}</span>
+                      <span className="font-medium">{reviewMode ? testInternalRecipient : (testClientId ? 'e-mail klienta' : reviewEmail)}</span>
                     </div>
                   </div>
 
@@ -1054,7 +1076,7 @@ export default function AdminCalendarPage() {
                     </button>
                     <button
                       onClick={() => sendTestEmail()}
-                      disabled={testSending}
+                      disabled={testSending || !testClientId}
                       className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                     >
                       {testSending ? (
@@ -1134,9 +1156,9 @@ export default function AdminCalendarPage() {
 
               {/* Calendar Grid */}
               <div className="grid grid-cols-7 gap-1">
-                {calendarDays.map((day, index) => (
+                {calendarDays.map((day) => (
                   <div
-                    key={index}
+                    key={day.date.toISOString()}
                     onClick={() => handleDayClick(day)}
                     className={`
                       min-h-[100px] p-2 border border-gray-200 rounded-lg cursor-pointer transition-all hover:bg-blue-50 hover:border-blue-300

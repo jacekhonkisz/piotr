@@ -5,6 +5,11 @@ import { enhanceCampaignsWithConversions, aggregateConversionMetrics } from '../
 import { GoogleAdsAPIService } from '../../../../lib/google-ads-api';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
+import { fetchAndStoreGoogleAdsTables } from '../../../../lib/google-ads-tables-storage';
+import {
+  fetchGoogleDynamicConversionRowsWithService,
+  googleDynamicRowsToMetricMap,
+} from '../../../../lib/google-dynamic-conversion-fetch';
 
 /**
  * END OF MONTH DATA COLLECTION
@@ -470,10 +475,31 @@ export async function POST(request: NextRequest) {
                   // Fetch Google Ads tables (network, demographic, quality score)
                   let googleAdsTables = null;
                   try {
-                    googleAdsTables = await googleAdsService.getGoogleAdsTables(startDate, endDate);
+                    googleAdsTables = await fetchAndStoreGoogleAdsTables(
+                      googleAdsService,
+                      client.id,
+                      startDate,
+                      endDate
+                    );
                     logger.info(`📊 Fetched Google Ads tables data`);
                   } catch (tablesError) {
                     logger.warn(`⚠️ Failed to fetch Google Ads tables:`, tablesError);
+                  }
+
+                  let dynamicMetricValues: Record<string, number> = {};
+                  let dynamicMetricRows: Array<{ key: string; id: string; label: string; count: number; value: number }> = [];
+                  try {
+                    const dyn = await fetchGoogleDynamicConversionRowsWithService(
+                      googleAdsService,
+                      startDate,
+                      endDate
+                    );
+                    if (dyn.fetchOk) {
+                      dynamicMetricValues = googleDynamicRowsToMetricMap(dyn.rows);
+                      dynamicMetricRows = dyn.rows;
+                    }
+                  } catch (dynamicError) {
+                    logger.warn(`⚠️ Failed to fetch Google Ads dynamic metrics:`, dynamicError);
                   }
 
                   // STEP 3: Save to database
@@ -502,6 +528,8 @@ export async function POST(request: NextRequest) {
                       cost_per_reservation: costPerReservation,
                       campaign_data: campaigns,
                       google_ads_tables: googleAdsTables,
+                      google_dynamic_metric_values: dynamicMetricValues,
+                      google_dynamic_metric_rows: dynamicMetricRows,
                       data_source: 'google_ads_api',
                       last_updated: new Date().toISOString()
                     }, {

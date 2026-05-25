@@ -179,9 +179,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           data: {
-            placementPerformance: cachedData.placement_performance || [],
+            placementPerformance: (cachedData as any).network_performance || [],
             devicePerformance: cachedData.device_performance || [],
-            keywordPerformance: cachedData.keywords_performance || [],
+            keywordPerformance: (cachedData as any).keyword_performance || [],
+            searchTermPerformance: (cachedData as any).search_term_performance || [],
+            demographicPerformance: cachedData.demographic_performance || [],
+            geographicPerformance: (cachedData as any).geographic_performance || [],
           },
           cached: true,
           lastUpdated: cachedData.last_updated,
@@ -191,45 +194,32 @@ export async function POST(request: NextRequest) {
 
     logger.info('🔄 Fetching fresh Google Ads tables data from API');
 
-    // Fetch data from Google Ads API
-    const [
-      placementPerformance,
-      devicePerformance,
-      keywordPerformance
-    ] = await Promise.allSettled([
-      googleAdsService.getNetworkPerformance(dateStart, dateEnd),
-      googleAdsService.getDevicePerformance(dateStart, dateEnd),
-      googleAdsService.getKeywordPerformance(dateStart, dateEnd),
-    ]);
+    // Use the unified getGoogleAdsTables() so this endpoint stays in sync with
+    // smart-cache-helper, fetch-google-ads-live-data, and the PDF generator.
+    const tables = await googleAdsService.getGoogleAdsTables(dateStart, dateEnd);
 
-    // Process results and handle any failures
     const data = {
-      placementPerformance: placementPerformance.status === 'fulfilled' ? placementPerformance.value : [],
-      devicePerformance: devicePerformance.status === 'fulfilled' ? devicePerformance.value : [],
-      keywordPerformance: keywordPerformance.status === 'fulfilled' ? keywordPerformance.value : [],
+      placementPerformance: tables?.networkPerformance || [],
+      devicePerformance: tables?.devicePerformance || [],
+      keywordPerformance: tables?.keywordPerformance || [],
+      searchTermPerformance: tables?.searchTermPerformance || [],
+      demographicPerformance: tables?.demographicPerformance || [],
+      geographicPerformance: tables?.geographicPerformance || [],
     };
 
-    // Log any failures
-    if (placementPerformance.status === 'rejected') {
-      logger.warn('⚠️ Placement performance fetch failed:', placementPerformance.reason);
-    }
-    if (devicePerformance.status === 'rejected') {
-      logger.warn('⚠️ Device performance fetch failed:', devicePerformance.reason);
-    }
-    if (keywordPerformance.status === 'rejected') {
-      logger.warn('⚠️ Keyword performance fetch failed:', keywordPerformance.reason);
-    }
-
-    // Store/update cached data
     const cacheData = {
       client_id: client.id,
       date_range_start: dateStart,
       date_range_end: dateEnd,
-      placement_performance: data.placementPerformance as any,
+      network_performance: data.placementPerformance as any,
       device_performance: data.devicePerformance as any,
-      keywords_performance: data.keywordPerformance as any,
-      data_source: 'google_ads_api',
+      keyword_performance: data.keywordPerformance as any,
+      search_term_performance: data.searchTermPerformance as any,
+      demographic_performance: data.demographicPerformance as any,
+      geographic_performance: data.geographicPerformance as any,
+      quality_score_metrics: tables?.qualityMetrics || [],
       last_updated: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     const { error: cacheError } = await supabase
@@ -255,6 +245,8 @@ export async function POST(request: NextRequest) {
         placementCount: data.placementPerformance.length,
         deviceCount: data.devicePerformance.length,
         keywordCount: data.keywordPerformance.length,
+        demographicCount: data.demographicPerformance.length,
+        geographicCount: data.geographicPerformance.length,
       }
     });
 

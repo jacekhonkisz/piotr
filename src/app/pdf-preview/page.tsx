@@ -13,6 +13,7 @@ function PDFPreviewContent() {
   const clientId = searchParams.get('clientId') || 'e7bfc2c2-f0e6-4b45-af79-73fd9e33bb75'; // Belmonte Hotel
   const dateStart = searchParams.get('dateStart') || '2025-11-01';
   const dateEnd = searchParams.get('dateEnd') || '2025-11-30';
+  const isDebug = searchParams.get('debug') === '1';
 
   useEffect(() => {
     const fetchPreview = async () => {
@@ -22,9 +23,10 @@ function PDFPreviewContent() {
 
         console.log('🎨 Fetching PDF preview...');
 
-        // Call the PDF generation API in preview mode
-        // Uses service role key from environment for auth
-        const response = await fetch('/api/generate-pdf', {
+        // Call the PDF generation API in preview mode. The ?debug=1 query
+        // string is forwarded so the route's layout-overlay code path runs.
+        const url = isDebug ? '/api/generate-pdf?debug=1' : '/api/generate-pdf';
+        const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -67,7 +69,7 @@ function PDFPreviewContent() {
     };
 
     fetchPreview();
-  }, [clientId, dateStart, dateEnd]);
+  }, [clientId, dateStart, dateEnd, isDebug]);
 
   if (loading) {
     return (
@@ -113,7 +115,7 @@ function PDFPreviewContent() {
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-semibold text-gray-900">📄 PDF Design Preview</h1>
-            <span className="text-sm text-gray-500 bg-green-50 text-green-700 px-3 py-1 rounded-full border border-green-200">
+            <span className="text-sm bg-green-50 text-green-700 px-3 py-1 rounded-full border border-green-200">
               ✓ Live from /api/generate-pdf
             </span>
             <span className="text-xs text-gray-400">
@@ -138,13 +140,13 @@ function PDFPreviewContent() {
       </div>
 
       {/* PDF Content Preview */}
-      <div className="max-w-[210mm] mx-auto my-8 bg-white shadow-2xl">
+      <div className="max-w-[230mm] mx-auto my-8 bg-white shadow-2xl">
         <div
           className="pdf-preview-content"
           dangerouslySetInnerHTML={{ __html: htmlContent }}
           style={{
             background: 'white',
-            minHeight: '297mm',
+            minHeight: '108mm',
           }}
         />
       </div>

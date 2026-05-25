@@ -127,6 +127,9 @@ export function buildMetricsAuditRows(
   const G_CORE = 'Core — spend, reach, clicks, rates (dashboard & reports)';
   const G_CONV = 'Funnel & value — same as client report / PDF';
   const G_DERIVED = platform === 'meta' ? 'Sanity — Meta campaigns[] vs stats' : 'Sanity — Google campaigns[] vs stats';
+  const G_CONTRACT = platform === 'meta'
+    ? 'Contract v1 — Meta UI parity (link clicks, inline_link_click_ctr)'
+    : 'Contract v1 — Google UI parity (clicks, ctr)';
   const G_CONTEXT = 'Audit context';
 
   if (platform === 'meta') {
@@ -150,10 +153,16 @@ export function buildMetricsAuditRows(
     const sumSpend = metaSumCampaigns(campaigns as any[], (c) => num(c.spend));
     const sumImp = metaSumCampaigns(campaigns as any[], (c) => num(c.impressions));
     const sumLink = metaSumCampaigns(campaigns as any[], (c) => num(c.inline_link_clicks ?? c.clicks));
+    const sumAllClicks = metaSumCampaigns(campaigns as any[], (c) => num(c.clicks));
     pushNumberRow(rows, G_DERIVED, 'campaigns_count', 'Campaign count (live vs stored total_campaigns)', (campaigns as any[]).length, num(stored.total_campaigns));
     pushNumberRow(rows, G_DERIVED, 'sum_campaign_spend', 'Σ campaign.spend vs stats.totalSpend', sumSpend, num(stats.totalSpend));
     pushNumberRow(rows, G_DERIVED, 'sum_campaign_impressions', 'Σ campaign.impressions vs stats', sumImp, num(stats.totalImpressions));
     pushNumberRow(rows, G_DERIVED, 'sum_campaign_link_clicks', 'Σ link clicks vs stats.totalClicks', sumLink, num(stats.totalClicks));
+
+    // Contract v1 parity — does the stored row match Meta UI (link clicks)?
+    const storedClicks = num(stored.total_clicks);
+    pushNumberRow(rows, G_CONTRACT, 'stored_clicks_vs_link_clicks', 'Stored total_clicks should equal Σ inline_link_clicks (Meta UI)', sumLink, storedClicks);
+    pushNumberRow(rows, G_CONTRACT, 'stored_clicks_vs_all_clicks', 'If stored equals Σ campaign.clicks instead, row was written by legacy writer', sumAllClicks, storedClicks);
 
     pushTextRow(rows, G_CONTEXT, 'data_source', 'Stored row data_source', null, stored.data_source);
   } else {

@@ -29,7 +29,9 @@ const AdsDataToggle: React.FC<AdsDataToggleProps> = ({
   hasMetaAds = true,
   hasGoogleAds = true,
 }) => {
-  const [internalActiveProvider, setInternalActiveProvider] = useState<'meta' | 'google'>('meta');
+  const [internalActiveProvider, setInternalActiveProvider] = useState<'meta' | 'google'>(() =>
+    hasGoogleAds ? 'google' : 'meta'
+  );
   
   // Use external activeProvider if provided, otherwise use internal state
   const activeProvider = externalActiveProvider !== undefined ? externalActiveProvider : internalActiveProvider;

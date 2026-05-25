@@ -5,6 +5,10 @@ import logger from '../../../lib/logger';
 import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { GoogleAdsAPIService } from '../../../lib/google-ads-api';
 import { enhanceCampaignsWithConversions } from '../../../lib/meta-actions-parser';
+import {
+  sumGoogleEmailContactsFromCampaigns,
+  sumGooglePhoneContactsFromCampaigns,
+} from '../../../lib/google-ads-contact-metrics';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -219,23 +223,12 @@ export async function POST(request: NextRequest) {
               const totalReservations = Math.round(campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0));
               const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
               
-              // For other metrics, optionally use daily_kpi_data if available (but NOT for booking steps)
-              const { data: dailyKpiData } = await supabase
-                .from('daily_kpi_data')
-                .select('*')
-                .eq('client_id', clientId)
-                .eq('platform', 'google')
-                .gte('date', startDate)
-                .lte('date', endDate);
-
-              let clickToCall = Math.round(campaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0));
-              let emailContacts = Math.round(campaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0));
-              
-              // Optionally use daily_kpi_data for click_to_call and email_contacts if available (but NOT for booking steps)
-              if (dailyKpiData && dailyKpiData.length > 0) {
-                clickToCall = Math.round(dailyKpiData.reduce((sum, day) => sum + (day.click_to_call || 0), 0)) || clickToCall;
-                emailContacts = Math.round(dailyKpiData.reduce((sum, day) => sum + (day.email_contacts || 0), 0)) || emailContacts;
-              }
+              const clickToCall = Math.round(
+                sumGooglePhoneContactsFromCampaigns(campaigns as Record<string, unknown>[])
+              );
+              const emailContacts = Math.round(
+                sumGoogleEmailContactsFromCampaigns(campaigns as Record<string, unknown>[])
+              );
               
               const conversionMetrics = {
                 click_to_call: clickToCall,

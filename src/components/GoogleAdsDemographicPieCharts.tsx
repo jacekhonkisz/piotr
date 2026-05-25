@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -9,15 +9,18 @@ import {
   Title,
 } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
-import { motion } from 'framer-motion';
-import { Eye, MousePointer, Target, BarChart3 } from 'lucide-react';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
 
+// Each row carries EXACTLY one of `gender` or `ageRange`. See
+// GoogleAdsAPIService.getDemographicPerformance for why - gender_view and
+// age_range_view are independent resources in the Google Ads API and cannot
+// be cross-tabbed. The pie chart aggregation below filters per dimension to
+// avoid a "Nieznane" double-count.
 interface GoogleAdsDemographicPerformance {
-  ageRange: string;
-  gender: string;
+  ageRange?: string;
+  gender?: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -25,6 +28,8 @@ interface GoogleAdsDemographicPerformance {
   cpc: number;
   conversions: number;
   conversionValue: number;
+  reservations?: number;
+  reservation_value?: number;
   roas: number;
 }
 
@@ -44,17 +49,6 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
       case 'roas': return 'ROAS';
       case 'conversionValue': return 'Wartość konwersji';
       default: return 'Metryka';
-    }
-  };
-
-  const MetricIcon = () => {
-    switch (metric) {
-      case 'impressions': return Eye;
-      case 'clicks': return MousePointer;
-      case 'conversions': return Target;
-      case 'roas': return BarChart3;
-      case 'conversionValue': return BarChart3;
-      default: return BarChart3;
     }
   };
 
@@ -82,15 +76,39 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     return new Intl.NumberFormat('pl-PL').format(value);
   };
 
-  // Helper function to translate gender labels
-  const translateGenderLabel = (label: string) => {
-    switch (label.toLowerCase()) {
-      case 'male': return 'Mężczyźni';
-      case 'female': return 'Kobiety';
-      case 'nieznane': return 'Nieznane';
-      case 'unknown': return 'Nieznane';
-      default: return 'Nieznane';
+  // Map gender bucket keys to Polish chart labels. Rows from the API layer
+  // already use Polish (Mężczyźni / Kobiety / Nieznane); older caches may
+  // still have English or enum strings. Do NOT default unknown strings to
+  // "Nieznane" — that collapsed every real segment into one label.
+  /** Single bucket for unknown / unspecified / undetermined (Google Ads). */
+  const GENDER_UNKNOWN_LABEL = 'Nieznane / nieokreślone';
+
+  const translateGenderLabel = (label: string): string => {
+    const raw = label.trim();
+    if (!raw) return GENDER_UNKNOWN_LABEL;
+    const upper = raw.toUpperCase();
+    if (upper === 'MĘŻCZYŹNI' || upper === 'MĘŻCZYZNA') return 'Mężczyźni';
+    if (upper === 'KOBIETY' || upper === 'KOBIETA') return 'Kobiety';
+    if (
+      upper === 'NIEZNANE' ||
+      upper === 'UNKNOWN' ||
+      upper === 'UNSPECIFIED' ||
+      upper === 'UNDETERMINED'
+    ) {
+      return GENDER_UNKNOWN_LABEL;
     }
+    if (upper === 'MALE') return 'Mężczyźni';
+    if (upper === 'FEMALE') return 'Kobiety';
+
+    const lower = raw.toLowerCase();
+    if (lower === 'male') return 'Mężczyźni';
+    if (lower === 'female') return 'Kobiety';
+
+    if (raw === '10') return 'Mężczyźni';
+    if (raw === '11') return 'Kobiety';
+    if (raw === '20' || raw === '0' || raw === '1') return GENDER_UNKNOWN_LABEL;
+
+    return raw;
   };
 
   // Helper function to translate age labels  
@@ -99,37 +117,46 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     return label; // Age ranges like "25-34" don't need translation
   };
 
-  // Process data for gender breakdown
+  // Process data for gender breakdown.
+  // Only rows tagged with a `gender` value participate; age-only rows are
+  // skipped so we never produce a phantom "Nieznane" bucket from them.
   const genderData = React.useMemo(() => {
     const genderMap = new Map<string, number>();
-    
-    data.forEach(item => {
+
+    data.forEach((item) => {
+      if (!item.gender) return;
       const value = getMetricValue(item);
-      const currentValue = genderMap.get(item.gender) || 0;
-      genderMap.set(item.gender, currentValue + value);
+      const canonical = translateGenderLabel(item.gender);
+      genderMap.set(canonical, (genderMap.get(canonical) || 0) + value);
     });
 
-    const labels = Array.from(genderMap.keys());
-    const values = Array.from(genderMap.values());
+    const labels = Array.from(genderMap.keys()).sort((a, b) => {
+      const rank = (g: string) =>
+        g === 'Mężczyźni' ? 0 : g === 'Kobiety' ? 1 : g === GENDER_UNKNOWN_LABEL ? 2 : 3;
+      return rank(a) - rank(b) || a.localeCompare(b, 'pl');
+    });
+    const values = labels.map((l) => genderMap.get(l) ?? 0);
     const total = values.reduce((sum, val) => sum + val, 0);
 
     return {
-      labels: labels.map(translateGenderLabel),
-      datasets: [{
-        data: values,
-        backgroundColor: ['#6366f1', '#8b5cf6', '#6b7280'],
-        borderWidth: 0,
-      }],
+      labels,
+      datasets: [
+        {
+          data: values,
+          backgroundColor: ['#6366f1', '#8b5cf6', '#6b7280', '#94a3b8', '#cbd5e1'],
+          borderWidth: 0,
+        },
+      ],
       total,
-      originalLabels: labels // Keep original labels for legend mapping
     };
   }, [data, metric]);
 
-  // Process data for age breakdown
+  // Process data for age breakdown - same dimension-filter rationale as above.
   const ageData = React.useMemo(() => {
     const ageMap = new Map<string, number>();
-    
+
     data.forEach(item => {
+      if (!item.ageRange) return;
       const value = getMetricValue(item);
       const currentValue = ageMap.get(item.ageRange) || 0;
       ageMap.set(item.ageRange, currentValue + value);
@@ -155,15 +182,10 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
+      // Custom HTML legends below each chart — hide Chart.js legend to avoid
+      // duplicate rows (same slice shown twice with different text).
       legend: {
-        position: 'bottom' as const,
-        labels: {
-          padding: 20,
-          usePointStyle: true,
-          font: {
-            size: 12,
-          },
-        },
+        display: false,
       },
       tooltip: {
         callbacks: {
@@ -186,57 +208,42 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
     );
   }
 
-  const Icon = MetricIcon();
-
   return (
-    <div ref={containerRef} className="space-y-8">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center space-x-3 bg-slate-50 px-6 py-3 rounded-xl border border-slate-200">
-          <div className="p-2 bg-slate-900 rounded-lg">
-            <Icon className="h-5 w-5 text-white" />
-          </div>
-          <h3 className="text-xl font-semibold text-slate-900">
-            Podział {getMetricLabel()} według Demografii
-          </h3>
-        </div>
-        <p className="text-slate-600 mt-2">Analiza skuteczności reklam według płci i grup wiekowych</p>
-      </div>
-
+    <div ref={containerRef} className="space-y-4">
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Gender Chart */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h4 className="text-lg font-semibold text-slate-900 mb-4 text-center">
-            Podział według Płci
+        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <h4 className="text-sm font-semibold text-slate-950">
+            Płeć
           </h4>
-          <p className="text-sm text-slate-600 mb-6 text-center">
+          <p className="mb-3 text-xs text-slate-500">
             Udział {getMetricLabel().toLowerCase()} według płci
           </p>
-          <div className="h-80">
+          <div className="h-48">
             <Pie data={genderData} options={chartOptions} />
           </div>
           
           {/* Gender Legend */}
-          <div className="mt-6 space-y-3">
-                      {genderData.labels.map((label, index) => {
+          <div className="mt-3 space-y-1.5">
+            {genderData.labels.map((label, index) => {
             const value = genderData.datasets[0]?.data[index] ?? 0;
             const percentage = genderData.total > 0 ? ((value / genderData.total) * 100).toFixed(1) : '0.0';
             const color = genderData.datasets[0]?.backgroundColor?.[index] ?? '#6b7280';
             
             return (
-              <div key={label} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
+              <div key={label} className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-2">
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-sm font-medium text-slate-700 capitalize">
+                  <span className="text-xs font-medium text-slate-700">
                     {label}
                   </span>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-semibold text-slate-900 tabular-nums">
+                  <div className="text-xs font-semibold text-slate-900 tabular-nums">
                     {formatValue(value)}
                   </div>
                   <div className="text-xs text-slate-500">
@@ -250,37 +257,37 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
         </div>
 
         {/* Age Chart */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h4 className="text-lg font-semibold text-slate-900 mb-4 text-center">
-            Podział według Grup Wiekowych
+        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <h4 className="text-sm font-semibold text-slate-950">
+            Wiek
           </h4>
-          <p className="text-sm text-slate-600 mb-6 text-center">
+          <p className="mb-3 text-xs text-slate-500">
             Udział {getMetricLabel().toLowerCase()} według wieku
           </p>
-          <div className="h-80">
+          <div className="h-48">
             <Pie data={ageData} options={chartOptions} />
           </div>
           
           {/* Age Legend */}
-          <div className="mt-6 space-y-3">
-                      {ageData.labels.map((label, index) => {
+          <div className="mt-3 space-y-1.5">
+            {ageData.labels.map((label, index) => {
             const value = ageData.datasets[0]?.data[index] ?? 0;
             const percentage = ageData.total > 0 ? ((value / ageData.total) * 100).toFixed(1) : '0.0';
             const color = ageData.datasets[0]?.backgroundColor?.[index] ?? '#6b7280';
             
             return (
-              <div key={label} className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
+              <div key={label} className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-2">
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-sm font-medium text-slate-700">
+                  <span className="text-xs font-medium text-slate-700">
                     {label}
                   </span>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-semibold text-slate-900 tabular-nums">
+                  <div className="text-xs font-semibold text-slate-900 tabular-nums">
                     {formatValue(value)}
                   </div>
                   <div className="text-xs text-slate-500">
@@ -290,30 +297,6 @@ export default function GoogleAdsDemographicPieCharts({ data, metric }: GoogleAd
               </div>
             );
           })}
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Stats */}
-      <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-          <div>
-            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
-              {formatValue(genderData.total)}
-            </div>
-            <div className="text-sm text-slate-600">Łączne {getMetricLabel().toLowerCase()}</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
-              {genderData.labels.length}
-            </div>
-            <div className="text-sm text-slate-600">Kategorie płci</div>
-          </div>
-          <div>
-            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
-              {ageData.labels.length}
-            </div>
-            <div className="text-sm text-slate-600">Grupy wiekowe</div>
           </div>
         </div>
       </div>

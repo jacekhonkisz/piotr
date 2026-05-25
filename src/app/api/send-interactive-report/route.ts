@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import FlexibleEmailService from '../../../lib/flexible-email';
 import logger from '../../../lib/logger';
+import { fetchUnifiedReport } from '../../../lib/unified-report-fetcher';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -78,16 +79,72 @@ export async function POST(request: NextRequest) {
     const pdfBuffer = await pdfResponse.arrayBuffer();
     logger.info('Success', pdfBuffer.byteLength, 'bytes');
 
-    // Generate report data for email
+    // Build the report email payload from the canonical unified fetcher
+    // (Meta + Google), so the email body matches the PDF and the dashboard.
+    // Uses contract-conforming numbers (link clicks, weighted CTR/CPC,
+    // parsed reservations) instead of the legacy hardcoded placeholders.
+    const today = new Date().toISOString().slice(0, 10);
+    const isCurrent = dateRange.start <= today && today <= dateRange.end;
+    const periodKind: 'monthly' | 'weekly' | 'custom' =
+      isCurrent ? 'monthly' : 'monthly';
+
+    const [metaResult, googleResult] = await Promise.all([
+      fetchUnifiedReport(
+        {
+          clientId,
+          dateRange,
+          platform: 'meta',
+          reason: 'send-interactive-report',
+          periodKind
+        },
+        { sessionToken: token }
+      ),
+      fetchUnifiedReport(
+        {
+          clientId,
+          dateRange,
+          platform: 'google',
+          reason: 'send-interactive-report',
+          periodKind
+        },
+        { sessionToken: token }
+      )
+    ]);
+
+    const metaCore = metaResult.payload?.core;
+    const googleCore = googleResult.payload?.core;
+
+    const totalSpend = (metaCore?.total_spend ?? 0) + (googleCore?.total_spend ?? 0);
+    const totalImpressions = (metaCore?.total_impressions ?? 0) + (googleCore?.total_impressions ?? 0);
+    const totalClicks = (metaCore?.total_clicks ?? 0) + (googleCore?.total_clicks ?? 0);
+    const totalConversions = (metaCore?.total_conversions ?? 0) + (googleCore?.total_conversions ?? 0);
+    const cpm = totalImpressions > 0 ? (totalSpend / totalImpressions) * 1000 : 0;
+    const reservations =
+      (metaResult.payload?.conversion.reservations ?? 0) +
+      (googleResult.payload?.conversion.reservations ?? 0);
+    const reservationValue =
+      (metaResult.payload?.conversion.reservation_value ?? 0) +
+      (googleResult.payload?.conversion.reservation_value ?? 0);
+
     const reportData = {
       dateRange: `${dateRange.start} to ${dateRange.end}`,
-      totalSpend: 12500.50, // This would come from actual report data
-      totalImpressions: 250000,
-      totalClicks: 5000,
-      ctr: 0.02, // 2%
-      cpc: 2.50,
-      cpm: 50.00
+      totalSpend,
+      totalImpressions,
+      totalClicks,
+      totalConversions,
+      cpm,
+      reservations,
+      reservationValue
     };
+
+    logger.info('send-interactive-report unified payload', {
+      clientId,
+      metaSource: metaResult.source,
+      googleSource: googleResult.source,
+      totalSpend,
+      totalImpressions,
+      totalClicks
+    });
 
     // Send email with interactive PDF attachment to all contact emails
     const emailService = FlexibleEmailService.getInstance();

@@ -67,6 +67,7 @@ export default function MetricsAuditPage() {
   const [error, setError] = useState('');
   const [liveData, setLiveData] = useState<any>(null);
   const [storedData, setStoredData] = useState<any>(null);
+  const [storedMeta, setStoredMeta] = useState<Record<string, unknown> | null>(null);
   const [showRawLive, setShowRawLive] = useState(false);
   const [showRawStored, setShowRawStored] = useState(false);
 
@@ -123,6 +124,7 @@ export default function MetricsAuditPage() {
     setError('');
     setLiveData(null);
     setStoredData(null);
+    setStoredMeta(null);
     try {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
@@ -168,6 +170,7 @@ export default function MetricsAuditPage() {
 
       setLiveData(livePayload.data || null);
       setStoredData(storedPayload.data || null);
+      setStoredMeta(storedPayload.storedMeta ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to compare');
     } finally {
@@ -239,6 +242,34 @@ export default function MetricsAuditPage() {
               Raw Meta/Google action maps and debug-only rows are not listed here.
             </p>
             {!storedData && <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">No stored row for this period/platform — run a fetch/cache refresh first; comparison rows need a stored summary.</div>}
+            {storedMeta && (
+              <div className="text-sm text-[#344054] bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 space-y-1">
+                <div>
+                  <span className="font-medium">Stored source:</span>{' '}
+                  <code className="text-xs bg-white px-1 rounded border">{String((storedMeta as any).sourceTable ?? '—')}</code>
+                  {(storedMeta as any).periodId != null && (
+                    <>
+                      {' '}
+                      <span className="font-medium">period_id:</span>{' '}
+                      <code className="text-xs bg-white px-1 rounded border">{String((storedMeta as any).periodId)}</code>
+                    </>
+                  )}
+                </div>
+                <div>
+                  <span className="font-medium">DB last_updated:</span>{' '}
+                  {(storedMeta as any).cacheLastUpdated != null ? String((storedMeta as any).cacheLastUpdated) : '—'}
+                  {' · '}
+                  <span className="font-medium">cache_data.fetchedAt:</span>{' '}
+                  {(storedMeta as any).cacheFetchedAt != null ? String((storedMeta as any).cacheFetchedAt) : '—'}
+                  {' · '}
+                  <span className="font-medium">Age:</span>{' '}
+                  {(storedMeta as any).ageMinutes != null ? `${(storedMeta as any).ageMinutes} min` : '—'}
+                </div>
+                {(storedMeta as any).interpretation != null && (
+                  <p className="text-[#475467] pt-1 border-t border-slate-200 mt-1">{String((storedMeta as any).interpretation)}</p>
+                )}
+              </div>
+            )}
             <div className="space-y-8">
               {[...auditGroups.entries()].map(([group, rows]) => (
                 <div key={group}>

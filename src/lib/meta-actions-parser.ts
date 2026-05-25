@@ -29,6 +29,30 @@ export interface ParsedConversionMetrics {
 }
 
 /**
+ * Sum Meta Insights `actions[]` values that represent lead / instant forms.
+ * Subtracted from the API `conversions` scalar so headline counts exclude forms.
+ */
+export function sumMetaFormConversionActions(actions: any[] = []): number {
+  const formExact = new Set([
+    'lead',
+    'onsite_conversion.lead_grouped',
+    'onsite_conversion.lead',
+    'onsite_conversion.form',
+    'submit_application',
+    'onsite_conversion.submit_application',
+  ]);
+  let sum = 0;
+  for (const a of actions || []) {
+    const t = String(a.action_type || '').toLowerCase();
+    if (formExact.has(t) || t.includes('lead_gen') || t.includes('leadgen') || t.includes('instant_form')) {
+      const v = parseInt(String(a.value || '0'), 10);
+      if (!isNaN(v) && v >= 0) sum += v;
+    }
+  }
+  return sum;
+}
+
+/**
  * Parses Meta API actions array into structured conversion metrics
  * 
  * @param actions - The actions array from Meta API campaign insights
@@ -140,14 +164,8 @@ export function parseMetaActions(
       }
       // ✅ If PBM event exists OR forcePBMOnly is true → completely ignore standard click_to_call events (they are duplicates)
       
-      // ✅ EMAIL CONTACTS
-      // Priority 1: Known PBM custom events (Havet-specific)
-      // Priority 2: Standard lead events (all other clients)
+      // ✅ EMAIL CONTACTS (website e-mail clicks only — lead/instant forms excluded)
       if (actionType === 'offsite_conversion.custom.2770488499782793') {  // Havet PBM email
-        metrics.email_contacts += value;
-      }
-      else if ((actionType === 'lead' || actionType === 'onsite_conversion.lead_grouped') && 
-               !actionMap.has('offsite_conversion.custom.2770488499782793')) {
         metrics.email_contacts += value;
       }
       
@@ -283,16 +301,18 @@ export function parseMetaActions(
  * @returns Campaign with added conversion metrics
  */
 export function enhanceCampaignWithConversions(campaign: any): any {
-  // ✅ Parse action_values to get "Zakupy w witrynie - wartość konwersji" directly from API
   const parsed = parseMetaActions(
     campaign.actions || [],
     campaign.action_values || [],
     campaign.campaign_name || campaign.name
   );
-  
+  const formConv = sumMetaFormConversionActions(campaign.actions || []);
+  const rawConv = parseFloat(String(campaign.conversions ?? '0')) || 0;
+
   return {
     ...campaign,
-    ...parsed
+    ...parsed,
+    conversions: Math.max(0, rawConv - formConv),
   };
 }
 
@@ -339,10 +359,13 @@ export function enhanceCampaignsWithConversions(campaigns: any[]): any[] {
       campaign.campaign_name || campaign.name,
       accountHasPBM // ✅ Pass account-level PBM flag
     );
-    
+    const formConv = sumMetaFormConversionActions(campaign.actions || []);
+    const rawConv = parseFloat(String(campaign.conversions ?? '0')) || 0;
+
     return {
       ...campaign,
-      ...parsed
+      ...parsed,
+      conversions: Math.max(0, rawConv - formConv),
     };
   });
 }

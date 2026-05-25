@@ -3,6 +3,8 @@
  * This file defines the unified data structures for reports that include both platforms
  */
 
+import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from './google-ads-contact-metrics';
+
 export type PlatformType = 'meta' | 'google';
 
 // Unified campaign interface that works for both Meta and Google Ads
@@ -43,7 +45,7 @@ export interface UnifiedCampaign {
   cost_per_reservation?: number; // Both platforms
   
   // Google Ads-specific fields (optional, for backward compatibility)
-  form_submissions?: number;     // Google: maps to email_contacts
+  form_submissions?: number;     // Google: not counted in unified totals (kept for API shape only)
   phone_calls?: number;          // Google-specific
   email_clicks?: number;         // Google-specific
   phone_clicks?: number;         // Google-specific
@@ -166,8 +168,8 @@ export function convertGoogleCampaignToUnified(googleCampaign: any): UnifiedCamp
     objective: undefined,
     
     // Conversion tracking (mapped from Google naming to unified naming)
-    click_to_call: googleCampaign.click_to_call || googleCampaign.phone_clicks || 0,
-    email_contacts: googleCampaign.email_contacts || googleCampaign.email_clicks || 0,
+    click_to_call: googlePhoneContactsFromRow(googleCampaign as Record<string, unknown>),
+    email_contacts: googleEmailContactsFromRow(googleCampaign as Record<string, unknown>),
     form_submissions: googleCampaign.form_submissions || 0,
     phone_calls: googleCampaign.phone_calls || 0,
     booking_step_1: googleCampaign.booking_step_1 || 0,
@@ -213,7 +215,6 @@ export function calculatePlatformTotals(campaigns: UnifiedCampaign[]): PlatformT
     acc.totalReach += campaign.reach || 0;
     acc.totalClickToCalls += campaign.click_to_call || 0;
     acc.totalEmailContacts += campaign.email_contacts || 0;
-    acc.totalFormSubmissions += campaign.form_submissions || 0;
     acc.totalPhoneCalls += campaign.phone_calls || 0;
     acc.totalBookingStep1 += campaign.booking_step_1 || 0;
     acc.totalBookingStep2 += campaign.booking_step_2 || 0;

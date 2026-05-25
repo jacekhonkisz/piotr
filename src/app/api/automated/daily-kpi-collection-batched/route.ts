@@ -122,9 +122,11 @@ export async function POST(request: NextRequest) {
 
         console.log(`📊 Found ${campaigns.length} campaigns for ${client.name}`);
 
-        // Aggregate daily totals INCLUDING conversion metrics
+        // Aggregate daily totals INCLUDING conversion metrics.
+        // Canonical contract v1 (Meta): total_clicks = inline_link_clicks ?? clicks
+        // (matches Meta Business Suite "Link clicks").
         const dailyTotals = campaigns.reduce((totals: any, campaign: any) => ({
-            totalClicks: totals.totalClicks + (parseInt(campaign.clicks) || 0),
+            totalClicks: totals.totalClicks + (parseInt(campaign.inline_link_clicks ?? campaign.clicks ?? 0) || 0),
             totalImpressions: totals.totalImpressions + (parseInt(campaign.impressions) || 0),
             totalSpend: totals.totalSpend + (parseFloat(campaign.spend) || 0),
             totalConversions: totals.totalConversions + (parseInt(campaign.conversions) || 0),

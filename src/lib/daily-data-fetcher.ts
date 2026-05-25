@@ -152,7 +152,9 @@ export class DailyDataFetcher {
       
       // Aggregate the metrics
       dayData.total_spend += Number(insight.spend || 0);
-      dayData.total_clicks += Number(insight.clicks || 0);
+      dayData.total_clicks += Number(
+        (insight as any).inline_link_clicks ?? insight.clicks ?? 0
+      );
       dayData.total_impressions += Number(insight.impressions || 0);
       dayData.total_conversions += Number(insight.conversions || 0);
       dayData.campaigns_count += 1;

@@ -1,6 +1,22 @@
 // Simple date utilities that don't depend on Supabase
 // This can be safely imported on both client and server
 
+/** Calendar month immediately before the month of `reference` (for MoM snapshots). */
+export function getPreviousCalendarMonthBounds(reference = new Date()): {
+  start: string;
+  end: string;
+} {
+  const y = reference.getFullYear();
+  const m = reference.getMonth();
+  const firstPrev = new Date(y, m - 1, 1);
+  const lastPrev = new Date(y, m, 0);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    start: `${firstPrev.getFullYear()}-${pad(firstPrev.getMonth() + 1)}-01`,
+    end: `${lastPrev.getFullYear()}-${pad(lastPrev.getMonth() + 1)}-${pad(lastPrev.getDate())}`,
+  };
+}
+
 export function getCurrentMonthInfo() {
   const now = new Date();
   const year = now.getFullYear();

@@ -13,6 +13,12 @@ import {
   fetchGoogleDynamicConversionRows,
   googleDynamicRowsToMetricMap,
 } from '../../../lib/google-dynamic-conversion-fetch';
+import {
+  googleEmailContactsFromRow,
+  googlePhoneContactsFromRow,
+  sumGoogleEmailContactsFromCampaigns,
+  sumGooglePhoneContactsFromCampaigns,
+} from '../../../lib/google-ads-contact-metrics';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -257,9 +263,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     // Use aggregated conversion metrics from database if available
     let conversionMetrics;
     
-    if (storedSummary.click_to_call !== null &&
-        storedSummary.email_contacts !== null &&
-        storedSummary.booking_step_1 !== null &&
+    if (storedSummary.booking_step_1 !== null &&
         storedSummary.reservations !== null &&
         storedSummary.reservation_value !== null &&
         storedSummary.booking_step_2 !== null) {
@@ -267,8 +271,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       // ✅ CRITICAL FIX: Round all conversion counts to integers for consistency with live API
       const reservationValue = Math.round((storedSummary.reservation_value || 0) * 100) / 100;
       conversionMetrics = {
-        click_to_call: Math.round(storedSummary.click_to_call || 0),
-        email_contacts: Math.round(storedSummary.email_contacts || 0),
+        click_to_call: Math.round(googlePhoneContactsFromRow(storedSummary as Record<string, unknown>)),
+        email_contacts: Math.round(googleEmailContactsFromRow(storedSummary as Record<string, unknown>)),
         booking_step_1: Math.round(storedSummary.booking_step_1 || 0),
         reservations: Math.round(storedSummary.reservations || 0),
         reservation_value: reservationValue,
@@ -294,8 +298,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const totalConversionValueRaw = campaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
       const totalConversionValue = totalConversionValueRaw > 0 ? Math.round(totalConversionValueRaw * 100) / 100 : reservationValue;
       conversionMetrics = {
-        click_to_call: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0)),
-        email_contacts: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0)),
+        click_to_call: Math.round(sumGooglePhoneContactsFromCampaigns(campaigns as Record<string, unknown>[])),
+        email_contacts: Math.round(sumGoogleEmailContactsFromCampaigns(campaigns as Record<string, unknown>[])),
         booking_step_1: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0)),
         reservations: totalReservations,
         reservation_value: reservationValue, // Round to 2 decimal places
@@ -325,9 +329,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       ctr: campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0,
       cpc: campaign.clicks > 0 ? campaign.spend / campaign.clicks : 0,
       status: campaign.status || 'ACTIVE',
-      // Conversion tracking metrics
-      click_to_call: parseInt(campaign.click_to_call || 0),
-      email_contacts: parseInt(campaign.email_contacts || 0),
+      // Conversion tracking metrics (canonical parser fields + legacy DB aliases)
+      click_to_call: Math.round(googlePhoneContactsFromRow(campaign as Record<string, unknown>)),
+      email_contacts: Math.round(googleEmailContactsFromRow(campaign as Record<string, unknown>)),
       booking_step_1: parseInt(campaign.booking_step_1 || 0),
       booking_step_2: parseInt(campaign.booking_step_2 || 0),
       booking_step_3: parseInt(campaign.booking_step_3 || 0),
@@ -341,15 +345,43 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
 
     console.log(`📊 Database totals: ${totals.totalSpend} PLN spend, ${transformedCampaigns.length} campaigns`);
 
-    // No fake data generation - tables will be fetched from real Google Ads API
-    const googleAdsTables = {
-      networkPerformance: [],
-      devicePerformance: [],
-      qualityMetrics: [],
-      keywordPerformance: [],
-      searchTermPerformance: []
-    };
-    console.log('📊 Using empty tables structure - real data will come from API');
+    // Hydrate the breakdown tables (networks / devices / keywords /
+    // demographics / regions) from the persistent google_ads_tables_data
+    // cache so historical periods do not return an empty "Brak danych"
+    // payload to the reports UI and PDF generator. The cache is populated
+    // by the live API path (below) and by /api/fetch-google-ads-tables.
+    const {
+      loadGoogleAdsTablesFromDatabase,
+      EMPTY_GOOGLE_ADS_TABLES,
+      hasAnyGoogleAdsTablesRows,
+      normalizeGoogleAdsTables,
+      persistGoogleAdsTables,
+    } = await import('../../../lib/google-ads-tables-storage');
+    const storedTables = await loadGoogleAdsTablesFromDatabase(clientId, startDate, endDate);
+    const summaryTables = normalizeGoogleAdsTables((storedSummary as any).google_ads_tables);
+    const googleAdsTables = storedTables
+      ?? (hasAnyGoogleAdsTablesRows(summaryTables) ? summaryTables : { ...EMPTY_GOOGLE_ADS_TABLES });
+
+    if (!storedTables && hasAnyGoogleAdsTablesRows(summaryTables)) {
+      await persistGoogleAdsTables(clientId, startDate, endDate, summaryTables, 'campaign_summaries');
+    }
+
+    const dynamicMetricValues =
+      (storedSummary as any).google_dynamic_metric_values &&
+      typeof (storedSummary as any).google_dynamic_metric_values === 'object'
+        ? (storedSummary as any).google_dynamic_metric_values
+        : {};
+    const dynamicMetricRows = Array.isArray((storedSummary as any).google_dynamic_metric_rows)
+      ? (storedSummary as any).google_dynamic_metric_rows
+      : [];
+    console.log('📊 Historical googleAdsTables (from google_ads_tables_data):', {
+      hasStoredRow: !!storedTables,
+      networks: googleAdsTables.networkPerformance.length,
+      devices: googleAdsTables.devicePerformance.length,
+      keywords: googleAdsTables.keywordPerformance.length,
+      demographics: googleAdsTables.demographicPerformance.length,
+      regions: googleAdsTables.geographicPerformance.length,
+    });
 
   return {
     client: {
@@ -367,6 +399,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       },
     conversionMetrics,
       googleAdsTables, // Generated from campaign data
+    dynamicMetricValues,
+    dynamicMetricRows,
     dateRange: {
       start: startDate,
       end: endDate
@@ -563,7 +597,9 @@ export async function POST(request: NextRequest) {
       // This properly detects current week even if endDate is capped to today
       const startDateObj = new Date(startDate);
       const endDateObj = new Date(endDate);
-      const todayObj = new Date(today);
+      // Build "today at midnight local time" directly so we never round-trip
+      // through a possibly-undefined string from split('T')[0].
+      const todayObj = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
       // Current week: start <= today AND end >= today (week contains today)
       const weekContainsToday = startDateObj <= todayObj && endDateObj >= todayObj;
@@ -572,7 +608,8 @@ export async function POST(request: NextRequest) {
       // Use try-catch to handle any import errors gracefully
       let isCurrentWeekByBoundary = false;
       try {
-        const { getCurrentWeekInfo, getMondayOfWeek, formatDateISO } = await import('../../../lib/week-helpers');
+        const { getMondayOfWeek, formatDateISO } = await import('../../../lib/week-helpers');
+        const { getCurrentWeekInfo } = await import('../../../lib/week-utils');
         const currentWeek = getCurrentWeekInfo();
         const requestedWeekMonday = getMondayOfWeek(startDateObj);
         const requestedWeekMondayStr = formatDateISO(requestedWeekMonday);
@@ -636,7 +673,71 @@ export async function POST(request: NextRequest) {
         if (databaseResult) {
           console.log('✅ RETURNING STORED GOOGLE ADS DATA FROM DATABASE');
           logger.info('✅ RETURNING STORED GOOGLE ADS DATA FROM DATABASE');
-          
+
+          // Backfill missing breakdown tables on the fly so historical
+          // periods don't render "Brak danych" sections. We try to load
+          // credentials and call the live Google Ads API once, then
+          // persist into google_ads_tables_data so subsequent requests
+          // (UI re-renders, PDF exports) skip this work.
+          try {
+            const { hasAnyGoogleAdsTablesRows, fetchAndStoreGoogleAdsTables } =
+              await import('../../../lib/google-ads-tables-storage');
+            if (!hasAnyGoogleAdsTablesRows((databaseResult as any).googleAdsTables)) {
+              const { data: settingsData } = await supabase
+                .from('system_settings')
+                .select('key, value')
+                .in('key', [
+                  'google_ads_client_id',
+                  'google_ads_client_secret',
+                  'google_ads_developer_token',
+                  'google_ads_manager_refresh_token',
+                  'google_ads_manager_customer_id',
+                ]);
+              const settings = (settingsData || []).reduce((acc: Record<string, any>, s: any) => {
+                acc[s.key] = s.value;
+                return acc;
+              }, {});
+
+              const refreshToken =
+                settings.google_ads_manager_refresh_token || (client as any).google_ads_refresh_token;
+
+              if (refreshToken && settings.google_ads_client_id && (client as any).google_ads_customer_id) {
+                const { GoogleAdsAPIService } = await import('../../../lib/google-ads-api');
+                const googleAdsService = new GoogleAdsAPIService({
+                  refreshToken,
+                  clientId: settings.google_ads_client_id,
+                  clientSecret: settings.google_ads_client_secret,
+                  developmentToken: settings.google_ads_developer_token,
+                  customerId: (client as any).google_ads_customer_id,
+                  managerCustomerId: settings.google_ads_manager_customer_id,
+                });
+
+                const live = await fetchAndStoreGoogleAdsTables(
+                  googleAdsService,
+                  client.id,
+                  startDate,
+                  endDate,
+                );
+                if (live) {
+                  (databaseResult as any).googleAdsTables = live;
+                  console.log('✅ Backfilled historical googleAdsTables from live API', {
+                    networks: live.networkPerformance.length,
+                    devices: live.devicePerformance.length,
+                    keywords: live.keywordPerformance.length,
+                    demographics: live.demographicPerformance.length,
+                    regions: live.geographicPerformance.length,
+                  });
+                }
+              } else {
+                console.log('⚠️ Skipping historical tables backfill (missing credentials)');
+              }
+            }
+          } catch (backfillErr) {
+            logger.warn('⚠️ Historical googleAdsTables backfill failed', {
+              err: backfillErr instanceof Error ? backfillErr.message : backfillErr,
+            });
+          }
+
           const responseTime = Date.now() - startTime;
           logger.info('🚀 Google Ads API response completed', {
             responseTime: `${responseTime}ms`,
@@ -740,7 +841,7 @@ export async function POST(request: NextRequest) {
           try {
             // ✅ FIX: Use weekly smart cache for weekly requests
             const { getGoogleAdsSmartWeekCacheData } = await import('../../../lib/google-ads-smart-cache-helper');
-            const { getCurrentWeekInfo } = await import('../../../lib/week-helpers');
+            const { getCurrentWeekInfo } = await import('../../../lib/week-utils');
             const currentWeek = getCurrentWeekInfo();
             
             console.log('📅 Current week info for smart cache:', {
@@ -1039,31 +1140,19 @@ export async function POST(request: NextRequest) {
     
     console.log(`✅ BOOKING STEPS FROM API: Step1=${bookingStep1}, Step2=${bookingStep2}, Step3=${bookingStep3}`);
     
-    // For other metrics, we can optionally use daily_kpi_data if available, but booking steps are API-only
-    const { data: dailyKpiData, error: kpiError } = await supabase
-      .from('daily_kpi_data')
-      .select('*')
-      .eq('client_id', client.id)
-      .eq('platform', 'google')
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    // Calculate other conversion metrics (can use daily_kpi_data if available, otherwise from campaigns)
+    // E-mail / Telefon: same source as Google Ads UI — Σ campaigns from getCampaignData →
+    // parseGoogleAdsConversions (never daily_kpi overrides; avoids stale or divergent KPI rows).
     const totalReservationValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
     const conversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0);
     const totalConversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
     const totalReservations = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
     
-    let clickToCall = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0));
-    let emailContacts = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0));
-    
-    // Optionally use daily_kpi_data for click_to_call and email_contacts if available (but NOT for booking steps)
-    if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
-      console.log(`✅ Found ${dailyKpiData.length} Google Ads KPI records for other metrics (NOT booking steps)`);
-      // Only use daily_kpi_data for non-booking-step metrics
-      clickToCall = Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.click_to_call || 0), 0)) || clickToCall;
-      emailContacts = Math.round(dailyKpiData.reduce((sum: number, day: any) => sum + (day.email_contacts || 0), 0)) || emailContacts;
-    }
+    const clickToCall = Math.round(
+      sumGooglePhoneContactsFromCampaigns(freshCampaigns as Record<string, unknown>[])
+    );
+    const emailContacts = Math.round(
+      sumGoogleEmailContactsFromCampaigns(freshCampaigns as Record<string, unknown>[])
+    );
     
     const conversionMetrics = {
       click_to_call: clickToCall,
@@ -1082,49 +1171,55 @@ export async function POST(request: NextRequest) {
     
     console.log('📊 FINAL GOOGLE ADS CONVERSION METRICS (booking steps from API only):', conversionMetrics);
 
-    // Fetch Google Ads tables data from smart cache (performance optimization)
+    // Fetch Google Ads tables data with a tiered strategy:
+    //   1) Smart cache (current month) — covers ~80% of requests, sub-second.
+    //   2) Persistent google_ads_tables_data row for this exact date range.
+    //   3) Live Google Ads API call (and persist to (2) for next time).
+    // This ordering means historical periods, weekly views, and custom
+    // date ranges all return populated networks/devices/keywords/
+    // demographics/regions instead of empty arrays.
     console.log('📊 FETCHING GOOGLE ADS TABLES DATA...');
-    let googleAdsTables = null;
-    
+    const {
+      loadGoogleAdsTablesFromDatabase,
+      fetchAndStoreGoogleAdsTables,
+      hasAnyGoogleAdsTablesRows,
+      normalizeGoogleAdsTables,
+      EMPTY_GOOGLE_ADS_TABLES,
+    } = await import('@/lib/google-ads-tables-storage');
+    let googleAdsTables: any = null;
+
     try {
-      // Try to get tables data from smart cache first (much faster)
       const { getGoogleAdsSmartCacheData } = await import('@/lib/google-ads-smart-cache-helper');
       const smartCacheResult = await getGoogleAdsSmartCacheData(client.id, false);
-      
+
       if (smartCacheResult.success && smartCacheResult.data?.googleAdsTables) {
         console.log('✅ GOOGLE ADS TABLES DATA FROM SMART CACHE');
-        console.log('📊 Cache tables structure:', {
-          hasNetwork: !!smartCacheResult.data.googleAdsTables.networkPerformance,
-          hasQuality: !!smartCacheResult.data.googleAdsTables.qualityMetrics,
-          hasDevice: !!smartCacheResult.data.googleAdsTables.devicePerformance,
-          hasKeyword: !!smartCacheResult.data.googleAdsTables.keywordPerformance,
-          hasSearchTerm: !!smartCacheResult.data.googleAdsTables.searchTermPerformance
-        });
-        googleAdsTables = smartCacheResult.data.googleAdsTables;
-        logger.info('✅ Fetched Google Ads tables data from smart cache');
-      } else {
-        // Fallback to live API if cache doesn't have tables data
-        console.log('⚠️ No cached tables data, fetching from live API...');
-        console.log('📊 Cache result:', {
-          success: smartCacheResult.success,
-          hasData: !!smartCacheResult.data,
-          hasTables: !!smartCacheResult.data?.googleAdsTables
-        });
-        googleAdsTables = await googleAdsService.getGoogleAdsTables(startDate, endDate);
-        console.log('✅ GOOGLE ADS TABLES DATA FROM LIVE API');
-        logger.info('✅ Fetched Google Ads tables data from live API');
+        googleAdsTables = normalizeGoogleAdsTables(smartCacheResult.data.googleAdsTables);
+        if (!hasAnyGoogleAdsTablesRows(googleAdsTables)) {
+          googleAdsTables = null;
+        }
       }
     } catch (error: any) {
-      console.log('⚠️ GOOGLE ADS TABLES DATA FETCH FAILED (OPTIONAL FEATURE):', error?.message || error);
-      logger.warn('⚠️ Failed to fetch Google Ads tables:', error);
-      // Provide empty structure for optional tables data
-      googleAdsTables = {
-        networkPerformance: [],
-        qualityMetrics: [],
-        devicePerformance: [],
-        keywordPerformance: [],
-        searchTermPerformance: []
-      };
+      logger.warn('⚠️ Smart cache lookup for tables failed:', error?.message || error);
+    }
+
+    if (!googleAdsTables) {
+      const stored = await loadGoogleAdsTablesFromDatabase(client.id, startDate, endDate);
+      if (hasAnyGoogleAdsTablesRows(stored)) {
+        console.log('✅ GOOGLE ADS TABLES DATA FROM google_ads_tables_data');
+        googleAdsTables = stored;
+      }
+    }
+
+    if (!googleAdsTables) {
+      console.log('⚠️ No cached tables, fetching from live Google Ads API...');
+      const live = await fetchAndStoreGoogleAdsTables(
+        googleAdsService,
+        client.id,
+        startDate,
+        endDate,
+      );
+      googleAdsTables = live ?? { ...EMPTY_GOOGLE_ADS_TABLES };
     }
 
     // Get account info
@@ -1268,6 +1363,8 @@ export async function POST(request: NextRequest) {
           roas: conversionMetrics.roas || 0,
           campaign_data: freshCampaigns,
           google_ads_tables: googleAdsTables,
+          google_dynamic_metric_values: dynamicMetricValues,
+          google_dynamic_metric_rows: dynamicMetricRows,
           active_campaign_count: activeCampaigns,
           total_campaigns: freshCampaigns.length,
           data_source: 'live_api_refresh', // ✅ Track that this was updated via refresh button

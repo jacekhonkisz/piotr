@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import logger from './logger';
+import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from './google-ads-contact-metrics';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -299,25 +300,70 @@ export class DataLifecycleManager {
     
     // Calculate the first day of the month from period_id (e.g., "2025-08" -> "2025-08-01")
     const summaryDate = `${cacheEntry.period_id}-01`;
-    
+
+    // ✅ CRITICAL: Must set aggregated conversion columns on upsert. If omitted, Postgres/Supabase
+    // can leave stale reservations/reservation_value from an older row while campaign_data is
+    // replaced with fresh campaigns (sums then disagree — e.g. 33 vs 60 for Belmonte).
+    const campaigns = cacheData?.campaigns || [];
+    const fromCampaigns = campaigns.reduce(
+      (acc: any, campaign: any) => ({
+        click_to_call: acc.click_to_call + googlePhoneContactsFromRow(campaign as Record<string, unknown>),
+        email_contacts: acc.email_contacts + googleEmailContactsFromRow(campaign as Record<string, unknown>),
+        booking_step_1: acc.booking_step_1 + Number(campaign.booking_step_1 || 0),
+        booking_step_2: acc.booking_step_2 + Number(campaign.booking_step_2 || 0),
+        booking_step_3: acc.booking_step_3 + Number(campaign.booking_step_3 || 0),
+        reservations: acc.reservations + Number(campaign.reservations || 0),
+        reservation_value: acc.reservation_value + Number(campaign.reservation_value || 0),
+        total_spend: acc.total_spend + parseFloat(String(campaign.spend || 0))
+      }),
+      {
+        click_to_call: 0,
+        email_contacts: 0,
+        booking_step_1: 0,
+        booking_step_2: 0,
+        booking_step_3: 0,
+        reservations: 0,
+        reservation_value: 0,
+        total_spend: 0
+      }
+    );
+
+    // Use sums from campaign_data as canonical so DB row always matches JSON (all clients).
+    const totalSpend = cacheData?.stats?.totalSpend || 0;
+    const reservations = fromCampaigns.reservations;
+    const reservationValue = fromCampaigns.reservation_value;
+    const roas =
+      totalSpend > 0 && reservationValue > 0 ? reservationValue / totalSpend : 0;
+    const costPerReservation =
+      reservations > 0 && totalSpend > 0 ? totalSpend / reservations : 0;
+
     const summary = {
       client_id: cacheEntry.client_id,
       summary_type: 'monthly',
       summary_date: summaryDate,
       platform: platform,  // ✅ NOW INCLUDES PLATFORM
-      total_spend: cacheData?.stats?.totalSpend || 0,
+      total_spend: totalSpend,
       total_impressions: cacheData?.stats?.totalImpressions || 0,
       total_clicks: cacheData?.stats?.totalClicks || 0,
       total_conversions: cacheData?.stats?.totalConversions || 0,
       average_ctr: cacheData?.stats?.averageCtr || 0,
       average_cpc: cacheData?.stats?.averageCpc || 0,
-      average_cpa: cacheData?.conversionMetrics?.cost_per_reservation || 0,
+      average_cpa: costPerReservation,
       active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ACTIVE').length || 0,
       total_campaigns: cacheData?.campaigns?.length || 0,
       campaign_data: cacheData?.campaigns || [],
       meta_tables: cacheData?.metaTables || null,
       data_source: 'smart_cache_archive',
-      last_updated: new Date().toISOString()
+      last_updated: new Date().toISOString(),
+      click_to_call: fromCampaigns.click_to_call,
+      email_contacts: fromCampaigns.email_contacts,
+      booking_step_1: fromCampaigns.booking_step_1,
+      booking_step_2: fromCampaigns.booking_step_2,
+      booking_step_3: fromCampaigns.booking_step_3,
+      reservations,
+      reservation_value: reservationValue,
+      roas,
+      cost_per_reservation: costPerReservation
     };
 
     const { error } = await supabase
@@ -331,6 +377,7 @@ export class DataLifecycleManager {
     }
 
     logger.info(`💾 Archived ${platform} monthly data for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}`);
+    logger.info(`💾 Monthly archive conversion metrics: ${reservations} reservations, ${reservationValue} value (aligned with campaign_data)`);
   }
 
   /**
@@ -346,8 +393,8 @@ export class DataLifecycleManager {
     // Calculate conversion metrics from campaign data
     const campaigns = cacheData?.campaigns || [];
     const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
-      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      click_to_call: acc.click_to_call + googlePhoneContactsFromRow(campaign as Record<string, unknown>),
+      email_contacts: acc.email_contacts + googleEmailContactsFromRow(campaign as Record<string, unknown>),
       booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
       reservations: acc.reservations + (campaign.reservations || 0),
       reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
@@ -578,6 +625,8 @@ export class DataLifecycleManager {
       total_campaigns: cacheData?.campaigns?.length || 0,
       campaign_data: cacheData?.campaigns || [],
       google_ads_tables: cacheData?.googleAdsTables || null,
+      google_dynamic_metric_values: cacheData?.dynamicMetricValues || {},
+      google_dynamic_metric_rows: cacheData?.dynamicMetricRows || [],
       data_source: dataSource,
       last_updated: new Date().toISOString()
     };
@@ -628,26 +677,24 @@ export class DataLifecycleManager {
       return null;
     }
 
-    // Query daily_kpi_data for conversion metrics (more reliable source)
-    const { data: dailyKpiData, error: kpiError } = await supabase
-      .from('daily_kpi_data')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('platform', 'google')
-      .gte('date', startDate)
-      .lte('date', endDate);
-
-    if (kpiError) {
-      logger.warn(`⚠️ Failed to query daily_kpi_data table:`, kpiError);
-    }
+    // E-mail / Telefon: Σ google_ads_campaigns rows (values written from parseGoogleAdsConversions).
+    const contactFromCampaigns = campaigns.reduce(
+      (acc, campaign: any) => ({
+        phone: acc.phone + googlePhoneContactsFromRow(campaign as Record<string, unknown>),
+        email: acc.email + googleEmailContactsFromRow(campaign as Record<string, unknown>),
+      }),
+      { phone: 0, email: 0 }
+    );
 
     // Aggregate data from campaigns (for spend, impressions, clicks)
     const aggregated = campaigns.reduce((acc, campaign: any) => {
       acc.total_spend += parseFloat(campaign.spend || 0);
       acc.total_impressions += parseInt(campaign.impressions || 0);
       acc.total_clicks += parseInt(campaign.clicks || 0);
-      acc.total_conversions += parseInt(campaign.form_submissions || 0) + parseInt(campaign.phone_calls || 0);
-      // Use campaign conversions as fallback if daily_kpi_data not available
+      acc.total_conversions +=
+        googlePhoneContactsFromRow(campaign as Record<string, unknown>) +
+        googleEmailContactsFromRow(campaign as Record<string, unknown>);
+      // Booking funnel + reservations from same campaign rows as API archive
       acc.booking_step_1_campaigns += parseInt(campaign.booking_step_1 || 0);
       acc.booking_step_2_campaigns += parseInt(campaign.booking_step_2 || 0);
       acc.booking_step_3_campaigns += parseInt(campaign.booking_step_3 || 0);
@@ -666,47 +713,17 @@ export class DataLifecycleManager {
       reservation_value_campaigns: 0
     });
 
-    // ✅ CRITICAL FIX FOR GOOGLE ADS: Booking steps MUST come ONLY from API (campaigns), NOT daily_kpi_data
-    // For Google Ads, we ALWAYS use campaign data (which comes from API) for booking steps
-    // daily_kpi_data is only used for other metrics (click_to_call, email_contacts) if available
-    let conversionMetrics = null;
-    
-    if (dailyKpiData && dailyKpiData.length > 0) {
-      // For Google Ads, only use daily_kpi_data for non-booking-step metrics
-      // Booking steps MUST come from campaigns (API data)
-      conversionMetrics = dailyKpiData.reduce((acc, day: any) => {
-        // ✅ DO NOT use daily_kpi_data for booking steps for Google Ads
-        // acc.booking_step_1 += parseInt(day.booking_step_1 || 0);  // ❌ REMOVED
-        // acc.booking_step_2 += parseInt(day.booking_step_2 || 0);  // ❌ REMOVED
-        // acc.booking_step_3 += parseInt(day.booking_step_3 || 0);  // ❌ REMOVED
-        // acc.reservations += parseInt(day.reservations || 0);  // ❌ REMOVED
-        // acc.reservation_value += parseFloat(day.reservation_value || 0);  // ❌ REMOVED
-        
-        // Only use daily_kpi_data for other metrics
-        acc.click_to_call += parseInt(day.click_to_call || 0);
-        acc.email_contacts += parseInt(day.email_contacts || 0);
-        return acc;
-      }, {
-        booking_step_1: 0,  // Will be set from campaigns
-        booking_step_2: 0,  // Will be set from campaigns
-        booking_step_3: 0,  // Will be set from campaigns
-        reservations: 0,  // Will be set from campaigns
-        reservation_value: 0,  // Will be set from campaigns
-        click_to_call: 0,
-        email_contacts: 0
-      });
-    }
+    // ✅ CRITICAL: For Google Ads, booking steps and contact metrics all come from campaign rows
+    // (google_ads_campaigns — populated from getCampaignData / parseGoogleAdsConversions).
 
-    // ✅ CRITICAL: For Google Ads, ALWAYS use campaign data (API) for booking steps
-    // Campaign data comes directly from Google Ads API via getCampaignData()
     const finalConversions = {
       booking_step_1: aggregated.booking_step_1_campaigns,  // ✅ ALWAYS from API
       booking_step_2: aggregated.booking_step_2_campaigns,  // ✅ ALWAYS from API
       booking_step_3: aggregated.booking_step_3_campaigns,  // ✅ ALWAYS from API
       reservations: aggregated.reservations_campaigns,  // ✅ ALWAYS from API
       reservation_value: aggregated.reservation_value_campaigns,  // ✅ ALWAYS from API
-      click_to_call: conversionMetrics?.click_to_call || 0,  // Can use daily_kpi_data if available
-      email_contacts: conversionMetrics?.email_contacts || 0  // Can use daily_kpi_data if available
+      click_to_call: contactFromCampaigns.phone,
+      email_contacts: contactFromCampaigns.email,
     };
 
     // Calculate derived metrics
@@ -840,8 +857,8 @@ export class DataLifecycleManager {
     // Calculate conversion metrics from Google Ads campaign data
     const campaigns = cacheData?.campaigns || [];
     const conversionTotals = campaigns.reduce((acc: any, campaign: any) => ({
-      click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-      email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+      click_to_call: acc.click_to_call + googlePhoneContactsFromRow(campaign as Record<string, unknown>),
+      email_contacts: acc.email_contacts + googleEmailContactsFromRow(campaign as Record<string, unknown>),
       booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
       booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
       booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
@@ -884,6 +901,8 @@ export class DataLifecycleManager {
       total_campaigns: cacheData?.campaigns?.length || 0,
       campaign_data: cacheData?.campaigns || [],
       google_ads_tables: cacheData?.googleAdsTables || null,
+      google_dynamic_metric_values: cacheData?.dynamicMetricValues || {},
+      google_dynamic_metric_rows: cacheData?.dynamicMetricRows || [],
       data_source: dataSource,
       click_to_call: conversionTotals.click_to_call,
       email_contacts: conversionTotals.email_contacts,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -9,8 +9,7 @@ import {
   Title,
 } from 'chart.js';
 import { Pie } from 'react-chartjs-2';
-import { motion } from 'framer-motion';
-import { Eye, MousePointer, Users, BarChart3 } from 'lucide-react';
+import { Users } from 'lucide-react';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, Title);
@@ -159,17 +158,6 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     }
   };
 
-  const getMetricIcon = () => {
-    switch (metric) {
-      case 'impressions': return Eye;
-      case 'clicks': return MousePointer;
-      case 'reservations': return Users;
-      case 'roas': return BarChart3;
-      case 'reservation_value': return BarChart3;
-      default: return Eye;
-    }
-  };
-
   const formatValue = (value: number) => {
     if (metric === 'reservation_value' || metric === 'spend') {
       return new Intl.NumberFormat('pl-PL', {
@@ -217,8 +205,6 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
     }
   };
 
-  const MetricIcon = getMetricIcon();
-
   // Add debugging for chart rendering
   console.log('🔍 Rendering charts with:', {
     genderDataLabels: genderData.labels,
@@ -228,30 +214,17 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
   });
 
   return (
-    <div ref={containerRef} className="space-y-8">
-      {/* Header */}
-      <div className="text-center">
-        <div className="inline-flex items-center space-x-3 bg-slate-50 px-6 py-3 rounded-xl border border-slate-200">
-          <div className="p-2 bg-slate-900 rounded-lg">
-            <MetricIcon className="h-5 w-5 text-white" />
-          </div>
-          <h3 className="text-xl font-semibold text-slate-900">
-            Podział {getMetricLabel()} według Demografii
-          </h3>
-        </div>
-        <p className="text-slate-600 mt-2">Analiza skuteczności reklam według płci i grup wiekowych</p>
-      </div>
-
+    <div ref={containerRef} className="space-y-4">
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Gender Distribution Chart */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300">
-          <div className="text-center mb-6">
-            <h4 className="text-lg font-bold text-gray-900 mb-2">Podział według Płci</h4>
-            <p className="text-sm text-gray-600">Udział {getMetricLabel().toLowerCase()} według płci</p>
+        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="mb-3">
+            <h4 className="text-sm font-semibold text-slate-950">Płeć</h4>
+            <p className="text-xs text-slate-500">Udział {getMetricLabel().toLowerCase()} według płci</p>
           </div>
-          
-          <div className="h-64 mb-6">
+
+          <div className="mb-3 h-48">
             {genderData.data.length > 0 ? (
               <Pie
                 data={{
@@ -267,7 +240,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
                 options={chartOptions}
               />
             ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+              <div className="flex h-48 items-center justify-center rounded-lg bg-slate-50">
                 <div className="text-center">
                   <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
                     <Users className="h-4 w-4 text-gray-400" />
@@ -280,21 +253,21 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
           </div>
 
           {/* Legend with values */}
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             {genderData.labels.map((label, index) => (
               <div
                 key={label}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-2 transition-colors hover:bg-slate-100"
               >
-                <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-4 h-4 rounded-full"
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: genderColors[index] }}
                   />
-                  <span className="font-medium text-gray-900 capitalize">{translateGenderLabel(label)}</span>
+                  <span className="text-xs font-medium capitalize text-slate-800">{translateGenderLabel(label)}</span>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-bold text-gray-900">
+                  <div className="text-xs font-semibold text-slate-900">
                     {formatValue(genderData.data[index] || 0)}
                   </div>
                   <div className="text-xs text-gray-500">
@@ -307,13 +280,13 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
         </div>
 
         {/* Age Group Distribution Chart */}
-        <div className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-xl border border-white/20 p-6 hover:shadow-2xl transition-all duration-300">
-          <div className="text-center mb-6">
-            <h4 className="text-lg font-bold text-gray-900 mb-2">Podział według Grup Wiekowych</h4>
-            <p className="text-sm text-gray-600">Udział {getMetricLabel().toLowerCase()} według wieku</p>
+        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="mb-3">
+            <h4 className="text-sm font-semibold text-slate-950">Wiek</h4>
+            <p className="text-xs text-slate-500">Udział {getMetricLabel().toLowerCase()} według wieku</p>
           </div>
-          
-          <div className="h-64 mb-6">
+
+          <div className="mb-3 h-48">
             {ageData.data.length > 0 ? (
               <Pie
                 data={{
@@ -329,7 +302,7 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
                 options={chartOptions}
               />
             ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+              <div className="flex h-48 items-center justify-center rounded-lg bg-slate-50">
                 <div className="text-center">
                   <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-2">
                     <Users className="h-4 w-4 text-gray-400" />
@@ -342,21 +315,21 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
           </div>
 
           {/* Legend with values */}
-          <div className="space-y-3">
+          <div className="space-y-1.5">
             {ageData.labels.map((label, index) => (
               <div
                 key={label}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-2 transition-colors hover:bg-slate-100"
               >
-                <div className="flex items-center space-x-3">
-                  <div 
-                    className="w-4 h-4 rounded-full"
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: ageColors[index] }}
                   />
-                  <span className="font-medium text-gray-900">{translateAgeLabel(label)}</span>
+                  <span className="text-xs font-medium text-slate-800">{translateAgeLabel(label)}</span>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-bold text-gray-900">
+                  <div className="text-xs font-semibold text-slate-900">
                     {formatValue(ageData.data[index] || 0)}
                   </div>
                   <div className="text-xs text-gray-500">
@@ -370,25 +343,25 @@ export default function DemographicPieCharts({ data, metric }: DemographicPieCha
       </div>
 
       {/* Summary Stats */}
-      <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
+            <div className="text-base font-semibold text-slate-900 tabular-nums">
               {formatValue(genderData.total)}
             </div>
-            <div className="text-sm text-slate-600">Łączne {getMetricLabel().toLowerCase()}</div>
+            <div className="text-[11px] text-slate-500">Łączne {getMetricLabel().toLowerCase()}</div>
           </div>
           <div>
-            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
+            <div className="text-base font-semibold text-slate-900 tabular-nums">
               {genderData.labels.length}
             </div>
-            <div className="text-sm text-slate-600">Kategorie płci</div>
+            <div className="text-[11px] text-slate-500">Kategorie płci</div>
           </div>
           <div>
-            <div className="text-2xl font-semibold text-slate-900 tabular-nums">
+            <div className="text-base font-semibold text-slate-900 tabular-nums">
               {ageData.labels.length}
             </div>
-            <div className="text-sm text-slate-600">Grupy wiekowe</div>
+            <div className="text-[11px] text-slate-500">Grupy wiekowe</div>
           </div>
         </div>
       </div>

@@ -11,12 +11,14 @@ interface ClientSelectorProps {
   currentClient: Client | null;
   onClientChange: (client: Client) => void;
   userRole: string;
+  variant?: 'default' | 'compact';
 }
 
-export default function ClientSelector({ currentClient, onClientChange, userRole }: ClientSelectorProps) {
+export default function ClientSelector({ currentClient, onClientChange, userRole, variant = 'default' }: ClientSelectorProps) {
   const [clients, setClients] = useState<Client[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const isCompact = variant === 'compact';
 
   useEffect(() => {
     if (userRole === 'admin') {
@@ -57,23 +59,27 @@ export default function ClientSelector({ currentClient, onClientChange, userRole
   }
 
   return (
-    <div className="relative">
+    <div className={`relative ${isOpen ? 'z-[90]' : ''}`}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 bg-bg/80 backdrop-blur-sm rounded-xl px-4 md:px-6 py-3 min-h-[44px] shadow-sm border border-stroke/50 hover:shadow-md transition-all duration-200 w-full sm:w-auto"
+        className={`flex w-full items-center space-x-2 border border-stroke/50 bg-white shadow-sm transition-all duration-200 hover:shadow-md sm:w-auto ${
+          isCompact
+            ? 'h-9 rounded-md px-3 text-xs'
+            : 'min-h-[44px] rounded-xl px-4 py-3 md:px-6'
+        }`}
         aria-label="Select client"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
       >
         <Building className="h-4 w-4 text-muted" />
-        <span className="text-sm md:text-base font-medium text-text truncate">
+        <span className={`${isCompact ? 'text-xs' : 'text-sm md:text-base'} truncate font-medium text-text`}>
           {currentClient?.name || 'Select Client'}
         </span>
         <ChevronDown className={`h-4 w-4 text-muted transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 md:left-auto md:w-80 mt-2 bg-bg/95 backdrop-blur-lg rounded-xl shadow-xl border border-stroke/50 z-50 max-h-64 overflow-y-auto">
+        <div className="absolute left-0 right-0 top-full z-[100] mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl md:left-auto md:w-80">
           {loading ? (
             <div className="p-4 text-center text-sm text-muted">
               Loading clients...

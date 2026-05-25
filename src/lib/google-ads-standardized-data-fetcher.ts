@@ -19,6 +19,7 @@
 
 import { supabase } from './supabase';
 import logger from './logger';
+import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from './google-ads-contact-metrics';
 
 export interface GoogleAdsStandardizedDataResult {
   success: boolean;
@@ -46,6 +47,12 @@ export interface GoogleAdsStandardizedDataResult {
       reach: number;
     };
     campaigns: any[];
+    /** Breakdown tables (networks, devices, keywords, demographics, regions, …) */
+    googleAdsTables?: any;
+    /** dyn_google_* counts (optional; live-data route fills this) */
+    dynamicMetricValues?: Record<string, number>;
+    /** dyn_google_* source rows with conversion action labels (optional) */
+    dynamicMetricRows?: Array<{ key: string; id: string; label: string; count: number; value: number }>;
   };
   debug: {
     source: string;
@@ -141,7 +148,7 @@ export class GoogleAdsStandardizedDataFetcher {
           if (typeof window === 'undefined') {
             // Server-side: Use weekly cache directly
             const { getGoogleAdsSmartWeekCacheData } = await import('./google-ads-smart-cache-helper');
-            const { getCurrentWeekInfo } = await import('./week-helpers');
+            const { getCurrentWeekInfo } = await import('./week-utils');
             const currentWeek = getCurrentWeekInfo();
             
             const cacheResult = await getGoogleAdsSmartWeekCacheData(clientId, false, currentWeek.periodId);
@@ -287,13 +294,41 @@ export class GoogleAdsStandardizedDataFetcher {
           
           if (hasAnyData) {
             const responseTime = Date.now() - startTime;
-            
+
             console.log(`✅ SUCCESS: campaign_summaries returned Google Ads data in ${responseTime}ms`);
             console.log('📊 Historical data:', {
               totalSpend: dbResult.data!.stats.totalSpend,
               campaigns: dbResult.data!.campaigns?.length || 0
             });
-            
+
+            // Enrich the historical response with breakdown tables stored
+            // in google_ads_tables_data so the reports UI and PDF show
+            // networks / devices / keywords / demographics / regions for
+            // past periods instead of "Brak danych".
+            try {
+              const {
+                loadGoogleAdsTablesFromDatabase,
+                EMPTY_GOOGLE_ADS_TABLES,
+                hasAnyGoogleAdsTablesRows,
+                persistGoogleAdsTables,
+              } =
+                await import('./google-ads-tables-storage');
+              const stored = await loadGoogleAdsTablesFromDatabase(
+                clientId,
+                dateRange.start,
+                dateRange.end,
+              );
+              const summaryTables = dbResult.data!.googleAdsTables;
+              dbResult.data!.googleAdsTables = stored
+                ?? (hasAnyGoogleAdsTablesRows(summaryTables) ? summaryTables : { ...EMPTY_GOOGLE_ADS_TABLES });
+
+              if (!stored && hasAnyGoogleAdsTablesRows(summaryTables)) {
+                await persistGoogleAdsTables(clientId, dateRange.start, dateRange.end, summaryTables, 'campaign_summaries');
+              }
+            } catch (tablesErr) {
+              logger.warn('⚠️ Historical googleAdsTables hydration failed', { tablesErr });
+            }
+
             return {
               success: true,
               data: dbResult.data!,
@@ -312,43 +347,10 @@ export class GoogleAdsStandardizedDataFetcher {
               }
             };
           } else {
-            // ✅ FIX: For historical periods, if database has no data, return error instead of calling API
-            console.log('⚠️ campaign_summaries has no data for historical period');
-            console.log('📚 Historical data must be collected via background collector first');
-            
-            return {
-              success: false,
-              error: `No historical data available for ${dateRange.start} to ${dateRange.end}. Please run weekly data collection first.`,
-              debug: {
-                source: 'campaign-summaries-database',
-                cachePolicy: 'database-first-historical',
-                responseTime: Date.now() - startTime,
-                reason,
-                dataSourcePriority: dataSources,
-                periodType: 'historical',
-                note: 'Historical data should be collected via background collector'
-              }
-            };
+            console.log('⚠️ campaign_summaries has no meaningful data for historical period, falling through to live API...');
           }
           } else {
-            // ✅ FIX: For historical periods, if database has no data, return error instead of calling API
-            // Historical data should be collected via background collector, not live API
-            console.log('⚠️ No database summaries found for historical period');
-            console.log('📚 Historical data must be collected via background collector first');
-            
-            return {
-              success: false,
-              error: `No historical data available for ${dateRange.start} to ${dateRange.end}. Please run weekly data collection first.`,
-              debug: {
-                source: 'campaign-summaries-database',
-                cachePolicy: 'database-first-historical',
-                responseTime: Date.now() - startTime,
-                reason,
-                dataSourcePriority: dataSources,
-                periodType: 'historical',
-                note: 'Historical data should be collected via background collector'
-              }
-            };
+            console.log('⚠️ No database summaries found for historical period, falling through to live API...');
           }
       }
 
@@ -477,7 +479,10 @@ export class GoogleAdsStandardizedDataFetcher {
               booking_step_3: 0, reservations: 0, reservation_value: 0, conversion_value: 0,
               total_conversion_value: 0, roas: 0, cost_per_reservation: 0, reach: 0
             },
-            campaigns: result.data.campaigns || []
+            campaigns: result.data.campaigns || [],
+            googleAdsTables: result.data.googleAdsTables ?? null,
+            dynamicMetricValues: result.data.dynamicMetricValues,
+            dynamicMetricRows: result.data.dynamicMetricRows,
           }
         };
       }
@@ -548,13 +553,50 @@ export class GoogleAdsStandardizedDataFetcher {
         .gte('summary_date', dateRange.start)
         .lte('summary_date', dateRange.end)
         .order('summary_date', { ascending: true });
-      
+
       summaries = monthlyResults;
       error = monthlyError;
+
+      // Fallback: check google_ads_campaign_summaries table if campaign_summaries empty
+      if (!summaries || summaries.length === 0) {
+        console.log('🔄 campaign_summaries empty for Google Ads, trying google_ads_campaign_summaries...');
+        const startStr = dateRange.start.substring(0, 7) + '-01';
+        // NOTE: cast to any until src/lib/database.types.ts is regenerated to
+        // include google_ads_campaign_summaries. Run:
+        //   npx supabase gen types typescript --project-id <ref> --schema public > src/lib/database.types.ts
+        const { data: gadsResults, error: gadsError } = await (supabase as any)
+          .from('google_ads_campaign_summaries')
+          .select('*')
+          .eq('client_id', clientId)
+          .eq('period_type', 'monthly')
+          .gte('period_start', dateRange.start)
+          .lte('period_start', dateRange.end)
+          .order('period_start', { ascending: true });
+
+        if (!gadsError && gadsResults && gadsResults.length > 0) {
+          console.log(`✅ Found ${gadsResults.length} rows in google_ads_campaign_summaries`);
+          summaries = gadsResults.map((row: Record<string, any>) => ({
+            total_spend: row.total_spend || 0,
+            total_impressions: row.total_impressions || 0,
+            total_clicks: row.total_clicks || 0,
+            total_conversions: row.total_conversions || 0,
+            click_to_call: googlePhoneContactsFromRow(row as Record<string, unknown>),
+            email_contacts: googleEmailContactsFromRow(row as Record<string, unknown>),
+            booking_step_1: row.total_booking_step_1 || row.booking_step_1 || 0,
+            booking_step_2: row.total_booking_step_2 || row.booking_step_2 || 0,
+            booking_step_3: row.total_booking_step_3 || row.booking_step_3 || 0,
+            reservations: row.total_reservations || row.reservations || 0,
+            reservation_value: row.total_reservation_value || row.reservation_value || 0,
+            campaign_data: row.campaign_data || [],
+            summary_date: row.period_start
+          }));
+          error = null;
+        }
+      }
     }
       
     if (error || !summaries || summaries.length === 0) {
-      console.log('⚠️ No Google Ads database summaries available');
+      console.log('⚠️ No Google Ads database summaries available from any table');
       return { success: false };
     }
     
@@ -562,7 +604,7 @@ export class GoogleAdsStandardizedDataFetcher {
     
     // Extract campaigns from campaign_data JSONB field
     const allCampaigns: any[] = [];
-    summaries.forEach(summary => {
+    summaries.forEach((summary: any) => {
       if (summary.campaign_data && Array.isArray(summary.campaign_data)) {
         console.log(`📊 Extracting ${summary.campaign_data.length} campaigns from summary ${summary.summary_date}`);
         // Log first campaign to debug
@@ -584,9 +626,46 @@ export class GoogleAdsStandardizedDataFetcher {
         allKeys: Object.keys(allCampaigns[0])
       });
     }
+
+    const dynamicMetricValues = summaries.reduce((acc: Record<string, number>, summary: any) => {
+      const values = summary.google_dynamic_metric_values;
+      if (values && typeof values === 'object' && !Array.isArray(values)) {
+        Object.entries(values).forEach(([key, value]) => {
+          acc[key] = (acc[key] || 0) + (Number(value) || 0);
+        });
+      }
+      return acc;
+    }, {});
+    const dynamicMetricRowsByKey = new Map<string, any>();
+    summaries.forEach((summary: any) => {
+      const rows = Array.isArray(summary.google_dynamic_metric_rows)
+        ? summary.google_dynamic_metric_rows
+        : [];
+      rows.forEach((row: any) => {
+        if (!row?.key) return;
+        const existing = dynamicMetricRowsByKey.get(row.key);
+        if (existing) {
+          existing.count = (Number(existing.count) || 0) + (Number(row.count) || 0);
+          existing.value = (Number(existing.value) || 0) + (Number(row.value) || 0);
+        } else {
+          dynamicMetricRowsByKey.set(row.key, { ...row });
+        }
+      });
+    });
+
+    let googleAdsTables: any = null;
+    try {
+      const { normalizeGoogleAdsTables, hasAnyGoogleAdsTablesRows } =
+        await import('./google-ads-tables-storage');
+      const summaryWithTables = summaries.find((summary: any) => summary.google_ads_tables);
+      const normalizedTables = normalizeGoogleAdsTables((summaryWithTables as any)?.google_ads_tables);
+      googleAdsTables = hasAnyGoogleAdsTablesRows(normalizedTables) ? normalizedTables : null;
+    } catch (tablesErr) {
+      logger.warn('⚠️ Failed to normalize Google Ads tables from campaign_summaries', { tablesErr });
+    }
     
     // Aggregate summaries
-    const aggregated = summaries.reduce((acc, summary) => {
+    const aggregated = summaries.reduce((acc: any, summary: any) => {
       acc.totalSpend += summary.total_spend || 0;
       acc.totalImpressions += summary.total_impressions || 0;
       acc.totalClicks += summary.total_clicks || 0;
@@ -663,7 +742,10 @@ export class GoogleAdsStandardizedDataFetcher {
           cost_per_reservation,
           reach: 0 // Database summaries don't track reach
         },
-        campaigns: allCampaigns // ✅ FIXED: Extract campaigns from campaign_data JSONB
+        campaigns: allCampaigns, // ✅ FIXED: Extract campaigns from campaign_data JSONB
+        googleAdsTables,
+        dynamicMetricValues,
+        dynamicMetricRows: Array.from(dynamicMetricRowsByKey.values()),
       }
     };
   }
@@ -680,7 +762,11 @@ export class GoogleAdsStandardizedDataFetcher {
     try {
       console.log('🚀 Using live Google Ads API as fallback...');
       
-      const fullUrl = '/api/fetch-google-ads-live-data';
+      const isServer = typeof window === 'undefined';
+      const baseUrl = isServer
+        ? (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')
+        : '';
+      const fullUrl = `${baseUrl}/api/fetch-google-ads-live-data`;
       
       const requestBody = {
         dateRange,
@@ -696,7 +782,7 @@ export class GoogleAdsStandardizedDataFetcher {
       
       if (sessionToken) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
-      } else if (typeof window !== 'undefined') {
+      } else if (!isServer) {
         const { createClient } = await import('@supabase/supabase-js');
         const clientSupabase = createClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -707,7 +793,9 @@ export class GoogleAdsStandardizedDataFetcher {
           headers['Authorization'] = `Bearer ${session.access_token}`;
         }
       }
-      
+
+      console.log('🔗 Google Ads live API URL:', fullUrl, 'hasAuth:', !!headers['Authorization']);
+
       const response = await fetch(fullUrl, {
         method: 'POST',
         headers,
@@ -749,7 +837,10 @@ export class GoogleAdsStandardizedDataFetcher {
               cost_per_reservation: 0,
               reach: 0
             },
-            campaigns: result.data.campaigns || []
+            campaigns: result.data.campaigns || [],
+            googleAdsTables: result.data.googleAdsTables ?? null,
+            dynamicMetricValues: result.data.dynamicMetricValues,
+            dynamicMetricRows: result.data.dynamicMetricRows,
           }
         };
       }

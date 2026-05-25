@@ -49,11 +49,20 @@ export interface StandardizedDataResult {
       booking_step_3: number;
       reservations: number;
       reservation_value: number;
+      conversion_value: number;
+      total_conversion_value: number;
       roas: number;
       cost_per_reservation: number;
       reach: number;
+      frequency: number;
+      inline_link_clicks: number;
+      lead: number;
+      purchase: number;
+      purchase_value: number;
     };
     campaigns: any[];
+    /** dyn_meta_* counts from campaign actions (server-computed) */
+    dynamicMetricValues?: Record<string, number>;
   };
   debug: {
     source: string;
@@ -620,7 +629,9 @@ export class StandardizedDataFetcher {
     let averageCpc: number;
     
     if (platform === 'meta') {
-      // Try to get API values from campaign_summaries for this period
+      // Canonical contract v1: prefer stored API values from campaign_summaries
+      // (matches Meta Business Suite). Fallback to (link clicks / impressions) math
+      // since daily_kpi_data.total_clicks is now link clicks under the same contract.
       const { data: summary } = await dbClient
         .from('campaign_summaries')
         .select('average_ctr, average_cpc')
@@ -631,18 +642,19 @@ export class StandardizedDataFetcher {
         .order('summary_date', { ascending: false })
         .limit(1)
         .single();
-      
-      if (summary && summary.average_ctr !== null && summary.average_ctr !== undefined && 
-          summary.average_cpc !== null && summary.average_cpc !== undefined) {
-        averageCtr = summary.average_ctr;
-        averageCpc = summary.average_cpc;
+
+      if (summary && summary.average_ctr !== null && summary.average_ctr !== undefined &&
+          summary.average_cpc !== null && summary.average_cpc !== undefined &&
+          (Number(summary.average_ctr) > 0 || Number(summary.average_cpc) > 0)) {
+        averageCtr = Number(summary.average_ctr);
+        averageCpc = Number(summary.average_cpc);
         console.log('✅ Using API values from campaign_summaries for CTR/CPC:', { averageCtr, averageCpc });
       } else {
-        // ❌ REMOVED: No calculation fallback for Meta - if no API values, set to 0
-        // This ensures we NEVER calculate Meta CPC/CTR, only use API values
-        averageCtr = 0;
-        averageCpc = 0;
-        console.warn('⚠️ No API values in campaign_summaries for Meta - setting CTR/CPC to 0 (NOT calculating from totals)');
+        averageCtr = totals.totalImpressions > 0
+          ? (totals.totalClicks / totals.totalImpressions) * 100
+          : 0;
+        averageCpc = totals.totalClicks > 0 ? totals.totalSpend / totals.totalClicks : 0;
+        console.log('ℹ️ No API CTR/CPC in campaign_summaries — derived from canonical link-click totals:', { averageCtr, averageCpc });
       }
     } else {
       // For Google Ads, calculate from totals (Google Ads doesn't provide account-level CTR/CPC from API)
@@ -1090,6 +1102,9 @@ export class StandardizedDataFetcher {
             reservation_value: campaign.reservation_value || 0,
             conversion_value: campaign.conversion_value || campaign.reservation_value || 0,
             total_conversion_value: campaign.total_conversion_value || campaign.reservation_value || 0,
+            // Preserve raw Meta arrays for dyn_meta_* metric snapshots (dashboard / discovery)
+            actions: campaign.actions,
+            action_values: campaign.action_values,
           }));
           
           const parsedConversionMetrics = aggregateConversionMetrics(enhancedCampaigns);
@@ -1186,6 +1201,7 @@ export class StandardizedDataFetcher {
             reservation_value: liveConversionMetrics.reservation_value,
           });
           
+          const { metaCampaignsToDynamicMetricMap } = await import('./dynamic-conversion-discovery');
           return {
             success: true,
             data: {
@@ -1198,7 +1214,8 @@ export class StandardizedDataFetcher {
                 averageCpc
               },
               conversionMetrics: liveConversionMetrics,
-              campaigns
+              campaigns,
+              dynamicMetricValues: metaCampaignsToDynamicMetricMap(campaigns),
             }
           };
         } else {
@@ -1505,7 +1522,12 @@ export class StandardizedDataFetcher {
           total_conversion_value: Math.round(reservationValue * 100) / 100,
           roas: reservationValue && totalSpend ? Math.round((reservationValue / totalSpend) * 100) / 100 : 0,
           cost_per_reservation: reservations && totalSpend ? Math.round((totalSpend / reservations) * 100) / 100 : 0,
-          reach: Math.round(sanitizeNumber((storedSummary as any).reach))
+          reach: Math.round(sanitizeNumber((storedSummary as any).reach)),
+          frequency: sanitizeNumber((storedSummary as any).frequency),
+          inline_link_clicks: Math.round(sanitizeNumber((storedSummary as any).inline_link_clicks)),
+          lead: Math.round(sanitizeNumber((storedSummary as any).lead)),
+          purchase: Math.round(sanitizeNumber((storedSummary as any).purchase)),
+          purchase_value: Math.round(sanitizeNumber((storedSummary as any).purchase_value) * 100) / 100,
         },
         campaigns: campaigns // ✅ FIX: Always return array
       },
@@ -1550,9 +1572,15 @@ export class StandardizedDataFetcher {
         total_conversion_value: 0,
         roas: 0,
         cost_per_reservation: 0,
-        reach: 0
+        reach: 0,
+        frequency: 0,
+        inline_link_clicks: 0,
+        lead: 0,
+        purchase: 0,
+        purchase_value: 0
       },
-      campaigns: []
+      campaigns: [],
+      dynamicMetricValues: {},
     };
   }
 }

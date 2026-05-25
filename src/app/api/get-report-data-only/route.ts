@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import logger from '../../../lib/logger';
+import { getPdfBrandLogoDataUrl } from '@/lib/pdf-brand-logo';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +24,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   const reportData: any = {
     clientId,
     clientName: clientData.name,
-    clientLogo: clientData.logo_url || undefined,
+    clientLogo: getPdfBrandLogoDataUrl() || undefined,
     dateRange,
     aiSummary: undefined,
     yoyComparison: undefined,

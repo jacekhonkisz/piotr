@@ -147,7 +147,7 @@ export const defaultRateLimiters = {
   // PDF generation rate limit (10 requests per hour)
   pdf: createRateLimiter({
     windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 10,
+    maxRequests: 20,
     message: 'Too many PDF generation requests. Please try again later.',
   }),
   

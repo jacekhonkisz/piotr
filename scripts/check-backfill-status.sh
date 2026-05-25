@@ -8,3 +8,5 @@ echo ""
 # Run the TypeScript monitor once
 npx tsx scripts/monitor-backfill-progress.ts 2>&1 | head -80
 
+
+

@@ -2,6 +2,7 @@ import React from 'react';
 import { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '../components/AuthProvider';
+import { DevExtensionErrorFilter } from '../components/DevExtensionErrorFilter';
 import { initializeApp } from '../lib/startup-validation';
 
 // Run startup validation
@@ -22,9 +23,10 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full">
-      <body className="h-full bg-gray-50 antialiased">
+    <html lang="pl" className="h-full" translate="no">
+      <body className="h-full bg-gray-50 antialiased" translate="no">
         <AuthProvider>
+          <DevExtensionErrorFilter />
           <div id="root" className="min-h-full">
             {children}
           </div>

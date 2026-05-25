@@ -5,6 +5,11 @@ import { enhanceCampaignsWithConversions, aggregateConversionMetrics } from '../
 import { GoogleAdsAPIService } from '../../../../lib/google-ads-api';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
+import { fetchAndStoreGoogleAdsTables } from '../../../../lib/google-ads-tables-storage';
+import {
+  fetchGoogleDynamicConversionRowsWithService,
+  googleDynamicRowsToMetricMap,
+} from '../../../../lib/google-dynamic-conversion-fetch';
 
 /**
  * ATTRIBUTION WINDOW RE-COLLECTION
@@ -283,7 +288,21 @@ async function recollectGoogle(
   const costPerRes = totals.reservations > 0 ? totals.spend / totals.reservations : 0;
 
   let googleAdsTables = null;
-  try { googleAdsTables = await googleAdsService.getGoogleAdsTables(startDate, endDate); } catch { /* optional */ }
+  try {
+    googleAdsTables = await fetchAndStoreGoogleAdsTables(googleAdsService, client.id, startDate, endDate);
+  } catch { /* optional */ }
+
+  let dynamicMetricValues: Record<string, number> = {};
+  let dynamicMetricRows: Array<{ key: string; id: string; label: string; count: number; value: number }> = [];
+  try {
+    const dyn = await fetchGoogleDynamicConversionRowsWithService(googleAdsService, startDate, endDate);
+    if (dyn.fetchOk) {
+      dynamicMetricValues = googleDynamicRowsToMetricMap(dyn.rows);
+      dynamicMetricRows = dyn.rows;
+    }
+  } catch (dynamicError) {
+    logger.warn('⚠️ Google dynamic metrics failed during recollection:', dynamicError);
+  }
 
   const { error } = await supabaseAdmin!.from('campaign_summaries').upsert({
     client_id: client.id,
@@ -309,6 +328,8 @@ async function recollectGoogle(
     cost_per_reservation: Math.round(costPerRes * 100) / 100,
     campaign_data: campaigns,
     google_ads_tables: googleAdsTables,
+    google_dynamic_metric_values: dynamicMetricValues,
+    google_dynamic_metric_rows: dynamicMetricRows,
     data_source: 'attribution_recollection',
     last_updated: new Date().toISOString(),
   }, { onConflict: 'client_id,summary_type,summary_date,platform' });

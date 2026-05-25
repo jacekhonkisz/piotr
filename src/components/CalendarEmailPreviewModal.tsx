@@ -5,6 +5,7 @@ import { X, ChevronLeft, ChevronRight, Eye, Mail, Calendar, User, RefreshCw } fr
 import { createClient } from '@supabase/supabase-js';
 import EmailPreviewModal from './EmailPreviewModal';
 import { getMonthBoundaries, getWeekBoundaries } from '../lib/date-range-utils';
+import { cpcFromStats, ctrPercentFromStats } from '../lib/ctr-from-stats';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -90,7 +91,7 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
       const reportDate = new Date(report.scheduled_date);
     return reportDate.toDateString() === selectedDateStr;
   });
-  }, [scheduledReports.length, selectedDate.getTime()]); // FIXED: Use length instead of full array reference
+  }, [scheduledReports, selectedDate]); // Keep data and selected day in sync
 
   const currentReport = reportsForDate[currentReportIndex];
 
@@ -110,14 +111,14 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
       loadClientsData();
       }
     }
-  }, [isOpen]); // MINIMAL DEPENDENCIES: Only trigger on modal open/close
+  }, [isOpen, reportsForDate.length, clients]);
 
   // OPTIMIZED: Load report data only when current report changes and data not already loaded
   useEffect(() => {
     if (currentReport && !reportData[currentReport.id]) {
       loadReportData(currentReport);
     }
-  }, [currentReport]); // Only depend on currentReport
+  }, [currentReport, reportData]);
 
   const loadClientsData = useCallback(async () => {
     try {
@@ -232,8 +233,16 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
         clicks: metaResult.data.stats.totalClicks,
         conversions: metaResult.data.stats.totalConversions,
         // ✅ FIX: Calculate Meta Ads CPC/CTR from totals to match Business Suite
-        cpc: metaResult.data.stats.totalClicks > 0 ? metaResult.data.stats.totalSpend / metaResult.data.stats.totalClicks : 0,
-        ctr: metaResult.data.stats.totalImpressions > 0 ? (metaResult.data.stats.totalClicks / metaResult.data.stats.totalImpressions) * 100 : 0,
+        cpc: cpcFromStats(
+          metaResult.data.stats.averageCpc,
+          metaResult.data.stats.totalSpend,
+          metaResult.data.stats.totalClicks
+        ),
+        ctr: ctrPercentFromStats(
+          metaResult.data.stats.averageCtr,
+          metaResult.data.stats.totalClicks,
+          metaResult.data.stats.totalImpressions
+        ),
         form_submissions: 0,
         email_contacts: metaResult.data.conversionMetrics.email_contacts,
         click_to_call: metaResult.data.conversionMetrics.click_to_call,
@@ -251,8 +260,16 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
         impressions: googleResult.data.stats.totalImpressions,
         clicks: googleResult.data.stats.totalClicks,
         conversions: googleResult.data.stats.totalConversions,
-        cpc: googleResult.data.stats.averageCpc,
-        ctr: googleResult.data.stats.averageCtr,
+        cpc: cpcFromStats(
+          googleResult.data.stats.averageCpc,
+          googleResult.data.stats.totalSpend,
+          googleResult.data.stats.totalClicks
+        ),
+        ctr: ctrPercentFromStats(
+          googleResult.data.stats.averageCtr,
+          googleResult.data.stats.totalClicks,
+          googleResult.data.stats.totalImpressions
+        ),
         form_submissions: 0,
         email_contacts: googleResult.data.conversionMetrics.email_contacts,
         click_to_call: googleResult.data.conversionMetrics.click_to_call,
@@ -458,8 +475,8 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
                 <div>
                   <label className="text-sm font-medium text-gray-600">Dodatkowe adresy email</label>
                   <div className="mt-1 flex flex-wrap gap-2">
-                    {currentClient.contact_emails.map((email, index) => (
-                      <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    {currentClient.contact_emails.map((email) => (
+                      <span key={email} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
                           {email}
                         </span>
                       ))}

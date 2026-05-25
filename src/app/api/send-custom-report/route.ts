@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import FlexibleEmailService from '../../../lib/flexible-email';
 import logger from '../../../lib/logger';
+import {
+  getMetricName,
+  mergeWithDefaults,
+  normalizeConfigForPlatform,
+  type MetricConfigItem,
+  type MetricSection,
+} from '../../../lib/default-metrics-config';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -302,6 +309,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Send email to all contact emails using NEW MONTHLY TEMPLATE
+    if (!pdfBuffer) {
+      return NextResponse.json({ error: 'PDF attachment is required for monthly report emails' }, { status: 500 });
+    }
+
     const emailService = FlexibleEmailService.getInstance();
     const contactEmails = client.contact_emails || [client.email];
     
@@ -311,20 +322,77 @@ export async function POST(request: NextRequest) {
       'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
       'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
     ];
-    const monthName = monthNames[startDate.getMonth()];
+    const monthName = monthNames[startDate.getMonth()] || '';
     const year = startDate.getFullYear();
     
-    // Prepare NEW monthly report data (simplified for now - real data would come from fetcher)
+    // Real monthly report data populated from the same metrics used in PDF/email body.
+    // Replaces the previous all-zero placeholder so the email matches the dashboard/PDF.
+    const reportTotalSpend = (reportData as any)?.totalSpend ?? 0;
+    const reportReservations = (reportData as any)?.reservations ?? 0;
+    const reportReservationValue = (reportData as any)?.reservationValue ?? 0;
+    const onlineCostPercentage = reportReservationValue > 0
+      ? (reportTotalSpend / reportReservationValue) * 100
+      : 0;
+    const { data: metricsConfigRow } = await supabase
+      .from('client_dashboard_config')
+      .select('meta_metrics_config, google_metrics_config')
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    const metaMetricsConfig = normalizeConfigForPlatform(
+      mergeWithDefaults((metricsConfigRow?.meta_metrics_config as MetricConfigItem[] | null) || []),
+      'meta'
+    );
+    const googleMetricsConfig = normalizeConfigForPlatform(
+      mergeWithDefaults((metricsConfigRow?.google_metrics_config as MetricConfigItem[] | null) || []),
+      'google'
+    );
+    const labelFor = (
+      platform: 'meta' | 'google',
+      section: MetricSection,
+      key: string,
+      fallback: string
+    ) => getMetricName(platform === 'meta' ? metaMetricsConfig : googleMetricsConfig, section, key) || fallback;
+
     const monthlyReportData = {
       dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
-      totalOnlineReservations: 0,
-      totalOnlineValue: 0,
-      onlineCostPercentage: 0,
+      metricLabels: {
+        googleAds: {
+          totalSpend: labelFor('google', 'report_summary', 'totalSpend', 'Wydana kwota'),
+          totalImpressions: labelFor('google', 'report_summary', 'totalImpressions', 'Wyświetlenia'),
+          totalClicks: labelFor('google', 'report_summary', 'totalClicks', 'Kliknięcia'),
+          averageCpc: labelFor('google', 'report_summary', 'averageCpc', 'CPC'),
+          averageCtr: labelFor('google', 'report_summary', 'averageCtr', 'CTR'),
+          email_contacts: labelFor('google', 'contact', 'email_contacts', 'Kliknięcia w adres e-mail'),
+          click_to_call: labelFor('google', 'contact', 'click_to_call', 'Kliknięcia w numer telefonu'),
+          booking_step_1: labelFor('google', 'funnel', 'booking_step_1', 'Booking step 1'),
+          booking_step_2: labelFor('google', 'funnel', 'booking_step_2', 'Booking step 2'),
+          booking_step_3: labelFor('google', 'funnel', 'booking_step_3', 'Booking step 3'),
+          reservations: labelFor('google', 'contact', 'reservations', 'Rezerwacje'),
+          reservation_value: labelFor('google', 'contact', 'reservation_value', 'Wartość rezerwacji'),
+          roas: labelFor('google', 'funnel', 'roas', 'ROAS'),
+        },
+        metaAds: {
+          totalSpend: labelFor('meta', 'report_summary', 'totalSpend', 'Wydana kwota'),
+          totalImpressions: labelFor('meta', 'report_summary', 'totalImpressions', 'Wyświetlenia'),
+          totalClicks: labelFor('meta', 'report_summary', 'totalClicks', 'Kliknięcia linku'),
+          averageCtr: labelFor('meta', 'report_summary', 'averageCtr', 'CTR (link)'),
+          averageCpc: labelFor('meta', 'report_summary', 'averageCpc', 'CPC (link)'),
+          email_contacts: labelFor('meta', 'contact', 'email_contacts', 'Kliknięcia w adres e-mail'),
+          click_to_call: labelFor('meta', 'contact', 'click_to_call', 'Kliknięcia w numer telefonu'),
+          reservations: labelFor('meta', 'contact', 'reservations', 'Rezerwacje'),
+          reservation_value: labelFor('meta', 'contact', 'reservation_value', 'Wartość rezerwacji'),
+          roas: labelFor('meta', 'funnel', 'roas', 'ROAS'),
+        },
+      },
+      totalOnlineReservations: reportReservations,
+      totalOnlineValue: reportReservationValue,
+      onlineCostPercentage,
       totalMicroConversions: 0,
       estimatedOfflineReservations: 0,
       estimatedOfflineValue: 0,
-      finalCostPercentage: 0,
-      totalValue: 0
+      finalCostPercentage: onlineCostPercentage,
+      totalValue: reportReservationValue
     };
     
     let emailResults = [];

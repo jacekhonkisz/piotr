@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
   Target,
   Monitor,
   AlertCircle,
   BarChart3,
-  RefreshCw,
   FileSpreadsheet,
   MousePointer,
   Eye,
@@ -14,27 +13,26 @@ import {
   ChevronUp,
   Search,
   Smartphone,
-  Users
+  Users,
+  MapPin,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import GoogleAdsDemographicPieCharts from './GoogleAdsDemographicPieCharts';
+import PolandRegionMap, { type GeographicRow } from './PolandRegionMap';
+import { formatPolishCityName, formatPolishVoivodeshipName } from '../lib/polish-geo-display';
+import { mergeGoogleAdsDevicePerformanceRows } from '../lib/google-ads-device-pl';
+import { useMetricsConfig } from '../lib/useMetricsConfig';
+import type { MetricSection } from '../lib/default-metrics-config';
+import { hasConfiguredColumns } from '../lib/configured-report-columns';
 
-interface GoogleAdsPlacementPerformance {
-  network: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  ctr: number;
-  cpc: number;
-  conversions: number;
-  conversionValue: number;
-  roas: number;
-}
-
+// Each row carries EXACTLY one of `gender` or `ageRange` (never both) because
+// Google Ads API does not provide an age×gender cross-tab. The pie chart
+// renderer filters on which dimension is set before aggregating, which avoids
+// double-counting a "Nieznane" bucket.
 interface GoogleAdsDemographicPerformance {
-  ageRange: string;
-  gender: string;
+  gender?: string;
+  ageRange?: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -42,6 +40,8 @@ interface GoogleAdsDemographicPerformance {
   cpc: number;
   conversions: number;
   conversionValue: number;
+  reservations?: number;
+  reservation_value?: number;
   roas: number;
 }
 
@@ -81,6 +81,19 @@ interface GoogleAdsTablesProps {
     keywordPerformance?: any[];
     searchTermPerformance?: any[];
     qualityMetrics?: any[];
+    demographicPerformance?: any[];
+    geographicPerformance?: any[];
+  } | null;
+  /**
+   * Optional campaign-level totals so the Poland map can compute and display
+   * a "Nieznana lokalizacja" bucket equal to the gap between campaign totals
+   * and the `geographic_view` aggregate.
+   */
+  campaignTotals?: {
+    spend?: number;
+    clicks?: number;
+    conversions?: number;
+    conversion_value?: number;
   } | null;
 }
 
@@ -99,18 +112,47 @@ interface SearchTermPerformance {
   roas: number;
 }
 
-const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded, preloadedTablesData }) => {
-  const [placementData, setPlacementData] = useState<GoogleAdsPlacementPerformance[]>([]);
+const TOP_CONVERTING_KEYWORDS_AND_TERMS = 10;
+
+const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, clientId, onDataLoaded, preloadedTablesData, campaignTotals }) => {
   const [deviceData, setDeviceData] = useState<GoogleAdsDevicePerformance[]>([]);
   const [keywordData, setKeywordData] = useState<GoogleAdsKeywordPerformance[]>([]);
   const [searchTermData, setSearchTermData] = useState<SearchTermPerformance[]>([]);
+  const [demographicData, setDemographicData] = useState<GoogleAdsDemographicPerformance[]>([]);
+  const [demographicMetric, setDemographicMetric] = useState<'conversionValue' | 'clicks' | 'impressions'>('conversionValue');
+  const [geographicData, setGeographicData] = useState<GeographicRow[]>([]);
+  const [geographicMetric, setGeographicMetric] = useState<'spend' | 'clicks' | 'conversions' | 'conversion_value'>('conversion_value');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'placement' | 'device' | 'keywords' | 'searchterms'>('placement');
+  // Tabs were removed in favor of stacked sections so every Google Ads
+  // breakdown shows under "Szczegóły Kampanii" without extra clicks.
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({});
   const [retryKey, setRetryKey] = useState(0);
   const [isRequestInProgress, setIsRequestInProgress] = useState(false);
-  const [usedPreloadedData, setUsedPreloadedData] = useState(false);
+  const { config: metricsConfig, getMetricName, isMetricVisible } = useMetricsConfig(clientId || null, 'google');
+  const label = (section: MetricSection, key: string, fallback: string) =>
+    getMetricName(section, key) || fallback;
+  const visible = (section: MetricSection, key: string) => isMetricVisible(section, key);
+  const sectionVisible = (section: MetricSection) => hasConfiguredColumns(metricsConfig, section);
+  const geographicMetricOptions = [
+    { value: 'conversion_value' as const, key: 'conversion_value', fallback: 'Wartość konwersji' },
+    { value: 'conversions' as const, key: 'totalConversions', fallback: 'Konwersje' },
+    { value: 'clicks' as const, key: 'totalClicks', fallback: 'Kliknięcia' },
+    { value: 'spend' as const, key: 'totalSpend', fallback: 'Wydatki' },
+  ].filter((option) => visible('geographic_map', option.key));
+  const effectiveGeographicMetric =
+    geographicMetricOptions.some((option) => option.value === geographicMetric)
+      ? geographicMetric
+      : geographicMetricOptions[0]?.value || geographicMetric;
+  const demographicMetricOptions = [
+    { value: 'conversionValue' as const, key: 'reservation_value', fallback: 'Wartość konwersji' },
+    { value: 'clicks' as const, key: 'totalClicks', fallback: 'Kliknięcia' },
+    { value: 'impressions' as const, key: 'totalImpressions', fallback: 'Wyświetlenia' },
+  ].filter((option) => visible('demographic_breakdown', option.key));
+  const effectiveDemographicMetric =
+    demographicMetricOptions.some((option) => option.value === demographicMetric)
+      ? demographicMetric
+      : demographicMetricOptions[0]?.value || demographicMetric;
 
   // Transform Google Ads API data into table format
   const transformGoogleAdsDataToTables = (apiData: any) => {
@@ -124,56 +166,50 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     });
     
     // Extract data from API response
-    const campaigns = apiData.campaigns || [];
     const googleAdsTables = apiData.googleAdsTables || {};
-    const networkPerformance = googleAdsTables.networkPerformance || [];
     const devicePerformance = googleAdsTables.devicePerformance || [];
     const keywordPerformance = googleAdsTables.keywordPerformance || [];
     const searchTermPerformance = googleAdsTables.searchTermPerformance || [];
+    const demographicPerformance = googleAdsTables.demographicPerformance || [];
+    const geographicPerformance = googleAdsTables.geographicPerformance || [];
 
     console.log('🔍 Extracted table data:', {
-      networkCount: networkPerformance.length,
       deviceCount: devicePerformance.length,
       keywordCount: keywordPerformance.length,
       sampleDeviceData: devicePerformance[0],
       sampleKeywordData: keywordPerformance[0]
     });
-    
-    // Transform network/placement data - use real API data if available, otherwise aggregate from campaigns
-    let placementPerformance: GoogleAdsPlacementPerformance[] = [];
-    
-    if (networkPerformance.length > 0) {
-      // Use real network performance data from API
-      placementPerformance = networkPerformance.map((network: any) => ({
-        network: network.network || network.adNetworkType || 'Unknown Network',
-        spend: network.spend || 0,
-        impressions: network.impressions || 0,
-        clicks: network.clicks || 0,
-        ctr: network.ctr || 0,
-        cpc: network.cpc || 0,
-        conversions: network.conversions || 0,
-        conversionValue: network.conversionValue || network.conversion_value || 0,
-        roas: network.roas || 0
-      }));
-    } else {
-      // No fallback fake data - show empty if no real network data available
-      placementPerformance = [];
-    }
 
-    // Demographics removed - not available through Google Ads API
-
-    // Transform device data
-    const transformedDevicePerformance: GoogleAdsDevicePerformance[] = devicePerformance.map((device: any) => ({
-      device: device.device || 'Nieznane',
-      spend: device.spend || 0,
-      impressions: device.impressions || 0,
-      clicks: device.clicks || 0,
-      ctr: device.ctr || 0,
-      cpc: device.cpc || 0,
-      conversions: device.conversions || 0,
-      conversionValue: device.conversionValue || device.conversion_value || 0,
-      roas: device.roas || 0
+    // Transform demographics from getDemographicPerformance (gender_view + age_range_view).
+    // Rows are tagged with exactly one of `gender` or `ageRange`; we preserve
+    // that tagging so the pie chart renderer can filter per dimension.
+    const transformedDemographicPerformance: GoogleAdsDemographicPerformance[] = demographicPerformance.map((row: any) => ({
+      gender: row.gender,
+      ageRange: row.ageRange ?? row.age,
+      spend: row.spend || 0,
+      impressions: row.impressions || 0,
+      clicks: row.clicks || 0,
+      ctr: row.ctr || 0,
+      cpc: row.cpc || 0,
+      conversions: row.conversions || 0,
+      conversionValue: row.conversion_value ?? row.conversionValue ?? row.reservation_value ?? 0,
+      reservations: row.reservations ?? row.conversions ?? 0,
+      reservation_value: row.reservation_value ?? row.conversion_value ?? 0,
+      roas: row.roas || 0,
     }));
+
+    // Merge rows that resolve to the same Polish device label (e.g. CTV from
+    // mixed enum/cache shapes) and recompute CTR/CPC/ROAS from totals.
+    const transformedDevicePerformance: GoogleAdsDevicePerformance[] = mergeGoogleAdsDevicePerformanceRows(
+      devicePerformance.map((device: any) => ({
+        device: device.device ?? device.deviceType,
+        spend: device.spend || 0,
+        impressions: device.impressions || 0,
+        clicks: device.clicks || 0,
+        conversions: device.conversions || 0,
+        conversionValue: device.conversionValue || device.conversion_value || 0,
+      })),
+    );
 
     // Transform keyword data
     const transformedKeywordPerformance: GoogleAdsKeywordPerformance[] = keywordPerformance.map((keyword: any) => ({
@@ -188,22 +224,28 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       roas: keyword.roas || 0
     }));
 
-    // Return only real data - no fallback fake data
     const result = {
-      placementPerformance: placementPerformance,
-      demographicPerformance: [], // Empty - not available through Google Ads API
+      // Sieci reklamowe UI removed; keep empty array for callers expecting the key.
+      placementPerformance: [],
+      demographicPerformance: transformedDemographicPerformance,
       devicePerformance: transformedDevicePerformance,
       keywordPerformance: transformedKeywordPerformance,
-      searchTermPerformance: searchTermPerformance
+      searchTermPerformance: searchTermPerformance,
+      // Geographic rows already arrive in the right shape from
+      // getGeographicPerformance - we just pass them through.
+      geographicPerformance: geographicPerformance as GeographicRow[]
     };
 
     console.log('🔍 Transform result:', {
-      placementCount: result.placementPerformance.length,
       deviceCount: result.devicePerformance.length,
       keywordCount: result.keywordPerformance.length,
       searchTermCount: result.searchTermPerformance.length,
+      demographicCount: result.demographicPerformance.length,
+      geographicCount: result.geographicPerformance.length,
       sampleDevice: result.devicePerformance[0],
-      sampleKeyword: result.keywordPerformance[0]
+      sampleKeyword: result.keywordPerformance[0],
+      sampleDemographic: result.demographicPerformance[0],
+      sampleGeographic: result.geographicPerformance[0]
     });
 
     return result;
@@ -212,40 +254,41 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
   useEffect(() => {
     console.log('🔄 useEffect triggered with:', { dateStart, dateEnd, clientId, retryKey, hasPreloadedData: !!preloadedTablesData });
 
-    // 🔧 FIX: Use preloaded data if available to avoid duplicate API calls
-    if (preloadedTablesData && !usedPreloadedData) {
+    let cancelled = false;
+
+    // When the parent already has tables (e.g. smart cache / live standardized fetch),
+    // apply them every time deps change — avoids duplicate fetches and prevents a stuck
+    // loading state when Strict Mode re-runs the effect after `usedPreloadedData` was true.
+    if (preloadedTablesData) {
       console.log('⚡ Using preloaded Google Ads tables data (no API call needed)');
-      setUsedPreloadedData(true);
-      
-      // Transform preloaded data to table format
       const transformedData = transformGoogleAdsDataToTables({ googleAdsTables: preloadedTablesData });
-      
-      setPlacementData(transformedData.placementPerformance);
+
       setDeviceData(transformedData.devicePerformance);
       setKeywordData(transformedData.keywordPerformance);
       setSearchTermData(transformedData.searchTermPerformance);
+      setDemographicData(transformedData.demographicPerformance);
+      setGeographicData(transformedData.geographicPerformance);
       setLoading(false);
       setError(null);
-      
+      setIsRequestInProgress(false);
+
       if (onDataLoaded) {
         onDataLoaded({
-          placementPerformance: transformedData.placementPerformance,
+          placementPerformance: [],
           devicePerformance: transformedData.devicePerformance,
           keywordPerformance: transformedData.keywordPerformance,
-          searchTermPerformance: transformedData.searchTermPerformance
+          searchTermPerformance: transformedData.searchTermPerformance,
+          demographicPerformance: transformedData.demographicPerformance,
+          geographicPerformance: transformedData.geographicPerformance,
         });
       }
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
   const fetchGoogleAdsTablesData = async () => {
     try {
-      // Prevent duplicate requests
-      if (isRequestInProgress) {
-        console.log('🚫 Request already in progress, skipping duplicate');
-        return;
-      }
-      
       console.log('🚀 Starting Google Ads tables data fetch (no preloaded data available)...');
       setIsRequestInProgress(true);
       setLoading(true);
@@ -289,6 +332,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       }
 
       const data = await response.json();
+      if (cancelled) return;
       console.log('📊 Google Ads tables API response:', data);
       console.log('🔍 CRITICAL DEBUG - Raw response structure:', {
         hasSuccess: 'success' in data,
@@ -321,15 +365,19 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       const transformedData = transformGoogleAdsDataToTables(apiData);
       console.log('✅ Transformed data:', transformedData);
 
-      setPlacementData(transformedData.placementPerformance);
+      if (cancelled) return;
+
       setDeviceData(transformedData.devicePerformance);
       setKeywordData(transformedData.keywordPerformance);
       setSearchTermData(transformedData.searchTermPerformance || []);
+      setDemographicData(transformedData.demographicPerformance || []);
+      setGeographicData(transformedData.geographicPerformance || []);
       
       console.log('✅ State updated with:', {
-        placementCount: transformedData.placementPerformance.length,
         deviceCount: transformedData.devicePerformance.length,
-        keywordCount: transformedData.keywordPerformance.length
+        keywordCount: transformedData.keywordPerformance.length,
+        demographicCount: transformedData.demographicPerformance.length,
+        geographicCount: transformedData.geographicPerformance.length,
       });
 
       if (onDataLoaded) {
@@ -337,6 +385,7 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
       }
 
     } catch (err) {
+      if (cancelled) return;
       console.error('❌ Error fetching Google Ads tables data:', err);
       
       if (err instanceof Error && err.name === 'AbortError') {
@@ -347,23 +396,27 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     } finally {
       console.log('🏁 CRITICAL: Google Ads tables fetch completed, setting loading to false');
       console.log('🏁 CRITICAL: About to call setLoading(false)');
-      setLoading(false);
-      setIsRequestInProgress(false);
+      if (!cancelled) {
+        setLoading(false);
+        setIsRequestInProgress(false);
+      }
       console.log('🏁 CRITICAL: setLoading(false) called successfully');
     }
   };
 
-    // Reset data and show loading when any dependency changes
     setLoading(true);
     setError(null);
-    setPlacementData([]);
     setDeviceData([]);
     setKeywordData([]);
-    
-    // Only fetch if no preloaded data
-    if (!preloadedTablesData) {
-      fetchGoogleAdsTablesData();
-    }
+    setSearchTermData([]);
+    setDemographicData([]);
+    setGeographicData([]);
+
+    fetchGoogleAdsTablesData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [dateStart, dateEnd, clientId, retryKey, preloadedTablesData]);
 
   const retryFetch = () => {
@@ -408,30 +461,59 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     return `${num.toFixed(2)}%`;
   };
 
+  const formatGeographicRegionName = (row: GeographicRow): string => {
+    if (row.countryCode && row.countryCode !== 'PL') {
+      return row.regionName?.trim() || row.countryName || row.countryCode;
+    }
+    return formatPolishVoivodeshipName(row);
+  };
+
+  const topCitiesByClicks = useMemo(
+    () =>
+      [...geographicData]
+        .filter((r) => r.cityName && r.cityName !== '(nieznane)')
+        .sort((a, b) => (b.clicks || 0) - (a.clicks || 0))
+        .slice(0, 15),
+    [geographicData],
+  );
+
+  const topKeywordsByConversions = useMemo(
+    () =>
+      [...keywordData]
+        .sort((a, b) => (b.conversions || 0) - (a.conversions || 0))
+        .slice(0, TOP_CONVERTING_KEYWORDS_AND_TERMS),
+    [keywordData],
+  );
+
+  const topSearchTermsByConversions = useMemo(
+    () =>
+      [...searchTermData]
+        .sort((a, b) => (b.conversions || 0) - (a.conversions || 0))
+        .slice(0, TOP_CONVERTING_KEYWORDS_AND_TERMS),
+    [searchTermData],
+  );
+
   // Show loading if explicitly loading OR if we have no data yet (initial state)
-  const hasAnyData = placementData.length > 0 || deviceData.length > 0 || keywordData.length > 0;
-  const shouldShowLoading = loading || (!hasAnyData && !error);
+  const hasAnyData =
+    deviceData.length > 0 ||
+    keywordData.length > 0 ||
+    searchTermData.length > 0 ||
+    demographicData.length > 0 ||
+    geographicData.length > 0;
+  // Only the explicit loading flag drives the spinner; empty breakdown rows are valid.
+  const shouldShowLoading = loading;
 
   console.log('🔍 Render state check:', {
     loading,
     hasAnyData,
     error,
     shouldShowLoading,
-    placementCount: placementData.length,
     deviceCount: deviceData.length,
     keywordCount: keywordData.length
   });
 
   if (shouldShowLoading) {
-    console.log('📊 Showing loading state');
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <div className="flex items-center justify-center space-x-3">
-          <RefreshCw className="w-5 h-5 text-slate-900 animate-spin" />
-          <span className="text-slate-600">Ładowanie danych Google Ads...</span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   if (error) {
@@ -454,126 +536,24 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
 
   console.log('✅ Rendering main Google Ads tables component');
 
+  // All sections render stacked below "Szczegóły Kampanii". Order: devices,
+  // geographic map, demographics, then top keywords and search terms (by
+  // conversions). Each section gets its own card so visual separation is preserved.
   return (
-    <div className="space-y-8">
-      {/* Tab Navigation - Premium Design */}
-      <div className="flex space-x-2 bg-slate-100 p-1 rounded-xl">
-        <button
-          onClick={() => setActiveTab('placement')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'placement'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Target className="h-4 w-4" />
-          <span>Sieci reklamowe</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('device')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'device'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Smartphone className="h-4 w-4" />
-          <span>Urządzenia</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('keywords')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'keywords'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Search className="h-4 w-4" />
-          <span>Słowa kluczowe</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('searchterms')}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-            activeTab === 'searchterms'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Search className="h-4 w-4" />
-          <span>Wyszukiwane hasła (R.70)</span>
-        </button>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex flex-col gap-5"
+    >
 
-      {/* Table Content - Premium Card Design */}
-      <motion.div
-        key={activeTab}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"
-      >
-
-
-        {/* Placement/Network Performance Tab */}
-        {activeTab === 'placement' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        {/* Device Performance Section */}
+        {sectionVisible('device_table') && (
+        <div id="google-devices" className="order-3 scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
-                <h3 className="text-xl font-semibold text-slate-900 mb-1">Sieci Reklamowe</h3>
-                <p className="text-sm text-slate-600">
-                  Wydajność kampanii według sieci reklamowych Google Ads
-                </p>
-              </div>
-            </div>
-
-            {placementData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Sieć</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość konwersji</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {placementData.map((network, index) => (
-                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{network.network}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(network.spend)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(network.impressions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(network.clicks)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(network.ctr)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(network.cpc)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(network.conversions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(network.conversionValue)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{network.roas.toFixed(2)}x</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                Brak danych sieci reklamowych dla wybranego okresu.
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Device Performance Tab */}
-        {activeTab === 'device' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-semibold text-slate-900 mb-1">Wydajność Urządzeń</h3>
-                <p className="text-sm text-slate-600">
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Wydajność Urządzeń</h3>
+                <p className="text-xs text-slate-500">
                   Wydajność kampanii według typów urządzeń
                 </p>
               </div>
@@ -584,29 +564,29 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Urządzenie</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wartość konwersji</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                      {visible('device_table', 'device') && <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('device_table', 'device', 'Urządzenie')}</th>}
+                      {visible('device_table', 'totalSpend') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'totalSpend', 'Wydatki')}</th>}
+                      {visible('device_table', 'totalImpressions') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'totalImpressions', 'Wyświetlenia')}</th>}
+                      {visible('device_table', 'totalClicks') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'totalClicks', 'Kliknięcia')}</th>}
+                      {visible('device_table', 'averageCtr') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'averageCtr', 'CTR')}</th>}
+                      {visible('device_table', 'averageCpc') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'averageCpc', 'CPC')}</th>}
+                      {visible('device_table', 'totalConversions') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'totalConversions', 'Konwersje')}</th>}
+                      {visible('device_table', 'conversion_value') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'conversion_value', 'Wartość konwersji')}</th>}
+                      {visible('device_table', 'roas') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('device_table', 'roas', 'ROAS')}</th>}
                     </tr>
                   </thead>
                   <tbody className="bg-white">
                     {deviceData.map((device, index) => (
                       <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{device.device}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(device.spend)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(device.impressions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(device.clicks)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(device.ctr)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(device.cpc)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(device.conversions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(device.conversionValue)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{device.roas.toFixed(2)}x</td>
+                        {visible('device_table', 'device') && <td className="px-4 py-2.5 text-[13px] font-medium text-slate-900">{device.device}</td>}
+                        {visible('device_table', 'totalSpend') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatCurrency(device.spend)}</td>}
+                        {visible('device_table', 'totalImpressions') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatNumber(device.impressions)}</td>}
+                        {visible('device_table', 'totalClicks') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatNumber(device.clicks)}</td>}
+                        {visible('device_table', 'averageCtr') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatPercentage(device.ctr)}</td>}
+                        {visible('device_table', 'averageCpc') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatCurrency(device.cpc)}</td>}
+                        {visible('device_table', 'totalConversions') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatNumber(device.conversions)}</td>}
+                        {visible('device_table', 'conversion_value') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatCurrency(device.conversionValue)}</td>}
+                        {visible('device_table', 'roas') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{device.roas.toFixed(2)}x</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -617,17 +597,146 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 Brak danych urządzeń dla wybranego okresu.
               </div>
             )}
-          </div>
+        </div>
         )}
 
-        {/* Keywords Performance Tab */}
-        {activeTab === 'keywords' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        {/* Geographic: map + cities */}
+        {sectionVisible('geographic_map') && (
+        <div id="google-regions" className="order-1 scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
-                <h3 className="text-xl font-semibold text-slate-900 mb-1">Słowa Kluczowe</h3>
-                <p className="text-sm text-slate-600">
-                  Wydajność najważniejszych słów kluczowych
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Regiony</h3>
+                <p className="text-xs text-slate-500">
+                  Wyniki według regionów i miast
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-medium text-slate-500">Metryka:</span>
+                <select
+                  value={effectiveGeographicMetric}
+                  onChange={(e) => setGeographicMetric(e.target.value as typeof geographicMetric)}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  {geographicMetricOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {label('geographic_map', option.key, option.fallback)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-4">
+              {geographicData.length === 0 ? (
+                <div className="text-center py-12 text-slate-500">
+                  <p>Brak danych geograficznych dla wybranego okresu.</p>
+                  <p className="text-xs mt-2 text-slate-400">
+                    Dane pojawiają się, gdy kampanie wyświetlają się użytkownikom o znanej lokalizacji.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <PolandRegionMap
+                    data={geographicData}
+                    metric={effectiveGeographicMetric}
+                    campaignTotals={campaignTotals ?? null}
+                  />
+
+                  {/* Top cities table */}
+                  <div id="google-cities" className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <div className="border-b border-slate-100 px-4 py-3">
+                      <h3 className="text-sm font-semibold text-slate-900">Najlepiej konwertujące miasta</h3>
+                      <p className="text-xs text-slate-500">
+                        Miasta z największą liczbą kliknięć (top 15)
+                      </p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            {visible('geographic_map', 'city') && <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('geographic_map', 'city', 'Miasto')}</th>}
+                            {visible('geographic_map', 'region') && <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('geographic_map', 'region', 'Województwo')}</th>}
+                            {visible('geographic_map', 'totalSpend') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('geographic_map', 'totalSpend', 'Wydatki')}</th>}
+                            {visible('geographic_map', 'totalClicks') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('geographic_map', 'totalClicks', 'Kliknięcia')}</th>}
+                            {visible('geographic_map', 'conversion_value') && <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-slate-500">{label('geographic_map', 'conversion_value', 'Wartość konwersji')}</th>}
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white">
+                          {topCitiesByClicks.map((row, index) => {
+                              const spend = row.spend || 0;
+                              const convVal = row.conversion_value || 0;
+                              return (
+                                <tr key={`${row.cityName}-${row.regionCode}-${index}`} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                                  {visible('geographic_map', 'city') && <td className="px-4 py-2.5 text-[13px] font-medium text-slate-900">{formatPolishCityName(row.cityName)}</td>}
+                                  {visible('geographic_map', 'region') && <td className="px-4 py-2.5 text-[13px] text-slate-600">{formatGeographicRegionName(row)}</td>}
+                                  {visible('geographic_map', 'totalSpend') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatCurrency(spend)}</td>}
+                                  {visible('geographic_map', 'totalClicks') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatNumber(row.clicks || 0)}</td>}
+                                  {visible('geographic_map', 'conversion_value') && <td className="px-4 py-2.5 text-right text-[13px] text-slate-900 tabular-nums">{formatCurrency(convVal)}</td>}
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+        </div>
+        )}
+
+        {/* Demographics: age + gender */}
+        {sectionVisible('demographic_breakdown') && (
+        <div id="google-demographics" className="order-4 scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div>
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Wyniki demograficzne</h3>
+                <p className="text-xs text-slate-500">
+                  Podział według płci i grup wiekowych
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-medium text-slate-500">Metryka:</span>
+                <select
+                  value={effectiveDemographicMetric}
+                  onChange={(e) => setDemographicMetric(e.target.value as typeof demographicMetric)}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  {demographicMetricOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {label('demographic_breakdown', option.key, option.fallback)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="p-4">
+              {demographicData.length > 0 ? (
+                <GoogleAdsDemographicPieCharts
+                  data={demographicData as any}
+                  metric={effectiveDemographicMetric}
+                />
+              ) : (
+                <div className="text-center py-12 text-slate-500">
+                  <p>Brak danych demograficznych dla wybranego okresu.</p>
+                  <p className="text-xs mt-2 text-slate-400">
+                    Dane demograficzne pojawiają się dla kampanii z targetowaniem demograficznym (Display, Video, Performance Max, Discovery).
+                  </p>
+                </div>
+              )}
+            </div>
+        </div>
+        )}
+
+        {/* Keywords — top 10 by conversions (after demographics) */}
+        {sectionVisible('keyword_table') && (
+        <div id="advanced-data" className="order-5 scroll-mt-24 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div>
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Słowa Kluczowe</h3>
+                <p className="text-xs text-slate-500">
+                  Top {TOP_CONVERTING_KEYWORDS_AND_TERMS} słów kluczowych według liczby konwersji
                 </p>
               </div>
             </div>
@@ -637,27 +746,23 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Słowo Kluczowe</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                      {visible('keyword_table', 'keyword') && <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-slate-500">{label('keyword_table', 'keyword', 'Słowo Kluczowe')}</th>}
+                      {visible('keyword_table', 'totalSpend') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('keyword_table', 'totalSpend', 'Wydatki')}</th>}
+                      {visible('keyword_table', 'totalImpressions') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('keyword_table', 'totalImpressions', 'Wyświetlenia')}</th>}
+                      {visible('keyword_table', 'totalClicks') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('keyword_table', 'totalClicks', 'Kliknięcia')}</th>}
+                      {visible('keyword_table', 'averageCtr') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('keyword_table', 'averageCtr', 'CTR')}</th>}
+                      {visible('keyword_table', 'averageCpc') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('keyword_table', 'averageCpc', 'CPC')}</th>}
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {keywordData.map((keyword, index) => (
-                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{keyword.keyword}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(keyword.spend)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.impressions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.clicks)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(keyword.ctr)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(keyword.cpc)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.conversions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{keyword.roas.toFixed(2)}x</td>
+                    {topKeywordsByConversions.map((keyword, index) => (
+                      <tr key={`${keyword.keyword}-${index}`} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                        {visible('keyword_table', 'keyword') && <td className="px-4 py-2.5 text-[13px] font-medium text-slate-900">{keyword.keyword}</td>}
+                        {visible('keyword_table', 'totalSpend') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(keyword.spend)}</td>}
+                        {visible('keyword_table', 'totalImpressions') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.impressions)}</td>}
+                        {visible('keyword_table', 'totalClicks') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(keyword.clicks)}</td>}
+                        {visible('keyword_table', 'averageCtr') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(keyword.ctr)}</td>}
+                        {visible('keyword_table', 'averageCpc') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(keyword.cpc)}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -668,21 +773,18 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 Brak danych słów kluczowych dla wybranego okresu.
               </div>
             )}
-          </div>
+        </div>
         )}
 
-        {/* Search Terms Tab (R.70) */}
-        {activeTab === 'searchterms' && (
-          <div>
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+        {/* Search terms — top by conversions */}
+        {sectionVisible('search_terms_table') && (
+        <div className="order-6 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <div>
-                <h3 className="text-xl font-semibold text-slate-900 mb-1">Wyszukiwane hasła (Search Terms)</h3>
-                <p className="text-sm text-slate-600">
-                  Rzeczywiste zapytania wyszukiwania, które uruchomiły Twoje reklamy
+                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Wyszukiwane hasła (Search Terms)</h3>
+                <p className="text-xs text-slate-500">
+                  Top {TOP_CONVERTING_KEYWORDS_AND_TERMS} zapytań według liczby konwersji — rzeczywiste wyszukiwania, które uruchomiły reklamy
                 </p>
-                <div className="mt-2 px-2 py-0.5 bg-green-50 text-green-700 text-xs font-semibold rounded inline-block">
-                  RMF R.70 Required Report
-                </div>
               </div>
             </div>
 
@@ -691,37 +793,33 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyszukiwane hasło</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Typ dopasowania</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Kampania</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Grupa reklam</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wydatki</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Wyświetlenia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Kliknięcia</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CTR</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">CPC</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">Konwersje</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">ROAS</th>
+                      {visible('search_terms_table', 'search_term') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'search_term', 'Wyszukiwane hasło')}</th>}
+                      {visible('search_terms_table', 'match_type') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'match_type', 'Typ dopasowania')}</th>}
+                      {visible('search_terms_table', 'campaign_name') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'campaign_name', 'Kampania')}</th>}
+                      {visible('search_terms_table', 'ad_group_name') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'ad_group_name', 'Grupa reklam')}</th>}
+                      {visible('search_terms_table', 'totalSpend') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'totalSpend', 'Wydatki')}</th>}
+                      {visible('search_terms_table', 'totalImpressions') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'totalImpressions', 'Wyświetlenia')}</th>}
+                      {visible('search_terms_table', 'totalClicks') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'totalClicks', 'Kliknięcia')}</th>}
+                      {visible('search_terms_table', 'averageCtr') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'averageCtr', 'CTR')}</th>}
+                      {visible('search_terms_table', 'averageCpc') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'averageCpc', 'CPC')}</th>}
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {searchTermData.map((term, index) => (
-                      <tr key={index} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-900">{term.search_term}</td>
-                        <td className="px-6 py-4">
+                    {topSearchTermsByConversions.map((term, index) => (
+                      <tr key={`${term.search_term}-${term.campaign_name}-${index}`} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
+                        {visible('search_terms_table', 'search_term') && <td className="px-6 py-4 text-sm font-medium text-slate-900">{term.search_term}</td>}
+                        {visible('search_terms_table', 'match_type') && <td className="px-6 py-4">
                           <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded">
                             {term.match_type}
                           </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">{term.campaign_name}</td>
-                        <td className="px-6 py-4 text-sm text-slate-600">{term.ad_group_name}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.spend)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.impressions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.clicks)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(term.ctr)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.cpc)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.conversions)}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{term.roas.toFixed(2)}x</td>
+                        </td>}
+                        {visible('search_terms_table', 'campaign_name') && <td className="px-6 py-4 text-sm text-slate-600">{term.campaign_name}</td>}
+                        {visible('search_terms_table', 'ad_group_name') && <td className="px-6 py-4 text-sm text-slate-600">{term.ad_group_name}</td>}
+                        {visible('search_terms_table', 'totalSpend') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.spend)}</td>}
+                        {visible('search_terms_table', 'totalImpressions') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.impressions)}</td>}
+                        {visible('search_terms_table', 'totalClicks') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.clicks)}</td>}
+                        {visible('search_terms_table', 'averageCtr') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(term.ctr)}</td>}
+                        {visible('search_terms_table', 'averageCpc') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.cpc)}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -732,18 +830,9 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
                 Brak danych wyszukiwanych haseł dla wybranego okresu.
               </div>
             )}
-
-            {/* RMF Compliance Note */}
-            <div className="px-6 py-4 bg-green-50 border-t border-green-100">
-              <p className="text-xs text-slate-700">
-                <strong>RMF R.70 Required Fields:</strong> ✅ search_term, ✅ search_term_match_type, 
-                ✅ clicks, ✅ cost_micros (spend), ✅ impressions
-              </p>
-            </div>
-          </div>
+        </div>
         )}
-      </motion.div>
-    </div>
+    </motion.div>
   );
 };
 

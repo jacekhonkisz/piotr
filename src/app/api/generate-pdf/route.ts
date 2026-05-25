@@ -2,12 +2,67 @@ import { NextRequest, NextResponse } from 'next/server';
 import puppeteerCore from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import logger from '@/lib/logger';
-import { supabase } from '@/lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-import { authenticateRequest, canAccessClient, createErrorResponse } from '@/lib/auth-middleware';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
+import { authenticateRequest } from '@/lib/auth-middleware';
+import { getPdfBrandLogoDataUrl } from '@/lib/pdf-brand-logo';
+import {
+  getBelmontePotentialOfflineValue,
+  getMicroConversionsForOfflineModel,
+  isBelmonteClient,
+  offlineMicroPartsFromPlatformMetrics,
+} from '@/lib/offline-reservation-estimate';
+import { PDFDocument } from 'pdf-lib';
+import {
+  mergeWithDefaults,
+  normalizeConfigForPlatform,
+  isMetricVisible,
+  getMetricName,
+  type MetricConfigItem,
+  type MetricSection,
+} from '@/lib/default-metrics-config';
+import { getConfiguredColumns } from '@/lib/configured-report-columns';
+import { googleAdsDeviceLabelPl } from '@/lib/google-ads-device-pl';
+import { cpcBlended, cpcFromStats, ctrPercentBlended, ctrPercentFromStats } from '@/lib/ctr-from-stats';
+
+async function countPdfPages(buffer: Buffer): Promise<number> {
+  const doc = await PDFDocument.load(buffer);
+  return doc.getPageCount();
+}
+
+async function pdfExtractFirstPage(pdfBuffer: Buffer): Promise<Buffer> {
+  const src = await PDFDocument.load(pdfBuffer);
+  const dest = await PDFDocument.create();
+  const [p] = await dest.copyPages(src, [0]);
+  dest.addPage(p);
+  return Buffer.from(await dest.save());
+}
+
+async function pdfMergeBuffers(parts: Buffer[]): Promise<Buffer> {
+  const merged = await PDFDocument.create();
+  for (const part of parts) {
+    const doc = await PDFDocument.load(part);
+    const copied = await merged.copyPages(doc, doc.getPageIndices());
+    copied.forEach((page) => merged.addPage(page));
+  }
+  return Buffer.from(await merged.save());
+}
+
+/** Escapes for double-quoted HTML attributes (Puppeteer footerTemplate img src). */
+function escapeHtmlAttrForPdf(dataUrl: string): string {
+  return dataUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+function buildPuppeteerFooterTemplate(logoDataUrl: string): string {
+  const safe = escapeHtmlAttrForPdf(logoDataUrl);
+  return `<div style="font-size:1px;width:100%;text-align:center;margin:0;padding:4px 0 0 0;box-sizing:border-box;">
+  <img src="${safe}" alt="" style="height:11mm;max-width:42mm;object-fit:contain;display:inline-block;vertical-align:bottom;opacity:0.92;" />
+</div>`;
+}
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
+
+const serverSupabase = supabaseAdmin ?? supabase;
 
 interface ReportData {
   // Client information
@@ -23,18 +78,82 @@ interface ReportData {
   
   // AI Summary
   aiSummary?: string;
+  mediaEnabled?: {
+    meta: boolean;
+    google: boolean;
+  };
   
   // Year-over-year comparison data
   yoyComparison?: {
     meta: {
-      current: { spend: number; reservationValue: number; };
-      previous: { spend: number; reservationValue: number; };
-      changes: { spend: number; reservationValue: number; };
+      current: {
+        spend: number;
+        reservationValue: number;
+        impressions?: number;
+        clicks?: number;
+        reservations?: number;
+        conversions?: number;
+        booking_step_1?: number;
+        booking_step_2?: number;
+        booking_step_3?: number;
+      };
+      previous: {
+        spend: number;
+        reservationValue: number;
+        impressions?: number;
+        clicks?: number;
+        reservations?: number;
+        conversions?: number;
+        booking_step_1?: number;
+        booking_step_2?: number;
+        booking_step_3?: number;
+      };
+      changes: {
+        spend: number;
+        reservationValue: number;
+        impressions?: number;
+        clicks?: number;
+        reservations?: number;
+        conversions?: number;
+        booking_step_1?: number;
+        booking_step_2?: number;
+        booking_step_3?: number;
+      };
     };
     google: {
-      current: { spend: number; reservationValue: number; };
-      previous: { spend: number; reservationValue: number; };
-      changes: { spend: number; reservationValue: number; };
+      current: {
+        spend: number;
+        reservationValue: number;
+        impressions?: number;
+        clicks?: number;
+        reservations?: number;
+        conversions?: number;
+        booking_step_1?: number;
+        booking_step_2?: number;
+        booking_step_3?: number;
+      };
+      previous: {
+        spend: number;
+        reservationValue: number;
+        impressions?: number;
+        clicks?: number;
+        reservations?: number;
+        conversions?: number;
+        booking_step_1?: number;
+        booking_step_2?: number;
+        booking_step_3?: number;
+      };
+      changes: {
+        spend: number;
+        reservationValue: number;
+        impressions?: number;
+        clicks?: number;
+        reservations?: number;
+        conversions?: number;
+        booking_step_1?: number;
+        booking_step_2?: number;
+        booking_step_3?: number;
+      };
     };
   };
   
@@ -65,6 +184,7 @@ interface ReportData {
       booking_step_3: number;
       reservations: number;
       reservation_value: number;
+      total_conversion_value?: number;
       roas: number;
     };
     tables: {
@@ -74,6 +194,12 @@ interface ReportData {
     };
   };
   
+  /** Merged per-client dashboard config (drives PDF KPI visibility, same as Metryki). */
+  metricsConfig?: {
+    meta: MetricConfigItem[];
+    google: MetricConfigItem[];
+  };
+
   // Google Ads data
   googleData?: {
     metrics: {
@@ -102,12 +228,17 @@ interface ReportData {
       booking_step_3: number;
       reservations: number;
       reservation_value: number;
+      total_conversion_value?: number;
       roas: number;
     };
     tables: {
       networkPerformance: any[];
       devicePerformance: any[];
       keywordPerformance: any[];
+      searchTermPerformance?: any[];
+      demographicPerformance?: any[];
+      geographicPerformance?: any[];
+      qualityMetrics?: any[];
     };
   };
 }
@@ -118,10 +249,42 @@ interface Client {
   email: string;
 }
 
+function pdfMetricVisible(
+  reportData: ReportData,
+  platform: 'meta' | 'google',
+  section: MetricSection,
+  key: string
+): boolean {
+  const raw =
+    platform === 'meta'
+      ? reportData.metricsConfig?.meta
+      : reportData.metricsConfig?.google;
+  if (!raw || raw.length === 0) return true;
+  return isMetricVisible(raw, section, key);
+}
+
+function pdfMetricLabel(
+  reportData: ReportData,
+  platform: 'meta' | 'google',
+  section: MetricSection,
+  key: string,
+  fallback: string
+): string {
+  const raw =
+    platform === 'meta'
+      ? reportData.metricsConfig?.meta
+      : reportData.metricsConfig?.google;
+  if (!raw || raw.length === 0) return fallback;
+  return getMetricName(raw, section, key);
+}
+
 // Helper functions for formatting
 const formatCurrency = (value: number | undefined | null) => {
   if (value === undefined || value === null || isNaN(value) || value === 0) return '—';
-  return `${value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, '\u00A0')} zł`;
+  // Use NBSPs between digits AND before the currency suffix so the value
+  // never wraps mid-number or leaves "zł" on a new line inside a table cell.
+  const num = value.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, '\u00A0');
+  return `${num}\u00A0zł`;
 };
 
 const formatNumber = (value: number | undefined | null, decimals: number = 0) => {
@@ -134,8 +297,12 @@ const formatNumber = (value: number | undefined | null, decimals: number = 0) =>
 
 const formatPercentage = (value: number | undefined | null) => {
   if (value === undefined || value === null || isNaN(value) || value === 0) return '—';
-  return `${value.toFixed(2).replace('.', ',')}%`;
+  return `${value.toFixed(2).replace('.', ',')}\u2060%`;
 };
+
+const formatCurrencyNonBreaking = formatCurrency;
+const formatNumberNonBreaking = formatNumber;
+const formatPercentNonBreaking = formatPercentage;
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
@@ -146,79 +313,129 @@ const formatDate = (dateString: string) => {
   });
 };
 
-// Generate Section 1: Title Page with AI Summary
-const generateTitleSection = (reportData: ReportData) => {
-  // COMPREHENSIVE AI SUMMARY DISPLAY AUDIT
-  logger.info('🎯 TITLE SECTION GENERATION - AI Summary Audit:', {
-    hasAiSummary: !!reportData.aiSummary,
-    aiSummaryLength: reportData.aiSummary?.length || 0,
-    aiSummaryPreview: reportData.aiSummary?.substring(0, 50) || 'NO SUMMARY',
-    aiSummaryType: typeof reportData.aiSummary,
-    willDisplayAiSection: !!reportData.aiSummary
+/** Offline 20% model — aligned with generate-report (Belmonte: Meta-only micro pool). */
+function computeOfflinePotentialFromReportData(reportData: ReportData) {
+  const clientName = reportData.clientName || '';
+  const g = reportData.googleData;
+  const m = reportData.metaData;
+  const parts = offlineMicroPartsFromPlatformMetrics(
+    g
+      ? {
+          booking_step_1: g.funnel?.booking_step_1 ?? 0,
+          email_contacts: g.metrics?.emailContacts ?? 0,
+          click_to_call: g.metrics?.phoneContacts ?? 0,
+        }
+      : undefined,
+    m
+      ? {
+          booking_step_1: m.funnel?.booking_step_1 ?? 0,
+          email_contacts: m.metrics?.emailContacts ?? 0,
+          click_to_call: m.metrics?.phoneContacts ?? 0,
+        }
+      : undefined
+  );
+  const metaCampaignsOnly = (m?.campaigns || []) as any[];
+  const microTotal = getMicroConversionsForOfflineModel(clientName, parts, {
+    metaCampaigns: metaCampaignsOnly,
   });
-  
-  logger.info('🔍 TITLE SECTION: Generating without page break (should be page 1)');
-  
-  const titleHtml = `
-    <div class="title-page">
-      <div class="page-content">
-        <div class="clean-title-section">
-        ${reportData.clientLogo ? `
-            <div class="clean-logo-container">
-              <img src="${reportData.clientLogo}" alt="Logo" class="clean-client-logo" />
-          </div>
-        ` : ''}
-        
-          <div class="clean-title-header">
-            <h1 class="clean-main-title">Raport Kampanii Reklamowych</h1>
-            <h2 class="clean-company-name">${reportData.clientName}</h2>
-            <div class="clean-date-range">
-            ${formatDate(reportData.dateRange.start)} - ${formatDate(reportData.dateRange.end)}
-          </div>
-            <div class="clean-generation-date">
-            Wygenerowano: ${formatDate(new Date().toISOString())}
-          </div>
-        </div>
-        
-        ${reportData.aiSummary ? `
-            <div class="clean-ai-summary-section">
-              <h3 class="clean-summary-title">Podsumowanie Wykonawcze</h3>
-              <div class="clean-summary-content">
-              ${reportData.aiSummary}
+  const potentialOfflineReservations = Math.round(microTotal * 0.2);
+  const totalReservationsCombined =
+    (reportData.metaData?.metrics.totalReservations ?? 0) +
+    (reportData.googleData?.metrics.totalReservations ?? 0);
+  const totalReservationValueCombined =
+    (reportData.metaData?.metrics.totalReservationValue ?? 0) +
+    (reportData.googleData?.metrics.totalReservationValue ?? 0);
+  let averageReservationValue =
+    totalReservationsCombined > 0 ? totalReservationValueCombined / totalReservationsCombined : 0;
+  if (isBelmonteClient(clientName)) {
+    const tr = metaCampaignsOnly.reduce((s, c) => s + (Number(c.reservations) || 0), 0);
+    const tv = metaCampaignsOnly.reduce((s, c) => s + (Number(c.reservation_value) || 0), 0);
+    if (tr > 0) {
+      averageReservationValue = tv / tr;
+    }
+  }
+  const potentialOfflineValue = isBelmonteClient(clientName)
+    ? getBelmontePotentialOfflineValue(averageReservationValue)
+    : potentialOfflineReservations * averageReservationValue;
+  const metaOnlineReservationValue = metaCampaignsOnly.reduce(
+    (s, c) => s + (Number(c.reservation_value) || 0),
+    0
+  );
+  const totalPotentialValue = isBelmonteClient(clientName)
+    ? potentialOfflineValue + metaOnlineReservationValue
+    : potentialOfflineValue + totalReservationValueCombined;
+  return {
+    microTotal,
+    potentialOfflineReservations,
+    averageReservationValue,
+    potentialOfflineValue,
+    totalPotentialValue,
+  };
+}
+
+// Page 1: Cover only — logo + titles, vertically centered (Podsumowanie wykonawcze is page 2)
+const generateCoverPage = (reportData: ReportData) => {
+  logger.info('🎯 COVER PAGE: page 1 (centered, no AI)');
+  return `
+    <div class="title-page title-page--cover">
+      <div class="page-content page-content--cover">
+        <div class="clean-title-section clean-title-section--cover">
+          <div class="clean-cover-hero clean-cover-hero--centered">
+          ${reportData.clientLogo ? `
+              <div class="clean-logo-container">
+                <img src="${reportData.clientLogo}" alt="Logo" class="clean-client-logo" />
+            </div>
+          ` : ''}
+            <div class="clean-title-header">
+              <h1 class="clean-main-title">Raport Kampanii Reklamowych</h1>
+              <h2 class="clean-company-name">${reportData.clientName}</h2>
+              <div class="clean-date-range">
+              ${formatDate(reportData.dateRange.start)} - ${formatDate(reportData.dateRange.end)}
+            </div>
+              <div class="clean-generation-date">
+              Wygenerowano: ${formatDate(new Date().toISOString())}
             </div>
           </div>
-          ` : ''}
         </div>
       </div>
     </div>
   `;
-  
-  logger.info('🎯 TITLE SECTION HTML Generated:', {
-    htmlLength: titleHtml.length,
-    containsAiSummarySection: titleHtml.includes('ai-summary-section'),
-    containsAiSummaryContent: titleHtml.includes('Podsumowanie Wykonawcze')
-  });
-  
-  return titleHtml;
+};
+
+// Page 2: Full-page executive summary. Porównanie okresów follows on page 3.
+const generateExecutiveSummaryPage = (reportData: ReportData) => {
+  if (!reportData.aiSummary) return '';
+  logger.info('🎯 EXECUTIVE SUMMARY: full page 2');
+  return `
+    <div class="pdf-page-executive-summary">
+      <div class="clean-ai-summary-section clean-ai-summary-section--full-page">
+        <h3 class="clean-summary-title">Podsumowanie Wykonawcze</h3>
+        <div class="clean-summary-content clean-summary-content--full-page">
+              ${reportData.aiSummary}
+        </div>
+      </div>
+    </div>
+  `;
 };
 
 
-// Generate Section 2: Production Comparison (Month-over-Month or Year-over-Year) - CHART VERSION
+// Generate Section: Production Comparison (Month-over-Month or Year-over-Year) — typically page 3+
 const generateYoYSection = (reportData: ReportData) => {
   logger.info('🔍 COMPARISON SECTION: Starting generation', {
     hasYoyComparison: !!reportData.yoyComparison
   });
-  
-  if (!reportData.yoyComparison) {
-    logger.info('🔍 COMPARISON SECTION: No comparison data available - this is expected for periods without historical data');
-    return '';
-  }
-  
-  const { meta, google } = reportData.yoyComparison;
+
+  const zeroSide = { spend: 0, reservationValue: 0 };
+  const zeroChanges = { spend: 0, reservationValue: 0 };
+  const comparison = reportData.yoyComparison || {
+    meta: { current: zeroSide, previous: zeroSide, changes: zeroChanges },
+    google: { current: zeroSide, previous: zeroSide, changes: zeroChanges }
+  };
+  const { meta, google } = comparison;
   
   // ✅ PRODUCTION-READY: Only show if we have meaningful comparison data
-  const hasMetaData = meta.current.spend > 0 || meta.previous.spend > 0;
-  const hasGoogleData = google.current.spend > 0 || google.previous.spend > 0;
+  const hasMetaData = (reportData.mediaEnabled?.meta ?? false) || meta.current.spend > 0 || meta.previous.spend > 0;
+  const hasGoogleData = (reportData.mediaEnabled?.google ?? false) || google.current.spend > 0 || google.previous.spend > 0;
   
   if (!hasMetaData && !hasGoogleData) {
     logger.info('🔍 COMPARISON SECTION: No meaningful data to compare');
@@ -229,7 +446,10 @@ const generateYoYSection = (reportData: ReportData) => {
     hasMetaData,
     hasGoogleData,
     metaCurrentSpend: meta.current.spend,
-    metaPreviousSpend: meta.previous.spend
+    metaPreviousSpend: meta.previous.spend,
+    googleCurrentSpend: google.current.spend,
+    googlePreviousSpend: google.previous.spend,
+    mediaEnabled: reportData.mediaEnabled
   });
   
   // Build metrics array for chart
@@ -318,10 +538,11 @@ const generateYoYSection = (reportData: ReportData) => {
             const googleCurrentWidth = maxValue > 0 ? (metric.googleCurrent / maxValue) * (chartWidth * 0.85) : 0;
             const googlePreviousWidth = maxValue > 0 ? (metric.googlePrevious / maxValue) * (chartWidth * 0.85) : 0;
             
-            const metaY1 = yStart;
-            const metaY2 = metaY1 + barHeight + barGap;
-            const googleY1 = metaY2 + barHeight + platformGap;
+            /* Google Ads first (góra), Meta Ads pod spodem — spójnie z resztą PDF */
+            const googleY1 = yStart;
             const googleY2 = googleY1 + barHeight + barGap;
+            const metaY1 = googleY2 + barHeight + platformGap;
+            const metaY2 = metaY1 + barHeight + barGap;
             
             return `
               <!-- Section: ${metric.label} -->
@@ -330,27 +551,7 @@ const generateYoYSection = (reportData: ReportData) => {
               <text x="${padding.left - 15}" y="${yStart - 8}" text-anchor="end" font-size="14" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.label}</text>
               
               <!-- Y-axis line -->
-              <line x1="${padding.left - 8}" y1="${metaY1 - 5}" x2="${padding.left - 8}" y2="${googleY2 + barHeight + 5}" stroke="#E5E7EB" stroke-width="2"/>
-              
-              <!-- META ADS -->
-              <text x="${padding.left - 15}" y="${metaY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#2563EB" font-family="Roboto, Arial, sans-serif">Meta Ads</text>
-              
-              <!-- Current Period Bar (Meta) -->
-              <rect x="${padding.left}" y="${metaY1}" width="${metaCurrentWidth}" height="${barHeight}" fill="url(#metaGradient)" rx="3"/>
-              <text x="${padding.left + metaCurrentWidth + 8}" y="${metaY1 + 23}" font-size="13" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.format(metric.metaCurrent)}</text>
-              <text x="${padding.left + metaCurrentWidth + 8}" y="${metaY1 + 11}" font-size="9" font-weight="500" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${currentYear}</text>
-              
-              <!-- Previous Period Bar (Meta) -->
-              <rect x="${padding.left}" y="${metaY2}" width="${metaPreviousWidth}" height="${barHeight}" fill="url(#metaLightGradient)" rx="3"/>
-              <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 23}" font-size="12" font-weight="600" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${metric.format(metric.metaPrevious)}</text>
-              <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
-              
-              <!-- Change Indicator (Meta) -->
-              ${metric.metaCurrent > 0 && metric.metaPrevious > 0 && metric.metaChange !== -999 ? `
-                <text x="${width - padding.right + 10}" y="${metaY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.metaChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
-                  ${metric.metaChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.metaChange).toFixed(1)}%
-                </text>
-              ` : ''}
+              <line x1="${padding.left - 8}" y1="${googleY1 - 5}" x2="${padding.left - 8}" y2="${metaY2 + barHeight + 5}" stroke="#E5E7EB" stroke-width="2"/>
               
               <!-- GOOGLE ADS -->
               <text x="${padding.left - 15}" y="${googleY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#F97316" font-family="Roboto, Arial, sans-serif">Google Ads</text>
@@ -364,11 +565,31 @@ const generateYoYSection = (reportData: ReportData) => {
               <rect x="${padding.left}" y="${googleY2}" width="${googlePreviousWidth}" height="${barHeight}" fill="url(#googleLightGradient)" rx="3"/>
               <text x="${padding.left + googlePreviousWidth + 8}" y="${googleY2 + 23}" font-size="12" font-weight="600" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${metric.format(metric.googlePrevious)}</text>
               <text x="${padding.left + googlePreviousWidth + 8}" y="${googleY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
-              
+
               <!-- Change Indicator (Google) -->
               ${metric.googleCurrent > 0 && metric.googlePrevious > 0 && metric.googleChange !== -999 ? `
                 <text x="${width - padding.right + 10}" y="${googleY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.googleChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
                   ${metric.googleChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.googleChange).toFixed(1)}%
+                </text>
+              ` : ''}
+
+              <!-- META ADS -->
+              <text x="${padding.left - 15}" y="${metaY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#2563EB" font-family="Roboto, Arial, sans-serif">Meta Ads</text>
+
+              <!-- Current Period Bar (Meta) -->
+              <rect x="${padding.left}" y="${metaY1}" width="${metaCurrentWidth}" height="${barHeight}" fill="url(#metaGradient)" rx="3"/>
+              <text x="${padding.left + metaCurrentWidth + 8}" y="${metaY1 + 23}" font-size="13" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.format(metric.metaCurrent)}</text>
+              <text x="${padding.left + metaCurrentWidth + 8}" y="${metaY1 + 11}" font-size="9" font-weight="500" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${currentYear}</text>
+
+              <!-- Previous Period Bar (Meta) -->
+              <rect x="${padding.left}" y="${metaY2}" width="${metaPreviousWidth}" height="${barHeight}" fill="url(#metaLightGradient)" rx="3"/>
+              <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 23}" font-size="12" font-weight="600" fill="#6B7280" font-family="Roboto, Arial, sans-serif">${metric.format(metric.metaPrevious)}</text>
+              <text x="${padding.left + metaPreviousWidth + 8}" y="${metaY2 + 11}" font-size="9" font-weight="500" fill="#9CA3AF" font-family="Roboto, Arial, sans-serif">${previousYear}</text>
+
+              <!-- Change Indicator (Meta) -->
+              ${metric.metaCurrent > 0 && metric.metaPrevious > 0 && metric.metaChange !== -999 ? `
+                <text x="${width - padding.right + 10}" y="${metaY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.metaChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
+                  ${metric.metaChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.metaChange).toFixed(1)}%
                 </text>
               ` : ''}
             `;
@@ -394,9 +615,6 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
   
   const { metrics } = reportData.metaData;
   const metaYoYData = reportData.yoyComparison?.meta;
-
-  // Helper function to check if a metric has meaningful data
-  const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
 
   const getMetricChange = (metricKey: string) => {
     if (!metaYoYData || !metaYoYData.changes) return null;
@@ -444,16 +662,145 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
     `;
   };
   
-  // Calculate CTR and CPC
-  const ctr = metrics.totalImpressions > 0 ? (metrics.totalClicks / metrics.totalImpressions) * 100 : 0;
-  const cpc = metrics.totalClicks > 0 ? metrics.totalSpend / metrics.totalClicks : 0;
-  
-  // Calculate offline potential
-        const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-        const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-        const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-        const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
-  
+  // Canonical contract v1: same as /reports — prefer stats.averageCtr (incl. 0), else clicks/impressions×100
+  const ctr = ctrPercentFromStats(
+    metrics.averageCtr,
+    metrics.totalClicks ?? 0,
+    metrics.totalImpressions ?? 0
+  );
+  const cpc = cpcFromStats(
+    metrics.averageCpc,
+    metrics.totalSpend ?? 0,
+    metrics.totalClicks ?? 0
+  );
+
+  const offlinePot = computeOfflinePotentialFromReportData(reportData);
+  const {
+    microTotal: offlineMicroTotal,
+    potentialOfflineReservations,
+    potentialOfflineValue,
+    totalPotentialValue,
+  } = offlinePot;
+  const showMetaOfflineBox =
+    offlineMicroTotal > 0 && potentialOfflineReservations > 0;
+
+  const metaBasicCards: string[] = [];
+  if (pdfMetricVisible(reportData, 'meta', 'report_summary', 'totalSpend')) {
+    metaBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'report_summary', 'totalSpend', 'Wydatki'),
+        formatCurrency(metrics.totalSpend),
+        getMetricChange('totalSpend')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'report_summary', 'totalImpressions')) {
+    metaBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'report_summary', 'totalImpressions', 'Wyświetlenia'),
+        formatNumber(metrics.totalImpressions),
+        getMetricChange('totalImpressions')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'report_summary', 'totalClicks')) {
+    metaBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'report_summary', 'totalClicks', 'Kliknięcia'),
+        formatNumber(metrics.totalClicks),
+        getMetricChange('totalClicks')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'report_summary', 'averageCtr')) {
+    metaBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'meta',
+          'report_summary',
+          'averageCtr',
+          'Współczynnik kliknięć z linku'
+        ),
+        `${ctr.toFixed(2)}%`,
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'report_summary', 'averageCpc')) {
+    metaBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'meta',
+          'report_summary',
+          'averageCpc',
+          'Koszt kliknięcia linku'
+        ),
+        formatCurrency(cpc),
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'report_summary', 'totalConversions')) {
+    metaBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'report_summary', 'totalConversions', 'Konwersje'),
+        formatNumber(metrics.totalConversions),
+        getMetricChange('totalConversions')
+      )
+    );
+  }
+
+  const metaContactCards: string[] = [];
+  if (pdfMetricVisible(reportData, 'meta', 'contact', 'email_contacts')) {
+    metaContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'contact', 'email_contacts', 'E-mail'),
+        formatNumber(metrics.emailContacts),
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'contact', 'click_to_call')) {
+    metaContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'contact', 'click_to_call', 'Telefon'),
+        formatNumber(metrics.phoneContacts),
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'contact', 'reservations')) {
+    metaContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'meta', 'contact', 'reservations', 'Rezerwacje'),
+        formatNumber(metrics.totalReservations),
+        getMetricChange('totalReservations')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'meta', 'contact', 'reservation_value')) {
+    metaContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'meta',
+          'contact',
+          'reservation_value',
+          'Wartość rezerwacji'
+        ),
+        formatCurrency(metrics.totalReservationValue),
+        null
+      )
+    );
+  }
+
+  const showMetaRoas =
+    metrics.roas &&
+    metrics.roas > 0 &&
+    pdfMetricVisible(reportData, 'meta', 'funnel', 'roas');
+
     return `
       <div class="section-container">
         <div class="page-content">
@@ -462,12 +809,7 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         
         <!-- Basic Metrics Grid (2x3) -->
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
-          ${renderMetricCard('Wydatki', formatCurrency(metrics.totalSpend), getMetricChange('totalSpend'))}
-          ${renderMetricCard('Wyświetlenia', formatNumber(metrics.totalImpressions), getMetricChange('totalImpressions'))}
-          ${renderMetricCard('Kliknięcia', formatNumber(metrics.totalClicks), getMetricChange('totalClicks'))}
-          ${renderMetricCard('Współczynnik kliknięć z linku', `${ctr.toFixed(2)}%`, null)}
-          ${renderMetricCard('Koszt kliknięcia linku', formatCurrency(cpc), null)}
-          ${renderMetricCard('Konwersje', formatNumber(metrics.totalConversions), getMetricChange('totalConversions'))}
+          ${metaBasicCards.join('')}
       </div>
         
         <!-- Contact & Conversions Section -->
@@ -475,20 +817,21 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
         <p style="font-size: 12px; color: #64748B; margin-bottom: 16px;">Metryki kontaktu i zakończonych konwersji</p>
         
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
-          ${renderMetricCard('E-mail', formatNumber(metrics.emailContacts), null)}
-          ${renderMetricCard('Telefon', formatNumber(metrics.phoneContacts), null)}
-          ${renderMetricCard('Rezerwacje', formatNumber(metrics.totalReservations), getMetricChange('totalReservations'))}
-          ${renderMetricCard('Wartość rezerwacji', formatCurrency(metrics.totalReservationValue), null)}
+          ${metaContactCards.join('')}
     </div>
         
-        ${metrics.roas && metrics.roas > 0 ? `
+        ${showMetaRoas ? `
           <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
-            ${renderMetricCard('ROAS', `${metrics.roas.toFixed(2)}x`, null)}
+            ${renderMetricCard(
+              pdfMetricLabel(reportData, 'meta', 'funnel', 'roas', 'ROAS'),
+              `${metrics.roas.toFixed(2)}x`,
+              null
+            )}
           </div>
         ` : ''}
         
-        <!-- Potential Offline Metrics - Summary Box -->
-        ${(metrics.emailContacts > 0 || metrics.phoneContacts > 0) && potentialOfflineReservations > 0 ? `
+        <!-- Potential Offline Metrics - Summary Box (global 20% model; Belmonte = Meta-only micro pool) -->
+        ${showMetaOfflineBox ? `
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 20px; margin-bottom: 32px;">
             <h3 style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 16px;">Potencjalne Metryki Offline</h3>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12px;">
@@ -512,9 +855,45 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
   `;
 };
 
-// Generate Conversion Funnel HTML - EXACT copy from ConversionFunnel.tsx
-const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta') => {
-  const { booking_step_1, booking_step_2, booking_step_3, reservations, reservation_value, roas } = funnelData;
+// Generate Conversion Funnel HTML — labels follow client metrics config (same as WeeklyReportView / ConversionFunnel).
+const generateConversionFunnelHTML = (
+  funnelData: any,
+  reportData: ReportData,
+  platform: 'meta' | 'google'
+) => {
+  const { booking_step_1, booking_step_2, booking_step_3, reservations, reservation_value, total_conversion_value, roas } = funnelData;
+  const displayConversionValue = total_conversion_value ?? reservation_value;
+
+  const step1Label = pdfMetricLabel(
+    reportData,
+    platform,
+    'funnel',
+    'booking_step_1',
+    platform === 'google' ? 'Booking step 1' : 'Wyszukiwania'
+  );
+  const step2Label = pdfMetricLabel(
+    reportData,
+    platform,
+    'funnel',
+    'booking_step_2',
+    platform === 'google' ? 'Booking step 2' : 'Wyświetlenia zawartości'
+  );
+  const step3Label = pdfMetricLabel(
+    reportData,
+    platform,
+    'funnel',
+    'booking_step_3',
+    platform === 'google' ? 'Booking step 3' : 'Zainicjowane przejścia do kasy'
+  );
+  const reservationsLabel = pdfMetricLabel(reportData, platform, 'funnel', 'reservations', 'Ilość rezerwacji');
+  const reservationValueLabel = pdfMetricLabel(
+    reportData,
+    platform,
+    'funnel',
+    total_conversion_value !== undefined ? 'total_conversion_value' : 'reservation_value',
+    platform === 'google' ? 'Łączna wartość rezerwacji' : 'Wartość rezerwacji'
+  );
+  const roasLabel = pdfMetricLabel(reportData, platform, 'funnel', 'roas', 'ROAS');
 
   // Create funnel path function - EXACT copy from ConversionFunnel.tsx
   const createFunnelPath = (index: number) => {
@@ -532,25 +911,25 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
   // Clean, flat navy/blue-grey color scheme - subtle progression
   const funnelSteps = [
     {
-      label: "Krok 1 w BE",
+      label: step1Label,
       value: booking_step_1,
       percentage: 100,
       bgColor: "background: #1E293B" // Darkest - top of funnel
     },
     {
-      label: "Krok 2 w BE", 
+      label: step2Label,
       value: booking_step_2,
       percentage: booking_step_1 > 0 ? Math.round((booking_step_2 / booking_step_1) * 100) : 0,
       bgColor: "background: #334155" // Dark mid-tone
     },
     {
-      label: "Krok 3 w BE",
+      label: step3Label,
       value: booking_step_3,
       percentage: booking_step_1 > 0 ? Math.round((booking_step_3 / booking_step_1) * 100) : 0,
       bgColor: "background: #475569" // Light mid-tone
     },
     {
-      label: "Ilość rezerwacji",
+      label: reservationsLabel,
       value: reservations,
       percentage: booking_step_1 > 0 ? Math.round((reservations / booking_step_1) * 100) : 0,
       bgColor: "background: #64748B" // Lightest - bottom of funnel
@@ -559,12 +938,12 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
 
   const bottomCards = [
     {
-      label: "Wartość rezerwacji",
-      value: reservation_value,
+      label: reservationValueLabel,
+      value: displayConversionValue,
       isROAS: false
     },
     {
-      label: "ROAS",
+      label: roasLabel,
       value: roas,
       isROAS: true
     }
@@ -614,7 +993,7 @@ const generateConversionFunnelHTML = (funnelData: any, platform: string = 'Meta'
           
           return `
       <div style="text-align: center; margin-bottom: 40px;">
-        <h3 style="color: #0F172A; font-size: 20px; font-weight: 600; margin: 0 0 4px 0;">Ścieżka Konwersji ${platform}</h3>
+        <h3 style="color: #0F172A; font-size: 20px; font-weight: 600; margin: 0 0 4px 0;">Ścieżka Konwersji ${platform === 'google' ? 'Google Ads' : 'Meta Ads'}</h3>
         <p style="color: #64748B; font-size: 13px; margin: 0;">System rezerwacji online</p>
                 </div>
       
@@ -655,7 +1034,7 @@ const generateMetaFunnelSection = (reportData: ReportData) => {
     <div class="section-container">
       <div class="funnel-section">
         <h2 class="section-title">Meta Ads - Ścieżka Konwersji</h2>
-        ${generateConversionFunnelHTML(reportData.metaData.funnel, 'Meta Ads')}
+        ${generateConversionFunnelHTML(reportData.metaData.funnel, reportData, 'meta')}
                 </div>
               </div>
   `;
@@ -676,9 +1055,6 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
   
   const { metrics } = reportData.googleData;
   const googleYoYData = reportData.yoyComparison?.google;
-
-  // Helper function to check if a metric has meaningful data
-  const hasData = (value: number | undefined | null) => value !== null && value !== undefined && value > 0;
 
   const getMetricChange = (metricKey: string) => {
     if (!googleYoYData || !googleYoYData.changes) return null;
@@ -726,15 +1102,154 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
     `;
   };
   
-  // Calculate CTR and CPC
-  const ctr = metrics.totalImpressions > 0 ? (metrics.totalClicks / metrics.totalImpressions) * 100 : 0;
-  const cpc = metrics.totalClicks > 0 ? metrics.totalSpend / metrics.totalClicks : 0;
-  
-  // Calculate offline potential
-  const potentialOfflineReservations = Math.round((metrics.emailContacts + metrics.phoneContacts) * 0.2);
-  const averageReservationValue = metrics.totalReservations > 0 ? metrics.totalReservationValue / metrics.totalReservations : 0;
-  const potentialOfflineValue = averageReservationValue * potentialOfflineReservations;
-  const totalPotentialValue = potentialOfflineValue + metrics.totalReservationValue;
+  // Canonical contract v1: same as /reports — prefer stats.averageCtr (incl. 0), else clicks/impressions×100
+  const ctr = ctrPercentFromStats(
+    metrics.averageCtr,
+    metrics.totalClicks ?? 0,
+    metrics.totalImpressions ?? 0
+  );
+  const cpc = cpcFromStats(
+    metrics.averageCpc,
+    metrics.totalSpend ?? 0,
+    metrics.totalClicks ?? 0
+  );
+
+  const clientName = reportData.clientName || '';
+  const offlinePot = computeOfflinePotentialFromReportData(reportData);
+  const {
+    microTotal: offlineMicroTotal,
+    potentialOfflineReservations,
+    potentialOfflineValue,
+    totalPotentialValue,
+  } = offlinePot;
+  // Belmonte: offline model uses Meta only — do not repeat the box under Google Ads (same numbers live under Meta).
+  const showGoogleOfflineBox =
+    !isBelmonteClient(clientName) &&
+    offlineMicroTotal > 0 &&
+    potentialOfflineReservations > 0;
+
+  const googleBasicCards: string[] = [];
+  if (pdfMetricVisible(reportData, 'google', 'report_summary', 'totalSpend')) {
+    googleBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'google', 'report_summary', 'totalSpend', 'Wydatki'),
+        formatCurrency(metrics.totalSpend),
+        getMetricChange('totalSpend')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'report_summary', 'totalImpressions')) {
+    googleBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'google', 'report_summary', 'totalImpressions', 'Wyświetlenia'),
+        formatNumber(metrics.totalImpressions),
+        getMetricChange('totalImpressions')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'report_summary', 'totalClicks')) {
+    googleBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'google', 'report_summary', 'totalClicks', 'Kliknięcia'),
+        formatNumber(metrics.totalClicks),
+        getMetricChange('totalClicks')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'report_summary', 'averageCtr')) {
+    googleBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'google',
+          'report_summary',
+          'averageCtr',
+          'Współczynnik kliknięć z linku'
+        ),
+        `${ctr.toFixed(2)}%`,
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'report_summary', 'averageCpc')) {
+    googleBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'google',
+          'report_summary',
+          'averageCpc',
+          'Koszt kliknięcia linku'
+        ),
+        formatCurrency(cpc),
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'report_summary', 'totalConversions')) {
+    googleBasicCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'google',
+          'report_summary',
+          'totalConversions',
+          'Konwersje'
+        ),
+        formatNumber(metrics.totalConversions),
+        getMetricChange('totalConversions')
+      )
+    );
+  }
+
+  const googleContactCards: string[] = [];
+  if (pdfMetricVisible(reportData, 'google', 'contact', 'email_contacts')) {
+    googleContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'google', 'contact', 'email_contacts', 'E-mail'),
+        formatNumber(metrics.emailContacts),
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'contact', 'click_to_call')) {
+    googleContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'google', 'contact', 'click_to_call', 'Telefon'),
+        formatNumber(metrics.phoneContacts),
+        null
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'contact', 'reservations')) {
+    googleContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(reportData, 'google', 'contact', 'reservations', 'Rezerwacje'),
+        formatNumber(metrics.totalReservations),
+        getMetricChange('totalReservations')
+      )
+    );
+  }
+  if (pdfMetricVisible(reportData, 'google', 'contact', 'reservation_value')) {
+    googleContactCards.push(
+      renderMetricCard(
+        pdfMetricLabel(
+          reportData,
+          'google',
+          'contact',
+          'reservation_value',
+          'Wartość rezerwacji'
+        ),
+        formatCurrency(metrics.totalReservationValue),
+        null
+      )
+    );
+  }
+
+  const showGoogleRoas =
+    metrics.roas &&
+    metrics.roas > 0 &&
+    pdfMetricVisible(reportData, 'google', 'funnel', 'roas');
   
   return `
     <div class="section-container">
@@ -744,12 +1259,7 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
         
         <!-- Basic Metrics Grid (2x3) -->
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px;">
-          ${renderMetricCard('Wydatki', formatCurrency(metrics.totalSpend), getMetricChange('totalSpend'))}
-          ${renderMetricCard('Wyświetlenia', formatNumber(metrics.totalImpressions), getMetricChange('totalImpressions'))}
-          ${renderMetricCard('Kliknięcia', formatNumber(metrics.totalClicks), getMetricChange('totalClicks'))}
-          ${renderMetricCard('Współczynnik kliknięć z linku', `${ctr.toFixed(2)}%`, null)}
-          ${renderMetricCard('Koszt kliknięcia linku', formatCurrency(cpc), null)}
-          ${renderMetricCard('Konwersje', formatNumber(metrics.totalConversions), getMetricChange('totalConversions'))}
+          ${googleBasicCards.join('')}
         </div>
         
         <!-- Contact & Conversions Section -->
@@ -757,20 +1267,21 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
         <p style="font-size: 12px; color: #64748B; margin-bottom: 16px;">Metryki kontaktu i zakończonych konwersji</p>
         
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
-          ${renderMetricCard('E-mail', formatNumber(metrics.emailContacts), null)}
-          ${renderMetricCard('Telefon', formatNumber(metrics.phoneContacts), null)}
-          ${renderMetricCard('Rezerwacje', formatNumber(metrics.totalReservations), getMetricChange('totalReservations'))}
-          ${renderMetricCard('Wartość rezerwacji', formatCurrency(metrics.totalReservationValue), null)}
+          ${googleContactCards.join('')}
         </div>
         
-        ${metrics.roas && metrics.roas > 0 ? `
+        ${showGoogleRoas ? `
           <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px;">
-            ${renderMetricCard('ROAS', `${metrics.roas.toFixed(2)}x`, null)}
+            ${renderMetricCard(
+              pdfMetricLabel(reportData, 'google', 'funnel', 'roas', 'ROAS'),
+              `${metrics.roas.toFixed(2)}x`,
+              null
+            )}
           </div>
         ` : ''}
         
         <!-- Potential Offline Metrics - Summary Box -->
-        ${(metrics.emailContacts > 0 || metrics.phoneContacts > 0) && potentialOfflineReservations > 0 ? `
+        ${showGoogleOfflineBox ? `
           <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 20px; margin-bottom: 32px;">
             <h3 style="font-size: 13px; font-weight: 500; color: #0F172A; margin-bottom: 16px;">Potencjalne Metryki Offline</h3>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; font-size: 12px;">
@@ -806,7 +1317,7 @@ const generateGoogleFunnelSection = (reportData: ReportData) => {
     <div class="section-container">
       <div class="funnel-section">
         <h2 class="section-title">Google Ads - Ścieżka Konwersji</h2>
-        ${generateConversionFunnelHTML(reportData.googleData.funnel, 'Google Ads')}
+        ${generateConversionFunnelHTML(reportData.googleData.funnel, reportData, 'google')}
       </div>
     </div>
   `;
@@ -896,41 +1407,34 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     `;
   }
 
-  // Generate charts for both Spend and Clicks metrics (matching MetaAdsTables.tsx UI default)
-  const generateChartsForMetric = (metric: 'spend' | 'clicks') => {
-    // Process gender data for the specific metric
-  const genderMap = new Map();
+  const generateChartsForMetric = (metric: 'spend' | 'clicks' | 'reservation_value') => {
+    const genderMap = new Map();
     validData.forEach(item => {
-    let gender = item.gender || 'Nieznane';
-    // Ensure gender labels are in Polish (handle both English and Polish input)
-    if (gender.toLowerCase() === 'female' || gender.toLowerCase() === 'kobieta') gender = 'Kobiety';
-    else if (gender.toLowerCase() === 'male' || gender.toLowerCase() === 'mężczyzna') gender = 'Mężczyźni';
-    else if (gender.toLowerCase() === 'unknown' || gender.toLowerCase() === 'nieznane') gender = 'Nieznane';
+      let gender = item.gender || 'Nieznane';
+      if (gender.toLowerCase() === 'female' || gender.toLowerCase() === 'kobieta') gender = 'Kobiety';
+      else if (gender.toLowerCase() === 'male' || gender.toLowerCase() === 'mężczyzna') gender = 'Mężczyźni';
+      else if (gender.toLowerCase() === 'unknown' || gender.toLowerCase() === 'nieznane') gender = 'Nieznane';
       
-      // 🔧 CRITICAL FIX: Parse strings to numbers (Meta API returns strings!)
       const rawValue = item[metric];
-      const value = metric === 'spend' 
+      const value = (metric === 'spend' || metric === 'reservation_value')
         ? (typeof rawValue === 'string' ? parseFloat(rawValue) : (rawValue || 0)) 
         : (typeof rawValue === 'string' ? parseInt(rawValue) : (rawValue || 0));
       
       genderMap.set(gender, (genderMap.get(gender) || 0) + value);
-  });
+    });
 
-    // Process age data for the specific metric
-  const ageMap = new Map();
+    const ageMap = new Map();
     validData.forEach(item => {
-    let age = item.age || 'Nieznane';
-    // Ensure age labels are in Polish
-    if (age.toLowerCase() === 'unknown' || age.toLowerCase() === 'nieznane') age = 'Nieznane';
+      let age = item.age || 'Nieznane';
+      if (age.toLowerCase() === 'unknown' || age.toLowerCase() === 'nieznane') age = 'Nieznane';
       
-      // 🔧 CRITICAL FIX: Parse strings to numbers (Meta API returns strings!)
       const rawValue = item[metric];
-      const value = metric === 'spend' 
+      const value = (metric === 'spend' || metric === 'reservation_value')
         ? (typeof rawValue === 'string' ? parseFloat(rawValue) : (rawValue || 0)) 
         : (typeof rawValue === 'string' ? parseInt(rawValue) : (rawValue || 0));
       
       ageMap.set(age, (ageMap.get(age) || 0) + value);
-  });
+    });
 
   const genderEntries = Array.from(genderMap.entries()).sort((a, b) => b[1] - a[1]);
   const ageEntries = Array.from(ageMap.entries()).sort((a, b) => b[1] - a[1]);
@@ -938,8 +1442,8 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
     const genderTotal = genderEntries.reduce((sum, [, value]) => sum + value, 0);
     const ageTotal = ageEntries.reduce((sum, [, value]) => sum + value, 0);
 
-    const metricLabel = metric === 'spend' ? 'Wydatki' : 'Kliknięcia';
-    const formatValue = metric === 'spend' 
+    const metricLabel = metric === 'reservation_value' ? 'Wartość rezerwacji' : metric === 'spend' ? 'Wydatki' : 'Kliknięcia';
+    const formatValue = (metric === 'spend' || metric === 'reservation_value')
       ? (val: number | null | undefined) => formatCurrency(val || 0)
       : (val: number | null | undefined) => formatNumber(val || 0);
 
@@ -1019,13 +1523,11 @@ const generateDemographicChartsHTML = (demographicData: any[]) => {
   const genderColors = ['#8B5CF6', '#3B82F6', '#6B7280']; // Purple, Blue, Gray
   const ageColors = ['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316']; // Orange, Green, Blue, Purple, Red, Gray, Orange
 
-  // 🔧 FIX: Use 'spend' instead of 'reservation_value' to match UI default
-  // UI component in MetaAdsTables.tsx defaults to 'spend' metric
   return `
     <div class="demographics-section">
       <h4 class="demographics-title">Analiza Demograficzna</h4>
       
-      ${generateChartsForMetric('spend')}
+      ${generateChartsForMetric('reservation_value')}
       ${generateChartsForMetric('clicks')}
     </div>
   `;
@@ -1056,18 +1558,18 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
             <thead>
               <tr>
                 <th>Nazwa kampanii</th>
-                <th>Wydatki</th>
-                <th>Wyświetlenia</th>
-                <th>Kliknięcia</th>
-                <th>Ilość Rezerwacji</th>
-                <th>Wartość Rezerwacji</th>
-                <th>ROAS</th>
+                  <th>${pdfMetricLabel(reportData, 'meta', 'campaign_table', 'totalSpend', 'Wydatki')}</th>
+                  <th>${pdfMetricLabel(reportData, 'meta', 'campaign_table', 'totalImpressions', 'Wyświetlenia')}</th>
+                  <th>${pdfMetricLabel(reportData, 'meta', 'campaign_table', 'totalClicks', 'Kliknięcia')}</th>
+                  <th>${pdfMetricLabel(reportData, 'meta', 'campaign_table', 'reservations', 'Ilość Rezerwacji')}</th>
+                  <th>${pdfMetricLabel(reportData, 'meta', 'campaign_table', 'reservation_value', 'Wartość Rezerwacji')}</th>
+                  <th>${pdfMetricLabel(reportData, 'meta', 'campaign_table', 'roas', 'ROAS')}</th>
               </tr>
             </thead>
             <tbody>
               ${sortedCampaigns.map(campaign => `
                 <tr>
-                  <td class="campaign-name">${campaign.campaign_name || 'Nieznana kampania'}</td>
+                  <td class="campaign-name">${campaign.campaign_name || campaign.campaignName || campaign.name || campaign.id || 'Nieznana kampania'}</td>
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
                   <td class="number">${formatNumber(campaign.impressions || 0)}</td>
                   <td class="number">${formatNumber(campaign.clicks || 0)}</td>
@@ -1083,7 +1585,7 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
         <!-- Only show additional sections if campaigns exist -->
         ${campaignsWithSpend.length > 0 ? `
         <!-- Demographics -->
-          ${(() => {
+          ${pdfMetricVisible(reportData, 'meta', 'demographic_breakdown', 'age') || pdfMetricVisible(reportData, 'meta', 'demographic_breakdown', 'gender') ? (() => {
             logger.info('🔍 DEMOGRAPHIC DATA AUDIT:', {
               hasDemographicPerformance: !!tables.demographicPerformance,
               demographicDataLength: tables.demographicPerformance?.length || 0,
@@ -1092,30 +1594,41 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
               fullTablesData: tables
             });
             return generateDemographicChartsHTML(tables.demographicPerformance);
-          })()}
+          })() : ''}
         
         <!-- Placement Performance -->
-        ${tables.placementPerformance && tables.placementPerformance.length > 0 ? `
+        ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'placement') && tables.placementPerformance && tables.placementPerformance.length > 0 ? `
           <div class="placement-table">
-            <h3 class="table-title">Wydajność Miejsc Docelowych</h3>
+            <h3 class="table-title">Skuteczność Miejsc Docelowych</h3>
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Miejsce docelowe</th>
-                  <th>Wydatki</th>
-                  <th>Wyświetlenia</th>
-                  <th>Kliknięcia</th>
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'placement') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'placement', 'Miejsce docelowe')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'totalSpend') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'totalSpend', 'Wydatki')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'totalImpressions') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'totalImpressions', 'Wyświetlenia')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'totalClicks') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'totalClicks', 'Kliknięcia')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'reservations') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'reservations', 'Rezerwacje')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'reservation_value') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'reservation_value', 'Wartość Rezerwacji')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'roas') ? `<th>${pdfMetricLabel(reportData, 'meta', 'placement_table', 'roas', 'ROAS')}</th>` : ''}
                 </tr>
               </thead>
               <tbody>
-                ${tables.placementPerformance.slice(0, 10).map(placement => `
+                ${tables.placementPerformance.slice(0, 10).map(placement => {
+                  const pSpend = typeof placement.spend === 'string' ? parseFloat(placement.spend) : (placement.spend || 0);
+                  const pResVal = typeof placement.reservation_value === 'string' ? parseFloat(placement.reservation_value) : (placement.reservation_value || 0);
+                  const pRes = typeof placement.reservations === 'string' ? parseInt(placement.reservations) : (placement.reservations || 0);
+                  const pRoas = pSpend > 0 ? pResVal / pSpend : 0;
+                  return `
                   <tr>
-                    <td>${placement.placement || 'Nieznane'}</td>
-                    <td class="number">${formatCurrency(placement.spend || 0)}</td>
-                    <td class="number">${formatNumber(placement.impressions || 0)}</td>
-                    <td class="number">${formatNumber(placement.clicks || 0)}</td>
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'placement') ? `<td>${placement.placement || 'Nieznane'}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'totalSpend') ? `<td class="number">${formatCurrency(pSpend)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'totalImpressions') ? `<td class="number">${formatNumber(typeof placement.impressions === 'string' ? parseInt(placement.impressions) : (placement.impressions || 0))}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'totalClicks') ? `<td class="number">${formatNumber(typeof placement.clicks === 'string' ? parseInt(placement.clicks) : (placement.clicks || 0))}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'reservations') ? `<td class="number">${formatNumber(pRes)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'reservation_value') ? `<td class="number">${formatCurrency(pResVal)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'meta', 'placement_table', 'roas') ? `<td class="number">${pRoas.toFixed(2)}x</td>` : ''}
                   </tr>
-                `).join('')}
+                `}).join('')}
               </tbody>
             </table>
           </div>
@@ -1159,54 +1672,482 @@ const generateMetaCampaignDetailsSection = (reportData: ReportData) => {
   `;
 };
 
+/**
+ * Render the Google Ads geographic_view payload as a Poland heatmap +
+ * top-cities table for the PDF.
+ *
+ * The heatmap reuses the same voivodeship paths and heatmap_color helpers
+ * as the live <PolandRegionMap /> component so the PDF and the dashboard
+ * stay visually identical. We import dynamically inside the function so
+ * Next.js can still tree-shake the SVG path data out of the API route
+ * bundle when this section is not generated.
+ */
+const generateGoogleGeographicSectionHTML = (
+  geographicData: any[],
+  campaignTotals?: {
+    spend?: number;
+    clicks?: number;
+    conversions?: number;
+    conversion_value?: number;
+  } | null,
+  options?: {
+    includeCityTable?: boolean;
+  },
+) => {
+  if (!geographicData || geographicData.length === 0) {
+    return '';
+  }
+
+  // Synchronous require so the heavy work runs only when this section is
+  // actually generated. We import the module here (not at the top of the
+  // file) because route.ts already approaches the 5000-line mark and
+  // localized imports keep the regional change contained.
+  const { POLAND_MAP_VIEW_BOX, POLAND_VOIVODESHIPS, VOIVODESHIP_BY_CODE, heatmapColor } = require('@/lib/poland-voivodeships');
+  const { formatPolishCityName, formatPolishVoivodeshipName, resolvePolishVoivodeshipCode, formatPolishCountryName } = require('@/lib/polish-geo-display');
+
+  type RegionBucket = {
+    code: string; name: string;
+    spend: number; impressions: number; clicks: number;
+    conversions: number; conversion_value: number;
+  };
+  type CountryBucket = RegionBucket;
+
+  const byCode = new Map<string, RegionBucket>();
+  const foreignByCountry = new Map<string, CountryBucket>();
+  let unmatchedPolandValue = 0;
+
+  for (const row of geographicData) {
+    if (row.countryCode && row.countryCode !== 'PL') {
+      const countryKey = row.countryCode || row.countryName || '__foreign__';
+      const country = foreignByCountry.get(countryKey) ?? {
+        code: countryKey,
+        name: row.countryName || row.countryCode || 'Zagranica / Nieznane',
+        spend: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0,
+      };
+      country.spend += row.spend || 0;
+      country.impressions += row.impressions || 0;
+      country.clicks += row.clicks || 0;
+      country.conversions += row.conversions || 0;
+      country.conversion_value += row.conversion_value || row.reservation_value || 0;
+      foreignByCountry.set(countryKey, country);
+      continue;
+    }
+
+    const code = resolvePolishVoivodeshipCode(row);
+    const shape = code ? VOIVODESHIP_BY_CODE[code] : null;
+    if (!code || !shape) {
+      unmatchedPolandValue += row.conversion_value || row.reservation_value || 0;
+      continue;
+    }
+    const bucket = byCode.get(code) ?? {
+      code, name: shape.name,
+      spend: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0,
+    };
+    bucket.spend += row.spend || 0;
+    bucket.impressions += row.impressions || 0;
+    bucket.clicks += row.clicks || 0;
+    bucket.conversions += row.conversions || 0;
+    bucket.conversion_value += row.conversion_value || row.reservation_value || 0;
+    byCode.set(code, bucket);
+  }
+
+  // Heatmap is keyed off reservation/conversion value to match the dashboard's
+  // default selection - this is the metric clients most often want to see
+  // geographically (ROAS surrogate).
+  const heatmapMetric = 'conversion_value' as const;
+  const values = Array.from(byCode.values()).map((b) => b[heatmapMetric]);
+  const maxValue = values.length > 0 ? Math.max(...values) : 0;
+  const foreignTotal = Array.from(foreignByCountry.values()).reduce((s, country) => s + country[heatmapMetric], 0);
+  const geographicViewTotal = values.reduce((s, v) => s + v, 0) + unmatchedPolandValue + foreignTotal;
+
+  // When campaign totals are available, reconcile the map back to campaign
+  // value by surfacing the gap as "Nieznana lokalizacja". Google's
+  // geographic_view does not return rows for every conversion, so this bucket
+  // is what makes the map total match the campaign-level KPI.
+  const campaignMetricTotal = typeof campaignTotals?.[heatmapMetric] === 'number'
+    ? (campaignTotals![heatmapMetric] as number)
+    : null;
+  const unknownLocationMetric = campaignMetricTotal !== null
+    ? Math.max(0, campaignMetricTotal - geographicViewTotal)
+    : 0;
+  const totalMetric = campaignMetricTotal !== null ? campaignMetricTotal : geographicViewTotal;
+
+  // Top cities: sort by clicks (matches live GoogleAdsTables city list).
+  const cityRows = [...geographicData]
+    .filter((r: any) => r.cityName && r.cityName !== '(nieznane)')
+    .sort((a: any, b: any) => (b.clicks || 0) - (a.clicks || 0))
+    .slice(0, 15);
+
+  const paths = POLAND_VOIVODESHIPS.map((v: any) => {
+    const bucket = byCode.get(v.code);
+    const value = bucket ? bucket[heatmapMetric] : 0;
+    const normalized = maxValue > 0 ? value / maxValue : 0;
+    const fill = heatmapColor(normalized, value > 0);
+    return `<path d="${v.path}" fill="${fill}" stroke="#94a3b8" stroke-width="1"/>`;
+  }).join('');
+
+  const legendStops = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => {
+    const x = 50 + t * 500;
+    return `<rect x="${x}" y="0" width="100" height="14" fill="${heatmapColor(t, true)}" />`;
+  }).join('');
+
+  const topRegions = Array.from(byCode.values())
+    .filter((b) => b[heatmapMetric] > 0)
+    .sort((a, b) => b[heatmapMetric] - a[heatmapMetric])
+    .slice(0, 5);
+  const topForeignCountries = Array.from(foreignByCountry.values())
+    .filter((b) => b[heatmapMetric] > 0)
+    .sort((a, b) => b[heatmapMetric] - a[heatmapMetric])
+    .slice(0, 5);
+
+  return `
+    <div class="geographic-section" style="padding: 0 2mm; margin-top: 20px;">
+      <h3 class="table-title">Wydajność wg Regionów (Polska + zagranica)</h3>
+      <p style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
+        Mapa cieplna — wartość konwersji wg województw; zagranica w podsumowaniu.
+        ${campaignMetricTotal !== null
+          ? `Łącznie (kampanie Google Ads): <strong>${formatCurrency(totalMetric)}</strong> &middot; z czego z lokalizacji: <strong>${formatCurrency(geographicViewTotal)}</strong>`
+          : `Łącznie: <strong>${formatCurrency(totalMetric)}</strong>`}
+      </p>
+
+      <div style="display: flex; gap: 16px; align-items: flex-start; page-break-inside: avoid;">
+        <div style="flex: 1.6; min-width: 0;">
+          <svg viewBox="${POLAND_MAP_VIEW_BOX}" style="width: 100%; height: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+            ${paths}
+          </svg>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; font-size: 10px; color: #64748b;">
+            <span>0</span>
+            <svg viewBox="0 0 600 14" style="flex: 1; height: 8px; margin: 0 12px;" preserveAspectRatio="none">
+              ${legendStops}
+            </svg>
+            <span>${formatCurrency(maxValue)}</span>
+          </div>
+        </div>
+
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 8px;">
+            Top 5 województw — wartość konwersji
+          </div>
+          ${topRegions.length === 0 ? `
+            <div style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">Brak danych dla wybranego okresu.</div>
+          ` : topRegions.map((r, idx) => {
+            const pct = totalMetric > 0 ? (r[heatmapMetric] / totalMetric) * 100 : 0;
+            return `
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 11px; color: #1e293b;"><strong>#${idx + 1}</strong> ${r.name}</span>
+                  <span style="font-size: 11px; font-weight: 600; color: #0f172a;">${formatCurrency(r[heatmapMetric])}</span>
+                </div>
+                <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
+                  <div style="height: 100%; width: ${pct.toFixed(1)}%; background: #0f172a;"></div>
+                </div>
+                <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${pct.toFixed(1)}%</div>
+              </div>
+            `;
+          }).join('')}
+
+          ${unmatchedPolandValue > 0 ? `
+            <div style="font-size: 10px; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 8px; margin-top: 8px;">
+              <strong>Polska niedopasowana:</strong> ${formatCurrency(unmatchedPolandValue)} w wierszach, których Google Ads nie przypisał jednoznacznie do województwa.
+            </div>
+          ` : ''}
+
+          ${topForeignCountries.length > 0 ? `
+            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin: 14px 0 8px;">
+              Zagranica — wartość konwersji
+            </div>
+            ${topForeignCountries.map((r) => {
+              const pct = totalMetric > 0 ? (r[heatmapMetric] / totalMetric) * 100 : 0;
+              return `
+                <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 11px; color: #1e293b;"><strong>${formatPolishCountryName({ countryCode: r.code, countryName: r.name })}</strong></span>
+                    <span style="font-size: 11px; font-weight: 600; color: #0f172a;">${formatCurrency(r[heatmapMetric])}</span>
+                  </div>
+                  <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
+                    <div style="height: 100%; width: ${pct.toFixed(1)}%; background: #64748b;"></div>
+                  </div>
+                  <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${pct.toFixed(1)}%</div>
+                </div>
+              `;
+            }).join('')}
+          ` : ''}
+
+          ${campaignMetricTotal !== null && unknownLocationMetric > 0 ? `
+            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin: 14px 0 8px;">
+              Nieznana lokalizacja
+            </div>
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 11px; color: #1e293b;"><strong>Bez przypisania geograficznego</strong></span>
+                <span style="font-size: 11px; font-weight: 600; color: #0f172a;">${formatCurrency(unknownLocationMetric)}</span>
+              </div>
+              <div style="height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden;">
+                <div style="height: 100%; width: ${totalMetric > 0 ? ((unknownLocationMetric / totalMetric) * 100).toFixed(1) : 0}%; background: #94a3b8;"></div>
+              </div>
+              <div style="font-size: 10px; color: #64748b; margin-top: 2px;">
+                ${totalMetric > 0 ? ((unknownLocationMetric / totalMetric) * 100).toFixed(1) : '0.0'}% wartości kampanii
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+
+      ${options?.includeCityTable !== false && cityRows.length > 0 ? `
+        <div class="city-table" style="margin-top: 16px;">
+          <h3 class="table-title">Najlepiej konwertujące miasta</h3>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Miasto</th>
+                <th>Województwo</th>
+                <th>Wydatki</th>
+                <th>Kliknięcia</th>
+                <th>Wartość konwersji</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${cityRows.map((r: any) => {
+                const spend = r.spend || 0;
+                const convVal = r.conversion_value || 0;
+                const regionName = r.countryCode && r.countryCode !== 'PL'
+                  ? (r.regionName || r.region || r.countryName || r.countryCode)
+                  : formatPolishVoivodeshipName(r);
+                return `
+                  <tr>
+                    <td>${formatPolishCityName(r.cityName)}</td>
+                    <td>${regionName}</td>
+                    <td class="number">${formatCurrency(spend)}</td>
+                    <td class="number">${formatNumber(r.clicks || 0)}</td>
+                    <td class="number">${formatCurrency(convVal)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : ''}
+    </div>
+  `;
+};
+
+const generateGoogleCityTableHTML = (geographicData: any[]): string => {
+  if (!geographicData || geographicData.length === 0) return '';
+  const { formatPolishCityName, formatPolishVoivodeshipName } = require('@/lib/polish-geo-display');
+  const cityRows = [...geographicData]
+    .filter((r: any) => r.cityName && r.cityName !== '(nieznane)')
+    .sort((a: any, b: any) => (b.clicks || 0) - (a.clicks || 0))
+    .slice(0, 15);
+  if (cityRows.length === 0) return '';
+  return framedSection('Najlepiej konwertujące miasta', hotelTable(
+    ['Miasto', 'Województwo', 'Kraj', 'Wydatki', 'Kliknięcia', 'Konwersje', 'Wartość konwersji', 'ROAS'],
+    cityRows.map((r: any) => {
+      const spend = parsePdfNumber(r.spend);
+      const clicks = parsePdfNumber(r.clicks);
+      const conversions = parsePdfNumber(r.conversions);
+      const convVal = parsePdfNumber(r.conversion_value || r.reservation_value);
+      const roas = spend > 0 ? convVal / spend : 0;
+      const regionName = r.countryCode && r.countryCode !== 'PL'
+        ? (r.regionName || r.region || r.countryName || r.countryCode)
+        : formatPolishVoivodeshipName(r);
+      return [
+        escapeHtml(formatPolishCityName(r.cityName)),
+        escapeHtml(regionName),
+        escapeHtml(r.countryName || r.countryCode || 'Polska'),
+        formatCurrency(spend),
+        formatNumber(clicks),
+        formatNumber(conversions),
+        formatCurrency(convVal),
+        `${roas.toFixed(2)}x`,
+      ];
+    }),
+    'city-table'
+  ));
+};
+
+/**
+ * Google-specific demographic chart generator.
+ *
+ * Why this is separate from generateDemographicChartsHTML (Meta):
+ * Meta returns rows with BOTH age and gender per row (breakdowns=age,gender).
+ * Google Ads API returns gender_view rows (gender only) and age_range_view
+ * rows (age only) as TWO independent dimensions — they cannot be cross-tabbed
+ * via the API. Each row from the fetcher is tagged with exactly one of
+ * `gender` or `ageRange`; we filter on the tag before aggregating, which
+ * avoids the "Nieznane bucket" double-count that would happen if we reused
+ * the Meta helper.
+ */
+const generateGoogleDemographicChartsHTML = (demographicData: any[]) => {
+  if (!demographicData || demographicData.length === 0) {
+    return '';
+  }
+
+  const genderRows = demographicData.filter((r) => r && r.gender !== undefined && r.gender !== null);
+  const ageRows = demographicData.filter((r) => r && (r.ageRange ?? r.age) !== undefined && (r.ageRange ?? r.age) !== null);
+
+  if (genderRows.length === 0 && ageRows.length === 0) {
+    return '';
+  }
+
+  const parseNum = (v: unknown): number => {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') return parseFloat(v) || 0;
+    return 0;
+  };
+
+  const aggregate = (
+    rows: any[],
+    keyFn: (r: any) => string,
+    metric: 'spend' | 'clicks' | 'reservation_value' | 'impressions'
+  ): Array<[string, number]> => {
+    const map = new Map<string, number>();
+    rows.forEach((r) => {
+      const key = keyFn(r) || 'Nieznane';
+      map.set(key, (map.get(key) || 0) + parseNum(r[metric]));
+    });
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  };
+
+  const genderColors = ['#8B5CF6', '#3B82F6', '#6B7280'];
+  const ageColors = ['#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EF4444', '#6B7280', '#F97316'];
+
+  const pieChart = (
+    entries: Array<[string, number]>,
+    colors: string[],
+    title: string,
+    formatValue: (v: number) => string,
+  ): string => {
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+    if (total <= 0) {
+      return `
+        <div class="demographic-chart">
+          <h5>${title}</h5>
+          <div class="pie-chart-container">
+            <div class="text-center text-xs text-gray-500" style="padding: 24px 0;">Brak danych w tym okresie</div>
+          </div>
+        </div>`;
+    }
+    let cumulative = 0;
+    const segments = entries.map(([label, value], idx) => {
+      const pct = (value / total) * 100;
+      const start = cumulative * 3.6;
+      const end = (cumulative + pct) * 3.6;
+      cumulative += pct;
+      return { label, value, pct: pct.toFixed(1), color: colors[idx] || '#94a3b8', start, end };
+    });
+    return `
+      <div class="demographic-chart">
+        <h5>${title}</h5>
+        <div class="pie-chart-container">
+          <div class="pie-chart">
+            <svg width="200" height="200" viewBox="0 0 200 200">
+              <circle cx="100" cy="100" r="80" fill="transparent" stroke="#e5e7eb" stroke-width="2"/>
+              ${segments.map((s) => {
+                const x1 = 100 + 80 * Math.cos((s.start - 90) * Math.PI / 180);
+                const y1 = 100 + 80 * Math.sin((s.start - 90) * Math.PI / 180);
+                const x2 = 100 + 80 * Math.cos((s.end - 90) * Math.PI / 180);
+                const y2 = 100 + 80 * Math.sin((s.end - 90) * Math.PI / 180);
+                const largeArc = s.end - s.start > 180 ? 1 : 0;
+                return `<path d="M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${s.color}" stroke="white" stroke-width="2"/>`;
+              }).join('')}
+            </svg>
+          </div>
+          <div class="pie-legend">
+            ${segments.map((s) => `
+              <div class="legend-item">
+                <div class="legend-color" style="background-color: ${s.color};"></div>
+                <div class="legend-info">
+                  <span class="legend-label">${s.label}</span>
+                  <div class="legend-stats">
+                    <span class="legend-value">${formatValue(s.value)}</span>
+                    <span class="legend-percentage">${s.pct}%</span>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const chartsForMetric = (metric: 'spend' | 'clicks' | 'reservation_value') => {
+    const genderEntries = aggregate(genderRows, (r) => r.gender, metric);
+    const ageEntries = aggregate(ageRows, (r) => r.ageRange ?? r.age, metric);
+    const label = metric === 'reservation_value' ? 'Wartość konwersji' : metric === 'spend' ? 'Wydatki' : 'Kliknięcia';
+    const fmt = metric === 'clicks' ? formatNumber : formatCurrency;
+    return `
+      <div class="metric-section">
+        <h4 class="metric-title">${label}</h4>
+        <div class="demographics-grid">
+          ${pieChart(genderEntries, genderColors, 'Podział według Płci', fmt)}
+          ${pieChart(ageEntries, ageColors, 'Podział według Grup Wiekowych', fmt)}
+        </div>
+      </div>
+    `;
+  };
+
+  return `
+    <div class="demographics-section">
+      <h4 class="demographics-title">Demografia</h4>
+      ${chartsForMetric('reservation_value')}
+      ${chartsForMetric('clicks')}
+    </div>
+  `;
+};
+
 // Generate Section 8: Google Ads Campaign Details
 const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
   if (!reportData.googleData) return '';
-  
-  const { campaigns, tables } = reportData.googleData;
+
+  const tables = (reportData.googleData.tables ?? {}) as Record<string, any>;
+  const { campaigns } = reportData.googleData;
+
+  // Build campaign-level totals from the same campaigns array used by the KPI
+  // section so the Poland map can compute "Nieznana lokalizacja" as the gap
+  // between this and the geographic_view sum.
+  const geoCampaignTotals = campaigns.reduce(
+    (acc, c: any) => ({
+      spend: acc.spend + (Number(c?.spend) || 0),
+      clicks: acc.clicks + (Number(c?.clicks) || 0),
+      conversions: acc.conversions + (Number(c?.conversions) || 0),
+      conversion_value:
+        acc.conversion_value +
+        (Number(c?.conversion_value ?? c?.total_conversion_value ?? c?.reservation_value) || 0),
+    }),
+    { spend: 0, clicks: 0, conversions: 0, conversion_value: 0 },
+  );
   // Show campaigns with spend data
   const campaignsWithSpend = campaigns.filter(campaign => (campaign.spend || 0) > 0);
   
   // Don't generate section if no campaigns with spend
   if (campaignsWithSpend.length === 0) return '';
   
-  // Sort by spend (descending) and take top 5 for premium display
+  // Wszystkie kampanie z wydatkiem — jak w Meta Ads (sort malejąco po spend)
   const sortedCampaigns = [...campaignsWithSpend].sort((a, b) => (b.spend || 0) - (a.spend || 0));
-  const topCampaigns = sortedCampaigns.slice(0, 5);
-  const remainingCount = sortedCampaigns.length - 5;
-  
-  // Calculate totals for remaining campaigns
-  const remainingTotals = remainingCount > 0 ? sortedCampaigns.slice(5).reduce((acc, campaign) => ({
-    spend: acc.spend + (campaign.spend || 0),
-    impressions: acc.impressions + (campaign.impressions || 0),
-    clicks: acc.clicks + (campaign.clicks || 0),
-    reservations: acc.reservations + (campaign.reservations || 0),
-    reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-  }), { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservation_value: 0 }) : null;
   
   return `
     <div class="campaign-details-section" style="padding: 0 2mm;">
       <h2 class="section-title">Google Ads - Szczegóły Kampanii</h2>
         
-        <!-- Top 5 Campaigns Table (Premium Agency Style) -->
         <div class="campaigns-table">
-          <h3 class="table-title">Top 5 Kampanii wg Wydatków ${remainingCount > 0 ? `<span style="font-size: 11px; font-weight: 400; color: #6B7280;">(+${remainingCount} więcej)</span>` : ''}</h3>
+          <h3 class="table-title">Kampanie wg Wydatków</h3>
           <table class="data-table">
             <thead>
               <tr>
                 <th>Nazwa kampanii</th>
-                <th>Wydatki</th>
-                <th>Wyświetlenia</th>
-                <th>Kliknięcia</th>
-                <th>Ilość Rezerwacji</th>
-                <th>Wartość Rezerwacji</th>
-                <th>ROAS</th>
+                  <th>${pdfMetricLabel(reportData, 'google', 'campaign_table', 'totalSpend', 'Wydatki')}</th>
+                  <th>${pdfMetricLabel(reportData, 'google', 'campaign_table', 'totalImpressions', 'Wyświetlenia')}</th>
+                  <th>${pdfMetricLabel(reportData, 'google', 'campaign_table', 'totalClicks', 'Kliknięcia')}</th>
+                  <th>${pdfMetricLabel(reportData, 'google', 'campaign_table', 'reservations', 'Ilość Rezerwacji')}</th>
+                  <th>${pdfMetricLabel(reportData, 'google', 'campaign_table', 'reservation_value', 'Wartość Rezerwacji')}</th>
+                  <th>${pdfMetricLabel(reportData, 'google', 'campaign_table', 'roas', 'ROAS')}</th>
               </tr>
             </thead>
             <tbody>
-              ${topCampaigns.map(campaign => `
+              ${sortedCampaigns.map(campaign => `
                 <tr>
-                  <td class="campaign-name">${campaign.campaign_name || 'Nieznana kampania'}</td>
+                  <td class="campaign-name">${campaign.campaign_name || campaign.campaignName || campaign.name || campaign.id || 'Nieznana kampania'}</td>
                   <td class="number">${formatCurrency(campaign.spend || 0)}</td>
                   <td class="number">${formatNumber(campaign.impressions || 0)}</td>
                   <td class="number">${formatNumber(campaign.clicks || 0)}</td>
@@ -1215,17 +2156,6 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                   <td class="number">${(campaign.roas || 0).toFixed(2)}x</td>
                 </tr>
               `).join('')}
-              ${remainingTotals ? `
-                <tr style="background: #F9FAFB; border-top: 2px solid #E5E7EB;">
-                  <td class="campaign-name" style="font-style: italic; color: #6B7280;">Pozostałe ${remainingCount} kampanii</td>
-                  <td class="number" style="font-weight: 600;">${formatCurrency(remainingTotals.spend)}</td>
-                  <td class="number">${formatNumber(remainingTotals.impressions)}</td>
-                  <td class="number">${formatNumber(remainingTotals.clicks)}</td>
-                  <td class="number">${formatNumber(remainingTotals.reservations)}</td>
-                  <td class="number">${formatCurrency(remainingTotals.reservation_value)}</td>
-                  <td class="number">${remainingTotals.spend > 0 ? (remainingTotals.reservation_value / remainingTotals.spend).toFixed(2) : '0.00'}x</td>
-                </tr>
-              ` : ''}
             </tbody>
           </table>
         </div>
@@ -1246,7 +2176,7 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
                 </tr>
               </thead>
               <tbody>
-                ${tables.networkPerformance.slice(0, 10).map(network => `
+                ${tables.networkPerformance.slice(0, 10).map((network: any) => `
                   <tr>
                     <td>${network.network || 'Nieznana sieć'}</td>
                     <td class="number">${formatCurrency(network.spend || 0)}</td>
@@ -1260,32 +2190,73 @@ const generateGoogleCampaignDetailsSection = (reportData: ReportData) => {
           ` : ''}
         ` : ''}
         
-        <!-- Device Performance -->
-        ${tables.devicePerformance && tables.devicePerformance.length > 0 ? `
+        <!-- Device Performance (now includes conversions + value + ROAS) -->
+        ${pdfMetricVisible(reportData, 'google', 'device_table', 'device') && tables.devicePerformance && tables.devicePerformance.length > 0 ? `
           <div class="device-table">
             <h3 class="table-title">Wydajność Urządzeń</h3>
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Urządzenie</th>
-                  <th>Wydatki</th>
-                  <th>Wyświetlenia</th>
-                  <th>Kliknięcia</th>
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'device') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'device', 'Urządzenie')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalSpend') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'totalSpend', 'Wydatki')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalImpressions') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'totalImpressions', 'Wyświetlenia')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalClicks') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'totalClicks', 'Kliknięcia')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalConversions') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'totalConversions', 'Konwersje')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'conversion_value') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'conversion_value', 'Wartość konwersji')}</th>` : ''}
+                  ${pdfMetricVisible(reportData, 'google', 'device_table', 'roas') ? `<th>${pdfMetricLabel(reportData, 'google', 'device_table', 'roas', 'ROAS')}</th>` : ''}
                 </tr>
               </thead>
               <tbody>
-                ${tables.devicePerformance.slice(0, 10).map(device => `
+                ${tables.devicePerformance.slice(0, 10).map((device: any) => {
+                  const spend = typeof device.spend === 'string' ? parseFloat(device.spend) : (device.spend || 0);
+                  const conv = typeof device.conversions === 'string' ? parseFloat(device.conversions) : (device.conversions || 0);
+                  const convVal = typeof device.conversion_value === 'string' ? parseFloat(device.conversion_value) : (device.conversion_value || 0);
+                  const roas = typeof device.roas === 'number' ? device.roas : (spend > 0 ? convVal / spend : 0);
+                  return `
                   <tr>
-                    <td>${device.device || 'Nieznane urządzenie'}</td>
-                    <td class="number">${formatCurrency(device.spend || 0)}</td>
-                    <td class="number">${formatNumber(device.impressions || 0)}</td>
-                    <td class="number">${formatNumber(device.clicks || 0)}</td>
-                  </tr>
-                `).join('')}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'device') ? `<td>${googleAdsDeviceLabelPl(device.device ?? device.deviceType)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalSpend') ? `<td class="number">${formatCurrency(spend)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalImpressions') ? `<td class="number">${formatNumber(device.impressions || 0)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalClicks') ? `<td class="number">${formatNumber(device.clicks || 0)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'totalConversions') ? `<td class="number">${formatNumber(conv)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'conversion_value') ? `<td class="number">${formatCurrency(convVal)}</td>` : ''}
+                    ${pdfMetricVisible(reportData, 'google', 'device_table', 'roas') ? `<td class="number">${roas.toFixed(2)}x</td>` : ''}
+                  </tr>`;
+                }).join('')}
               </tbody>
             </table>
           </div>
         ` : ''}
+
+        <!-- Demographic Performance (gender + age, R.100) — always show heading so PDF matches UI expectations -->
+        ${pdfMetricVisible(reportData, 'google', 'demographic_breakdown', 'age') || pdfMetricVisible(reportData, 'google', 'demographic_breakdown', 'gender') ? `<div class="google-demographics-pdf-block" style="margin-top: 16px;">
+          <h3 class="table-title">Demografia</h3>
+          ${(tables.demographicPerformance && tables.demographicPerformance.length > 0)
+            ? (generateGoogleDemographicChartsHTML(tables.demographicPerformance) || `
+              <p style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                Brak danych demograficznych dla tego okresu.
+              </p>`)
+            : `
+              <p style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                Brak danych demograficznych dla tego okresu.
+              </p>`
+          }
+        </div>` : ''}
+
+        <!-- Geographic Performance — always show heading -->
+        ${pdfMetricVisible(reportData, 'google', 'geographic_map', 'region') || pdfMetricVisible(reportData, 'google', 'geographic_map', 'city') ? `<div class="google-geographic-pdf-block" style="margin-top: 16px;">
+          <h3 class="table-title">Regiony i miasta</h3>
+          ${(tables.geographicPerformance && tables.geographicPerformance.length > 0)
+            ? (generateGoogleGeographicSectionHTML(tables.geographicPerformance, geoCampaignTotals) || `
+              <p style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                Nie udało się przygotować widoku mapy dla zebranych danych lokalizacyjnych.
+              </p>`)
+            : `
+              <p style="font-size: 12px; color: #64748b; padding: 12px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                Brak danych regionalnych dla tego okresu.
+              </p>`
+          }
+        </div>` : ''}
       </div>
     </div>
   `;
@@ -1428,7 +2399,7 @@ const generateComparisonBarChart = (reportData: ReportData) => {
   return `
     <div style="margin: 32px 0; page-break-inside: avoid;">
       <h3 style="font-size: 18px; font-weight: 600; color: #1F2937; margin-bottom: 8px;">Porównanie Wydajności Platform</h3>
-      <p style="font-size: 12px; color: #6B7280; margin-bottom: 16px;">Meta Ads vs Google Ads - kluczowe metryki</p>
+      <p style="font-size: 12px; color: #6B7280; margin-bottom: 16px;">Google Ads, następnie Meta Ads — kluczowe metryki</p>
       <svg width="${width}" height="${height}" style="background: white; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08);">
         ${metrics.map((metric, i) => {
           const maxValue = Math.max(metric.meta, metric.google);
@@ -1441,23 +2412,23 @@ const generateComparisonBarChart = (reportData: ReportData) => {
             <!-- Metric Label -->
             <text x="${padding.left - 10}" y="${yBase + barHeight + 5}" text-anchor="end" font-size="13" font-weight="600" fill="#1F2937">${metric.label}</text>
             
-            <!-- Meta Bar -->
-            <rect x="${padding.left}" y="${yBase}" width="${metaWidth}" height="${barHeight}" fill="#1877F2" rx="4"/>
-            <text x="${padding.left + metaWidth + 8}" y="${yBase + barHeight - 3}" font-size="11" font-weight="600" fill="#1F2937">${metric.format(metric.meta)}</text>
+            <!-- Google Bar (góra) -->
+            <rect x="${padding.left}" y="${yBase}" width="${googleWidth}" height="${barHeight}" fill="#34A853" rx="4"/>
+            <text x="${padding.left + googleWidth + 8}" y="${yBase + barHeight - 3}" font-size="11" font-weight="600" fill="#1F2937">${metric.format(metric.google)}</text>
             
-            <!-- Google Bar -->
-            <rect x="${padding.left}" y="${yBase + barHeight + 8}" width="${googleWidth}" height="${barHeight}" fill="#34A853" rx="4"/>
-            <text x="${padding.left + googleWidth + 8}" y="${yBase + barHeight * 2 + 5}" font-size="11" font-weight="600" fill="#1F2937">${metric.format(metric.google)}</text>
+            <!-- Meta Bar (dół) -->
+            <rect x="${padding.left}" y="${yBase + barHeight + 8}" width="${metaWidth}" height="${barHeight}" fill="#1877F2" rx="4"/>
+            <text x="${padding.left + metaWidth + 8}" y="${yBase + barHeight * 2 + 5}" font-size="11" font-weight="600" fill="#1F2937">${metric.format(metric.meta)}</text>
           `;
         }).join('')}
         
         <!-- Legend -->
         <g transform="translate(${padding.left}, ${height - 35})">
-          <rect x="0" y="0" width="12" height="12" fill="#1877F2" rx="2"/>
-          <text x="18" y="10" font-size="12" fill="#1F2937">Meta Ads</text>
+          <rect x="0" y="0" width="12" height="12" fill="#34A853" rx="2"/>
+          <text x="18" y="10" font-size="12" fill="#1F2937">Google Ads</text>
           
-          <rect x="100" y="0" width="12" height="12" fill="#34A853" rx="2"/>
-          <text x="118" y="10" font-size="12" fill="#1F2937">Google Ads</text>
+          <rect x="100" y="0" width="12" height="12" fill="#1877F2" rx="2"/>
+          <text x="118" y="10" font-size="12" fill="#1F2937">Meta Ads</text>
         </g>
       </svg>
     </div>
@@ -1470,16 +2441,55 @@ const generateKPIScoreboard = (reportData: ReportData) => {
   const googleData = reportData.googleData;
   const yoyComparison = reportData.yoyComparison;
   
-  // Calculate combined totals
-  const totalSpend = (metaData?.stats?.totalSpend || 0) + (googleData?.stats?.totalSpend || 0);
-  const totalConversions = (metaData?.stats?.totalConversions || 0) + (googleData?.stats?.totalConversions || 0);
-  const totalRevenue = (metaData?.conversionMetrics?.reservation_value || 0) + (googleData?.conversionMetrics?.reservation_value || 0);
-  const totalClicks = (metaData?.stats?.totalClicks || 0) + (googleData?.stats?.totalClicks || 0);
-  const totalImpressions = (metaData?.stats?.totalImpressions || 0) + (googleData?.stats?.totalImpressions || 0);
-  
+  // Calculate combined totals (ReportData uses metrics, not stats)
+  const mImp = metaData?.metrics?.totalImpressions || 0;
+  const gImp = googleData?.metrics?.totalImpressions || 0;
+  const mClk = metaData?.metrics?.totalClicks || 0;
+  const gClk = googleData?.metrics?.totalClicks || 0;
+  const totalSpend = (metaData?.metrics?.totalSpend || 0) + (googleData?.metrics?.totalSpend || 0);
+  const totalConversions =
+    (metaData?.metrics?.totalConversions || 0) + (googleData?.metrics?.totalConversions || 0);
+  const totalRevenue =
+    (metaData?.metrics?.totalReservationValue || 0) +
+    (googleData?.metrics?.totalReservationValue || 0);
+  const totalClicks = mClk + gClk;
+  const totalImpressions = mImp + gImp;
+
   const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-  const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-  const cpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+  const metaCtr = metaData?.metrics
+    ? ctrPercentFromStats(metaData.metrics.averageCtr, mClk, mImp)
+    : 0;
+  const googleCtr = googleData?.metrics
+    ? ctrPercentFromStats(googleData.metrics.averageCtr, gClk, gImp)
+    : 0;
+  const ctr =
+    mImp > 0 && gImp > 0
+      ? ctrPercentBlended({ ctr: metaCtr, impressions: mImp }, { ctr: googleCtr, impressions: gImp })
+      : mImp > 0
+        ? metaCtr
+        : gImp > 0
+          ? googleCtr
+          : totalImpressions > 0
+            ? (totalClicks / totalImpressions) * 100
+            : 0;
+  const mSpend = metaData?.metrics?.totalSpend || 0;
+  const gSpend = googleData?.metrics?.totalSpend || 0;
+  const metaCpc = metaData?.metrics
+    ? cpcFromStats(metaData.metrics.averageCpc, mSpend, mClk)
+    : 0;
+  const googleCpc = googleData?.metrics
+    ? cpcFromStats(googleData.metrics.averageCpc, gSpend, gClk)
+    : 0;
+  const cpc =
+    mClk > 0 && gClk > 0
+      ? cpcBlended({ cpc: metaCpc, clicks: mClk }, { cpc: googleCpc, clicks: gClk })
+      : mClk > 0
+        ? metaCpc
+        : gClk > 0
+          ? googleCpc
+          : totalClicks > 0
+            ? totalSpend / totalClicks
+            : 0;
   
   const getDelta = (current: number, previous: number) => {
     if (current === 0 || previous === 0) return null;
@@ -1540,10 +2550,9 @@ const generateInsightsSection = (reportData: ReportData) => {
   
   // Performance insights
   if (metaData && googleData) {
-    const metaSpend = metaData.stats?.totalSpend || 0;
-    const googleSpend = googleData.stats?.totalSpend || 0;
-    const totalSpend = metaSpend + googleSpend;
-    
+    const metaSpend = metaData.metrics?.totalSpend || 0;
+    const googleSpend = googleData.metrics?.totalSpend || 0;
+
     if (metaSpend > googleSpend * 1.5) {
       insights.push('<strong>Dominacja Meta Ads:</strong> Meta Ads stanowi większość wydatków reklamowych. Rozważ dywersyfikację budżetu dla zrównoważonej strategii wielokanałowej.');
     }
@@ -1551,9 +2560,9 @@ const generateInsightsSection = (reportData: ReportData) => {
   
   // ROAS analysis
   if (metaData) {
-    const metaRoas = metaData.conversionMetrics?.reservation_value && metaData.stats?.totalSpend 
-      ? metaData.conversionMetrics.reservation_value / metaData.stats.totalSpend 
-      : 0;
+    const metaRv = metaData.metrics?.totalReservationValue || 0;
+    const metaSp = metaData.metrics?.totalSpend || 0;
+    const metaRoas = metaSp > 0 && metaRv > 0 ? metaRv / metaSp : 0;
     
     if (metaRoas > 3) {
       insights.push('<strong>Wysoki ROAS Meta Ads:</strong> Kampanie Meta Ads wykazują silny zwrot z inwestycji (ROAS > 3.0). Rozważ zwiększenie budżetu na najskuteczniejsze kampanie.');
@@ -1562,12 +2571,14 @@ const generateInsightsSection = (reportData: ReportData) => {
     }
   }
   
-  // CTR insights
-  if (metaData && metaData.stats) {
-    const ctr = metaData.stats.totalImpressions > 0 
-      ? (metaData.stats.totalClicks / metaData.stats.totalImpressions) * 100 
-      : 0;
-    
+  // CTR insights — same source as Meta KPI card (metrics.averageCtr with totals fallback)
+  if (metaData?.metrics) {
+    const ctr = ctrPercentFromStats(
+      metaData.metrics.averageCtr,
+      metaData.metrics.totalClicks ?? 0,
+      metaData.metrics.totalImpressions ?? 0
+    );
+
     if (ctr < 1) {
       insights.push('<strong>Niska skuteczność kreacji:</strong> CTR poniżej 1% sugeruje potrzebę odświeżenia materiałów reklamowych i testów A/B różnych wariantów.');
     }
@@ -1696,6 +2707,32 @@ function generatePDFHTML(reportData: ReportData): string {
                 min-height: 297mm;
             }
             
+            /* Cover page 1: vertically center logo + report title block */
+            .title-page--cover {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: stretch;
+                box-sizing: border-box;
+            }
+            .page-content--cover {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                flex: 1;
+                width: 100%;
+                min-height: 0;
+            }
+            .clean-title-section--cover {
+                width: 100%;
+            }
+            .clean-cover-hero--centered {
+                justify-content: center !important;
+                align-items: center;
+                width: 100%;
+            }
+
             .page-break-before {
                 page-break-before: always;
                 padding: var(--page-margin);
@@ -1820,26 +2857,40 @@ function generatePDFHTML(reportData: ReportData): string {
             .clean-title-section {
                 text-align: center;
                 padding: 0;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .clean-cover-hero {
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-start;
+                align-items: center;
+                padding-top: 0;
+                margin-top: 0;
             }
             
             .clean-logo-container {
-                margin-bottom: var(--space-xl);
+                margin-bottom: 6mm;
                 display: flex;
                 justify-content: center;
                 align-items: center;
+                width: 100%;
             }
             
-            .clean-client-logo {
-                max-height: 80px;
-                max-width: 200px;
+            /* ~2× previous cover logo size; scoped to cover page only */
+            .title-page--cover .clean-client-logo {
+                width: 80%;
+                max-width: 150mm;
+                min-width: 124mm;
+                max-height: 104mm;
                 height: auto;
-                width: auto;
                 object-fit: contain;
                 display: block;
             }
             
             .clean-title-header {
-                margin-bottom: var(--space-lg);
+                margin-bottom: 0;
             }
             
             .clean-main-title {
@@ -1847,7 +2898,8 @@ function generatePDFHTML(reportData: ReportData): string {
                 line-height: 36px;
                 font-weight: 600;
                 color: var(--color-primary-navy);
-                margin-bottom: var(--space-md);
+                margin-bottom: var(--space-sm);
+                margin-top: 0;
                 letter-spacing: -0.025em;
             }
             
@@ -1855,7 +2907,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 font-size: var(--font-h2);
                 font-weight: 500;
                 color: var(--gray-700);
-                margin-bottom: var(--space-lg);
+                margin-bottom: var(--space-md);
             }
             
             .clean-date-range {
@@ -1870,18 +2922,43 @@ function generatePDFHTML(reportData: ReportData): string {
             }
             
             .clean-ai-summary-section {
-                margin-top: var(--space-xxl);
-                padding: var(--space-xxl) 0 var(--space-xl) 0;
+                margin-top: var(--space-lg);
+                padding: var(--space-lg) 0 var(--space-md) 0;
                 border-top: 2px solid var(--color-primary-navy);
                 text-align: left;
                 max-width: 100%;
             }
             
+            /* Page 2: full-page executive summary (footer logo: Puppeteer footerTemplate on pages 2+) */
+            .pdf-page-executive-summary {
+                page-break-before: always;
+                break-before: page;
+                min-height: 297mm;
+                max-width: 210mm;
+                margin: 0 auto;
+                padding: var(--page-margin);
+                padding-top: var(--space-xl);
+                box-sizing: border-box;
+            }
+            .clean-ai-summary-section--full-page {
+                margin-top: 0;
+                padding: 0 0 var(--space-md) 0;
+                border-top: none;
+                text-align: left;
+                max-width: 100%;
+                min-height: calc(297mm - 42mm);
+                display: flex;
+                flex-direction: column;
+            }
+            .clean-summary-content--full-page {
+                flex: 1;
+            }
+
             .clean-summary-title {
                 font-size: 30px;
                 font-weight: 600;
                 color: var(--color-primary-navy);
-                margin-bottom: var(--space-xl);
+                margin-bottom: var(--space-md);
                 margin-top: 0;
                 line-height: 1.3;
                 letter-spacing: -0.02em;
@@ -1895,6 +2972,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 padding: 0;
                 text-align: justify;
                 text-justify: inter-word;
+                white-space: pre-line;
             }
             
             
@@ -2091,12 +3169,10 @@ function generatePDFHTML(reportData: ReportData): string {
                 padding: 0;
             }
             
-            /* Campaign Details Section */
+            /* Campaign Details Section — allow long tables to span pages; sub-blocks control breaks */
             .campaign-details-section {
                 padding: 0;
                 margin: 0;
-                page-break-inside: avoid;
-                break-inside: avoid;
             }
             
             .campaigns-table {
@@ -2185,7 +3261,7 @@ function generatePDFHTML(reportData: ReportData): string {
                 padding: var(--space-xl) 0;
                 border-top: 1px solid var(--border-light);
                 page-break-before: always;
-                page-break-inside: avoid;
+                break-before: page;
             }
             
             .demographics-title {
@@ -2194,16 +3270,37 @@ function generatePDFHTML(reportData: ReportData): string {
                 color: var(--text-primary);
                 margin-bottom: var(--space-lg);
                 text-align: center;
+                page-break-after: avoid;
+                break-after: avoid;
             }
             
             .metric-section {
                 margin-bottom: var(--space-xxl);
                 padding: var(--space-lg) 0;
                 border-bottom: 1px solid var(--border-light);
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
-            
+
+            /* Second+ metric (e.g. Kliknięcia after Wartość rezerwacji): always new page */
+            .demographics-section .metric-section + .metric-section {
+                page-break-before: always;
+                break-before: page;
+            }
+
             .metric-section:last-child {
                 border-bottom: none;
+            }
+
+            /* Extra tables under campaign details: each block starts on a new page */
+            .campaign-details-section .network-table,
+            .campaign-details-section .device-table,
+            .campaign-details-section .placement-table,
+            .campaign-details-section .ad-relevance-table {
+                page-break-before: always;
+                break-before: page;
+                page-break-inside: avoid;
+                break-inside: avoid;
             }
             
             .metric-title {
@@ -2398,28 +3495,1545 @@ function generatePDFHTML(reportData: ReportData): string {
         </style>
     </head>
     <body>
-        ${generateTitleSection(sanitizedData)}
-        ${(() => {
-          const yoySection = generateYoYSection(sanitizedData);
-          const metaMetrics = generateMetaMetricsSection(sanitizedData);
-          
-          // 🔧 Smart page break logic: Only add page breaks when needed
-          // If YoY exists, both sections get page breaks
-          // If no YoY, Meta Metrics flows directly from title (no blank page)
-          if (yoySection && yoySection.trim() !== '') {
-            return generateConditionalSection(yoySection) + generateConditionalSection(metaMetrics);
-          } else {
-            // No YoY - Meta Metrics on same page as title (no blank page)
-            return metaMetrics || '';
-          }
-        })()}
-        ${generateConditionalSection(generateMetaFunnelSection(sanitizedData))}
+        ${generateCoverPage(sanitizedData)}
+        ${generateExecutiveSummaryPage(sanitizedData)}
+        ${generateConditionalSection(generateYoYSection(sanitizedData))}
         ${generateConditionalSection(generateGoogleMetricsSection(sanitizedData))}
         ${generateConditionalSection(generateGoogleFunnelSection(sanitizedData))}
-        ${generateMetaCampaignDetailsSection(sanitizedData)}
-        ${generateGoogleCampaignDetailsSection(sanitizedData)}
+        ${generateConditionalSection(generateGoogleCampaignDetailsSection(sanitizedData))}
+        ${generateConditionalSection(generateMetaMetricsSection(sanitizedData))}
+        ${generateConditionalSection(generateMetaFunnelSection(sanitizedData))}
+        ${generateConditionalSection(generateMetaCampaignDetailsSection(sanitizedData))}
         ${generateFooter(sanitizedData)}
         </body>
+    </html>
+  `;
+}
+
+type HotelMetricCard = {
+  label: string;
+  value: string;
+  delta?: number | null;
+  subtext?: string;
+};
+type HotelPlatformMetrics =
+  | NonNullable<ReportData['googleData']>['metrics']
+  | NonNullable<ReportData['metaData']>['metrics'];
+type ReportPlatform = 'google' | 'meta';
+type ReportTableVariant = 'compact' | 'campaign' | 'placement' | 'city' | 'device' | 'appendix';
+type ReportBlock = {
+  title: string;
+  subtitle?: string;
+  kicker?: string;
+  html: string;
+  heightMm: number;
+  className?: string;
+  platform?: ReportPlatform | 'global';
+};
+type TableColumn = {
+  key: string;
+  label: string;
+  compactLabel?: string;
+  className?: string;
+  value: (row: any) => string;
+};
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function safeNumber(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\s/g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+    const parsed = parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function parsePdfNumber(value: unknown): number {
+  return safeNumber(value);
+}
+
+function safeDivide(numerator: unknown, denominator: unknown): number | null {
+  const den = safeNumber(denominator);
+  if (den === 0) return null;
+  return safeNumber(numerator) / den;
+}
+
+function formatPercentValue(value: number | null, decimals = 1): string {
+  if (value === null || !Number.isFinite(value)) return '—';
+  return `${(value * 100).toFixed(decimals).replace('.', ',')}\u2060%`;
+}
+
+function formatROASValue(value: unknown): string {
+  const numeric = safeNumber(value);
+  if (!numeric) return '—';
+  return `${numeric.toFixed(2).replace('.', ',')}\u2060x`;
+}
+
+const formatRoasNonBreaking = formatROASValue;
+
+function getRowValue(row: any, key: string): unknown {
+  const aliases: Record<string, string[]> = {
+    campaign_name: ['campaign_name', 'campaignName', 'name', 'campaign_id', 'id'],
+    placement: ['placement', 'publisher_platform', 'platform_position', 'name'],
+    device: ['device', 'deviceType'],
+    city: ['cityName', 'city', 'locationName'],
+    region: ['regionName', 'region', 'voivodeship'],
+    totalSpend: ['totalSpend', 'spend', 'cost'],
+    totalImpressions: ['totalImpressions', 'impressions'],
+    totalClicks: ['totalClicks', 'clicks'],
+    totalConversions: ['totalConversions', 'conversions'],
+    averageCtr: ['averageCtr', 'ctr'],
+    averageCpc: ['averageCpc', 'cpc'],
+    reservations: ['reservations', 'totalReservations'],
+    reservation_value: ['reservation_value', 'totalReservationValue', 'conversion_value', 'total_conversion_value'],
+    conversion_value: ['conversion_value', 'reservation_value', 'total_conversion_value'],
+    roas: ['roas'],
+  };
+  const keys = aliases[key] || [key];
+  for (const candidate of keys) {
+    if (row?.[candidate] !== undefined && row?.[candidate] !== null) return row[candidate];
+  }
+  return undefined;
+}
+
+function metricLabel(reportData: ReportData, platform: ReportPlatform, section: MetricSection, key: string, fallback: string): string {
+  return pdfMetricLabel(reportData, platform, section, key, fallback);
+}
+
+function visibleMetricLabel(reportData: ReportData, platform: ReportPlatform, section: MetricSection, key: string, fallback: string): string | null {
+  return pdfMetricVisible(reportData, platform, section, key)
+    ? metricLabel(reportData, platform, section, key, fallback)
+    : null;
+}
+
+function compactTableLabel(label: string, key: string): string {
+  const compactByKey: Record<string, string> = {
+    totalImpressions: 'Wyśw.',
+    impressions: 'Wyśw.',
+    totalClicks: 'Klik.',
+    clicks: 'Klik.',
+    totalConversions: 'Konw.',
+    conversions: 'Konw.',
+    reservations: 'Rez.',
+    totalReservations: 'Rez.',
+    reservation_value: 'Wartość',
+    conversion_value: 'Wartość',
+    totalReservationValue: 'Wartość',
+    totalSpend: 'Wydatki',
+    spend: 'Wydatki',
+    roas: 'ROAS',
+    averageCtr: 'CTR',
+    averageCpc: 'CPC',
+  };
+  return compactByKey[key] || label;
+}
+
+function categoryDisplayLabel(rawCategory: unknown): string {
+  const value = String(rawCategory ?? '').trim();
+  if (!value) return 'Nieznane';
+  const normalized = value.toLowerCase();
+  const map: Record<string, string> = {
+    female: 'Kobiety',
+    kobieta: 'Kobiety',
+    kobiety: 'Kobiety',
+    male: 'Mężczyźni',
+    mezczyzna: 'Mężczyźni',
+    mężczyzna: 'Mężczyźni',
+    mężczyźni: 'Mężczyźni',
+    unknown: 'Nieznane',
+    unspecified: 'Nieznane',
+    nieznane: 'Nieznane',
+  };
+  return map[normalized] || value;
+}
+
+function combinedContactsLabel(reportData: ReportData): string {
+  const emailLabel = metricLabel(reportData, 'google', 'contact', 'email_contacts', 'Kontakty e-mail');
+  const phoneLabel = metricLabel(reportData, 'google', 'contact', 'click_to_call', 'Kliknięcia w telefon');
+  return emailLabel === phoneLabel ? emailLabel : 'Kontakty łącznie';
+}
+
+function getCampaignName(campaign: any): string {
+  return String(
+    campaign?.campaign_name ||
+    campaign?.campaignName ||
+    campaign?.name ||
+    campaign?.campaign_id ||
+    campaign?.id ||
+    'Nieznana kampania'
+  );
+}
+
+function formatDateRangeShort(range: ReportData['dateRange']): string {
+  const start = new Date(`${range.start}T00:00:00`);
+  const end = new Date(`${range.end}T00:00:00`);
+  const month = end.toLocaleDateString('pl-PL', { month: 'long' }).toUpperCase();
+  const startDay = String(start.getDate()).padStart(2, '0');
+  const endDay = String(end.getDate()).padStart(2, '0');
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `${startDay}–${endDay} ${month} ${end.getFullYear()}`;
+  }
+  return `${start.toLocaleDateString('pl-PL')} – ${end.toLocaleDateString('pl-PL')}`.toUpperCase();
+}
+
+function hotelWordmark(reportData: ReportData): string {
+  if (reportData.clientLogo) {
+    return `<img class="hotel-logo" src="${escapeHtml(reportData.clientLogo)}" alt="${escapeHtml(reportData.clientName)}" />`;
+  }
+  return `
+    <div class="hotel-wordmark">
+      <div class="hotel-wordmark-name">${escapeHtml(reportData.clientName)}</div>
+      <div class="hotel-wordmark-rule"><span></span><small>RAPORT MARKETINGOWY</small><span></span></div>
+    </div>
+  `;
+}
+
+function hotelReportPage(
+  reportData: ReportData,
+  pageNumber: number,
+  title: string,
+  subtitle: string,
+  body: string,
+  sectionLabel = '',
+): string {
+  const clientName = escapeHtml(reportData.clientName || '');
+  const period = escapeHtml(formatDateRangeShort(reportData.dateRange));
+  const brandLogo = getPdfBrandLogoDataUrl();
+  return `
+    <section class="hotel-page" data-page-title="${escapeHtml(title)}">
+      <div class="page-border-outer"></div>
+      <div class="page-border-inner"></div>
+      <header class="running-header">
+        <div class="running-header-center">${hotelWordmark(reportData)}</div>
+      </header>
+      <main class="page-main">
+        <div class="page-title-block">
+          <h1>${escapeHtml(title)}</h1>
+          ${subtitle ? `<div class="page-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+          <div class="period-pill">${period}</div>
+          ${sectionLabel ? `<div class="section-kicker"><span></span>${escapeHtml(sectionLabel)}<span></span></div>` : ''}
+        </div>
+        ${body}
+      </main>
+      <footer class="hotel-footer">
+        <div class="agency-mark">
+          ${brandLogo ? `<img src="${brandLogo}" alt="Piotr Bajerlein Marketing" />` : '<span class="agency-fallback">PB<br/><small>MARKETING</small></span>'}
+          <span>PIOTR BAJERLEIN<br/>MARKETING</span>
+        </div>
+        <div class="footer-client">${clientName}</div>
+        <div class="footer-page-number">STRONA ${pageNumber}</div>
+      </footer>
+    </section>
+  `;
+}
+
+function hotelMetricCard(card: HotelMetricCard): string {
+  const delta = typeof card.delta === 'number' && Number.isFinite(card.delta)
+    ? `<div class="metric-delta ${card.delta >= 0 ? 'positive' : 'negative'}">${card.delta >= 0 ? '+' : '−'}${Math.abs(card.delta).toFixed(1).replace('.', ',')}%</div>`
+    : '';
+  return `
+    <div class="hotel-metric-card">
+      <div class="metric-label">${escapeHtml(card.label)}</div>
+      <div class="metric-value">${card.value}</div>
+      ${card.subtext ? `<div class="metric-subtext">${escapeHtml(card.subtext)}</div>` : ''}
+      ${delta}
+    </div>
+  `;
+}
+
+function metricStrip(cards: HotelMetricCard[], columns = 3): string {
+  return `<div class="metric-strip cols-${columns}">${cards.map(hotelMetricCard).join('')}</div>`;
+}
+
+function framedSection(title: string, content: string, extraClass = ''): string {
+  return `
+    <section class="framed-section ${extraClass}">
+      <div class="framed-title"><span></span>${escapeHtml(title)}<span></span></div>
+      ${content}
+    </section>
+  `;
+}
+
+function hotelTable(headers: string[], rows: string[][], className = '', variant: ReportTableVariant = 'compact'): string {
+  return `
+    <table class="hotel-table report-table-${variant} ${className}">
+      <thead>
+        <tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        ${rows.length > 0
+          ? rows.map((row) => `<tr>${row.map((cell, idx) => `<td class="${idx === 0 ? 'text-cell' : 'number-cell'}">${cell}</td>`).join('')}</tr>`).join('')
+          : `<tr><td colspan="${headers.length}" class="empty-cell">Brak danych dla wybranego okresu.</td></tr>`}
+      </tbody>
+    </table>
+  `;
+}
+
+const REPORT_LAYOUT = {
+  PAGE_WIDTH_MM: 108,
+  PAGE_HEIGHT_MM: 192,
+  CSS_PX_PER_MM: 96 / 25.4,
+  CONTENT_HEIGHT_MM: 123,
+  FULL_BODY_HEIGHT_MM: 132,
+  BLOCK_GAP_MM: 5,
+  TABLE_ROW_MM: 7.2,
+  TABLE_CHROME_MM: 15,
+};
+
+const REPORT_PAGE_WIDTH_CSS_PX = REPORT_LAYOUT.PAGE_WIDTH_MM * REPORT_LAYOUT.CSS_PX_PER_MM;
+const REPORT_PAGE_HEIGHT_CSS_PX = REPORT_LAYOUT.PAGE_HEIGHT_MM * REPORT_LAYOUT.CSS_PX_PER_MM;
+const REPORT_PAGE_VIEWPORT_WIDTH_PX = Math.ceil(REPORT_PAGE_WIDTH_CSS_PX);
+const REPORT_PAGE_VIEWPORT_HEIGHT_PX = Math.ceil(REPORT_PAGE_HEIGHT_CSS_PX);
+
+function estimateTableBlockHeightMm(rowCount: number, hasTitle = true): number {
+  return (hasTitle ? REPORT_LAYOUT.TABLE_CHROME_MM : 9) + rowCount * REPORT_LAYOUT.TABLE_ROW_MM;
+}
+
+function estimateRowCardBlockHeightMm(rowCount: number, variant: 'campaign' | 'placement'): number {
+  const rowHeight = variant === 'placement' ? 24 : 21;
+  return REPORT_LAYOUT.TABLE_CHROME_MM + rowCount * rowHeight;
+}
+
+function tableRowCapacityForAvailableHeightMm(availableHeightMm: number, hasTitle = true): number {
+  const chromeMm = hasTitle ? REPORT_LAYOUT.TABLE_CHROME_MM : 9;
+  return Math.max(1, Math.floor((availableHeightMm - chromeMm) / REPORT_LAYOUT.TABLE_ROW_MM));
+}
+
+function splitRowsBalanced<T>(rows: T[], maxRowsPerPage: number, minUsefulRows = 4): T[][] {
+  if (rows.length <= maxRowsPerPage) return rows.length > 0 ? [rows] : [];
+  const pageCount = Math.ceil(rows.length / maxRowsPerPage);
+  const balancedSize = Math.ceil(rows.length / pageCount);
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < rows.length; offset += balancedSize) {
+    chunks.push(rows.slice(offset, offset + balancedSize));
+  }
+  const last = chunks[chunks.length - 1];
+  const prev = chunks[chunks.length - 2];
+  if (chunks.length > 1 && last && prev && last.length < minUsefulRows) {
+    const needed = minUsefulRows - last.length;
+    last.unshift(...prev.splice(Math.max(0, prev.length - needed), needed));
+  }
+  return chunks.filter((chunk) => chunk.length > 0);
+}
+
+function combinedMetrics(reportData: ReportData) {
+  const meta = reportData.metaData?.metrics;
+  const google = reportData.googleData?.metrics;
+  const totalSpend = safeNumber(meta?.totalSpend) + safeNumber(google?.totalSpend);
+  const totalReservations = safeNumber(meta?.totalReservations) + safeNumber(google?.totalReservations);
+  const totalReservationValue = safeNumber(meta?.totalReservationValue) + safeNumber(google?.totalReservationValue);
+  const roas = safeDivide(totalReservationValue, totalSpend) || 0;
+  const costPerReservation = safeDivide(totalSpend, totalReservations) || 0;
+  const emailContacts = safeNumber(meta?.emailContacts) + safeNumber(google?.emailContacts);
+  const phoneContacts = safeNumber(meta?.phoneContacts) + safeNumber(google?.phoneContacts);
+  return { totalSpend, totalReservations, totalReservationValue, roas, costPerReservation, contacts: emailContacts + phoneContacts, emailContacts, phoneContacts };
+}
+
+function summaryTextBlocks(reportData: ReportData): string[] {
+  const meta = reportData.metaData?.metrics;
+  const google = reportData.googleData?.metrics;
+  const total = combinedMetrics(reportData);
+  const summary = reportData.aiSummary?.trim();
+  const text = summary || [
+    `W okresie ${formatDateRangeShort(reportData.dateRange).toLowerCase()} analizowaliśmy skuteczność kampanii reklamowych prowadzonych w Google Ads oraz Meta Ads.`,
+    '',
+    'Google Ads',
+    `Wydaliśmy ${formatCurrency(google?.totalSpend || 0)}. Kampania wygenerowała ${formatNumber(google?.totalImpressions || 0)} wyświetleń i ${formatNumber(google?.totalClicks || 0)} kliknięć, co przełożyło się na ${formatNumber(google?.totalReservations || 0)} rezerwacji.`,
+    '',
+    'Meta Ads',
+    `Wydaliśmy ${formatCurrency(meta?.totalSpend || 0)}. Kampania wygenerowała ${formatNumber(meta?.totalImpressions || 0)} wyświetleń i ${formatNumber(meta?.totalClicks || 0)} kliknięć, co przełożyło się na ${formatNumber(meta?.totalReservations || 0)} rezerwacji.`,
+    '',
+    'Podsumowanie łączne',
+    `Łącznie: ${formatNumber(total.totalReservations)} rezerwacji, wartość ${formatCurrency(total.totalReservationValue)}, ROAS ${formatROASValue(total.roas)}, średni koszt rezerwacji ${formatCurrency(total.costPerReservation)}.`,
+    '',
+    'Kontakty',
+    `${formatNumber(total.emailContacts)} kontaktów e-mail i ${formatNumber(total.phoneContacts)} telefonicznych.`
+  ].join('\n');
+
+  return escapeHtml(text)
+    .split(/\n{2,}/)
+    .filter((block) => !/^Lejek konwersji\s*\(łącznie\)/i.test(block.trim()))
+    .filter((block) => block.trim().length > 0);
+}
+
+function renderSummaryTextBlocks(blocks: string[]): string {
+  return `<div class="summary-copy">${blocks
+    .map((block) => {
+      const lines = block.split('\n');
+      if (lines.length > 1 && lines[0] && lines[0].length < 48) {
+        return `<div class="summary-block"><h3>${lines[0]}</h3><p>${lines.slice(1).join('<br/>')}</p></div>`;
+      }
+      return `<p>${block.replace(/\n/g, '<br/>')}</p>`;
+    })
+    .join('')}</div>`;
+}
+
+function chunkSummaryBlocks(blocks: string[], maxChars: number): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let length = 0;
+  blocks.forEach((block) => {
+    const blockLength = block.length;
+    if (current.length > 0 && length + blockLength > maxChars) {
+      chunks.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(block);
+    length += blockLength;
+  });
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+function renderBlocks(blocks: ReportBlock[]): string {
+  return blocks.map((block) => `<div class="flow-block ${block.className || ''}" data-platform="${block.platform || 'global'}">${block.html}</div>`).join('');
+}
+
+function paginateBlocks(blocks: ReportBlock[], startPageNumber: number, reportData: ReportData): string[] {
+  const pages: string[] = [];
+  let current: ReportBlock[] = [];
+  let used = 0;
+  const flush = () => {
+    if (current.length === 0) return;
+    const first = current[0];
+    if (!first) return;
+    pages.push(hotelReportPage(
+      reportData,
+      startPageNumber + pages.length,
+      first.title,
+      first.subtitle || '',
+      renderBlocks(current),
+      first.kicker || '',
+    ));
+    current = [];
+    used = 0;
+  };
+
+  blocks.forEach((block) => {
+    const currentPlatform = current[0]?.platform;
+    const isPlatformBoundary = current.length > 0
+      && currentPlatform
+      && block.platform
+      && currentPlatform !== block.platform
+      && !(currentPlatform === 'global' && block.platform === 'global');
+    if (isPlatformBoundary) flush();
+    let nextHeight = block.heightMm + (current.length > 0 ? REPORT_LAYOUT.BLOCK_GAP_MM : 0);
+    if (current.length > 0 && used + nextHeight > REPORT_LAYOUT.CONTENT_HEIGHT_MM) {
+      flush();
+      nextHeight = block.heightMm;
+    }
+    current.push(block);
+    used += nextHeight;
+  });
+  flush();
+  return pages;
+}
+
+function buildMetricCards(
+  reportData: ReportData,
+  platform: ReportPlatform,
+  section: MetricSection,
+  metrics: Array<{ key: string; fallback: string; value: string; delta?: number | null }>,
+): HotelMetricCard[] {
+  return metrics
+    .map((metric) => {
+      const label = visibleMetricLabel(reportData, platform, section, metric.key, metric.fallback);
+      return label ? { label, value: metric.value, delta: metric.delta } : null;
+    })
+    .filter(Boolean) as HotelMetricCard[];
+}
+
+function platformName(platform: ReportPlatform): string {
+  return platform === 'google' ? 'Google Ads' : 'Meta Ads';
+}
+
+function platformData(reportData: ReportData, platform: ReportPlatform) {
+  return platform === 'google' ? reportData.googleData : reportData.metaData;
+}
+
+function comparisonBarRows(entries: Array<{ label: string; google: number; meta: number; formatter: (value: number) => string }>): string {
+  return `
+    <div class="comparison-bars">
+      <div class="comparison-legend">
+        <span><i class="legend-dot navy"></i>Google Ads</span>
+        <span><i class="legend-dot copper"></i>Meta Ads</span>
+      </div>
+      ${entries.map((entry) => {
+        const max = Math.max(entry.google, entry.meta, 1);
+        return `
+          <div class="comparison-row">
+            <div class="comparison-label">${escapeHtml(entry.label)}</div>
+            <div class="comparison-line">
+              <span class="comparison-platform">Google Ads</span>
+              <div class="comparison-track navy"><span style="width:${((entry.google / max) * 100).toFixed(1)}%"></span></div>
+              <strong>${entry.formatter(entry.google)}</strong>
+            </div>
+            <div class="comparison-line">
+              <span class="comparison-platform">Meta Ads</span>
+              <div class="comparison-track copper"><span style="width:${((entry.meta / max) * 100).toFixed(1)}%"></span></div>
+              <strong>${entry.formatter(entry.meta)}</strong>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function barPanel(title: string, entries: Array<[string, number]>, formatter: (v: number) => string = formatNumber, options?: { maxRows?: number; showShare?: boolean }): string {
+  const visible = entries.slice(0, options?.maxRows || 6);
+  const total = visible.reduce((s, [, v]) => s + v, 0);
+  const max = Math.max(...visible.map(([, v]) => v), 0);
+  return `
+    <div class="bar-panel">
+      <h3>${escapeHtml(title)}</h3>
+      ${visible.length > 0 ? visible.map(([label, value]) => {
+        const pct = safeDivide(value, total);
+        const width = max > 0 ? (value / max) * 100 : 0;
+        return `
+          <div class="bar-row">
+            <div class="bar-row-head"><span>${escapeHtml(label)}</span><strong>${formatter(value)}</strong>${options?.showShare !== false && pct !== null ? `<em>${formatPercentValue(pct)}</em>` : ''}</div>
+            <div class="bar-track"><div style="width:${width.toFixed(1)}%"></div></div>
+          </div>
+        `;
+      }).join('') : '<div class="empty-panel">Brak danych.</div>'}
+    </div>
+  `;
+}
+
+function aggregateBy(rows: any[], keyFn: (row: any) => string, metric: string): Array<[string, number]> {
+  const map = new Map<string, number>();
+  rows.forEach((row) => {
+    const key = keyFn(row) || 'Nieznane';
+    const value = safeNumber(row[metric] ?? row.conversion_value ?? row.reservation_value);
+    map.set(key, (map.get(key) || 0) + value);
+  });
+  return Array.from(map.entries()).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+}
+
+function donutChart(entries: Array<[string, number]>): string {
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  if (total <= 0) return '<div class="donut-empty">Brak danych</div>';
+  let cumulative = 0;
+  const colors = ['#D85F36', '#0E2742', '#F3C7AF', '#8B8178'];
+  const segments = entries.slice(0, 4).map(([, value], idx) => {
+    const pct = (value / total) * 100;
+    const dash = `${pct} ${100 - pct}`;
+    const offset = -cumulative;
+    cumulative += pct;
+    return `<circle r="15.9155" cx="18" cy="18" fill="transparent" stroke="${colors[idx] || '#F3C7AF'}" stroke-width="6" stroke-dasharray="${dash}" stroke-dashoffset="${offset}" />`;
+  }).join('');
+  return `
+    <div class="donut-wrap">
+      <svg viewBox="0 0 36 36" class="donut">${segments}</svg>
+      <div class="donut-legend">
+        ${entries.slice(0, 4).map(([label, value], idx) => `<div><span style="background:${colors[idx] || '#F3C7AF'}"></span>${escapeHtml(label)} <strong>${formatPercentValue(safeDivide(value, total), 1)}</strong></div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function configuredTableColumns(reportData: ReportData, platform: ReportPlatform, section: MetricSection, columns: TableColumn[]): TableColumn[] {
+  const config = platform === 'google' ? reportData.metricsConfig?.google : reportData.metricsConfig?.meta;
+  if (!config || config.length === 0) return columns;
+  const allowed = new Set(getConfiguredColumns(config, section, { keys: columns.map((column) => column.key) }).map((column) => column.key));
+  const configuredOrder = getConfiguredColumns(config, section, { keys: columns.map((column) => column.key) });
+  const byKey = new Map(columns.map((column) => [column.key, column]));
+  const ordered = configuredOrder
+    .map((column) => byKey.get(column.key))
+    .filter(Boolean) as TableColumn[];
+  const dimensions = columns.filter((column) => column.className === 'dimension' && !ordered.some((orderedColumn) => orderedColumn.key === column.key));
+  return [...dimensions, ...ordered.filter((column) => allowed.has(column.key))];
+}
+
+function tableFromColumns(rows: any[], columns: TableColumn[], className: string, variant: ReportTableVariant = 'compact'): string {
+  return hotelTable(
+    columns.map((column) => column.compactLabel || compactTableLabel(column.label, column.key)),
+    rows.map((row) => columns.map((column) => column.value(row))),
+    className,
+    variant,
+  );
+}
+
+function rowCardMetric(label: string, value: string): string {
+  return `<div class="row-card-metric"><span>${escapeHtml(label)}</span><strong>${value || '—'}</strong></div>`;
+}
+
+function campaignRowCards(reportData: ReportData, platform: ReportPlatform, rows: any[]): string {
+  return `
+    <div class="report-row-cards report-table-campaign">
+      ${rows.map((row) => {
+        const value = safeNumber(getRowValue(row, 'reservation_value'));
+        const spend = safeNumber(getRowValue(row, 'totalSpend'));
+        const metrics = [
+          { key: 'totalSpend', fallback: 'Wydatki', value: formatCurrency(spend) },
+          { key: 'totalImpressions', fallback: 'Wyświetlenia', value: formatNumber(safeNumber(getRowValue(row, 'totalImpressions'))) },
+          { key: 'totalClicks', fallback: 'Kliknięcia', value: formatNumber(safeNumber(getRowValue(row, 'totalClicks'))) },
+          { key: 'reservations', fallback: 'Rezerwacje', value: formatNumber(safeNumber(getRowValue(row, 'reservations'))) },
+          { key: 'reservation_value', fallback: 'Wartość rezerwacji', value: formatCurrency(value) },
+          { key: 'roas', fallback: 'ROAS', value: formatROASValue(safeNumber(getRowValue(row, 'roas')) || safeDivide(value, spend)) },
+        ].filter((metric) => pdfMetricVisible(reportData, platform, 'campaign_table', metric.key));
+        return `
+          <article class="report-row-card campaign-row-card">
+            <h3>${escapeHtml(getCampaignName(row))}</h3>
+            <div class="row-card-grid">
+              ${metrics.map((metric) => rowCardMetric(metricLabel(reportData, platform, 'campaign_table', metric.key, metric.fallback), metric.value)).join('')}
+            </div>
+          </article>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function placementRowCards(reportData: ReportData, rows: any[]): string {
+  return `
+    <div class="report-row-cards report-table-placement">
+      ${rows.map((row) => {
+        const spend = safeNumber(row.spend);
+        const value = safeNumber(row.reservation_value);
+        const metrics = [
+          { key: 'totalSpend', fallback: 'Wydatki', value: formatCurrency(spend) },
+          { key: 'totalImpressions', fallback: 'Wyświetlenia', value: formatNumber(safeNumber(row.impressions)) },
+          { key: 'totalClicks', fallback: 'Kliknięcia', value: formatNumber(safeNumber(row.clicks)) },
+          { key: 'reservations', fallback: 'Rezerwacje', value: formatNumber(safeNumber(row.reservations)) },
+          { key: 'reservation_value', fallback: 'Wartość rezerwacji', value: formatCurrency(value) },
+          { key: 'roas', fallback: 'ROAS', value: formatROASValue(safeDivide(value, spend)) },
+        ].filter((metric) => pdfMetricVisible(reportData, 'meta', 'placement_table', metric.key));
+        return `
+          <article class="report-row-card placement-row-card">
+            <h3>${escapeHtml(row.placement || 'Nieznane')}</h3>
+            <div class="row-card-grid">
+              ${metrics.map((metric) => rowCardMetric(metricLabel(reportData, 'meta', 'placement_table', metric.key, metric.fallback), metric.value)).join('')}
+            </div>
+          </article>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function campaignCompactColumns(reportData: ReportData, platform: ReportPlatform): TableColumn[] {
+  const base: TableColumn[] = [
+    { key: 'campaign_name', label: metricLabel(reportData, platform, 'campaign_table', 'campaign_name', 'Kampania'), compactLabel: 'Kampania', className: 'dimension', value: (row) => escapeHtml(getCampaignName(row)) },
+    { key: 'totalSpend', label: metricLabel(reportData, platform, 'campaign_table', 'totalSpend', 'Wydatki'), compactLabel: 'Wydatki', value: (row) => formatCurrency(safeNumber(getRowValue(row, 'totalSpend'))) },
+    { key: 'reservations', label: metricLabel(reportData, platform, 'campaign_table', 'reservations', 'Rezerwacje'), compactLabel: 'Rez.', value: (row) => formatNumber(safeNumber(getRowValue(row, 'reservations'))) },
+    { key: 'reservation_value', label: metricLabel(reportData, platform, 'campaign_table', 'reservation_value', 'Wartość rezerwacji'), compactLabel: 'Wartość', value: (row) => formatCurrency(safeNumber(getRowValue(row, 'reservation_value'))) },
+    { key: 'roas', label: metricLabel(reportData, platform, 'campaign_table', 'roas', 'ROAS'), compactLabel: 'ROAS', value: (row) => formatROASValue(safeNumber(getRowValue(row, 'roas')) || safeDivide(getRowValue(row, 'reservation_value'), getRowValue(row, 'totalSpend'))) },
+  ];
+  return configuredTableColumns(reportData, platform, 'campaign_table', base);
+}
+
+function placementCompactColumns(reportData: ReportData): TableColumn[] {
+  const base: TableColumn[] = [
+    { key: 'placement', label: metricLabel(reportData, 'meta', 'placement_table', 'placement', 'Placement'), compactLabel: 'Placement', className: 'dimension', value: (row) => escapeHtml(row.placement || 'Nieznane') },
+    { key: 'totalSpend', label: metricLabel(reportData, 'meta', 'placement_table', 'totalSpend', 'Wydatki'), compactLabel: 'Wydatki', value: (row) => formatCurrency(safeNumber(row.spend)) },
+    { key: 'totalClicks', label: metricLabel(reportData, 'meta', 'placement_table', 'totalClicks', 'Kliknięcia'), compactLabel: 'Klik.', value: (row) => formatNumber(safeNumber(row.clicks)) },
+    { key: 'reservations', label: metricLabel(reportData, 'meta', 'placement_table', 'reservations', 'Rezerwacje'), compactLabel: 'Rez.', value: (row) => formatNumber(safeNumber(row.reservations)) },
+    { key: 'reservation_value', label: metricLabel(reportData, 'meta', 'placement_table', 'reservation_value', 'Wartość rezerwacji'), compactLabel: 'Wartość', value: (row) => formatCurrency(safeNumber(row.reservation_value)) },
+    { key: 'roas', label: metricLabel(reportData, 'meta', 'placement_table', 'roas', 'ROAS'), compactLabel: 'ROAS', value: (row) => formatROASValue(safeDivide(row.reservation_value, row.spend)) },
+  ];
+  return configuredTableColumns(reportData, 'meta', 'placement_table', base);
+}
+
+function sortedCampaigns(reportData: ReportData, platform: ReportPlatform): any[] {
+  return [...(platformData(reportData, platform)?.campaigns || [])]
+    .filter((campaign) => safeNumber(getRowValue(campaign, 'totalSpend')) > 0 || safeNumber(getRowValue(campaign, 'reservation_value')) > 0)
+    .sort((a, b) => safeNumber(getRowValue(b, 'totalSpend')) - safeNumber(getRowValue(a, 'totalSpend')));
+}
+
+function campaignHighlightCards(reportData: ReportData, platform: ReportPlatform): string {
+  const rows = sortedCampaigns(reportData, platform);
+  const byReservations = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'reservations')) - safeNumber(getRowValue(a, 'reservations')) || safeNumber(getRowValue(b, 'reservation_value')) - safeNumber(getRowValue(a, 'reservation_value')));
+  const byValue = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'reservation_value')) - safeNumber(getRowValue(a, 'reservation_value')));
+  const byTraffic = [...rows].sort((a, b) => safeNumber(getRowValue(b, 'totalClicks')) - safeNumber(getRowValue(a, 'totalClicks')) || safeNumber(getRowValue(b, 'totalImpressions')) - safeNumber(getRowValue(a, 'totalImpressions')));
+  const byRoas = [...rows].filter((row) => safeNumber(getRowValue(row, 'reservations')) > 0).sort((a, b) => safeNumber(getRowValue(b, 'roas')) - safeNumber(getRowValue(a, 'roas')));
+  const international = rows.find((campaign) => /\b(niemcy|germany|de|deutschland|german)\b/i.test(getCampaignName(campaign)));
+  const candidates = platform === 'google'
+    ? [
+        { title: 'Top booking driver', campaign: byReservations[0] },
+        { title: 'Highest booking value', campaign: byValue.find((row) => row !== byReservations[0]) || byValue[0] },
+        { title: 'International signal', campaign: international || byRoas[0] },
+      ]
+    : [
+        { title: 'Top booking driver', campaign: byReservations[0] },
+        { title: 'Highest traffic', campaign: byTraffic[0] },
+        { title: 'International signal / ROAS', campaign: international || byRoas[0] },
+      ];
+  const cards = candidates.filter((candidate, idx, arr) => candidate.campaign && arr.findIndex((item) => item.campaign === candidate.campaign) === idx).slice(0, 3);
+  if (cards.length === 0) return '<div class="empty-panel">Brak danych kampanii dla wyróżnień.</div>';
+  return `<div class="highlight-grid">${cards.map(({ title, campaign }) => `
+    <div class="highlight-card">
+      <div class="highlight-label">${escapeHtml(title)}</div>
+      <h3>${escapeHtml(getCampaignName(campaign))}</h3>
+      <dl>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'campaign_table', 'reservations', 'Rezerwacje'))}</dt><dd>${formatNumber(safeNumber(getRowValue(campaign, 'reservations')))}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'campaign_table', 'reservation_value', 'Wartość rezerwacji'))}</dt><dd>${formatCurrency(safeNumber(getRowValue(campaign, 'reservation_value')))}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'campaign_table', 'roas', 'ROAS'))}</dt><dd>${formatROASValue(safeNumber(getRowValue(campaign, 'roas')) || safeDivide(getRowValue(campaign, 'reservation_value'), getRowValue(campaign, 'totalSpend')))}</dd></div>
+      </dl>
+    </div>
+  `).join('')}</div>`;
+}
+
+function campaignContributionChart(reportData: ReportData, platform: ReportPlatform): string {
+  const totalValue = safeNumber(platformData(reportData, platform)?.metrics.totalReservationValue);
+  const entries = sortedCampaigns(reportData, platform)
+    .map((campaign) => [getCampaignName(campaign), safeNumber(getRowValue(campaign, 'reservation_value'))] as [string, number])
+    .filter(([, value]) => value > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  if (entries.length === 0) return '';
+  return barPanel(metricLabel(reportData, platform, 'campaign_table', 'reservation_value', 'Wartość rezerwacji wg kampanii'), entries.map(([label, value]) => [totalValue > 0 ? `${label}` : label, value]), formatCurrency);
+}
+
+function funnelBlock(reportData: ReportData, platform: ReportPlatform): string {
+  const funnel = platformData(reportData, platform)?.funnel;
+  const steps = [
+    { key: 'booking_step_1', fallback: 'Krok 1', value: safeNumber(funnel?.booking_step_1) },
+    { key: 'booking_step_2', fallback: 'Krok 2', value: safeNumber(funnel?.booking_step_2) },
+    { key: 'booking_step_3', fallback: 'Krok 3', value: safeNumber(funnel?.booking_step_3) },
+    { key: 'reservations', fallback: 'Rezerwacje', value: safeNumber(funnel?.reservations) },
+  ].filter((step) => pdfMetricVisible(reportData, platform, 'funnel', step.key));
+  const firstValue = steps[0]?.value || 0;
+  const lastValue = steps[steps.length - 1]?.value || 0;
+  return `
+    <div class="funnel-shell">
+      <div class="funnel-segments">
+        ${steps.map((step, idx) => {
+          const previous = idx > 0 ? steps[idx - 1]?.value ?? null : null;
+          const rate = previous === null ? null : safeDivide(step.value, previous);
+          return `
+            <div class="funnel-segment segment-${idx + 1}">
+              <div class="funnel-label">${escapeHtml(metricLabel(reportData, platform, 'funnel', step.key, step.fallback))}</div>
+              <div class="funnel-value">${formatNumber(step.value)}</div>
+              <div class="funnel-rate">${idx === 0 ? 'Początek ścieżki' : `${formatPercentValue(rate, 1)} z poprzedniego kroku`}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="funnel-total-rate">
+        <span>Współczynnik konwersji</span>
+        <strong>${formatPercentValue(safeDivide(lastValue, firstValue), 2)}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function platformMediaCards(reportData: ReportData, platform: ReportPlatform): string {
+  const metrics = platformData(reportData, platform)?.metrics;
+  if (!metrics) return '<div class="empty-panel">Brak danych mediowych.</div>';
+  return metricStrip(buildMetricCards(reportData, platform, 'report_summary', [
+    { key: 'totalSpend', fallback: 'Wydatki', value: formatCurrency(metrics.totalSpend) },
+    { key: 'totalImpressions', fallback: 'Wyświetlenia', value: formatNumber(metrics.totalImpressions) },
+    { key: 'totalClicks', fallback: 'Kliknięcia', value: formatNumber(metrics.totalClicks) },
+    { key: 'averageCtr', fallback: 'CTR', value: formatPercentage(metrics.averageCtr) },
+    { key: 'averageCpc', fallback: 'CPC', value: formatCurrency(metrics.averageCpc) },
+  ]), 5);
+}
+
+function platformOutcomeCards(reportData: ReportData, platform: ReportPlatform): string {
+  const data = platformData(reportData, platform);
+  if (!data) return '';
+  const offline = computeOfflinePotentialFromReportData(reportData);
+  const metrics = data.metrics;
+  const funnel = data.funnel;
+  const cards = buildMetricCards(reportData, platform, 'funnel', [
+    { key: 'reservation_value', fallback: 'Wartość rezerwacji', value: formatCurrency(funnel.reservation_value || metrics.totalReservationValue) },
+    { key: 'roas', fallback: 'ROAS', value: formatROASValue(funnel.roas || metrics.roas) },
+    { key: 'reservations', fallback: 'Rezerwacje', value: formatNumber(funnel.reservations || metrics.totalReservations) },
+  ]);
+  const contactCards = buildMetricCards(reportData, platform, 'contact', [
+    { key: 'email_contacts', fallback: 'Kontakty e-mail', value: formatNumber(metrics.emailContacts) },
+    { key: 'click_to_call', fallback: 'Kliknięcia w telefon', value: formatNumber(metrics.phoneContacts) },
+    { key: 'offline_reservations', fallback: 'Potencjał offline', value: formatNumber(offline.potentialOfflineReservations) },
+  ]);
+  return metricStrip([...cards, ...contactCards], 2);
+}
+
+function channelCard(reportData: ReportData, platform: ReportPlatform, metrics: HotelPlatformMetrics | undefined): string {
+  if (!metrics) return `<div class="channel-card"><h3>${platformName(platform)}</h3><div class="empty-panel">Brak danych.</div></div>`;
+  const spend = safeNumber(metrics.totalSpend);
+  const value = safeNumber(metrics.totalReservationValue);
+  return `
+    <div class="channel-card">
+      <h3>${platformName(platform)}</h3>
+      <dl>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'totalSpend', 'Wydatki'))}</dt><dd>${formatCurrency(spend)}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'reservations', 'Rezerwacje'))}</dt><dd>${formatNumber(metrics.totalReservations)}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'reservation_value', 'Wartość rezerwacji'))}</dt><dd>${formatCurrency(value)}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, platform, 'report_summary', 'roas', 'ROAS'))}</dt><dd>${formatROASValue(safeDivide(value, spend))}</dd></div>
+      </dl>
+    </div>
+  `;
+}
+
+function yoyBlock(reportData: ReportData, platform: ReportPlatform, data: any | undefined): string {
+  if (!data || !data.previous || ((!data.previous.spend || data.previous.spend === 0) && (!data.previous.reservationValue || data.previous.reservationValue === 0))) {
+    return `
+      <div class="yoy-card">
+        <h3>${platformName(platform)}</h3>
+        <div class="empty-panel">Brak danych z analogicznego okresu.</div>
+      </div>
+    `;
+  }
+  const rows = [
+    [metricLabel(reportData, platform, 'report_summary', 'totalSpend', 'Wydatki'), formatCurrency(data.current?.spend || 0), formatCurrency(data.previous?.spend || 0), `${safeNumber(data.changes?.spend).toFixed(1).replace('.', ',')}%`],
+    [metricLabel(reportData, platform, 'report_summary', 'reservation_value', 'Wartość rezerwacji'), formatCurrency(data.current?.reservationValue || 0), formatCurrency(data.previous?.reservationValue || 0), `${safeNumber(data.changes?.reservationValue).toFixed(1).replace('.', ',')}%`],
+  ];
+  return `
+    <div class="yoy-card">
+      <h3>${platformName(platform)}</h3>
+      ${hotelTable(['Wskaźnik', 'Bieżący', 'Poprz.', 'Zmiana'], rows, 'yoy-table', 'compact')}
+    </div>
+  `;
+}
+
+function generateHotelSummaryPages(reportData: ReportData, startPageNumber: number): string[] {
+  const blocks = summaryTextBlocks(reportData);
+  const chunks = chunkSummaryBlocks(blocks, 1100);
+  const pages: string[] = [];
+  chunks.forEach((chunk, idx) => {
+    pages.push(hotelReportPage(
+      reportData,
+      startPageNumber + pages.length,
+      idx === 0 ? 'Raport kampanii reklamowej' : 'Podsumowanie kampanii',
+      idx === 0 ? 'Podsumowanie wyników' : 'Ciąg dalszy podsumowania',
+      `<div class="summary-text-only">${renderSummaryTextBlocks(chunk)}</div>`,
+      'PODSUMOWANIE',
+    ));
+  });
+  return pages;
+}
+
+function combinedResultsBlocks(reportData: ReportData): ReportBlock[] {
+  const total = combinedMetrics(reportData);
+  const google = reportData.googleData?.metrics;
+  const meta = reportData.metaData?.metrics;
+  return [
+    {
+      title: 'Wyniki łączne',
+      subtitle: 'Najważniejsze wskaźniki z obu kanałów',
+      kicker: 'PODSUMOWANIE',
+      platform: 'global',
+      heightMm: 52,
+      html: framedSection('Kluczowe wskaźniki łącznie', metricStrip([
+        { label: metricLabel(reportData, 'google', 'report_summary', 'totalSpend', 'Wydatki'), value: formatCurrency(total.totalSpend) },
+        { label: metricLabel(reportData, 'google', 'report_summary', 'reservations', 'Rezerwacje'), value: formatNumber(total.totalReservations) },
+        { label: metricLabel(reportData, 'google', 'report_summary', 'reservation_value', 'Wartość rezerwacji'), value: formatCurrency(total.totalReservationValue) },
+        { label: metricLabel(reportData, 'google', 'report_summary', 'roas', 'ROAS'), value: formatROASValue(total.roas) },
+        { label: metricLabel(reportData, 'google', 'contact', 'cost_per_reservation', 'Koszt rezerwacji'), value: formatCurrency(total.costPerReservation) },
+        { label: combinedContactsLabel(reportData), value: formatNumber(total.contacts), subtext: `${formatNumber(total.emailContacts)} e-mail / ${formatNumber(total.phoneContacts)} telefoniczne` },
+      ], 3)),
+    },
+    {
+      title: 'Wyniki łączne',
+      subtitle: 'Wartość i liczba rezerwacji wg kanału',
+      kicker: 'PODSUMOWANIE',
+      platform: 'global',
+      heightMm: 70,
+      html: `<div class="two-stack">
+        ${barPanel(metricLabel(reportData, 'google', 'report_summary', 'reservation_value', 'Wartość rezerwacji'), [
+          ['Google Ads', safeNumber(google?.totalReservationValue)],
+          ['Meta Ads', safeNumber(meta?.totalReservationValue)],
+        ], formatCurrency)}
+        ${barPanel(metricLabel(reportData, 'google', 'report_summary', 'reservations', 'Rezerwacje'), [
+          ['Google Ads', safeNumber(google?.totalReservations)],
+          ['Meta Ads', safeNumber(meta?.totalReservations)],
+        ], formatNumber)}
+      </div>`,
+    },
+  ];
+}
+
+function channelComparisonBlocks(reportData: ReportData): ReportBlock[] {
+  const google = reportData.googleData?.metrics;
+  const meta = reportData.metaData?.metrics;
+  return [
+    {
+      title: 'Porównanie kanałów',
+      subtitle: 'Google Ads i Meta Ads',
+      platform: 'global',
+      heightMm: 65,
+      html: `<div class="channel-grid">${channelCard(reportData, 'google', google)}${channelCard(reportData, 'meta', meta)}</div>`,
+    },
+    {
+      title: 'Porównanie kanałów',
+      subtitle: 'Wskaźniki kanałów',
+      platform: 'global',
+      heightMm: 74,
+      html: comparisonBarRows([
+        { label: metricLabel(reportData, 'google', 'report_summary', 'totalSpend', 'Wydatki'), google: safeNumber(google?.totalSpend), meta: safeNumber(meta?.totalSpend), formatter: formatCurrency },
+        { label: metricLabel(reportData, 'google', 'report_summary', 'reservations', 'Rezerwacje'), google: safeNumber(google?.totalReservations), meta: safeNumber(meta?.totalReservations), formatter: formatNumber },
+        { label: metricLabel(reportData, 'google', 'report_summary', 'reservation_value', 'Wartość rezerwacji'), google: safeNumber(google?.totalReservationValue), meta: safeNumber(meta?.totalReservationValue), formatter: formatCurrency },
+        { label: metricLabel(reportData, 'google', 'report_summary', 'roas', 'ROAS'), google: safeNumber(google?.roas), meta: safeNumber(meta?.roas), formatter: formatROASValue },
+      ]),
+    },
+    {
+      title: 'Porównanie rok do roku',
+      subtitle: 'Dane dostępne wg kanału',
+      platform: 'global',
+      heightMm: 72,
+      html: `<div class="yoy-grid">${yoyBlock(reportData, 'google', reportData.yoyComparison?.google)}${yoyBlock(reportData, 'meta', reportData.yoyComparison?.meta)}</div>`,
+    },
+  ];
+}
+
+function platformOverviewBlocks(reportData: ReportData, platform: ReportPlatform): ReportBlock[] {
+  return [
+    {
+      title: platformName(platform),
+      subtitle: 'Wskaźniki i efekty',
+      platform,
+      heightMm: 104,
+      html: `<div class="two-stack">
+        ${platformMediaCards(reportData, platform)}
+        ${framedSection('Wyniki i efekty', platformOutcomeCards(reportData, platform), 'outcome-panel')}
+      </div>`,
+    },
+    {
+      title: platformName(platform),
+      subtitle: 'Ścieżka konwersji',
+      platform,
+      heightMm: 88,
+      html: framedSection('Ścieżka konwersji', funnelBlock(reportData, platform), 'funnel-panel funnel-hero'),
+    },
+  ];
+}
+
+function mediaMetricsBlock(reportData: ReportData, platform: ReportPlatform): ReportBlock {
+  const data = platformData(reportData, platform);
+  const networks = platform === 'google' ? (reportData.googleData?.tables?.networkPerformance || []) : [];
+  const networkRows = networks.slice(0, 8);
+  return {
+    title: platformName(platform),
+    subtitle: platform === 'google' ? 'Media / sieci reklamowe' : 'Wskaźniki mediowe',
+    platform,
+    heightMm: platform === 'google' ? 58 : 0,
+    html: platform === 'google'
+      ? `${framedSection('Wydajność sieci reklamowych', hotelTable(
+          [
+            metricLabel(reportData, 'google', 'placement_table', 'placement', 'Sieć'),
+            compactTableLabel(metricLabel(reportData, 'google', 'placement_table', 'totalSpend', 'Wydatki'), 'totalSpend'),
+            compactTableLabel(metricLabel(reportData, 'google', 'placement_table', 'totalImpressions', 'Wyświetlenia'), 'totalImpressions'),
+            compactTableLabel(metricLabel(reportData, 'google', 'placement_table', 'totalClicks', 'Kliknięcia'), 'totalClicks'),
+          ],
+          networkRows.map((n: any) => [
+            escapeHtml(n.network || n.placement || 'Nieznana sieć'),
+            formatCurrency(safeNumber(n.spend)),
+            formatNumber(safeNumber(n.impressions)),
+            formatNumber(safeNumber(n.clicks)),
+          ]),
+          'network-table',
+          'compact',
+        ))}`
+      : '',
+  };
+}
+
+function campaignBlocks(reportData: ReportData, platform: ReportPlatform): ReportBlock[] {
+  const rows = sortedCampaigns(reportData, platform);
+  const columns = campaignCompactColumns(reportData, platform);
+  const contribution = campaignContributionChart(reportData, platform);
+  const blocks: ReportBlock[] = [
+    {
+      title: platformName(platform),
+      subtitle: 'Wyróżnione kampanie',
+      platform,
+      heightMm: 92,
+      html: campaignHighlightCards(reportData, platform),
+    },
+  ];
+  if (contribution) {
+    blocks.push({
+      title: platformName(platform),
+      subtitle: 'Wartość rezerwacji wg kampanii',
+      platform,
+      heightMm: 72,
+      html: contribution,
+    });
+  }
+  const chunks = splitRowsBalanced(rows, 9, 4);
+  chunks.forEach((chunk, idx) => {
+    blocks.push({
+      title: platformName(platform),
+      subtitle: idx === 0 ? 'Kampanie wg wydatków' : 'Kampanie wg wydatków — ciąg dalszy',
+      platform,
+      heightMm: estimateTableBlockHeightMm(chunk.length),
+      html: framedSection(
+        idx === 0 ? 'Kampanie wg wydatków' : 'Kampanie wg wydatków — ciąg dalszy',
+        tableFromColumns(chunk, columns, 'campaign-table', 'campaign'),
+      ),
+    });
+  });
+  return blocks;
+}
+
+function deviceBlocks(reportData: ReportData): ReportBlock[] {
+  const rows = reportData.googleData?.tables?.devicePerformance || [];
+  const columns: TableColumn[] = [
+    { key: 'device', label: metricLabel(reportData, 'google', 'device_table', 'device', 'Urządzenie'), className: 'dimension', value: (row) => escapeHtml(googleAdsDeviceLabelPl(row.device ?? row.deviceType)) },
+    { key: 'totalSpend', label: metricLabel(reportData, 'google', 'device_table', 'totalSpend', 'Wydatki'), value: (row) => formatCurrency(safeNumber(row.spend)) },
+    { key: 'conversion_value', label: metricLabel(reportData, 'google', 'device_table', 'conversion_value', 'Wartość konwersji'), value: (row) => formatCurrency(safeNumber(row.conversion_value)) },
+    { key: 'roas', label: metricLabel(reportData, 'google', 'device_table', 'roas', 'ROAS'), value: (row) => formatROASValue(safeNumber(row.roas) || safeDivide(row.conversion_value, row.spend)) },
+  ];
+  const configured = configuredTableColumns(reportData, 'google', 'device_table', columns);
+  return [{
+    title: 'Google Ads',
+    subtitle: 'Urządzenia',
+    platform: 'google',
+    heightMm: 92,
+    html: `${framedSection('Urządzenia', tableFromColumns(rows, configured, 'device-table', 'device'))}${barPanel(metricLabel(reportData, 'google', 'device_table', 'conversion_value', 'Wartość konwersji wg urządzenia'), rows.map((row: any) => [googleAdsDeviceLabelPl(row.device ?? row.deviceType), safeNumber(row.conversion_value)]), formatCurrency, { maxRows: 4 })}`,
+  }];
+}
+
+function demographicBlocks(reportData: ReportData, platform: ReportPlatform): ReportBlock[] {
+  const demographics = platform === 'google'
+    ? reportData.googleData?.tables?.demographicPerformance || []
+    : reportData.metaData?.tables?.demographicPerformance || [];
+  const valueMetric = platform === 'google' ? 'conversion_value' : 'reservation_value';
+  const genderValue = aggregateBy(demographics.filter((r: any) => r.gender !== undefined), (r) => categoryDisplayLabel(r.gender), valueMetric);
+  const ageValue = aggregateBy(demographics.filter((r: any) => (r.ageRange ?? r.age) !== undefined), (r) => r.ageRange ?? r.age, valueMetric);
+  const genderClicks = aggregateBy(demographics.filter((r: any) => r.gender !== undefined), (r) => categoryDisplayLabel(r.gender), 'clicks');
+  const ageClicks = aggregateBy(demographics.filter((r: any) => (r.ageRange ?? r.age) !== undefined), (r) => r.ageRange ?? r.age, 'clicks');
+  return [
+    {
+      title: platformName(platform),
+      subtitle: 'Demografia wartości',
+      platform,
+      heightMm: 82,
+      html: `<div class="demo-layout">
+        ${framedSection(metricLabel(reportData, platform, 'demographic_breakdown', valueMetric === 'conversion_value' ? 'conversion_value' : 'reservation_value', 'Wartość'), `${donutChart(genderValue)}${barPanel('Wiek', ageValue, formatCurrency, { maxRows: 6 })}`)}
+      </div>`,
+    },
+    {
+      title: platformName(platform),
+      subtitle: 'Demografia kliknięć',
+      platform,
+      heightMm: 72,
+      html: `<div class="two-stack">${barPanel(metricLabel(reportData, platform, 'demographic_breakdown', 'gender', 'Płeć'), genderClicks, formatNumber, { maxRows: 4 })}${barPanel(metricLabel(reportData, platform, 'demographic_breakdown', 'age', 'Wiek'), ageClicks, formatNumber, { maxRows: 6 })}</div>`,
+    },
+  ];
+}
+
+function generateHotelGoogleRegionsBody(reportData: ReportData): string {
+  const rows = reportData.googleData?.tables?.geographicPerformance || [];
+  if (!rows || rows.length === 0) {
+    return `
+      <div class="regions-layout region-fallback-layout">
+        <div class="map-wrap map-fallback">
+          <div class="empty-panel">Mapa niedostępna dla tego zakresu danych.</div>
+        </div>
+        <div class="region-card-grid">
+          <div class="region-card"><div class="region-card-title">Top regiony</div><div class="region-card-row"><span>Brak danych regionalnych.</span><strong>—</strong></div></div>
+          <div class="region-card"><div class="region-card-title">Zagranica</div><div class="region-card-row"><span>Brak danych.</span><strong>—</strong></div></div>
+          <div class="region-card"><div class="region-card-title">Nieznana lokalizacja</div><div class="region-card-row"><span>Bez przypisania</span><strong>—</strong></div></div>
+        </div>
+      </div>
+    `;
+  }
+  const { POLAND_MAP_VIEW_BOX, POLAND_VOIVODESHIPS, VOIVODESHIP_BY_CODE, heatmapColor } = require('@/lib/poland-voivodeships');
+  const { resolvePolishVoivodeshipCode, formatPolishCountryName } = require('@/lib/polish-geo-display');
+
+  type Bucket = { code: string; name: string; conversion_value: number };
+  const byCode = new Map<string, Bucket>();
+  const foreignByCountry = new Map<string, Bucket>();
+  let unmatchedPolandValue = 0;
+  rows.forEach((row: any) => {
+    const value = safeNumber(row.conversion_value || row.reservation_value);
+    if (row.countryCode && row.countryCode !== 'PL') {
+      const key = row.countryCode || row.countryName || '__foreign__';
+      const country = foreignByCountry.get(key) ?? { code: key, name: row.countryName || row.countryCode || 'Zagranica', conversion_value: 0 };
+      country.conversion_value += value;
+      foreignByCountry.set(key, country);
+      return;
+    }
+    const code = resolvePolishVoivodeshipCode(row);
+    const shape = code ? VOIVODESHIP_BY_CODE[code] : null;
+    if (!code || !shape) {
+      unmatchedPolandValue += value;
+      return;
+    }
+    const bucket = byCode.get(code) ?? { code, name: shape.name, conversion_value: 0 };
+    bucket.conversion_value += value;
+    byCode.set(code, bucket);
+  });
+  const values = Array.from(byCode.values()).map((b) => b.conversion_value);
+  const maxValue = values.length > 0 ? Math.max(...values) : 0;
+  const geoTotal = values.reduce((s, v) => s + v, 0) + unmatchedPolandValue + Array.from(foreignByCountry.values()).reduce((s, c) => s + c.conversion_value, 0);
+  const campaignTotalValue = (reportData.googleData?.campaigns || []).reduce((sum: number, c: any) => sum + safeNumber(getRowValue(c, 'reservation_value')), 0);
+  const totalMetric = campaignTotalValue > 0 ? campaignTotalValue : geoTotal;
+  const unknownLocation = Math.max(0, totalMetric - geoTotal);
+  const paths = POLAND_VOIVODESHIPS.map((v: any) => {
+    const bucket = byCode.get(v.code);
+    const value = bucket ? bucket.conversion_value : 0;
+    return `<path d="${v.path}" fill="${heatmapColor(maxValue > 0 ? value / maxValue : 0, value > 0)}" stroke="rgba(15,39,66,0.18)" stroke-width="1"/>`;
+  }).join('');
+  const topRegions = Array.from(byCode.values()).filter((b) => b.conversion_value > 0).sort((a, b) => b.conversion_value - a.conversion_value).slice(0, 5);
+  const topForeign = Array.from(foreignByCountry.values()).filter((b) => b.conversion_value > 0).sort((a, b) => b.conversion_value - a.conversion_value).slice(0, 3);
+  const hasRegionalContent = topRegions.length > 0 || topForeign.length > 0 || unknownLocation + unmatchedPolandValue > 0;
+  return `
+    <div class="regions-layout">
+      <div class="map-wrap">
+        ${hasRegionalContent ? `<svg viewBox="${POLAND_MAP_VIEW_BOX}" class="poland-map" preserveAspectRatio="xMidYMid meet">${paths}</svg>
+        <div class="map-legend"><span>Niższa wartość</span><span class="legend-ramp"></span><span>Wyższa wartość</span></div>` : '<div class="empty-panel">Mapa niedostępna dla tego zakresu danych.</div>'}
+      </div>
+      <div class="region-card-grid">
+        <div class="region-card"><div class="region-card-title">Top regiony</div>${topRegions.map((r, idx) => `<div class="region-card-row"><span>${idx + 1}. ${escapeHtml(r.name)}</span><strong>${formatCurrency(r.conversion_value)}</strong></div>`).join('') || '<div class="region-card-row"><span>Brak danych.</span></div>'}</div>
+        <div class="region-card"><div class="region-card-title">Zagranica</div>${topForeign.map((r) => `<div class="region-card-row"><span>${escapeHtml(formatPolishCountryName({ countryCode: r.code, countryName: r.name }))}</span><strong>${formatCurrency(r.conversion_value)}</strong></div>`).join('') || '<div class="region-card-row"><span>Brak danych.</span></div>'}</div>
+        <div class="region-card"><div class="region-card-title">Nieznana lokalizacja</div><div class="region-card-row"><span>Bez przypisania</span><strong>${formatCurrency(unknownLocation + unmatchedPolandValue)}</strong></div></div>
+      </div>
+    </div>
+  `;
+}
+
+function generateHotelGoogleCityRows(reportData: ReportData): any[] {
+  return [...(reportData.googleData?.tables?.geographicPerformance || [])]
+    .filter((r: any) => r.cityName && r.cityName !== '(nieznane)')
+    .sort((a: any, b: any) => safeNumber(b.conversion_value || b.reservation_value) - safeNumber(a.conversion_value || a.reservation_value))
+    .slice(0, 15);
+}
+
+function geoBlocks(reportData: ReportData): ReportBlock[] {
+  const cityRows = generateHotelGoogleCityRows(reportData);
+  const { formatPolishVoivodeshipName } = require('@/lib/polish-geo-display');
+  const cityColumns: TableColumn[] = [
+    { key: 'city', label: metricLabel(reportData, 'google', 'geographic_map', 'city', 'Miasto'), className: 'dimension', value: (row) => escapeHtml(row.cityName || row.city || 'Nieznane') },
+    {
+      key: 'region',
+      label: metricLabel(reportData, 'google', 'geographic_map', 'region', 'Województwo'),
+      className: 'dimension',
+      value: (row: any) => {
+        const text =
+          row.countryCode && row.countryCode !== 'PL'
+            ? row.regionName || row.region || row.countryName || row.countryCode
+            : formatPolishVoivodeshipName(row);
+        return escapeHtml(String(text ?? '—'));
+      },
+    },
+    { key: 'totalClicks', label: metricLabel(reportData, 'google', 'geographic_map', 'totalClicks', 'Kliknięcia'), value: (row) => formatNumber(safeNumber(row.clicks)) },
+    { key: 'totalConversions', label: metricLabel(reportData, 'google', 'geographic_map', 'totalConversions', 'Konwersje'), value: (row) => formatNumber(safeNumber(row.conversions)) },
+    { key: 'conversion_value', label: metricLabel(reportData, 'google', 'geographic_map', 'conversion_value', 'Wartość konwersji'), value: (row) => formatCurrency(safeNumber(row.conversion_value || row.reservation_value)) },
+  ];
+  const blocks: ReportBlock[] = [{
+    title: 'Google Ads',
+    subtitle: 'Regiony',
+    platform: 'google',
+    heightMm: 104,
+    html: generateHotelGoogleRegionsBody(reportData),
+  }];
+  const cityChunks = cityRows.length > 6
+    ? [cityRows.slice(0, 6), cityRows.slice(6)]
+    : cityRows.length > 0 ? [cityRows] : [];
+  cityChunks.forEach((chunk, idx) => {
+    blocks.push({
+      title: 'Google Ads',
+      subtitle: idx === 0 ? 'Miasta' : 'Miasta — ciąg dalszy',
+      platform: 'google',
+      heightMm: idx === 0 ? 105 : estimateTableBlockHeightMm(chunk.length),
+      html: `${idx === 0 ? barPanel(metricLabel(reportData, 'google', 'geographic_map', 'conversion_value', 'Wartość konwersji wg miasta'), chunk.slice(0, 5).map((row: any) => [row.cityName || row.city || 'Nieznane', safeNumber(row.conversion_value || row.reservation_value)]), formatCurrency, { maxRows: 5 }) : ''}${framedSection(idx === 0 ? 'Miasta' : 'Miasta — ciąg dalszy', tableFromColumns(chunk, configuredTableColumns(reportData, 'google', 'geographic_map', cityColumns), 'city-table', 'city'))}`,
+    });
+  });
+  return blocks;
+}
+
+function placementBlocks(reportData: ReportData): ReportBlock[] {
+  const rows = [...(reportData.metaData?.tables?.placementPerformance || [])]
+    .filter((p: any) => safeNumber(p.spend) > 0 || safeNumber(p.impressions) > 0 || safeNumber(p.clicks) > 0)
+    .sort((a: any, b: any) => safeNumber(b.reservation_value) - safeNumber(a.reservation_value) || safeNumber(b.clicks) - safeNumber(a.clicks));
+  const columns = placementCompactColumns(reportData);
+  const topValue = [...rows].sort((a, b) => safeNumber(b.reservation_value) - safeNumber(a.reservation_value))[0];
+  const topTraffic = [...rows].sort((a, b) => safeNumber(b.clicks) - safeNumber(a.clicks))[0];
+  const topRoas = [...rows].filter((row) => safeNumber(row.reservations) > 0).sort((a, b) => (safeDivide(b.reservation_value, b.spend) || 0) - (safeDivide(a.reservation_value, a.spend) || 0))[0];
+  const summaryCards = [topValue, topTraffic, topRoas].filter((row, idx, arr) => row && arr.indexOf(row) === idx).map((row, idx) => `
+    <div class="highlight-card">
+      <div class="highlight-label">${idx === 0 ? 'Top booking value' : idx === 1 ? 'Top traffic' : 'Best ROAS'}</div>
+      <h3>${escapeHtml(row.placement || 'Nieznane')}</h3>
+      <dl>
+        <div><dt>${escapeHtml(metricLabel(reportData, 'meta', 'placement_table', 'totalClicks', 'Kliknięcia'))}</dt><dd>${formatNumber(safeNumber(row.clicks))}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, 'meta', 'placement_table', 'reservation_value', 'Wartość rezerwacji'))}</dt><dd>${formatCurrency(safeNumber(row.reservation_value))}</dd></div>
+        <div><dt>${escapeHtml(metricLabel(reportData, 'meta', 'placement_table', 'roas', 'ROAS'))}</dt><dd>${formatROASValue(safeDivide(row.reservation_value, row.spend))}</dd></div>
+      </dl>
+    </div>
+  `).join('');
+  const blocks: ReportBlock[] = [{
+    title: 'Meta Ads',
+    subtitle: 'Placements / miejsca docelowe',
+    platform: 'meta',
+    heightMm: 72,
+    html: `<div class="highlight-grid">${summaryCards || '<div class="empty-panel">Brak danych placementów.</div>'}</div>`,
+  }];
+  splitRowsBalanced(rows, 10, 5).forEach((chunk, idx) => {
+    blocks.push({
+      title: 'Meta Ads',
+      subtitle: idx === 0 ? 'Tabela placementów' : 'Tabela placementów — ciąg dalszy',
+      platform: 'meta',
+      heightMm: estimateTableBlockHeightMm(chunk.length),
+      html: framedSection(idx === 0 ? 'Skuteczność miejsc docelowych' : 'Skuteczność miejsc docelowych — ciąg dalszy', tableFromColumns(chunk, columns, 'placement-table', 'placement')),
+    });
+  });
+  return blocks;
+}
+
+function buildHotelReportBlocks(reportData: ReportData): ReportBlock[] {
+  const blocks: ReportBlock[] = [
+    ...combinedResultsBlocks(reportData),
+    ...channelComparisonBlocks(reportData),
+  ];
+  if (reportData.googleData) {
+    blocks.push(
+      ...platformOverviewBlocks(reportData, 'google'),
+      mediaMetricsBlock(reportData, 'google'),
+      ...campaignBlocks(reportData, 'google'),
+      ...deviceBlocks(reportData),
+      ...demographicBlocks(reportData, 'google'),
+      ...geoBlocks(reportData),
+    );
+  }
+  if (reportData.metaData) {
+    blocks.push(
+      ...platformOverviewBlocks(reportData, 'meta'),
+      ...campaignBlocks(reportData, 'meta'),
+      ...demographicBlocks(reportData, 'meta'),
+      ...placementBlocks(reportData),
+    );
+  }
+  return blocks;
+}
+
+function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolean }): string {
+  const sanitizedData: ReportData = {
+    ...reportData,
+    clientName: reportData.clientName?.replace(/[<>]/g, '') || 'Unknown Client',
+    aiSummary: reportData.aiSummary?.replace(/[<>]/g, '') || undefined,
+  };
+  let pageNumber = 1;
+  const pages: string[] = [];
+
+  const summaryPages = generateHotelSummaryPages(sanitizedData, pageNumber);
+  pages.push(...summaryPages);
+  pageNumber += summaryPages.length;
+  const flowPages = paginateBlocks(buildHotelReportBlocks(sanitizedData), pageNumber, sanitizedData);
+  pages.push(...flowPages);
+  pageNumber += flowPages.length;
+
+  const bodyClass = options?.debug ? 'debug' : '';
+
+  return `
+    <!DOCTYPE html>
+    <html lang="pl">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Raport kampanii reklamowej</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          @page { size: ${REPORT_LAYOUT.PAGE_WIDTH_MM}mm ${REPORT_LAYOUT.PAGE_HEIGHT_MM}mm; margin: 0; }
+          :root {
+            --ivory: #FAF7F0;
+            --paper: #FFFDF8;
+            --paper-soft: #FBF6EF;
+            --navy: #0E2742;
+            --footer-navy: #082744;
+            --muted: #65707A;
+            --terracotta: #D85F36;
+            --terracotta-muted: #C96545;
+            --pale-terracotta: #F3C7AF;
+            --line: rgba(201, 101, 69, 0.35);
+            --line-soft: rgba(201, 101, 69, 0.18);
+            --soft: rgba(216, 95, 54, 0.09);
+            --green: #4F8B61;
+            --red: #A84D44;
+            --serif: 'DM Serif Display', Georgia, serif;
+            --sans: 'Inter', Arial, sans-serif;
+            --page-w: 108mm;
+            --page-h: 192mm;
+            --pad-x: 7mm;
+            --content-y: 24mm;
+            --content-h: 149mm;
+            --footer-h: 13mm;
+          }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--ivory); color: var(--navy); font-family: var(--sans); }
+          body { font-feature-settings: 'tnum' 1, 'lnum' 1; }
+          .hotel-page {
+            position: relative;
+            width: var(--page-w);
+            height: var(--page-h);
+            break-after: page;
+            page-break-after: always;
+            overflow: hidden;
+            background:
+              radial-gradient(circle at 50% 7%, rgba(216,95,54,0.055), transparent 34%),
+              linear-gradient(180deg, #FCF8F1 0%, var(--ivory) 100%);
+          }
+          .hotel-page:last-of-type { break-after: auto; page-break-after: auto; }
+          .page-border-outer, .page-border-inner { position: absolute; pointer-events: none; z-index: 0; }
+          .page-border-outer { top: 2.2mm; left: 2.2mm; right: 2.2mm; bottom: 2.2mm; border: 0.28mm solid var(--line); }
+          .page-border-inner { top: 3.3mm; left: 3.3mm; right: 3.3mm; bottom: 3.3mm; border: 0.12mm solid rgba(201,101,69,0.22); }
+          .running-header { position: absolute; top: 6mm; left: var(--pad-x); right: var(--pad-x); height: 17mm; display: flex; align-items: center; justify-content: center; z-index: 2; }
+          .hotel-logo { max-height: 13mm; max-width: 54mm; object-fit: contain; }
+          .hotel-wordmark { text-align: center; }
+          .hotel-wordmark-name { font-size: 11pt; font-weight: 600; letter-spacing: 0.42em; text-transform: uppercase; color: var(--navy); }
+          .hotel-wordmark-rule { display: flex; align-items: center; justify-content: center; gap: 4mm; margin-top: 1.7mm; color: var(--navy); }
+          .hotel-wordmark-rule span { width: 18mm; height: 0.15mm; background: var(--line); }
+          .hotel-wordmark-rule small { font-size: 5.8pt; letter-spacing: 0.35em; }
+          .page-main { position: absolute; left: var(--pad-x); right: var(--pad-x); top: var(--content-y); height: var(--content-h); overflow: visible; z-index: 1; }
+          .page-title-block { text-align: center; margin: 0 0 5mm; }
+          .page-title-block h1 { font-family: var(--serif); font-weight: 400; font-size: 32pt; line-height: 0.96; margin: 0; letter-spacing: -0.025em; color: var(--navy); }
+          .page-subtitle { font-family: var(--serif); color: var(--terracotta-muted); font-size: 14pt; line-height: 1.12; margin-top: 1.6mm; }
+          .period-pill { display: inline-flex; align-items: center; justify-content: center; margin-top: 3mm; padding: 1.1mm 4mm; border: 0.16mm solid var(--line-soft); border-radius: 999px; background: rgba(255,255,255,0.42); font-size: 6.2pt; font-weight: 700; letter-spacing: 0.11em; }
+          .section-kicker, .framed-title { display: flex; align-items: center; gap: 3mm; justify-content: center; font-size: 6.7pt; letter-spacing: 0.26em; text-transform: uppercase; color: var(--navy); margin-top: 4mm; font-weight: 700; }
+          .section-kicker span, .framed-title span { height: 0.16mm; background: var(--line); flex: 1; max-width: 25mm; }
+          .flow-block + .flow-block { margin-top: 5mm; }
+          .summary-text-only { max-width: 84mm; margin: 0 auto; }
+          .summary-copy { font-size: 9pt; line-height: 1.62; color: var(--navy); }
+          .summary-copy p { margin: 0 0 4mm; }
+          .summary-block { border-top: 0.14mm solid var(--line-soft); padding-top: 3mm; margin-top: 3mm; }
+          .summary-block:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+          .summary-block h3 { font-family: var(--serif); font-size: 13pt; font-weight: 400; margin: 0 0 1.6mm; color: var(--navy); }
+          .summary-block p { margin: 0; }
+          .hotel-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--footer-h); z-index: 4; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0 7mm; background: var(--footer-navy); color: #fffdf8; }
+          .agency-mark { display: flex; align-items: center; gap: 2.2mm; font-size: 5.8pt; letter-spacing: 0.12em; line-height: 1.05; }
+          .agency-mark img { height: 8mm; width: auto; display: block; }
+          .agency-fallback { font-weight: 800; font-size: 11pt; line-height: 0.72; }
+          .agency-fallback small { font-size: 4.8pt; letter-spacing: 0.1em; }
+          .footer-client { display: none; }
+          .footer-page-number { font-size: 6.2pt; letter-spacing: 0.34em; font-variant-numeric: tabular-nums; }
+          .framed-section { margin-top: 0; }
+          .framed-title { margin: 0 0 4mm; font-size: 7pt; }
+          .metric-strip { display: grid; gap: 3mm; margin: 0; }
+          .metric-strip.cols-5 { grid-template-columns: repeat(5, 1fr); gap: 1.6mm; }
+          .metric-strip.cols-4 { grid-template-columns: repeat(4, 1fr); }
+          .metric-strip.cols-3 { grid-template-columns: repeat(3, 1fr); }
+          .metric-strip.cols-2 { grid-template-columns: repeat(2, 1fr); }
+          .hotel-metric-card, .channel-card, .yoy-card, .highlight-card, .bar-panel, .empty-panel, .donut-wrap, .region-card {
+            border: 0.16mm solid var(--line-soft);
+            border-radius: 2mm;
+            background: rgba(255,253,248,0.72);
+            box-shadow: 0 1.2mm 5mm rgba(14,39,66,0.035);
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .hotel-metric-card { min-height: 18mm; padding: 3mm 1.8mm; text-align: center; display: flex; flex-direction: column; justify-content: center; }
+          .metric-label { min-height: 6mm; display: flex; align-items: center; justify-content: center; font-size: 5.5pt; line-height: 1.15; font-weight: 800; text-transform: uppercase; letter-spacing: 0.11em; color: var(--navy); }
+          .metric-value { margin-top: 1.8mm; font-size: 12pt; line-height: 1.08; color: var(--navy); font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; overflow-wrap: normal; }
+          .metric-subtext { margin-top: 1mm; font-size: 5.4pt; line-height: 1.15; color: var(--muted); font-variant-numeric: tabular-nums; }
+          .metric-strip.cols-5 .metric-label { font-size: 4.6pt; letter-spacing: 0.07em; }
+          .metric-strip.cols-5 .metric-value { font-size: 8.8pt; }
+          .metric-strip.cols-2 .hotel-metric-card { min-height: 14mm; padding: 2mm; }
+          .metric-strip.cols-2 .metric-value { font-size: 10pt; }
+          .metric-delta { font-size: 5.4pt; margin-top: 1mm; }
+          .metric-delta.positive { color: var(--green); }
+          .metric-delta.negative { color: var(--red); }
+          .two-stack { display: grid; gap: 5mm; }
+          .channel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+          .yoy-grid { display: grid; grid-template-columns: 1fr; gap: 3mm; }
+          .channel-card, .yoy-card, .highlight-card, .bar-panel, .empty-panel, .donut-wrap, .region-card { padding: 4mm; }
+          .channel-card h3, .yoy-card h3, .highlight-card h3, .bar-panel h3 { font-family: var(--serif); font-size: 15pt; font-weight: 400; line-height: 1.05; margin: 0 0 3mm; text-align: center; }
+          dl { margin: 0; }
+          .channel-card dl div, .highlight-card dl div { display: flex; justify-content: space-between; gap: 2mm; border-top: 0.12mm solid var(--line-soft); padding: 1.5mm 0; }
+          dt { color: var(--muted); font-size: 6.1pt; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.07em; }
+          dd { margin: 0; font-size: 7.3pt; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow-wrap: normal; }
+          .comparison-bars { display: grid; gap: 3.2mm; }
+          .comparison-legend { display: flex; justify-content: center; gap: 5mm; font-size: 6.3pt; line-height: 1.2; color: var(--muted); font-weight: 700; }
+          .comparison-legend span { display: inline-flex; align-items: center; gap: 1.2mm; }
+          .legend-dot { width: 2.2mm; height: 2.2mm; border-radius: 50%; display: inline-block; }
+          .legend-dot.navy { background: var(--navy); }
+          .legend-dot.copper { background: var(--terracotta); }
+          .comparison-row { display: grid; gap: 1.25mm; }
+          .comparison-label { font-size: 7pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; }
+          .comparison-line { display: grid; grid-template-columns: 18mm minmax(0,1fr) 22mm; gap: 2mm; align-items: center; }
+          .comparison-platform { font-size: 6.2pt; color: var(--muted); font-weight: 700; line-height: 1; }
+          .comparison-line strong { font-size: 6.7pt; line-height: 1; color: var(--navy); font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow-wrap: normal; }
+          .comparison-track { position: relative; height: 4.6mm; border-radius: 999px; background: rgba(14,39,66,0.06); overflow: hidden; }
+          .comparison-track span { display: block; height: 100%; border-radius: inherit; }
+          .comparison-track.navy span { background: var(--navy); }
+          .comparison-track.copper span { background: var(--terracotta); }
+          .outcome-funnel-layout { display: grid; grid-template-columns: 0.82fr 1.18fr; gap: 5mm; align-items: start; }
+          .funnel-hero .framed-title { margin-bottom: 5mm; }
+          .funnel-shell { display: grid; gap: 3mm; max-width: 82mm; margin: 0 auto; }
+          .funnel-segments { display: flex; flex-direction: column; align-items: center; gap: 1.8mm; }
+          .funnel-segment { min-height: 16.5mm; padding: 2mm 5mm; color: #fffdf8; text-align: center; background: linear-gradient(135deg, var(--terracotta), #E8906E); clip-path: polygon(6% 0, 94% 0, 86% 100%, 14% 100%); display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1.2mm 4mm rgba(14,39,66,0.08); }
+          .funnel-segment.segment-1 { width: 100%; }
+          .funnel-segment.segment-2 { width: 86%; }
+          .funnel-segment.segment-3 { width: 72%; }
+          .funnel-segment.segment-4 { width: 58%; background: linear-gradient(135deg, var(--navy), #17466B); }
+          .funnel-label { font-size: 6.5pt; line-height: 1.15; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+          .funnel-value { margin-top: 0.7mm; font-size: 15pt; line-height: 1; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+          .funnel-rate { margin-top: 0.9mm; font-size: 5.8pt; opacity: 0.9; white-space: nowrap; overflow-wrap: normal; }
+          .funnel-total-rate { border: 0.16mm solid var(--line-soft); border-radius: 2mm; padding: 2.6mm; text-align: center; background: rgba(255,253,248,0.72); }
+          .funnel-total-rate span { display: block; color: var(--muted); font-size: 6pt; text-transform: uppercase; letter-spacing: 0.1em; }
+          .funnel-total-rate strong { display: block; margin-top: 0.8mm; color: var(--terracotta-muted); font-size: 14pt; font-weight: 700; }
+          .highlight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm; }
+          .highlight-label { color: var(--terracotta-muted); font-size: 5.6pt; font-weight: 800; letter-spacing: 0.06em; margin-bottom: 2mm; text-align: center; text-transform: uppercase; }
+          .highlight-card { padding: 3mm; }
+          .highlight-card h3 { min-height: auto; font-size: 8.5pt; line-height: 1.18; overflow-wrap: anywhere; }
+          .bar-row { margin: 2.1mm 0; }
+          .bar-row-head { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 2mm; align-items: baseline; font-size: 7.2pt; line-height: 1.25; }
+          .bar-row-head span { min-width: 0; overflow-wrap: anywhere; }
+          .bar-row-head strong { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+          .bar-row-head em { color: var(--muted); font-size: 6pt; font-style: normal; white-space: nowrap; overflow-wrap: normal; }
+          .bar-track { height: 2.6mm; background: var(--soft); border-radius: 999px; overflow: hidden; margin-top: 1mm; }
+          .bar-track div { height: 100%; background: linear-gradient(90deg, var(--terracotta), var(--pale-terracotta)); }
+          .donut-wrap { display: flex; gap: 5mm; align-items: center; justify-content: center; min-height: 35mm; }
+          .donut { width: 32mm; height: 32mm; transform: rotate(-90deg); }
+          .donut-legend { font-size: 7pt; line-height: 1.65; }
+          .donut-legend span { display: inline-block; width: 2.4mm; height: 2.4mm; margin-right: 1.4mm; vertical-align: middle; border-radius: 50%; }
+          .donut-empty, .empty-cell, .empty-panel { text-align: center; color: var(--muted); font-style: italic; }
+          .hotel-table { width: 100%; border-collapse: collapse; border: 0.16mm solid var(--line-soft); background: rgba(255,253,248,0.58); table-layout: fixed; font-family: var(--sans); }
+          .hotel-table thead { display: table-header-group; }
+          .hotel-table tr { break-inside: avoid; page-break-inside: avoid; }
+          .hotel-table th { font-size: 5.7pt; line-height: 1.12; text-transform: uppercase; letter-spacing: 0.01em; padding: 1.3mm 0.55mm; color: var(--navy); border: 0.12mm solid var(--line-soft); background: rgba(216,95,54,0.05); font-weight: 800; overflow-wrap: anywhere; word-break: normal; hyphens: auto; }
+          .hotel-table td { font-size: 6.2pt; line-height: 1.24; padding: 1.2mm 0.65mm; border: 0.12mm solid var(--line-soft); vertical-align: middle; word-break: normal; }
+          .hotel-table .text-cell { text-align: left; overflow-wrap: anywhere; }
+          .hotel-table .number-cell { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+          .report-table-compact th { font-size: 5.6pt; }
+          .report-table-compact td { font-size: 6.1pt; }
+          .report-table-device th, .report-table-city th { font-size: 5.5pt; }
+          .report-table-device td, .report-table-city td { font-size: 6pt; }
+          .report-table-campaign th, .report-table-placement th { font-size: 5.3pt; padding-left: 0.35mm; padding-right: 0.35mm; }
+          .report-table-campaign td, .report-table-placement td { font-size: 5.8pt; padding-left: 0.45mm; padding-right: 0.45mm; }
+          .hotel-table.campaign-table th:nth-child(1), .hotel-table.campaign-table td:nth-child(1) { width: 42%; }
+          .hotel-table.campaign-table th:nth-child(2), .hotel-table.campaign-table td:nth-child(2) { width: 17%; }
+          .hotel-table.campaign-table th:nth-child(3), .hotel-table.campaign-table td:nth-child(3) { width: 10%; }
+          .hotel-table.campaign-table th:nth-child(4), .hotel-table.campaign-table td:nth-child(4) { width: 20%; }
+          .hotel-table.campaign-table th:nth-child(5), .hotel-table.campaign-table td:nth-child(5) { width: 11%; }
+          .hotel-table.placement-table th:nth-child(1), .hotel-table.placement-table td:nth-child(1) { width: 34%; }
+          .hotel-table.placement-table th:nth-child(2), .hotel-table.placement-table td:nth-child(2) { width: 15%; }
+          .hotel-table.placement-table th:nth-child(3), .hotel-table.placement-table td:nth-child(3) { width: 13%; }
+          .hotel-table.placement-table th:nth-child(4), .hotel-table.placement-table td:nth-child(4) { width: 9%; }
+          .hotel-table.placement-table th:nth-child(5), .hotel-table.placement-table td:nth-child(5) { width: 18%; }
+          .hotel-table.placement-table th:nth-child(6), .hotel-table.placement-table td:nth-child(6) { width: 11%; }
+          .hotel-table.device-table th:nth-child(1), .hotel-table.device-table td:nth-child(1) { width: 32%; }
+          .hotel-table.city-table th:nth-child(1), .hotel-table.city-table td:nth-child(1) { width: 24%; }
+          .hotel-table.city-table th:nth-child(2), .hotel-table.city-table td:nth-child(2) { width: 26%; }
+          .hotel-table.city-table th:nth-child(3), .hotel-table.city-table td:nth-child(3) { width: 14%; }
+          .hotel-table.city-table th:nth-child(4), .hotel-table.city-table td:nth-child(4) { width: 16%; }
+          .hotel-table.city-table th:nth-child(5), .hotel-table.city-table td:nth-child(5) { width: 20%; }
+          .report-row-cards { display: grid; gap: 3mm; }
+          .report-row-card {
+            border: 0.16mm solid var(--line-soft);
+            border-radius: 2mm;
+            background: rgba(255,253,248,0.72);
+            padding: 3mm;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          .report-row-card h3 {
+            font-family: var(--sans);
+            font-size: 8.3pt;
+            line-height: 1.22;
+            margin: 0 0 2.4mm;
+            color: var(--navy);
+            font-weight: 750;
+            overflow-wrap: anywhere;
+          }
+          .row-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.4mm 3mm; }
+          .row-card-metric { display: flex; justify-content: space-between; align-items: baseline; gap: 2mm; border-top: 0.12mm dashed var(--line-soft); padding-top: 1.1mm; font-family: var(--sans); }
+          .row-card-metric span { color: var(--muted); font-size: 5.9pt; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.03em; overflow-wrap: anywhere; }
+          .row-card-metric strong { color: var(--navy); font-size: 7pt; line-height: 1.15; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow-wrap: normal; }
+          .report-table-appendix th { font-size: 5.2pt; }
+          .report-table-appendix td { font-size: 5.7pt; }
+          .regions-layout { display: grid; grid-template-columns: 1fr; gap: 4mm; }
+          .map-wrap { border: 0.16mm solid var(--line-soft); background: rgba(255,253,248,0.72); border-radius: 2mm; padding: 3mm; min-height: 72mm; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+          .map-fallback { min-height: 48mm; }
+          .map-wrap svg.poland-map { width: 100%; height: 62mm; display: block; }
+          .map-legend { display: flex; align-items: center; justify-content: space-between; margin-top: 2mm; font-size: 5.8pt; color: var(--muted); width: 100%; text-transform: uppercase; letter-spacing: 0.08em; }
+          .legend-ramp { display: block; width: 32mm; height: 2mm; border-radius: 999px; background: linear-gradient(90deg, #F7D8C6, var(--terracotta)); }
+          .region-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+          .region-card { padding: 3mm; }
+          .region-card-title { font-size: 5.7pt; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 1.8mm; text-align: center; font-weight: 800; }
+          .region-card-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2mm; align-items: baseline; font-size: 6pt; line-height: 1.2; padding: 1mm 0; border-top: 0.12mm dashed var(--line-soft); }
+          .region-card-row:first-of-type { border-top: 0; }
+          .region-card-row span { min-width: 0; overflow-wrap: anywhere; }
+          .region-card-row strong { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; overflow-wrap: normal; }
+          body.debug .page-main { outline: 0.2mm dashed #2563eb; }
+          body.debug .hotel-footer { outline: 0.2mm dashed #ef4444; }
+          body.debug .running-header { outline: 0.2mm dashed #16a34a; }
+          @media screen {
+            body { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px; background: #172332; }
+            .hotel-page { box-shadow: 0 14px 44px rgba(0,0,0,0.22); }
+          }
+        </style>
+      </head>
+      <body class="${bodyClass}">
+        ${pages.join('')}
+        <script>
+          // Lightweight layout QA. Runs at content-loaded time and logs
+          // any pages where a child of .page-main extends past the
+          // content area, or where the page is under-utilised. Used by
+          // Puppeteer to surface issues during PDF generation; the logs
+          // are captured by the route's page.on('console') handler.
+          (function(){
+            try {
+              const pages = document.querySelectorAll('.hotel-page');
+              const violations = [];
+              pages.forEach((page, idx) => {
+                const main = page.querySelector('.page-main');
+                const footer = page.querySelector('.hotel-footer');
+                if (!main || !footer) return;
+                const mainRect = main.getBoundingClientRect();
+                const footerRect = footer.getBoundingClientRect();
+                const pageRect = page.getBoundingClientRect();
+                const expectedWidth = ${REPORT_PAGE_WIDTH_CSS_PX};
+                const expectedHeight = ${REPORT_PAGE_HEIGHT_CSS_PX};
+                const safeGapPx = 20; // MIN_FOOTER_GAP for regular content.
+                const tableSafeGapPx = 16; // Tables may sit slightly lower; still clear of footer.
+                if (Math.abs(pageRect.width - expectedWidth) > 0.5 || Math.abs(pageRect.height - expectedHeight) > 0.5) {
+                  violations.push({ page: idx + 1, kind: 'page-size-mismatch', width: pageRect.width.toFixed(1), height: pageRect.height.toFixed(1) });
+                }
+                if (Math.abs(footerRect.bottom - pageRect.bottom) > 0.5) {
+                  violations.push({ page: idx + 1, kind: 'footer-not-at-page-bottom', gapPx: (pageRect.bottom - footerRect.bottom).toFixed(1) });
+                }
+                // Aggregate content extent — last child bottom vs main top.
+                let lastBottom = mainRect.top;
+                main.querySelectorAll(':scope > *').forEach((el) => {
+                  const r = el.getBoundingClientRect();
+                  if (r.bottom > lastBottom) lastBottom = r.bottom;
+                });
+                const utilisation = (lastBottom - mainRect.top) / mainRect.height;
+                if (lastBottom > mainRect.bottom + 1) {
+                  violations.push({ page: idx + 1, kind: 'overflow', overflowMm: ((lastBottom - mainRect.bottom) / 3.7795).toFixed(1) });
+                }
+                if (lastBottom > footerRect.top - 1) {
+                  violations.push({ page: idx + 1, kind: 'footer-collision' });
+                }
+                if ((footerRect.top - lastBottom) < safeGapPx) {
+                  violations.push({ page: idx + 1, kind: 'footer-safe-gap', gapPx: (footerRect.top - lastBottom).toFixed(1) });
+                }
+                main.querySelectorAll('.hotel-table').forEach((table) => {
+                  const r = table.getBoundingClientRect();
+                  if ((footerRect.top - r.bottom) < tableSafeGapPx) {
+                    violations.push({ page: idx + 1, kind: 'table-footer-safe-gap', gapPx: (footerRect.top - r.bottom).toFixed(1) });
+                  }
+                });
+                if (idx < pages.length - 1 && utilisation > 0 && utilisation < 0.25) {
+                  violations.push({ page: idx + 1, kind: 'low-utilisation', utilisation: utilisation.toFixed(2) });
+                }
+              });
+              if (violations.length > 0) {
+                console.log('PDF_LAYOUT_QA_VIOLATIONS=' + JSON.stringify(violations));
+              } else {
+                console.log('PDF_LAYOUT_QA_OK=' + pages.length);
+              }
+            } catch (e) {
+              console.log('PDF_LAYOUT_QA_ERROR=' + (e && e.message));
+            }
+          })();
+        </script>
+      </body>
     </html>
   `;
 }
@@ -2429,17 +5043,22 @@ function generateMockReportData(clientId: string, dateRange: { start: string; en
   return {
     clientId,
     clientName: 'Belmonte Hotel',
-    clientLogo: 'https://placehold.co/200x80/667eea/white?text=BH',
+    clientLogo: undefined,
     dateRange,
-    aiSummary: `W analizowanym okresie kampanie reklamowe wykazały znaczący wzrost efektywności. ROAS osiągnął poziom 4.2, co oznacza, że każda złotówka zainwestowana w reklamy przyniosła 4.20 zł przychodu. 
+    metricsConfig: {
+      meta: normalizeConfigForPlatform(mergeWithDefaults([]), 'meta'),
+      google: normalizeConfigForPlatform(mergeWithDefaults([]), 'google'),
+    },
+    aiSummary: `Poniżej zestawienie wyników za analizowany okres.
 
-Kluczowe obserwacje:
-• Wydatki wzrosły o 15.3%, osiągając 12,450 zł
-• Liczba konwersji wzrosła o 22.1%, osiągając 145 rezerwacji
-• CTR uległ poprawie do 2.34%, co wskazuje na skuteczne targetowanie
-• CPC spadł o 8.2%, świadcząc o lepszej jakości kampanii
+Google Ads
+Wydaliśmy 4 200,00 zł. Wygenerowaliśmy 125 000 wyświetleń i 3 100 kliknięć (CTR 2,48%). Rezerwacje: 42. Średni CPC 1,35 zł.
 
-Kampanie Meta Ads wygenerowały większość ruchu, z silnym ROAS na poziomie 4.5. Google Ads wspierał dotarcie do nowych użytkowników szukających hoteli w regionie.`,
+Meta Ads
+Wydaliśmy 4 300,00 zł. Wygenerowaliśmy 360 000 wyświetleń i 8 250 kliknięć (CTR 2,29%). Rezerwacje: 56. Silniejszy udział w ruchu i konwersjach w kanale społecznościowym.
+
+Podsumowanie łączne
+Łącznie 98 rezerwacji, wartość 38 250,00 zł, ROAS 4,20x.`,
     metaData: {
       metrics: {
         totalSpend: 8500,
@@ -2569,9 +5188,26 @@ Kampanie Meta Ads wygenerowały większość ruchu, z silnym ROAS na poziomie 4.
           { network: 'Display Network', impressions: 60000, clicks: 1000, ctr: 1.67, cpc: 1.43 },
         ],
         devicePerformance: [
-          { device: 'Mobile', impressions: 75000, clicks: 1710, ctr: 2.28, conversions: 28 },
-          { device: 'Desktop', impressions: 35000, clicks: 875, ctr: 2.5, conversions: 14 },
-          { device: 'Tablet', impressions: 15000, clicks: 265, ctr: 1.77, conversions: 5 },
+          { device: 'Mobile', spend: 2100, impressions: 75000, clicks: 1710, ctr: 2.28, conversions: 28, conversion_value: 8450, roas: 4.02 },
+          { device: 'Desktop', spend: 1250, impressions: 35000, clicks: 875, ctr: 2.5, conversions: 14, conversion_value: 4210, roas: 3.37 },
+          { device: 'Tablet', spend: 600, impressions: 15000, clicks: 265, ctr: 1.77, conversions: 5, conversion_value: 1380, roas: 2.30 },
+        ],
+        geographicPerformance: [
+          { cityName: 'Warszawa', regionName: 'Mazowieckie', clicks: 620, conversions: 11, conversion_value: 3820 },
+          { cityName: 'Kraków', regionName: 'Małopolskie', clicks: 410, conversions: 8, conversion_value: 2760 },
+          { cityName: 'Poznań', regionName: 'Wielkopolskie', clicks: 360, conversions: 6, conversion_value: 1940 },
+          { cityName: 'Wrocław', regionName: 'Dolnośląskie', clicks: 330, conversions: 5, conversion_value: 1720 },
+          { cityName: 'Gdańsk', regionName: 'Pomorskie', clicks: 295, conversions: 4, conversion_value: 1450 },
+          { cityName: 'Łódź', regionName: 'Łódzkie', clicks: 240, conversions: 4, conversion_value: 1220 },
+          { cityName: 'Katowice', regionName: 'Śląskie', clicks: 210, conversions: 3, conversion_value: 980 },
+          { cityName: 'Szczecin', regionName: 'Zachodniopomorskie', clicks: 180, conversions: 2, conversion_value: 740 },
+          { cityName: 'Bydgoszcz', regionName: 'Kujawsko-pomorskie', clicks: 160, conversions: 2, conversion_value: 610 },
+          { cityName: 'Lublin', regionName: 'Lubelskie', clicks: 145, conversions: 2, conversion_value: 580 },
+          { cityName: 'Rzeszów', regionName: 'Podkarpackie', clicks: 120, conversions: 1, conversion_value: 420 },
+          { cityName: 'Białystok', regionName: 'Podlaskie', clicks: 105, conversions: 1, conversion_value: 390 },
+          { cityName: 'Toruń', regionName: 'Kujawsko-pomorskie', clicks: 96, conversions: 1, conversion_value: 330 },
+          { cityName: 'Opole', regionName: 'Opolskie', clicks: 82, conversions: 1, conversion_value: 260 },
+          { cityName: 'Zielona Góra', regionName: 'Lubuskie', clicks: 70, conversions: 1, conversion_value: 210 },
         ],
         keywordPerformance: [],
       },
@@ -2621,7 +5257,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   }
   
   // Get client data
-  const { data: clientData, error: clientError } = await supabase
+  const { data: clientData, error: clientError } = await serverSupabase
     .from('clients')
     .select('*')
     .eq('id', clientId)
@@ -2631,7 +5267,17 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.error('❌ Client not found:', { clientId, error: clientError });
     throw new Error('Client not found');
   }
-  
+
+  const { data: dashConfigRow } = await serverSupabase
+    .from('client_dashboard_config')
+    .select('meta_metrics_config, google_metrics_config')
+    .eq('client_id', clientId)
+    .maybeSingle();
+  const metricsConfigRow = dashConfigRow as {
+    meta_metrics_config?: MetricConfigItem[] | null;
+    google_metrics_config?: MetricConfigItem[] | null;
+  } | null;
+
   logger.info('✅ Client data loaded:', { 
     id: clientData.id, 
     name: clientData.name,
@@ -2645,12 +5291,26 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   const reportData: ReportData = {
     clientId,
     clientName: clientData.name,
-    clientLogo: clientData.logo_url || undefined,
+    clientLogo: undefined,
     dateRange,
     aiSummary: undefined,
+    mediaEnabled: {
+      meta: !!(clientData.meta_access_token && clientData.ad_account_id),
+      google: !!(clientData.google_ads_enabled && clientData.google_ads_customer_id)
+    },
     yoyComparison: undefined,
     metaData: undefined,
-    googleData: undefined
+    googleData: undefined,
+    metricsConfig: {
+      meta: normalizeConfigForPlatform(
+        mergeWithDefaults(metricsConfigRow?.meta_metrics_config || []),
+        'meta'
+      ),
+      google: normalizeConfigForPlatform(
+        mergeWithDefaults(metricsConfigRow?.google_metrics_config || []),
+        'google'
+      ),
+    },
   };
   
   // 🎯 USE EXACT SAME SYSTEM AS REPORTS PAGE: StandardizedDataFetcher
@@ -2801,11 +5461,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     clientId: clientData.id
   });
   
-  // Debug why Google Ads condition might not be met
-  // Define base URL for API calls
-  const baseUrl = process.env.NODE_ENV === 'production' 
-    ? (process.env.NEXT_PUBLIC_APP_URL || '') 
-    : 'http://localhost:3000';
+  // Define base URL for API calls - always use NEXT_PUBLIC_APP_URL to match running server
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
   const googleAdsConditionMet = clientData.google_ads_enabled && clientData.google_ads_customer_id;
   logger.info('🔍 GOOGLE ADS CONDITION CHECK:', {
@@ -2821,10 +5478,12 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     try {
       logger.info('📊 Fetching Google Ads data DIRECTLY via GoogleAdsStandardizedDataFetcher (no HTTP)...');
       
+      const sessionToken = authHeader?.replace('Bearer ', '') || undefined;
       const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
         clientId,
         dateRange: { start: dateRange.start, end: dateRange.end },
-        reason: 'pdf-generation-google-ads'
+        reason: 'pdf-generation-google-ads',
+        sessionToken
       });
       
       if (googleResult.success && googleResult.data) {
@@ -2863,8 +5522,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     const prevStart = new Date(Date.UTC(currentStart.getUTCFullYear() - 1, currentStart.getUTCMonth(), currentStart.getUTCDate()));
     const prevEnd = new Date(Date.UTC(currentEnd.getUTCFullYear() - 1, currentEnd.getUTCMonth(), currentEnd.getUTCDate()));
     const prevDateRange = {
-      start: prevStart.toISOString().split('T')[0],
-      end: prevEnd.toISOString().split('T')[0]
+      start: prevStart.toISOString().split('T')[0] ?? '',
+      end: prevEnd.toISOString().split('T')[0] ?? ''
     };
     
     logger.info('📅 YoY periods:', { current: dateRange, previous: prevDateRange });
@@ -2909,14 +5568,14 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     let metaPrevious = { ...zeroTotals };
     if (clientData.meta_access_token && clientData.ad_account_id) {
       try {
-        // Current Meta data is already fetched - use reportData.metaData
-        if (reportData.metaData?.metrics) {
-          const m = reportData.metaData.metrics;
-          const f = reportData.metaData.funnel || {} as any;
+        // Use raw fetched metaData (reportData.metaData is not yet assigned at this point)
+        if (metaData?.stats) {
+          const s = metaData.stats;
+          const cm = metaData.conversionMetrics || {} as any;
           metaCurrent = {
-            spend: m.totalSpend || 0, impressions: m.totalImpressions || 0, clicks: m.totalClicks || 0,
-            reservations: m.totalReservations || 0, reservationValue: m.totalReservationValue || 0,
-            booking_step_1: f.booking_step_1 || 0, booking_step_2: f.booking_step_2 || 0, booking_step_3: f.booking_step_3 || 0,
+            spend: s.totalSpend || 0, impressions: s.totalImpressions || 0, clicks: s.totalClicks || 0,
+            reservations: cm.reservations || s.totalConversions || 0, reservationValue: cm.reservation_value || 0,
+            booking_step_1: cm.booking_step_1 || 0, booking_step_2: cm.booking_step_2 || 0, booking_step_3: cm.booking_step_3 || 0,
           };
         }
         // Fetch previous year Meta data from database
@@ -2936,14 +5595,14 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     let googlePrevious = { ...zeroTotals };
     if (googleAdsConditionMet) {
       try {
-        // Current Google data is already fetched - use reportData.googleData
-        if (reportData.googleData?.metrics) {
-          const m = reportData.googleData.metrics;
-          const f = reportData.googleData.funnel || {} as any;
+        // Use raw fetched googleData (reportData.googleData is not yet assigned at this point)
+        if (googleData?.stats) {
+          const s = googleData.stats;
+          const cm = googleData.conversionMetrics || {} as any;
           googleCurrent = {
-            spend: m.totalSpend || 0, impressions: m.totalImpressions || 0, clicks: m.totalClicks || 0,
-            reservations: m.totalReservations || 0, reservationValue: m.totalReservationValue || 0,
-            booking_step_1: f.booking_step_1 || 0, booking_step_2: f.booking_step_2 || 0, booking_step_3: f.booking_step_3 || 0,
+            spend: s.totalSpend || 0, impressions: s.totalImpressions || 0, clicks: s.totalClicks || 0,
+            reservations: cm.reservations || s.totalConversions || 0, reservationValue: cm.reservation_value || 0,
+            booking_step_1: cm.booking_step_1 || 0, booking_step_2: cm.booking_step_2 || 0, booking_step_3: cm.booking_step_3 || 0,
           };
         }
         // Fetch previous year Google data from database
@@ -2961,9 +5620,9 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     const metaChanges = buildChanges(metaCurrent, metaPrevious);
     const googleChanges = buildChanges(googleCurrent, googlePrevious);
     
-    // Only set YoY if we have meaningful data (at least one side has spend)
-    const hasMetaYoY = metaCurrent.spend > 0 || metaPrevious.spend > 0;
-    const hasGoogleYoY = googleCurrent.spend > 0 || googlePrevious.spend > 0;
+    // Set YoY if we have meaningful data or the platform is enabled
+    const hasMetaYoY = (reportData.mediaEnabled?.meta ?? false) || metaCurrent.spend > 0 || metaPrevious.spend > 0;
+    const hasGoogleYoY = (reportData.mediaEnabled?.google ?? false) || googleCurrent.spend > 0 || googlePrevious.spend > 0;
     
     if (hasMetaYoY || hasGoogleYoY) {
       reportData.yoyComparison = {
@@ -3194,7 +5853,59 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       logger.warn('⚠️ Meta tables direct fetch failed:', error);
     }
   }
-  
+
+  // 🔧 FALLBACK: If GoogleAdsStandardizedDataFetcher failed, try smart cache helper directly
+  if (!googleData && googleAdsConditionMet) {
+    try {
+      logger.info('🔄 FALLBACK: Trying Google Ads smart cache helper directly...');
+
+      const { getGoogleAdsSmartCacheData } = await import('@/lib/google-ads-smart-cache-helper');
+      const cacheResult = await getGoogleAdsSmartCacheData(clientId, false);
+
+      if (cacheResult.success && cacheResult.data) {
+        googleData = cacheResult.data;
+        logger.info('✅ Google Ads data fetched via smart cache fallback:', {
+          totalSpend: googleData?.stats?.totalSpend || 0,
+          campaigns: googleData?.campaigns?.length || 0,
+          source: cacheResult.source || 'smart-cache-fallback'
+        });
+      } else {
+        logger.warn('⚠️ Google Ads smart cache fallback returned no data');
+
+        // Last resort: try fetch-google-ads-live-data API with auth
+        try {
+          logger.info('🔄 LAST RESORT: Trying Google Ads via HTTP API...');
+          const googleFallbackResponse = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify({
+              clientId,
+              dateRange,
+              platform: 'google',
+              forceFresh: true,
+              reason: 'pdf-generation-google-ads-fallback'
+            })
+          });
+
+          if (googleFallbackResponse.ok) {
+            const googleFallbackData = await googleFallbackResponse.json();
+            if (googleFallbackData.success && googleFallbackData.data) {
+              googleData = googleFallbackData.data;
+              logger.info('✅ Google Ads data fetched via HTTP API fallback');
+            }
+          }
+        } catch (httpFallbackError) {
+          logger.error('❌ Google Ads HTTP API fallback failed:', httpFallbackError);
+        }
+      }
+    } catch (fallbackError) {
+      logger.error('❌ Google Ads smart cache fallback failed:', fallbackError);
+    }
+  }
+
   // Transform Google Ads data using EXACT same format as reports page (GoogleAdsStandardizedDataFetcher format)
   if (googleData) {
     try {
@@ -3212,8 +5923,15 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       const googlePhoneContacts = conversionMetrics.click_to_call || 0;
       // ✅ FIX: reservation_value now includes form conversion values from "Wartość konwersji"
       const googleTotalReservationValue = conversionMetrics.reservation_value || 0;
+      const googleTotalConversionValue =
+        conversionMetrics.total_conversion_value ||
+        conversionMetrics.conversion_value ||
+        conversionMetrics.reservation_value ||
+        0;
       const googleTotalReservations = conversionMetrics.reservations || 0;
       const googleTotalSpend = stats.totalSpend || 0;
+      const googleRoas =
+        googleTotalSpend > 0 ? googleTotalConversionValue / googleTotalSpend : 0;
       
       reportData.googleData = {
         metrics: {
@@ -3231,7 +5949,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           searchBudgetLostImpressionShare: (stats as any).searchBudgetLostImpressionShare || 0,
           totalReservations: googleTotalReservations,
           totalReservationValue: googleTotalReservationValue,
-          roas: conversionMetrics.roas || 0,
+          roas: googleRoas,
           emailContacts: googleEmailContacts,
           phoneContacts: googlePhoneContacts
         },
@@ -3243,12 +5961,17 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           reservations: conversionMetrics.reservations || 0,
           // ✅ FIX: reservation_value now includes form conversion values
           reservation_value: conversionMetrics.reservation_value || 0,
-          roas: conversionMetrics.roas || 0
+          total_conversion_value: googleTotalConversionValue,
+          roas: googleRoas
         },
         tables: {
           networkPerformance: googleAdsTables.networkPerformance || [],
           devicePerformance: googleAdsTables.devicePerformance || [],
-          keywordPerformance: googleAdsTables.keywordPerformance || []
+          keywordPerformance: googleAdsTables.keywordPerformance || [],
+          searchTermPerformance: googleAdsTables.searchTermPerformance || [],
+          demographicPerformance: googleAdsTables.demographicPerformance || [],
+          geographicPerformance: googleAdsTables.geographicPerformance || [],
+          qualityMetrics: googleAdsTables.qualityMetrics || [],
         }
       };
       
@@ -3276,6 +5999,119 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     logger.warn('⚠️ Google Ads data not available:', googleError);
   }
   
+  // 🔧 FETCH GOOGLE ADS TABLES DATA DIRECTLY if not already available from cache
+  if (reportData.googleData && googleAdsConditionMet) {
+    const tables = reportData.googleData.tables as any;
+    const hasTables = tables &&
+      (tables.networkPerformance?.length > 0 ||
+       tables.devicePerformance?.length > 0 ||
+       tables.keywordPerformance?.length > 0 ||
+       tables.demographicPerformance?.length > 0 ||
+       tables.geographicPerformance?.length > 0);
+
+    if (!hasTables) {
+      // First try the persistent google_ads_tables_data cache so PDFs for
+      // historical periods don't hammer the Google Ads API on every export.
+      try {
+        const { loadGoogleAdsTablesFromDatabase, hasAnyGoogleAdsTablesRows } =
+          await import('@/lib/google-ads-tables-storage');
+        const stored = await loadGoogleAdsTablesFromDatabase(
+          clientData.id,
+          dateRange.start,
+          dateRange.end,
+        );
+        if (hasAnyGoogleAdsTablesRows(stored)) {
+          reportData.googleData.tables = {
+            networkPerformance: stored!.networkPerformance,
+            devicePerformance: stored!.devicePerformance,
+            keywordPerformance: stored!.keywordPerformance,
+            searchTermPerformance: stored!.searchTermPerformance,
+            demographicPerformance: stored!.demographicPerformance,
+            geographicPerformance: stored!.geographicPerformance,
+            qualityMetrics: stored!.qualityMetrics,
+          };
+          logger.info('✅ Google Ads tables hydrated from google_ads_tables_data for PDF');
+        }
+      } catch (storedErr) {
+        logger.warn('⚠️ PDF google_ads_tables_data lookup failed:', storedErr);
+      }
+    }
+
+    // Recompute after the persistent lookup above
+    const tablesAfterStored = reportData.googleData.tables as any;
+    const stillMissing = !(
+      tablesAfterStored &&
+      (tablesAfterStored.networkPerformance?.length > 0 ||
+        tablesAfterStored.devicePerformance?.length > 0 ||
+        tablesAfterStored.keywordPerformance?.length > 0 ||
+        tablesAfterStored.demographicPerformance?.length > 0 ||
+        tablesAfterStored.geographicPerformance?.length > 0)
+    );
+
+    if (stillMissing) {
+      try {
+        logger.info('📊 Fetching Google Ads tables data DIRECTLY via GoogleAdsAPIService...');
+
+        const { data: settingsData } = await serverSupabase
+          .from('system_settings')
+          .select('key, value')
+          .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
+
+        const settings = (settingsData || []).reduce((acc: Record<string, any>, s: any) => {
+          acc[s.key] = s.value;
+          return acc;
+        }, {} as Record<string, any>);
+
+        const refreshToken = settings.google_ads_manager_refresh_token || clientData.google_ads_refresh_token;
+
+        if (refreshToken && settings.google_ads_client_id) {
+          const { GoogleAdsAPIService } = await import('@/lib/google-ads-api');
+          const googleAdsService = new GoogleAdsAPIService({
+            refreshToken,
+            clientId: settings.google_ads_client_id,
+            clientSecret: settings.google_ads_client_secret,
+            developmentToken: settings.google_ads_developer_token,
+            customerId: clientData.google_ads_customer_id!,
+            managerCustomerId: settings.google_ads_manager_customer_id,
+          });
+
+          // Use the unified getGoogleAdsTables() so PDF gets exactly the same
+          // payload shape as the /reports UI (network + device + keyword +
+          // searchTerm + demographic + geographic). Also persist the result
+          // to google_ads_tables_data so the next PDF export and the
+          // reports UI can both reuse it without an API roundtrip.
+          const { fetchAndStoreGoogleAdsTables } = await import('@/lib/google-ads-tables-storage');
+          const tables = await fetchAndStoreGoogleAdsTables(
+            googleAdsService,
+            clientData.id,
+            dateRange.start,
+            dateRange.end,
+          );
+
+          reportData.googleData.tables = {
+            networkPerformance: tables?.networkPerformance || [],
+            devicePerformance: tables?.devicePerformance || [],
+            keywordPerformance: tables?.keywordPerformance || [],
+            searchTermPerformance: tables?.searchTermPerformance || [],
+            demographicPerformance: tables?.demographicPerformance || [],
+            geographicPerformance: tables?.geographicPerformance || [],
+            qualityMetrics: tables?.qualityMetrics || [],
+          };
+
+          logger.info('✅ Google Ads tables fetched directly:', {
+            networkCount: reportData.googleData.tables.networkPerformance.length,
+            deviceCount: reportData.googleData.tables.devicePerformance.length,
+            keywordCount: reportData.googleData.tables.keywordPerformance.length,
+            demographicCount: reportData.googleData.tables.demographicPerformance?.length || 0,
+            geographicCount: (reportData.googleData.tables as any).geographicPerformance?.length || 0,
+          });
+        }
+      } catch (error) {
+        logger.warn('⚠️ Google Ads tables direct fetch failed:', error);
+      }
+    }
+  }
+
   // Generate AI Summary using SAME DATA FETCHING SYSTEM as reports page
   logger.info('🔍 Generating AI summary using same data as reports page...');
   logger.info('🔍 Data availability for AI summary:', {
@@ -3291,6 +6127,13 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     
     const metaMetrics = reportData.metaData?.metrics;
     const googleMetrics = reportData.googleData?.metrics;
+    const cn = reportData.clientName || '';
+    const emailContactsCombined = isBelmonteClient(cn)
+      ? (metaMetrics?.emailContacts || 0)
+      : (metaMetrics?.emailContacts || 0) + (googleMetrics?.emailContacts || 0);
+    const clickToCallCombined = isBelmonteClient(cn)
+      ? (metaMetrics?.phoneContacts || 0)
+      : (metaMetrics?.phoneContacts || 0) + (googleMetrics?.phoneContacts || 0);
     
     const totalSpend = (metaMetrics?.totalSpend || 0) + (googleMetrics?.totalSpend || 0);
     const totalImpressions = (metaMetrics?.totalImpressions || 0) + (googleMetrics?.totalImpressions || 0);
@@ -3298,14 +6141,52 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     const totalConversions = (metaMetrics?.totalConversions || 0) + (googleMetrics?.totalConversions || 0);
     const totalReservations = (metaMetrics?.totalReservations || 0) + (googleMetrics?.totalReservations || 0);
     const totalReservationValue = (metaMetrics?.totalReservationValue || 0) + (googleMetrics?.totalReservationValue || 0);
-    
+
+    const mImp = metaMetrics?.totalImpressions || 0;
+    const gImp = googleMetrics?.totalImpressions || 0;
+    const mClk = metaMetrics?.totalClicks || 0;
+    const gClk = googleMetrics?.totalClicks || 0;
+    const metaCtrPct = ctrPercentFromStats(metaMetrics?.averageCtr, mClk, mImp);
+    const googleCtrPct = ctrPercentFromStats(googleMetrics?.averageCtr, gClk, gImp);
+    const blendedAverageCtr =
+      reportData.mediaEnabled?.meta && reportData.mediaEnabled?.google
+        ? ctrPercentBlended(
+            { ctr: metaCtrPct, impressions: mImp },
+            { ctr: googleCtrPct, impressions: gImp }
+          )
+        : reportData.mediaEnabled?.meta
+          ? metaCtrPct
+          : reportData.mediaEnabled?.google
+            ? googleCtrPct
+            : totalImpressions > 0
+              ? (totalClicks / totalImpressions) * 100
+              : 0;
+
+    const mSpend = metaMetrics?.totalSpend || 0;
+    const gSpend = googleMetrics?.totalSpend || 0;
+    const metaCpcPct = cpcFromStats(metaMetrics?.averageCpc, mSpend, mClk);
+    const googleCpcPct = cpcFromStats(googleMetrics?.averageCpc, gSpend, gClk);
+    const blendedAverageCpc =
+      reportData.mediaEnabled?.meta && reportData.mediaEnabled?.google
+        ? cpcBlended(
+            { cpc: metaCpcPct, clicks: mClk },
+            { cpc: googleCpcPct, clicks: gClk }
+          )
+        : reportData.mediaEnabled?.meta
+          ? metaCpcPct
+          : reportData.mediaEnabled?.google
+            ? googleCpcPct
+            : totalClicks > 0
+              ? totalSpend / totalClicks
+              : 0;
+
     const summaryData = {
       totalSpend,
       totalImpressions,
       totalClicks,
       totalConversions,
-      averageCtr: totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-      averageCpc: totalClicks > 0 ? totalSpend / totalClicks : 0,
+      averageCtr: blendedAverageCtr,
+      averageCpc: blendedAverageCpc,
       averageCpa: totalConversions > 0 ? totalSpend / totalConversions : 0,
       currency: 'PLN',
       dateRange,
@@ -3314,25 +6195,42 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       reservationValue: totalReservationValue,
       roas: totalSpend > 0 ? totalReservationValue / totalSpend : 0,
       costPerReservation: totalReservations > 0 ? totalSpend / totalReservations : 0,
+      platformAttribution: reportData.mediaEnabled?.meta && reportData.mediaEnabled?.google
+        ? 'kampanie Meta Ads i Google Ads'
+        : reportData.mediaEnabled?.google
+          ? 'kampanie Google Ads'
+          : 'kampanie Meta Ads',
       platformBreakdown: {
-        meta_spend: metaMetrics?.totalSpend || 0,
-        meta_impressions: metaMetrics?.totalImpressions || 0,
-        meta_clicks: metaMetrics?.totalClicks || 0,
-        meta_conversions: metaMetrics?.totalReservations || 0,
-        google_spend: googleMetrics?.totalSpend || 0,
-        google_impressions: googleMetrics?.totalImpressions || 0,
-        google_clicks: googleMetrics?.totalClicks || 0,
-        google_conversions: googleMetrics?.totalReservations || 0,
+        ...(reportData.mediaEnabled?.meta ? {
+          meta: {
+            spend: metaMetrics?.totalSpend || 0,
+            impressions: metaMetrics?.totalImpressions || 0,
+            clicks: metaMetrics?.totalClicks || 0,
+            conversions: metaMetrics?.totalReservations || 0,
+            averageCtr: metaMetrics?.averageCtr,
+            averageCpc: metaCpcPct,
+          }
+        } : {}),
+        ...(reportData.mediaEnabled?.google ? {
+          google: {
+            spend: googleMetrics?.totalSpend || 0,
+            impressions: googleMetrics?.totalImpressions || 0,
+            clicks: googleMetrics?.totalClicks || 0,
+            conversions: googleMetrics?.totalReservations || 0,
+            averageCtr: googleMetrics?.averageCtr,
+            averageCpc: googleCpcPct,
+          }
+        } : {})
       },
       platformSources: [
-        ...(metaMetrics?.totalSpend ? ['Meta Ads'] : []),
-        ...(googleMetrics?.totalSpend ? ['Google Ads'] : [])
+        ...(reportData.mediaEnabled?.meta ? ['Meta Ads'] : []),
+        ...(reportData.mediaEnabled?.google ? ['Google Ads'] : [])
       ],
       bookingStep1: (reportData.metaData?.funnel?.booking_step_1 || 0) + (reportData.googleData?.funnel?.booking_step_1 || 0),
       bookingStep2: (reportData.metaData?.funnel?.booking_step_2 || 0) + (reportData.googleData?.funnel?.booking_step_2 || 0),
       bookingStep3: (reportData.metaData?.funnel?.booking_step_3 || 0) + (reportData.googleData?.funnel?.booking_step_3 || 0),
-      emailContacts: (metaMetrics?.emailContacts || 0) + (googleMetrics?.emailContacts || 0),
-      clickToCall: (metaMetrics?.phoneContacts || 0) + (googleMetrics?.phoneContacts || 0),
+      emailContacts: emailContactsCombined,
+      clickToCall: clickToCallCombined,
     };
     
     const summary = await generateAISummary(summaryData, clientId);
@@ -3396,6 +6294,10 @@ export async function POST(request: NextRequest) {
     
     // Check if this is a preview request (development/design tool)
     const isPreviewMode = request.headers.get('X-Preview-Mode') === 'true';
+    // Debug mode is opt-in via the URL (e.g. /pdf-preview?debug=1) and turns
+    // on the layout-bounding-box overlay defined in the page CSS.
+    const requestUrl = new URL(request.url);
+    const isDebugMode = requestUrl.searchParams.get('debug') === '1';
     
     // Authenticate the request (skip for preview mode in development)
     let user: any = null;
@@ -3421,6 +6323,15 @@ export async function POST(request: NextRequest) {
     // 🚀 CUSTOM DATE RANGE: Use passed live data directly
     else if (hasLiveData) {
       logger.info('🚀 CUSTOM DATE RANGE: Building report from passed live data');
+      const { data: dashConfigRow } = await serverSupabase
+        .from('client_dashboard_config')
+        .select('meta_metrics_config, google_metrics_config')
+        .eq('client_id', clientId)
+        .maybeSingle();
+      const metricsConfigRow = dashConfigRow as {
+        meta_metrics_config?: MetricConfigItem[] | null;
+        google_metrics_config?: MetricConfigItem[] | null;
+      } | null;
       
       // Build report data from passed campaigns - match expected ReportData structure
       const totalSpend = totals?.spend || campaigns.reduce((sum: number, c: any) => sum + (c.spend || 0), 0);
@@ -3467,10 +6378,20 @@ export async function POST(request: NextRequest) {
       reportData = {
         clientId,
         clientName: client.name,
-        clientLogo: client.logo_url || undefined,
+        clientLogo: undefined,
         dateRange,
         aiSummary: undefined,
         yoyComparison: undefined, // Skip YoY for custom date ranges
+        metricsConfig: {
+          meta: normalizeConfigForPlatform(
+            mergeWithDefaults(metricsConfigRow?.meta_metrics_config || []),
+            'meta'
+          ),
+          google: normalizeConfigForPlatform(
+            mergeWithDefaults(metricsConfigRow?.google_metrics_config || []),
+            'google'
+          ),
+        },
         metaData: {
           metrics,
           campaigns,
@@ -3538,7 +6459,7 @@ export async function POST(request: NextRequest) {
     let html: string;
     
     try {
-      html = generatePDFHTML(reportData);
+      html = generateHotelPDFHTML(reportData, { debug: isDebugMode });
       
       // COMPREHENSIVE AUDIT: Check generated HTML
       logger.info('🔍 GENERATED HTML AUDIT:', {
@@ -3620,30 +6541,47 @@ export async function POST(request: NextRequest) {
         executablePath,
         headless: true,
         args: launchArgs,
-        defaultViewport: { width: 1280, height: 900 },
+        defaultViewport: {
+          width: REPORT_PAGE_VIEWPORT_WIDTH_PX,
+          height: REPORT_PAGE_VIEWPORT_HEIGHT_PX,
+          deviceScaleFactor: 1,
+        },
         timeout: MAX_GENERATION_TIME_MS,
       });
 
       page = await browser.newPage();
+      await page.setViewport({
+        width: REPORT_PAGE_VIEWPORT_WIDTH_PX,
+        height: REPORT_PAGE_VIEWPORT_HEIGHT_PX,
+        deviceScaleFactor: 1,
+      });
       
-      // Set longer timeout for page operations
-      page.setDefaultTimeout(60000); // 60 seconds
-      page.setDefaultNavigationTimeout(60000); // 60 seconds
-      
-      // Capture page errors
-      page.on('pageerror', (error) => {
+      page.setDefaultTimeout(90000);
+      page.setDefaultNavigationTimeout(90000);
+
+      page.on('pageerror', (error: Error) => {
         logger.error('📄 PDF Page Error:', error.message);
       });
       
-      page.on('console', (msg) => {
-        logger.info('📄 PDF Page Console:', msg.text());
+      page.on('console', (msg: { text: () => string }) => {
+        const text = msg.text();
+        if (text.startsWith('PDF_LAYOUT_QA_VIOLATIONS=')) {
+          logger.warn('⚠️ PDF layout QA violations:', text.replace('PDF_LAYOUT_QA_VIOLATIONS=', ''));
+        } else if (text.startsWith('PDF_LAYOUT_QA_OK=')) {
+          logger.info(`✅ PDF layout QA passed for ${text.replace('PDF_LAYOUT_QA_OK=', '')} pages`);
+        } else if (text.startsWith('PDF_LAYOUT_QA_ERROR=')) {
+          logger.error('❌ PDF layout QA error:', text.replace('PDF_LAYOUT_QA_ERROR=', ''));
+        } else {
+          logger.info('📄 PDF Page Console:', text);
+        }
       });
       
       logger.info('⏳ Setting page content...');
       await page.setContent(html, { 
-        waitUntil: 'networkidle0',
-        timeout: 60000 
+        waitUntil: 'domcontentloaded',
+        timeout: 90000
       });
+      await new Promise(r => setTimeout(r, 3000));
       
       logger.info('⏳ Waiting for fonts and content to render...');
       await page.evaluate(() => {
@@ -3667,18 +6605,68 @@ export async function POST(request: NextRequest) {
       }
       
       logger.info('📄 Generating PDF...');
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        preferCSSPageSize: false,
-        margin: {
-          top: '15mm',
-          right: '15mm',
-          bottom: '15mm',
-          left: '15mm'
-        },
-        timeout: MAX_GENERATION_TIME_MS - elapsedTime // Remaining time
-      });
+      const logoForFooter = '';
+      const pdfMargin = {
+        top: '0px',
+        right: '0px',
+        bottom: '0px',
+        left: '0px',
+      };
+      const pdfPageSize = {
+        width: `${REPORT_LAYOUT.PAGE_WIDTH_MM}mm`,
+        height: `${REPORT_LAYOUT.PAGE_HEIGHT_MM}mm`,
+      };
+      const pdfTimeout = () => Math.max(5000, MAX_GENERATION_TIME_MS - (Date.now() - startTime));
+
+      let pdfBuffer: Buffer;
+
+      if (!logoForFooter) {
+        pdfBuffer = Buffer.from(
+          await page.pdf({
+            ...pdfPageSize,
+            printBackground: true,
+            preferCSSPageSize: true,
+            margin: pdfMargin,
+            timeout: pdfTimeout(),
+          })
+        );
+      } else {
+        const fullPdf = Buffer.from(
+          await page.pdf({
+            ...pdfPageSize,
+            printBackground: true,
+            preferCSSPageSize: true,
+            margin: pdfMargin,
+            timeout: pdfTimeout(),
+          })
+        );
+        const pageCount = await countPdfPages(fullPdf);
+        if (pageCount <= 1) {
+          pdfBuffer = fullPdf;
+          logger.info('📄 PDF footer logo: single page, no footer strip');
+        } else {
+          const coverPdf = await pdfExtractFirstPage(fullPdf);
+          const restPdf = Buffer.from(
+            await page.pdf({
+              ...pdfPageSize,
+              printBackground: true,
+              preferCSSPageSize: true,
+              margin: pdfMargin,
+              pageRanges: `2-${pageCount}`,
+              displayHeaderFooter: true,
+              headerTemplate:
+                '<div style="font-size:1px;height:0;padding:0;margin:0;"></div>',
+              footerTemplate: buildPuppeteerFooterTemplate(logoForFooter),
+              timeout: pdfTimeout(),
+            })
+          );
+          pdfBuffer = await pdfMergeBuffers([coverPdf, restPdf]);
+          logger.info('📄 PDF footer logo: merged cover + pages 2–last with footer', {
+            pageCount,
+            restPages: pageCount - 1,
+          });
+        }
+      }
       
       // Check PDF size limit
       const pdfSizeMB = pdfBuffer.length / (1024 * 1024);

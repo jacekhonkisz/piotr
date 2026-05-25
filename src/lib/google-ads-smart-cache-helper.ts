@@ -1,6 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { GoogleAdsAPIService } from './google-ads-api';
 import logger from './logger';
+import {
+  googleEmailContactsFromRow,
+  googlePhoneContactsFromRow,
+} from './google-ads-contact-metrics';
+import {
+  fetchGoogleDynamicConversionRowsWithService,
+  googleDynamicRowsToMetricMap,
+} from './google-dynamic-conversion-fetch';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,6 +51,128 @@ function isCacheFresh(lastUpdated: string): boolean {
   const ageHours = (now - cacheTime) / (1000 * 60 * 60);
   
   return ageHours < CACHE_DURATION_HOURS;
+}
+
+async function fetchDynamicMetricPayload(
+  googleAdsService: GoogleAdsAPIService,
+  dateStart: string,
+  dateEnd: string
+): Promise<{
+  dynamicMetricValues: Record<string, number>;
+  dynamicMetricRows: Array<{ key: string; id: string; label: string; count: number; value: number }>;
+}> {
+  try {
+    const dyn = await fetchGoogleDynamicConversionRowsWithService(
+      googleAdsService,
+      dateStart,
+      dateEnd,
+    );
+    if (!dyn.fetchOk) {
+      logger.warn('⚠️ Google Ads dynamic metrics fetch skipped for cache', {
+        dateStart,
+        dateEnd,
+        reason: dyn.skipReason,
+      });
+      return { dynamicMetricValues: {}, dynamicMetricRows: [] };
+    }
+
+    return {
+      dynamicMetricValues: googleDynamicRowsToMetricMap(dyn.rows),
+      dynamicMetricRows: dyn.rows,
+    };
+  } catch (error) {
+    logger.warn('⚠️ Google Ads dynamic metrics fetch failed for cache:', error);
+    return { dynamicMetricValues: {}, dynamicMetricRows: [] };
+  }
+}
+
+async function hydrateMissingTablesFromDatabase(
+  result: any,
+  clientId: string,
+  dateStart: string,
+  dateEnd: string,
+  cacheTable: 'google_ads_current_month_cache' | 'google_ads_current_week_cache',
+  periodId: string,
+) {
+  if (!result?.success || !result.data) return result;
+
+  const {
+    hasAnyGoogleAdsTablesRows,
+    loadGoogleAdsTablesFromDatabase,
+  } = await import('./google-ads-tables-storage');
+
+  if (hasAnyGoogleAdsTablesRows(result.data.googleAdsTables)) {
+    return result;
+  }
+
+  let storedTables = await loadGoogleAdsTablesFromDatabase(clientId, dateStart, dateEnd);
+  let foundStoredTablesRow = storedTables !== null;
+  if (!hasAnyGoogleAdsTablesRows(storedTables)) {
+    const { data: candidateRows } = await supabase
+      .from('google_ads_tables_data')
+      .select('date_range_start, date_range_end')
+      .eq('client_id', clientId)
+      .eq('date_range_start', dateStart)
+      .order('date_range_end', { ascending: false })
+      .limit(5);
+
+    for (const candidate of candidateRows || []) {
+      storedTables = await loadGoogleAdsTablesFromDatabase(
+        clientId,
+        (candidate as any).date_range_start,
+        (candidate as any).date_range_end,
+      );
+      foundStoredTablesRow = foundStoredTablesRow || storedTables !== null;
+
+      if (hasAnyGoogleAdsTablesRows(storedTables)) {
+        logger.info('✅ Found latest current-period Google Ads tables row for smart cache hydration', {
+          clientId,
+          requestedRange: `${dateStart}→${dateEnd}`,
+          storedRange: `${(candidate as any).date_range_start}→${(candidate as any).date_range_end}`,
+        });
+        break;
+      }
+    }
+  }
+
+  if (!hasAnyGoogleAdsTablesRows(storedTables) && !foundStoredTablesRow) {
+    return result;
+  }
+
+  const hydratedData = {
+    ...result.data,
+    googleAdsTables: storedTables,
+  };
+
+  const { error } = await supabase
+    .from(cacheTable)
+    .update({ cache_data: hydratedData })
+    .eq('client_id', clientId)
+    .eq('period_id', periodId);
+
+  if (error) {
+    logger.warn('⚠️ Failed to persist hydrated Google Ads tables into smart cache', {
+      clientId,
+      periodId,
+      cacheTable,
+      error: error.message,
+    });
+  } else {
+    logger.info('✅ Hydrated Google Ads smart cache tables from google_ads_tables_data', {
+      clientId,
+      periodId,
+      cacheTable,
+    });
+  }
+
+  return {
+    ...result,
+    data: hydratedData,
+    source: hasAnyGoogleAdsTablesRows(storedTables)
+      ? `${result.source}-hydrated-tables`
+      : `${result.source}-stored-empty-tables`,
+    tablesHydrationChecked: true,
+  };
 }
 
 // Function to fetch fresh Google Ads data (equivalent to Meta's fetchFreshCurrentMonthData)
@@ -111,7 +241,7 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
     
     if (campaignsWithSteps.length > 0) {
       const topCampaign = campaignsWithSteps[0];
-      logger.info(`🔍 DEBUG: Top campaign in campaignData: ${topCampaign.campaignName}, Step 1: ${topCampaign.booking_step_1}`);
+      logger.info(`🔍 DEBUG: Top campaign in campaignData: ${topCampaign?.campaignName}, Step 1: ${topCampaign?.booking_step_1}`);
     } else {
       logger.warn(`⚠️ WARNING: No campaigns have booking_step_1 > 0! This indicates a problem.`);
     }
@@ -129,19 +259,21 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
     // The getCampaignData() function already parses Google Ads conversion actions
     logger.info('📊 Aggregating conversion metrics from Google Ads API campaign data...');
     
-    // ✅ UNIFIED: Use same field names as Meta for consistency
-    const realConversionMetrics = campaignData.reduce((acc, campaign: any) => {
-      acc.click_to_call += campaign.click_to_call || 0;
-      acc.email_contacts += campaign.email_contacts || campaign.form_submissions || 0;
-      acc.form_submissions += campaign.form_submissions || 0;
+    // ✅ UNIFIED: E-mail / Telefon from parseGoogleAdsConversions (see google-ads-contact-metrics)
+    const realConversionMetrics = campaignData.reduce((acc: any, campaign: any) => {
+      const emailN = googleEmailContactsFromRow(campaign as Record<string, unknown>);
+      const phoneN = googlePhoneContactsFromRow(campaign as Record<string, unknown>);
+      acc.click_to_call += phoneN;
+      acc.email_contacts += emailN;
       acc.phone_calls += campaign.phone_calls || 0;
-      acc.email_clicks += campaign.email_clicks || 0;
-      acc.phone_clicks += campaign.phone_clicks || 0;
+      acc.email_clicks += emailN;
+      acc.phone_clicks += phoneN;
       acc.booking_step_1 += campaign.booking_step_1 || 0;
       acc.booking_step_2 += campaign.booking_step_2 || 0;
       acc.booking_step_3 += campaign.booking_step_3 || 0;
       acc.reservations += campaign.reservations || 0;
       acc.reservation_value += campaign.reservation_value || 0;
+      acc.conversion_value += campaign.conversion_value || 0;
       acc.total_conversion_value += campaign.total_conversion_value || 0;
       return acc;
     }, {
@@ -156,8 +288,22 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       booking_step_3: 0,
       reservations: 0,
       reservation_value: 0,
+      conversion_value: 0,
       total_conversion_value: 0
-    });
+    } as any);
+
+    realConversionMetrics.conversion_value =
+      Math.round((realConversionMetrics as any).conversion_value * 100) / 100;
+    realConversionMetrics.total_conversion_value =
+      Math.round(realConversionMetrics.total_conversion_value * 100) / 100;
+    realConversionMetrics.roas =
+      totalSpend > 0 && realConversionMetrics.total_conversion_value > 0
+        ? Math.round((realConversionMetrics.total_conversion_value / totalSpend) * 100) / 100
+        : 0;
+    realConversionMetrics.cost_per_reservation =
+      realConversionMetrics.reservations > 0 && totalSpend > 0
+        ? Math.round((totalSpend / realConversionMetrics.reservations) * 100) / 100
+        : 0;
     
     logger.info('📊 Aggregated conversion metrics from Google Ads API:', {
       booking_step_1: realConversionMetrics.booking_step_1,
@@ -165,8 +311,10 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       booking_step_3: realConversionMetrics.booking_step_3,
       reservations: realConversionMetrics.reservations,
       reservation_value: realConversionMetrics.reservation_value,
+      conversion_value: realConversionMetrics.conversion_value,
       total_conversion_value: realConversionMetrics.total_conversion_value,
-      note: 'total_conversion_value is "Wartość konwersji" from Google Ads (all_conversions_value)'
+      roas: realConversionMetrics.roas,
+      note: 'conversion_value / total_conversion_value match fetch-google-ads-live-data (Σ campaigns)'
     });
 
     // 🔍 DEBUG: Verify campaigns still have booking steps before cache creation
@@ -175,35 +323,45 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
     
     if (campaignsWithStepsAfterAgg.length > 0) {
       const topCampaignAfter = campaignsWithStepsAfterAgg[0];
-      logger.info(`🔍 DEBUG: Top campaign before cache (after aggregation): ${topCampaignAfter.campaignName}, Step 1: ${topCampaignAfter.booking_step_1}`);
+      logger.info(`🔍 DEBUG: Top campaign before cache (after aggregation): ${topCampaignAfter?.campaignName}, Step 1: ${topCampaignAfter?.booking_step_1}`);
     } else {
       logger.error(`❌ ERROR: Campaigns lost booking steps after aggregation! This is the bug.`);
     }
 
-    // Fetch Google Ads tables data for current month cache
-    let googleAdsTables = null;
+    // Fetch Google Ads tables data for current month cache (single call so
+    // network/device/keyword/searchTerm/demographic all stay in sync) and
+    // persist into google_ads_tables_data so historical reads + the
+    // /api/fetch-google-ads-tables route see the same payload.
+    let googleAdsTables: any = null;
     try {
       logger.info('📊 Fetching Google Ads tables data for current month cache...');
-      
-      const [networkData, qualityData, deviceData, keywordData] = await Promise.all([
-        googleAdsService.getNetworkPerformance(currentMonth.startDate!, currentMonth.endDate!),
-        googleAdsService.getQualityScoreMetrics(currentMonth.startDate!, currentMonth.endDate!),
-        googleAdsService.getDevicePerformance(currentMonth.startDate!, currentMonth.endDate!),
-        googleAdsService.getKeywordPerformance(currentMonth.startDate!, currentMonth.endDate!)
-      ]);
-      
-      googleAdsTables = {
-        networkPerformance: networkData,
-        qualityMetrics: qualityData, // Fixed: use qualityMetrics instead of qualityScoreMetrics
-        devicePerformance: deviceData,
-        keywordPerformance: keywordData
-      };
-      
-      logger.info('✅ Google Ads tables data fetched for current month cache');
+
+      const { fetchAndStoreGoogleAdsTables } = await import('./google-ads-tables-storage');
+      googleAdsTables = await fetchAndStoreGoogleAdsTables(
+        googleAdsService,
+        client.id,
+        currentMonth.startDate!,
+        currentMonth.endDate!,
+      );
+
+      logger.info('✅ Google Ads tables data fetched for current month cache', {
+        networkPerformance: googleAdsTables?.networkPerformance?.length || 0,
+        devicePerformance: googleAdsTables?.devicePerformance?.length || 0,
+        keywordPerformance: googleAdsTables?.keywordPerformance?.length || 0,
+        searchTermPerformance: googleAdsTables?.searchTermPerformance?.length || 0,
+        demographicPerformance: googleAdsTables?.demographicPerformance?.length || 0,
+        geographicPerformance: googleAdsTables?.geographicPerformance?.length || 0,
+      });
     } catch (tablesError) {
       logger.warn('⚠️ Failed to fetch Google Ads tables for current month cache:', tablesError);
       googleAdsTables = null; // Will fallback to live API calls
     }
+
+    const dynamicMetricPayload = await fetchDynamicMetricPayload(
+      googleAdsService,
+      currentMonth.startDate!,
+      currentMonth.endDate!,
+    );
 
     const cacheData = {
       client: {
@@ -222,6 +380,8 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
       },
       conversionMetrics: realConversionMetrics,
       googleAdsTables, // Include Google Ads tables in current month cache
+      dynamicMetricValues: dynamicMetricPayload.dynamicMetricValues,
+      dynamicMetricRows: dynamicMetricPayload.dynamicMetricRows,
       fetchedAt: new Date().toISOString(),
       fromCache: false,
       cacheAge: 0
@@ -247,8 +407,8 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
         ctr: campaign.ctr || 0,
         form_submissions: campaign.form_submissions || 0,
         phone_calls: campaign.phone_calls || 0,
-        email_clicks: campaign.email_clicks || 0,
-        phone_clicks: campaign.phone_clicks || 0,
+        email_clicks: googleEmailContactsFromRow(campaign as Record<string, unknown>),
+        phone_clicks: googlePhoneContactsFromRow(campaign as Record<string, unknown>),
         booking_step_1: campaign.booking_step_1 || 0,
         booking_step_2: campaign.booking_step_2 || 0,
         booking_step_3: campaign.booking_step_3 || 0,
@@ -376,19 +536,21 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
     // NOT from daily_kpi_data (which is mainly for Meta data)
     logger.info('📊 Aggregating weekly conversion metrics from Google Ads API campaign data...');
     
-    // ✅ UNIFIED: Use same field names as Meta for consistency (weekly)
-    const realConversionMetrics = campaignData.reduce((acc, campaign: any) => {
-      acc.click_to_call += campaign.click_to_call || 0;
-      acc.email_contacts += campaign.email_contacts || campaign.form_submissions || 0;
-      acc.form_submissions += campaign.form_submissions || 0;
+    // ✅ UNIFIED: E-mail / Telefon from parseGoogleAdsConversions (see google-ads-contact-metrics) (weekly)
+    const realConversionMetrics = campaignData.reduce((acc: any, campaign: any) => {
+      const emailN = googleEmailContactsFromRow(campaign as Record<string, unknown>);
+      const phoneN = googlePhoneContactsFromRow(campaign as Record<string, unknown>);
+      acc.click_to_call += phoneN;
+      acc.email_contacts += emailN;
       acc.phone_calls += campaign.phone_calls || 0;
-      acc.email_clicks += campaign.email_clicks || 0;
-      acc.phone_clicks += campaign.phone_clicks || 0;
+      acc.email_clicks += emailN;
+      acc.phone_clicks += phoneN;
       acc.booking_step_1 += campaign.booking_step_1 || 0;
       acc.booking_step_2 += campaign.booking_step_2 || 0;
       acc.booking_step_3 += campaign.booking_step_3 || 0;
       acc.reservations += campaign.reservations || 0;
       acc.reservation_value += campaign.reservation_value || 0;
+      acc.conversion_value += campaign.conversion_value || 0;
       acc.total_conversion_value += campaign.total_conversion_value || 0;
       return acc;
     }, {
@@ -403,8 +565,22 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
       booking_step_3: 0,
       reservations: 0,
       reservation_value: 0,
+      conversion_value: 0,
       total_conversion_value: 0
-    });
+    } as any);
+
+    realConversionMetrics.conversion_value =
+      Math.round((realConversionMetrics as any).conversion_value * 100) / 100;
+    realConversionMetrics.total_conversion_value =
+      Math.round(realConversionMetrics.total_conversion_value * 100) / 100;
+    realConversionMetrics.roas =
+      totalSpend > 0 && realConversionMetrics.total_conversion_value > 0
+        ? Math.round((realConversionMetrics.total_conversion_value / totalSpend) * 100) / 100
+        : 0;
+    realConversionMetrics.cost_per_reservation =
+      realConversionMetrics.reservations > 0 && totalSpend > 0
+        ? Math.round((totalSpend / realConversionMetrics.reservations) * 100) / 100
+        : 0;
     
     logger.info('📊 Aggregated weekly conversion metrics from Google Ads API:', {
       booking_step_1: realConversionMetrics.booking_step_1,
@@ -412,6 +588,36 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
       booking_step_3: realConversionMetrics.booking_step_3,
       reservations: realConversionMetrics.reservations
     });
+
+    // Fetch breakdown tables (networks/devices/keywords/search-terms/
+    // demographics/regions) so weekly reports render the same sections
+    // as monthly. Persist them so /api/fetch-google-ads-tables and the
+    // historical loader can reuse them without another API hit.
+    let googleAdsTablesWeekly: any = null;
+    try {
+      const { fetchAndStoreGoogleAdsTables } = await import('./google-ads-tables-storage');
+      googleAdsTablesWeekly = await fetchAndStoreGoogleAdsTables(
+        googleAdsService,
+        client.id,
+        currentWeek.startDate!,
+        currentWeek.endDate!,
+      );
+      logger.info('✅ Google Ads weekly breakdown tables fetched', {
+        networks: googleAdsTablesWeekly?.networkPerformance?.length || 0,
+        devices: googleAdsTablesWeekly?.devicePerformance?.length || 0,
+        keywords: googleAdsTablesWeekly?.keywordPerformance?.length || 0,
+        demographics: googleAdsTablesWeekly?.demographicPerformance?.length || 0,
+        regions: googleAdsTablesWeekly?.geographicPerformance?.length || 0,
+      });
+    } catch (tablesError) {
+      logger.warn('⚠️ Failed to fetch Google Ads weekly tables (UI will show empty):', tablesError);
+    }
+
+    const dynamicMetricPayload = await fetchDynamicMetricPayload(
+      googleAdsService,
+      currentWeek.startDate!,
+      currentWeek.endDate!,
+    );
 
     const cacheData = {
       client: {
@@ -429,6 +635,9 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
         averageCpc
       },
       conversionMetrics: realConversionMetrics,
+      googleAdsTables: googleAdsTablesWeekly,
+      dynamicMetricValues: dynamicMetricPayload.dynamicMetricValues,
+      dynamicMetricRows: dynamicMetricPayload.dynamicMetricRows,
       fetchedAt: new Date().toISOString(),
       fromCache: false,
       cacheAge: 0
@@ -454,8 +663,8 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
         ctr: campaign.ctr || 0,
         form_submissions: campaign.form_submissions || 0,
         phone_calls: campaign.phone_calls || 0,
-        email_clicks: campaign.email_clicks || 0,
-        phone_clicks: campaign.phone_clicks || 0,
+        email_clicks: googleEmailContactsFromRow(campaign as Record<string, unknown>),
+        phone_clicks: googlePhoneContactsFromRow(campaign as Record<string, unknown>),
         booking_step_1: campaign.booking_step_1 || 0,
         booking_step_2: campaign.booking_step_2 || 0,
         booking_step_3: campaign.booking_step_3 || 0,
@@ -821,7 +1030,19 @@ async function executeGoogleAdsSmartWeeklyCacheRequest(clientId: string, targetW
  * Public function for StandardizedDataFetcher to get Google Ads smart cache data
  * This replaces the Meta-only smart cache calls for Google Ads platform
  */
-export async function getGoogleAdsSmartCacheData(clientId: string, forceRefresh: boolean = false) {
+export type GoogleAdsSmartCacheResult = {
+  success: boolean;
+  data: any;
+  source: string;
+  error?: string;
+  // executeGoogleAdsSmartCacheRequest may attach internal flags; allow them.
+  [key: string]: any;
+};
+
+export async function getGoogleAdsSmartCacheData(
+  clientId: string,
+  forceRefresh: boolean = false
+): Promise<GoogleAdsSmartCacheResult> {
   logger.info('🎯 GOOGLE ADS SMART CACHE: Public function called', {
     clientId,
     forceRefresh,
@@ -830,7 +1051,31 @@ export async function getGoogleAdsSmartCacheData(clientId: string, forceRefresh:
   
   try {
     const currentMonth = getCurrentMonthInfo();
-    const result = await executeGoogleAdsSmartCacheRequest(clientId, currentMonth, forceRefresh);
+    let result = await executeGoogleAdsSmartCacheRequest(clientId, currentMonth, forceRefresh);
+
+    // Older current-month cache rows may contain campaign totals but no
+    // breakdown tables. Serving those rows makes /reports render "Brak
+    // danych" even though Google Ads has device/demographic/geographic data.
+    // Prefer hydrating from persistent google_ads_tables_data; only rebuild
+    // from Google Ads API if no stored breakdown row exists.
+    if (result.success && result.data && !forceRefresh) {
+      const { hasAnyGoogleAdsTablesRows } = await import('./google-ads-tables-storage');
+      if (!hasAnyGoogleAdsTablesRows((result.data as any).googleAdsTables)) {
+        result = await hydrateMissingTablesFromDatabase(
+          result,
+          clientId,
+          currentMonth.startDate,
+          currentMonth.endDate,
+          'google_ads_current_month_cache',
+          currentMonth.periodId,
+        );
+
+        if (!hasAnyGoogleAdsTablesRows((result.data as any)?.googleAdsTables) && !(result as any).tablesHydrationChecked) {
+          logger.warn('⚠️ Google Ads monthly smart cache missing breakdown tables and no stored table row exists; force refreshing cache');
+          result = await executeGoogleAdsSmartCacheRequest(clientId, currentMonth, true);
+        }
+      }
+    }
     
     logger.info('✅ Google Ads smart cache result:', {
       success: result.success,
@@ -842,9 +1087,10 @@ export async function getGoogleAdsSmartCacheData(clientId: string, forceRefresh:
   } catch (error) {
     logger.error('❌ Google Ads smart cache error:', error);
     return {
-      success: false,
+      success: false as const,
       data: null,
-      source: 'error'
+      source: 'error',
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }
@@ -853,7 +1099,11 @@ export async function getGoogleAdsSmartCacheData(clientId: string, forceRefresh:
  * Public function for StandardizedDataFetcher to get Google Ads weekly smart cache data
  * This replaces the Meta-only weekly smart cache calls for Google Ads platform
  */
-export async function getGoogleAdsSmartWeekCacheData(clientId: string, forceRefresh: boolean = false, periodId?: string) {
+export async function getGoogleAdsSmartWeekCacheData(
+  clientId: string,
+  forceRefresh: boolean = false,
+  periodId?: string
+): Promise<GoogleAdsSmartCacheResult> {
   logger.info('🎯 GOOGLE ADS WEEKLY SMART CACHE: Public function called', {
     clientId,
     forceRefresh,
@@ -872,7 +1122,26 @@ export async function getGoogleAdsSmartWeekCacheData(clientId: string, forceRefr
       targetWeek = getCurrentWeekInfo();
     }
     
-    const result = await executeGoogleAdsSmartWeeklyCacheRequest(clientId, targetWeek, forceRefresh);
+    let result = await executeGoogleAdsSmartWeeklyCacheRequest(clientId, targetWeek, forceRefresh);
+
+    if (result.success && result.data && !forceRefresh) {
+      const { hasAnyGoogleAdsTablesRows } = await import('./google-ads-tables-storage');
+      if (!hasAnyGoogleAdsTablesRows((result.data as any).googleAdsTables)) {
+        result = await hydrateMissingTablesFromDatabase(
+          result,
+          clientId,
+          targetWeek.startDate,
+          targetWeek.endDate,
+          'google_ads_current_week_cache',
+          targetWeek.periodId,
+        );
+
+        if (!hasAnyGoogleAdsTablesRows((result.data as any)?.googleAdsTables) && !(result as any).tablesHydrationChecked) {
+          logger.warn('⚠️ Google Ads weekly smart cache missing breakdown tables and no stored table row exists; force refreshing cache');
+          result = await executeGoogleAdsSmartWeeklyCacheRequest(clientId, targetWeek, true);
+        }
+      }
+    }
     
     logger.info('✅ Google Ads weekly smart cache result:', {
       success: result.success,
@@ -884,9 +1153,10 @@ export async function getGoogleAdsSmartWeekCacheData(clientId: string, forceRefr
   } catch (error) {
     logger.error('❌ Google Ads weekly smart cache error:', error);
     return {
-      success: false,
+      success: false as const,
       data: null,
-      source: 'error'
+      source: 'error',
+      error: error instanceof Error ? error.message : String(error)
     };
   }
 }

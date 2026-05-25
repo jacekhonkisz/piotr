@@ -471,28 +471,28 @@ const ComprehensiveMetricsModal: React.FC<ComprehensiveMetricsModalProps> = ({
                 </div>
               </div>
 
-              {/* Booking Engine Metrics */}
+              {/* Google funnel steps (aligned naming) */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
                   <Target className="w-5 h-5 mr-2 text-orange-600" />
-                  Booking Engine
+                  Booking steps (Google)
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <MetricCard
                     icon={Target}
-                    label="Booking Engine krok 1"
+                    label="Booking step 1"
                     value={formatNumber(metricsData.bookingStep1)}
                     color="orange"
                   />
                   <MetricCard
                     icon={Target}
-                    label="Booking Engine krok 2"
+                    label="Booking step 2"
                     value={formatNumber(metricsData.bookingStep2)}
                     color="orange"
                   />
                   <MetricCard
                     icon={Target}
-                    label="Booking Engine krok 3"
+                    label="Booking step 3"
                     value={formatNumber(metricsData.bookingStep3)}
                     color="orange"
                   />

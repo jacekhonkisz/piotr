@@ -10,7 +10,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const REVIEW_EMAIL = 'kontakt@piotrbajerlein.pl';
+const REVIEW_EMAIL = process.env.EMAIL_REVIEW_RECIPIENT || 'kontakt@piotrbajerlein.pl';
 
 export const EMAIL_CONFIG = {
   MONITORING_MODE: false,
@@ -151,13 +151,16 @@ export function getEmailRecipients(originalRecipient: string): string[] {
 /**
  * Async recipient getter — always reads the freshest setting.
  */
-export async function getEmailRecipientsAsync(originalRecipient: string): Promise<{ recipients: string[]; originalRecipient: string; isRedirected: boolean }> {
+export async function getEmailRecipientsAsync(
+  originalRecipient: string,
+  reviewRecipientOverride?: string
+): Promise<{ recipients: string[]; originalRecipient: string; isRedirected: boolean }> {
   if (EMAIL_CONFIG.MONITORING_MODE) {
     return { recipients: [...EMAIL_CONFIG.MONITORING_EMAILS], originalRecipient, isRedirected: true };
   }
   const reviewEnabled = await isReviewMode();
   if (reviewEnabled) {
-    return { recipients: [REVIEW_EMAIL], originalRecipient, isRedirected: true };
+    return { recipients: [reviewRecipientOverride || REVIEW_EMAIL], originalRecipient, isRedirected: true };
   }
   return { recipients: [originalRecipient], originalRecipient, isRedirected: false };
 }

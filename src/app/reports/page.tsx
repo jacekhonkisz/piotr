@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { 
@@ -22,7 +22,6 @@ import InteractivePDFButton from '../../components/InteractivePDFButton';
 import AdsDataToggle from '../../components/AdsDataToggle';
 import GoogleAdsTables from '../../components/GoogleAdsTables';
 import MetaAdsTables from '../../components/MetaAdsTables';
-import GoogleAdsExpandableCampaignTable from '../../components/GoogleAdsExpandableCampaignTable';
 import ClientSelector from '../../components/ClientSelector';
 
 import { useAuth } from '../../components/AuthProvider';
@@ -30,6 +29,9 @@ import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
 import { getMonthBoundaries, getWeekBoundaries, getISOWeekStartDate, getWeeksInYear } from '../../lib/date-range-utils';
 import { isCurrentWeekPeriod, parseWeekPeriodId } from '../../lib/week-utils';
+import { cpcFromStats, ctrPercentFromStats } from '../../lib/ctr-from-stats';
+import { getDefaultAdsProvider } from '../../lib/ads-provider-utils';
+import { useReportSectionNav } from '../../hooks/useReportSectionNav';
 
 type Client = Database['public']['Tables']['clients']['Row'];
 
@@ -45,64 +47,6 @@ const formatDateRange = (start: string, end: string): string => {
   }
   
   return `${startDate.toLocaleDateString('pl-PL')} - ${endDate.toLocaleDateString('pl-PL')}`;
-};
-
-// 🔧 COMPACT DATA SOURCE INFO BAR: Lightweight inline indicator
-const DataSourceIndicator = ({ validation, debug }: { 
-  validation?: any; 
-  debug?: any; 
-}) => {
-  if (!validation && !debug) return null;
-
-  const getStatusInfo = (source: string) => {
-    // Handle fresh cache sources
-    if (source.includes('cache') && !source.includes('stale') && !source.includes('miss')) {
-      return { label: 'Dane na żywo', color: 'text-green-700', bgColor: 'bg-green-50', dotColor: 'bg-green-500' };
-    }
-    
-    // Handle stale cache sources  
-    if (source.includes('stale') || source.includes('cache-miss')) {
-      return { label: 'Cache nieaktualny', color: 'text-yellow-700', bgColor: 'bg-yellow-50', dotColor: 'bg-yellow-500' };
-    }
-    
-    // Handle database sources
-    if (source.includes('database') || source.includes('historical')) {
-      return { label: 'Z bazy danych', color: 'text-blue-700', bgColor: 'bg-blue-50', dotColor: 'bg-blue-500' };
-    }
-    
-    // Handle live API sources
-    if ((source.includes('live') || source.includes('api') || source.includes('refresh')) && !source.includes('cache')) {
-      return { label: 'Live API', color: 'text-red-700', bgColor: 'bg-red-50', dotColor: 'bg-red-500' };
-    }
-    
-    // Default
-    return { label: 'Źródło nieznane', color: 'text-gray-700', bgColor: 'bg-gray-50', dotColor: 'bg-gray-500' };
-  };
-
-  const source = debug?.source || validation?.actualSource || 'unknown';
-  const cachePolicy = debug?.cachePolicy || 'unknown';
-  const statusInfo = getStatusInfo(source);
-
-  return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg ${statusInfo.bgColor} border border-opacity-20 mb-4`}>
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 ${statusInfo.dotColor} rounded-full animate-pulse`}></div>
-        <span className={`text-xs font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
-      </div>
-      <div className="h-3 w-px bg-gray-300"></div>
-      <span className="text-xs text-gray-600">
-        Źródło: <span className="font-mono">{source}</span>
-          </span>
-      {cachePolicy && cachePolicy !== 'unknown' && (
-        <>
-          <div className="h-3 w-px bg-gray-300"></div>
-          <span className="text-xs text-gray-600">
-            Polityka: <span className="font-mono">{cachePolicy}</span>
-            </span>
-        </>
-      )}
-    </div>
-  );
 };
 
 // 🔧 STANDARDIZED DATA FETCHING: Use StandardizedDataFetcher for all report data requests
@@ -489,6 +433,8 @@ interface MonthlyReport {
     booking_step_1: number;
     reservations: number;
     reservation_value: number;
+    conversion_value?: number;
+    total_conversion_value?: number;
     booking_step_2: number;
     booking_step_3: number;
     roas: number;
@@ -505,6 +451,7 @@ interface MonthlyReport {
     averageCtr: number;
     averageCpc: number;
   };
+  googleAdsTables?: Record<string, unknown> | null;
 }
 
 interface WeeklyReport {
@@ -519,6 +466,8 @@ interface WeeklyReport {
     booking_step_1: number;
     reservations: number;
     reservation_value: number;
+    conversion_value?: number;
+    total_conversion_value?: number;
     booking_step_2: number;
     booking_step_3: number;
     roas: number;
@@ -619,14 +568,7 @@ function ReportsPageContent() {
     demographicPerformance: any[];
     adRelevanceResults: any[];
   } | null>(null);
-  const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('meta');
-  
-  // 🔧 DATA SOURCE VALIDATION: Track data source information for debugging
-  const [dataSourceInfo, setDataSourceInfo] = useState<{
-    validation?: any;
-    debug?: any;
-    lastUpdated?: string;
-  }>({});
+  const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('google');
 
   // Loading timeout mechanism to prevent infinite loading states
   useEffect(() => {
@@ -650,23 +592,11 @@ function ReportsPageContent() {
     };
   }, [loadingPeriod, activeAdsProvider]);
 
-  // Auto-set provider based on available platforms
   useEffect(() => {
     if (selectedClient) {
-      const hasMetaAds = selectedClient.meta_access_token && selectedClient.ad_account_id;
-      const hasGoogleAds = selectedClient.google_ads_enabled && selectedClient.google_ads_customer_id;
-      
-      // If only Google Ads is available, switch to it
-      if (!hasMetaAds && hasGoogleAds) {
-        setActiveAdsProvider('google');
-      }
-      // If only Meta Ads is available, ensure we're on Meta (default)
-      else if (hasMetaAds && !hasGoogleAds) {
-        setActiveAdsProvider('meta');
-      }
-      // If both are available, keep current selection or default to Meta
+      setActiveAdsProvider(getDefaultAdsProvider(selectedClient));
     }
-  }, [selectedClient]);
+  }, [selectedClient?.id]);
 
   // Refresh data when provider changes
   // 🔧 FIX: Store previous provider to detect actual changes
@@ -738,10 +668,13 @@ function ReportsPageContent() {
       } else if (currentPeriod && (currentViewType === 'monthly' || currentViewType === 'weekly')) {
         console.log(`🔄 Provider changed to ${currentProvider}, refreshing data for period: ${currentPeriod}`);
         
-        // Force fresh data load with new provider
-        // 🔧 FIX: Pass provider explicitly to avoid stale closure issues
-        console.log(`🔄 FORCING FRESH DATA LOAD for ${currentProvider} provider`);
-        await loadPeriodDataWithClient(currentPeriod, currentClient, true, currentProvider);
+        // Load the newly selected provider through its normal cache/database path.
+        // The reports state was already cleared above, so this does not reuse
+        // the previous provider's data. `forceClearCache=true` only bypasses
+        // frontend duplicate guards here; the non-refresh reason still uses
+        // smart cache/database in fetchReportDataUnified.
+        console.log(`🔄 Loading ${currentProvider} provider via smart cache/database`);
+        await loadPeriodDataWithClient(currentPeriod, currentClient, true, currentProvider, 'provider-switch-smart-cache');
       } else if (currentViewType === 'all-time') {
         console.log(`🔄 Provider changed to ${currentProvider}, refreshing all-time data`);
         await loadAllTimeData();
@@ -754,8 +687,7 @@ function ReportsPageContent() {
           setAvailablePeriods(periods);
           setSelectedPeriod(initialPeriod);
           setLoadingPeriod(initialPeriod);
-          // 🔧 FIX: Pass provider explicitly
-          await loadPeriodDataWithClient(initialPeriod, currentClient, true, currentProvider);
+          await loadPeriodDataWithClient(initialPeriod, currentClient, true, currentProvider, 'provider-switch-smart-cache');
         }
       }
     };
@@ -792,7 +724,9 @@ function ReportsPageContent() {
     
     // Update client state
     setSelectedClient(newClient);
-    setClient(newClient); // 🔧 FIX: Also update client state for MetaAdsTables
+    setClient(newClient);
+    const defaultProvider = getDefaultAdsProvider(newClient);
+    setActiveAdsProvider(defaultProvider);
     
     // Clear existing reports for the new client
     setReports({});
@@ -807,7 +741,7 @@ function ReportsPageContent() {
     // Changed from forceClearCache=true to false to use same data source as initial load
     if (selectedPeriod) {
       console.log('📊 Reloading data for new client:', newClient.name, '(using smart cache)');
-      await loadPeriodDataWithClient(selectedPeriod, newClient, false);
+      await loadPeriodDataWithClient(selectedPeriod, newClient, false, defaultProvider);
     }
   };
 
@@ -1649,6 +1583,15 @@ function ReportsPageContent() {
     // 🔧 CRITICAL FIX: Use explicit platform if provided, otherwise use current state
     // This avoids stale closure issues when provider changes
     const effectivePlatform = platform || activeAdsProvider;
+    const clearBlockedLoadingState = (layer: string) => {
+      console.log(`🧹 Clearing loading state after blocked load (${layer})`, {
+        periodId,
+        effectivePlatform,
+      });
+      setLoadingPeriod(null);
+      setApiCallInProgress(false);
+      loadingRef.current = false;
+    };
     
     console.log(`🔄 loadPeriodDataWithClient called:`, {
       periodId,
@@ -1702,6 +1645,9 @@ function ReportsPageContent() {
         effectivePlatform,
         forceClearCache
       });
+      if (loadingPeriod === periodId) {
+        clearBlockedLoadingState('Layer 1');
+      }
       return;
     }
     
@@ -1716,29 +1662,23 @@ function ReportsPageContent() {
         timeSinceLastCall: now - (window as any).apiCallTracker[callKey],
         forceClearCache
       });
+      if (loadingPeriod === periodId) {
+        clearBlockedLoadingState('Layer 2');
+      }
       return;
     }
     
     // Layer 3: Check if we already have this data and it's not forced
-    // 🔧 TEMPORARY FIX: Force refresh for all weekly data to clear corrupted cache
-    const forceWeeklyRefresh = activeViewType === 'weekly';
     const existingReport = reports[periodId];
-    if (!forceClearCache && !forceWeeklyRefresh && existingReport && existingReport.campaigns && existingReport.campaigns.length > 0) {
+    if (!forceClearCache && existingReport && existingReport.campaigns && existingReport.campaigns.length > 0) {
       console.log('🚫 BLOCKED: Data already exists (Layer 3)', {
         periodId,
         campaignCount: existingReport.campaigns.length
       });
+      if (loadingPeriod === periodId) {
+        clearBlockedLoadingState('Layer 3');
+      }
       return;
-    }
-    
-    if (forceWeeklyRefresh) {
-      console.log('🔧 FORCING WEEKLY REFRESH: Clearing corrupted cached data for', periodId);
-      // Clear the corrupted data to force fresh API call
-      setReports(prev => {
-        const newState = { ...prev };
-        delete newState[periodId];
-        return newState;
-      });
     }
     
     // Track this call immediately
@@ -1821,8 +1761,7 @@ function ReportsPageContent() {
       loadingRef.current = true;
       setApiCallInProgress(true);
       setLoadingPeriod(periodId);
-      // ✅ FIX: Clear dataSourceInfo to prevent showing stale source info while loading
-      setDataSourceInfo({});
+      setError(null);
       console.log(`📡 Loading data for ${activeViewType} period: ${periodId}`);
       console.log(`👤 Using explicit client:`, clientData);
       console.log(`🎯 Data source: ${isCurrentPeriod ? 'LIVE API (current period)' : 'API (previous period)'}`);
@@ -2057,15 +1996,6 @@ function ReportsPageContent() {
       const data = response; // fetchReportDataUnified already returns processed data
       console.log(`✅ StandardizedDataFetcher successful for ${periodId}:`, data);
       console.log(`🎯 STANDARDIZED DATA received for ${periodId}`);
-        
-        // 🔧 DATA SOURCE TRACKING: Store validation info for UI display
-        if (data.data?.dataSourceValidation || data.debug) {
-          setDataSourceInfo({
-            validation: data.data?.dataSourceValidation,
-            debug: data.debug,
-            lastUpdated: new Date().toISOString()
-          });
-        }
         
         // 🔧 DEBUG: Check if API returned empty campaigns despite cache having data
       const apiCampaigns = data.data?.campaigns || data.data?.campaigns || [];
@@ -2380,6 +2310,7 @@ function ReportsPageContent() {
       // 🔧 FIX: Clear loading state IMMEDIATELY after setReports (same tick)
       // This ensures React batches both updates together
       setLoadingPeriod(null);
+      setError(null);
       console.log('✅ Data loaded and loading state cleared for:', periodId);
       
     } catch (error) {
@@ -3114,9 +3045,6 @@ function ReportsPageContent() {
     console.log('📅 Period changed to:', newPeriod);
     setSelectedPeriod(newPeriod);
     
-    // ✅ FIX: Always clear dataSourceInfo when changing periods to prevent stale data
-    setDataSourceInfo({});
-    
     // ✅ FIX: Always reload weekly data to ensure fresh database fetch
     const isWeeklyPeriod = newPeriod.includes('-W');
     const shouldReload = !reports[newPeriod] || isWeeklyPeriod;
@@ -3242,6 +3170,63 @@ function ReportsPageContent() {
     ? reports[selectedPeriod] 
     : null;
 
+  const activePeriodLabel = (() => {
+    if (viewType === 'all-time') return 'Cały okres';
+    if (viewType === 'custom') {
+      return customDateRange.start && customDateRange.end
+        ? formatDateRange(customDateRange.start, customDateRange.end)
+        : 'Własny zakres';
+    }
+    if (!selectedPeriod) return 'Wybierz okres';
+    if (viewType === 'weekly') {
+      const [year, weekStr] = selectedPeriod.split('-W');
+      const week = parseInt(weekStr || '1');
+      return getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week);
+    }
+    const [year, month] = selectedPeriod.split('-').map(Number);
+    if (!year || !month) return selectedPeriod;
+    return new Date(year, month - 1, 1).toLocaleDateString('pl-PL', {
+      month: 'long',
+      year: 'numeric',
+    });
+  })();
+
+  const hasMetaAds = !!(selectedClient?.meta_access_token && selectedClient?.ad_account_id);
+  const hasGoogleAds = !!(selectedClient?.google_ads_enabled && selectedClient?.google_ads_customer_id);
+  const showPlatformToggle = hasMetaAds && hasGoogleAds;
+
+  const reportNavItems = useMemo(
+    () => [
+      { sectionId: 'overview', label: 'Przegląd', icon: BarChart3 },
+      { sectionId: 'conversions', label: 'Konwersje', icon: Target },
+      { sectionId: 'campaigns', label: 'Kampanie', icon: DatabaseIcon },
+      ...(activeAdsProvider === 'google'
+        ? [
+            { sectionId: 'google-regions', label: 'Regiony', icon: CalendarDays },
+            { sectionId: 'google-cities', label: 'Miasta', icon: DatabaseIcon },
+            { sectionId: 'google-devices', label: 'Urządzenia', icon: Code },
+            { sectionId: 'google-demographics', label: 'Demografia', icon: BarChart3 },
+            { sectionId: 'advanced-data', label: 'Zaawansowane', icon: DatabaseIcon },
+          ]
+        : [
+            { sectionId: 'meta-placements', label: 'Umiejscowienia', icon: Target },
+            { sectionId: 'meta-demographics', label: 'Demografia', icon: BarChart3 },
+            { sectionId: 'advanced-data', label: 'Zaawansowane', icon: DatabaseIcon },
+          ]),
+    ],
+    [activeAdsProvider]
+  );
+
+  const reportSectionIds = useMemo(
+    () => reportNavItems.map((item) => item.sectionId),
+    [reportNavItems]
+  );
+
+  const { activeSection, scrollToSection } = useReportSectionNav(
+    reportSectionIds,
+    `${selectedPeriod}-${activeAdsProvider}-${loadingPeriod ?? 'idle'}`
+  );
+
   console.log('🔍 Selected report logic:', {
     viewType,
     selectedPeriod,
@@ -3359,12 +3344,17 @@ function ReportsPageContent() {
       });
     }
     
-    // ✅ USE API VALUES DIRECTLY if available (from account-level insights), otherwise calculate
-    // For Meta Ads: Use stats.averageCtr and stats.averageCpc from API
-    // ✅ FIX: Check for existence (including 0) using !== undefined, not truthiness
-    const hasApiCtr = activeAdsProvider === 'meta' && selectedReport.stats?.averageCtr !== undefined && selectedReport.stats?.averageCtr !== null;
-    const hasApiCpc = activeAdsProvider === 'meta' && selectedReport.stats?.averageCpc !== undefined && selectedReport.stats?.averageCpc !== null;
+    // ✅ USE stats.averageCtr / stats.averageCpc when present (same contract as fetchers/PDF), else derive from totals
+    // ✅ FIX: Check for existence (including 0) using !== undefined, not truthiness — applies to Meta and Google
+    const hasApiCtr = selectedReport.stats?.averageCtr !== undefined && selectedReport.stats?.averageCtr !== null;
+    const hasApiCpc = selectedReport.stats?.averageCpc !== undefined && selectedReport.stats?.averageCpc !== null;
     
+    const ctr = ctrPercentFromStats(
+      selectedReport.stats?.averageCtr,
+      totals.clicks,
+      totals.impressions
+    );
+
     console.log('🔍 CTR/CPC Calculation Debug:', {
       activeAdsProvider,
       hasStats: !!selectedReport.stats,
@@ -3372,17 +3362,15 @@ function ReportsPageContent() {
       averageCpc: selectedReport.stats?.averageCpc,
       hasApiCtr,
       hasApiCpc,
-      calculatedCtr: totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0,
-      calculatedCpc: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
+      calculatedCtr: ctrPercentFromStats(undefined, totals.clicks, totals.impressions),
+      calculatedCpc: cpcFromStats(undefined, totals.spend, totals.clicks),
       usingApiValues: hasApiCtr && hasApiCpc
     });
-    
-    const ctr = hasApiCtr 
-      ? selectedReport.stats.averageCtr 
-      : (totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0);
-    const cpc = hasApiCpc 
-      ? selectedReport.stats.averageCpc 
-      : (totals.clicks > 0 ? totals.spend / totals.clicks : 0);
+    const cpc = cpcFromStats(
+      selectedReport.stats?.averageCpc,
+      totals.spend,
+      totals.clicks
+    );
     const cpa = totals.conversions > 0 ? totals.spend / totals.conversions : 0;
 
     // ✅ CRITICAL: Include averageCtr and averageCpc in result so components can use API values directly
@@ -3391,9 +3379,9 @@ function ReportsPageContent() {
       ctr, 
       cpc, 
       cpa,
-      // ✅ Always include API values if available (even if 0), so components can check for existence
-      averageCtr: hasApiCtr ? selectedReport.stats.averageCtr : undefined,
-      averageCpc: hasApiCpc ? selectedReport.stats.averageCpc : undefined,
+      // ✅ Always include stats values if available (even if 0), so components can check for existence
+      averageCtr: hasApiCtr ? selectedReport.stats!.averageCtr : undefined,
+      averageCpc: hasApiCpc ? selectedReport.stats!.averageCpc : undefined,
       // Also include calculated values for fallback
       totalSpend: totals.spend,
       totalImpressions: totals.impressions,
@@ -3405,7 +3393,47 @@ function ReportsPageContent() {
     return result;
   };
 
+  /**
+   * Campaign totals for the Poland region map header.
+   * Uses the same wartość source as WeeklyReportView (conversionMetrics first),
+   * not a raw sum of campaign rows (those fields are often stripped on transform).
+   */
+  const getGoogleMapCampaignTotals = (
+    report: MonthlyReport | WeeklyReport | null,
+  ): { spend: number; clicks: number; conversions: number; conversion_value: number } | null => {
+    if (!report) return null;
 
+    const campaigns = report.campaigns || [];
+    const cm = report.conversionMetrics;
+    const spend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+    const clicks = campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
+    const conversions =
+      report.stats?.totalConversions ??
+      campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
+
+    const fromMetrics =
+      cm?.total_conversion_value ?? cm?.conversion_value ?? cm?.reservation_value;
+    const fromCampaigns = campaigns.reduce(
+      (sum, c) =>
+        sum +
+        (Number(
+          (c as Campaign & { total_conversion_value?: number; conversion_value?: number })
+            .total_conversion_value ??
+            (c as Campaign & { conversion_value?: number }).conversion_value ??
+            c.reservation_value,
+        ) || 0),
+      0,
+    );
+
+    const conversion_value =
+      fromMetrics !== undefined && fromMetrics > 0 ? fromMetrics : fromCampaigns > 0 ? fromCampaigns : fromMetrics ?? 0;
+
+    if (spend === 0 && clicks === 0 && conversions === 0 && conversion_value === 0) {
+      return null;
+    }
+
+    return { spend, clicks, conversions, conversion_value };
+  };
 
   // Initialize reports on component mount
   useEffect(() => {
@@ -3448,8 +3476,10 @@ function ReportsPageContent() {
 
         // Get client data
         const clientData = await getClientData(currentUser, profileData);
+        const defaultProvider = getDefaultAdsProvider(clientData);
         setClient(clientData);
-        setSelectedClient(clientData); // Set selected client for admin switching
+        setSelectedClient(clientData);
+        setActiveAdsProvider(defaultProvider);
         console.log('✅ Client loaded successfully:', {
           id: clientData.id,
           name: clientData.name,
@@ -3481,7 +3511,7 @@ function ReportsPageContent() {
             
             // Load data - page is already visible at this point
             console.log('📊 Loading initial data for period:', initialPeriod);
-            await loadPeriodDataWithClient(initialPeriod, clientData);
+            await loadPeriodDataWithClient(initialPeriod, clientData, false, defaultProvider);
             // 🔧 Mark initial data as loaded AFTER the call completes
             initialDataLoadedRef.current = true;
             console.log('✅ Initial data load completed, marking initialDataLoadedRef as true');
@@ -3672,361 +3702,259 @@ function ReportsPageContent() {
         </div>
       )}
 
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-4 sm:py-8">
-        {/* Unified Page Header - Three-zone centered layout */}
-        <div className="border-b border-gray-200 pb-8 sm:pb-10 mb-6 sm:mb-8">
-          {/* Three-zone grid layout: [LEFT] [CENTER] [RIGHT] */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6 lg:gap-8 items-start">
-            
-            {/* LEFT ZONE: Client Selector + DEV MODE */}
-            <div className="flex flex-col gap-2.5 lg:justify-start order-2 lg:order-1">
-              {/* Client Selector for Admin Users */}
-              {profile?.role === 'admin' && (
-                <div>
-                  <ClientSelector
-                    currentClient={selectedClient}
-                    onClientChange={handleClientChange}
-                    userRole={profile.role}
-                  />
-                </div>
-              )}
-              
-              {/* DEV MODE Badge */}
-              {process.env.NODE_ENV === 'development' && (
-                <div className="inline-flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-md border border-orange-200 text-xs font-medium w-fit">
-                  <Code className="w-3 h-3" />
-                  <span>DEV MODE</span>
-                </div>
-              )}
+      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-60 lg:flex-col lg:border-r lg:border-white/10 lg:bg-slate-950 lg:text-white">
+        <div className="border-b border-white/10 p-4">
+          <div className="truncate text-sm font-semibold">{selectedClient?.name || 'Klient'}</div>
+          <div className="mt-1 truncate text-[11px] text-slate-400">{activePeriodLabel}</div>
+
+          {showPlatformToggle && (
+            <div className="mt-3 flex rounded-lg bg-white/5 p-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveAdsProvider('meta')}
+                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                  activeAdsProvider === 'meta' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="h-3 w-3" />
+                Meta
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveAdsProvider('google')}
+                className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                  activeAdsProvider === 'google' ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Target className="h-3 w-3" />
+                Google
+              </button>
             </div>
-            
-            {/* CENTER ZONE: Logo + Title + Meta (Visual Anchor) */}
-            <div className="flex flex-col items-center text-center order-1 lg:order-2">
-              {/* Logo + Title Block */}
-              <div className="flex items-center gap-4 mb-3">
-              {/* Client Logo */}
-              {selectedClient?.logo_url && (
-                <div className="flex-shrink-0">
-                  <img 
-                    src={selectedClient.logo_url} 
-                    alt={`${selectedClient?.name} logo`}
-                      className="h-14 w-14 sm:h-16 sm:w-16 lg:h-20 lg:w-20 object-contain rounded-lg border border-gray-200 bg-white p-2"
-                  />
-                </div>
-              )}
-                
-                {/* Main Title - Dominant typography */}
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 leading-tight tracking-tight">
-                  Raporty
-                </h1>
-              </div>
-              
-              {/* Meta Line - Centered under title */}
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <span className="font-medium">
-                  {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
-                </span>
-                <span className="text-gray-400">•</span>
-                <span>
-                  {
-                    viewType === 'monthly' ? 'Miesięczne' :
-                    viewType === 'weekly' ? 'Tygodniowe' :
-                    viewType === 'all-time' ? 'Cały Okres' :
-                    'Własny Zakres'
+          )}
+
+          {!showPlatformToggle && (
+            <span className="mt-2 inline-block rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">
+              {activeAdsProvider === 'meta' ? 'Meta Ads' : 'Google Ads'}
+            </span>
+          )}
+
+          <div className="mt-3 grid grid-cols-2 gap-1">
+            {(
+              [
+                { id: 'monthly' as const, label: 'Miesiąc', icon: Calendar },
+                { id: 'weekly' as const, label: 'Tydzień', icon: CalendarDays },
+                { id: 'all-time' as const, label: 'Cały okres', icon: BarChart3 },
+                { id: 'custom' as const, label: 'Własny', icon: Calendar },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => handleViewTypeChange(id)}
+                disabled={id === 'all-time' && isGeneratingAllTimeReport}
+                className={`flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                  viewType === id
+                    ? 'bg-white/15 text-white ring-1 ring-white/20'
+                    : 'text-slate-400 hover:bg-white/10 hover:text-white'
+                } ${id === 'all-time' && isGeneratingAllTimeReport ? 'cursor-wait opacity-50' : ''}`}
+              >
+                {id === 'all-time' && isGeneratingAllTimeReport ? (
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <Icon className="h-3 w-3 shrink-0" />
+                )}
+                <span className="truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          {(viewType === 'monthly' || viewType === 'weekly') && (
+            <div className="mt-3 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedPeriod) {
+                    const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                    if (currentIndex < availablePeriods.length - 1) {
+                      const nextPeriod = availablePeriods[currentIndex + 1];
+                      if (nextPeriod) {
+                        setSelectedPeriod(nextPeriod);
+                        if (!reports[nextPeriod]) loadPeriodData(nextPeriod);
+                      }
+                    }
                   }
-                </span>
-                </div>
+                }}
+                disabled={
+                  !selectedPeriod ||
+                  availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 ||
+                  loadingPeriod !== null
+                }
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Poprzedni okres"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <div className="relative min-w-0 flex-1">
+                <select
+                  value={selectedPeriod || ''}
+                  onChange={handlePeriodChange}
+                  disabled={loadingPeriod !== null}
+                  className="h-7 w-full cursor-pointer appearance-none truncate rounded-md border border-white/10 bg-white/5 px-2 pr-6 text-center text-[11px] font-medium text-white focus:border-white/30 focus:outline-none focus:ring-1 focus:ring-white/30 disabled:opacity-50"
+                  aria-label="Wybierz okres"
+                >
+                  {availablePeriods.map((periodId) => {
+                    if (viewType === 'monthly') {
+                      const [year, month] = periodId.split('-').map(Number);
+                      if (year && month) {
+                        const date = new Date(year, month - 1, 1);
+                        return (
+                          <option key={periodId} value={periodId} className="text-slate-900">
+                            {formatDate(date.toISOString())}
+                          </option>
+                        );
+                      }
+                    } else {
+                      const [year, weekStr] = periodId.split('-W');
+                      const week = parseInt(weekStr || '1');
+                      return (
+                        <option key={periodId} value={periodId} className="text-slate-900">
+                          {getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week)}
+                        </option>
+                      );
+                    }
+                    return null;
+                  })}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                {loadingPeriod && (
+                  <div className="absolute left-1.5 top-1/2 -translate-y-1/2">
+                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   </div>
-                  
-            {/* RIGHT ZONE: Last Update + Back Button (Balanced with left) */}
-            <div className="flex flex-col gap-2.5 items-start lg:items-end lg:justify-start order-3">
-              {/* Last Update Info */}
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                <Clock className="w-3.5 h-3.5" />
-                <span>Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedPeriod) {
+                    const currentIndex = availablePeriods.indexOf(selectedPeriod);
+                    if (currentIndex > 0) {
+                      const prevPeriod = availablePeriods[currentIndex - 1];
+                      if (prevPeriod) {
+                        setSelectedPeriod(prevPeriod);
+                        if (!reports[prevPeriod]) loadPeriodData(prevPeriod);
+                      }
+                    }
+                  }
+                }}
+                disabled={
+                  !selectedPeriod ||
+                  availablePeriods.indexOf(selectedPeriod || '') <= 0 ||
+                  loadingPeriod !== null
+                }
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/10 transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-30"
+                aria-label="Następny okres"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
             </div>
-            
-              {/* Back Button - Stronger styling for balance */}
+          )}
+        </div>
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3 text-[13px]">
+          {reportNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeSection === item.sectionId;
+            return (
+              <button
+                key={item.sectionId}
+                type="button"
+                onClick={() => scrollToSection(item.sectionId)}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                  isActive
+                    ? 'bg-white/10 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-white/10 hover:text-white'
+                }`}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <div className="space-y-1 p-3 text-[11px] text-slate-500">
+          <div className="flex items-center gap-1.5 text-green-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+            <span>Dane na żywo</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock className="h-3 w-3" />
+            <span>Aktualizacja: {new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+        </div>
+      </aside>
+
+      <div className="lg:pl-60">
+      <div className="mx-auto max-w-[1500px] px-4 py-3 sm:px-5 sm:py-4 xl:px-6">
+        <div className="sticky top-0 z-[80] -mx-4 mb-3 border-b border-slate-200/80 bg-slate-50/95 px-4 py-2 backdrop-blur sm:-mx-5 sm:px-5 xl:-mx-6 xl:px-6">
+          <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              {profile?.role === 'admin' ? (
+                <ClientSelector
+                  currentClient={selectedClient}
+                  onClientChange={handleClientChange}
+                  userRole={profile.role}
+                  variant="compact"
+                />
+              ) : (
+                <div className="truncate text-sm font-medium text-slate-700 lg:hidden">
+                  {selectedClient?.name || 'Raport'}
+                </div>
+              )}
+            </div>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleRefresh();
+                }}
+                disabled={loadingPeriod !== null}
+                className={`inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${
+                  loadingPeriod
+                    ? 'cursor-wait border border-blue-600 bg-blue-600 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                } disabled:opacity-50`}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingPeriod ? 'animate-spin' : ''}`} />
+                <span>{loadingPeriod ? 'Odświeżanie...' : 'Odśwież'}</span>
+              </button>
+
+              {selectedReport && selectedReport.campaigns.length > 0 && (
+                <InteractivePDFButton
+                  key={`pdf-button-${client?.id}-${selectedReport?.date_range_start}-${selectedReport?.date_range_end}`}
+                  clientId={client?.id || ''}
+                  dateStart={selectedReport?.date_range_start || ''}
+                  dateEnd={selectedReport?.date_range_end || ''}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-slate-800 bg-slate-800 px-3 text-xs font-medium text-white transition hover:bg-slate-900"
+                  campaigns={selectedReport?.campaigns || []}
+                  totals={getSelectedPeriodTotals()}
+                  client={client}
+                  metaTables={metaTablesData}
+                  viewType={viewType}
+                />
+              )}
+
               <button
                 onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 border-gray-300 text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium shadow-sm hover:shadow"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-xs font-medium text-slate-600 transition hover:border-slate-200 hover:bg-white hover:text-slate-900"
               >
-                <ChevronLeft className="w-4 h-4" />
-                <span>{profile?.role === 'admin' ? 'Powrót do Admina' : 'Powrót do Dashboard'}</span>
+                <ChevronLeft className="h-4 w-4" />
+                <span>Powrót</span>
               </button>
             </div>
           </div>
         </div>
-
-        {/* Unified Filter / Action Toolbar - Works for ALL report types */}
-        <div className="mb-6">
-          {/* Main Toolbar Row */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-4">
-            {/* Left Group: Time Range Filters */}
-            <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => handleViewTypeChange('monthly')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                viewType === 'monthly'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Miesięczny</span>
-            </button>
-
-            <button
-              onClick={() => handleViewTypeChange('weekly')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                viewType === 'weekly'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              <CalendarDays className="w-4 h-4" />
-              <span>Tygodniowy</span>
-            </button>
-
-            <button
-              onClick={() => handleViewTypeChange('all-time')}
-                disabled={isGeneratingAllTimeReport}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                viewType === 'all-time'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                } ${isGeneratingAllTimeReport ? 'opacity-50 cursor-not-allowed' : ''}`}
-                title="Pokaż dane z ostatnich 37 miesięcy"
-            >
-              {isGeneratingAllTimeReport ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <BarChart3 className="w-4 h-4" />
-              )}
-                <span>{isGeneratingAllTimeReport ? 'Ładowanie...' : 'Cały Okres'}</span>
-            </button>
-
-            <button
-              onClick={() => handleViewTypeChange('custom')}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                viewType === 'custom'
-                      ? 'bg-slate-900 text-white shadow-sm'
-                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Własny Zakres</span>
-            </button>
-          </div>
-
-            {/* Right Group: Actions - All buttons same size/hierarchy */}
-            <div className="flex items-center gap-2 lg:ml-auto">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      console.log('🔴 REFRESH BUTTON CLICKED - REPORTS PAGE');
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleRefresh();
-                    }}
-                    disabled={loadingPeriod !== null}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
-                      loadingPeriod 
-                        ? 'bg-blue-600 text-white border border-blue-600 cursor-wait' 
-                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                    } disabled:opacity-50`}
-                  >
-                    <RefreshCw className={`w-4 h-4 ${loadingPeriod ? 'animate-spin' : ''}`} />
-                    <span>{loadingPeriod ? 'Odświeżanie...' : 'Odśwież'}</span>
-                  </button>
-                  
-                  {selectedReport && selectedReport.campaigns.length > 0 && (
-                    <InteractivePDFButton
-                      key={`pdf-button-${client?.id}-${selectedReport?.date_range_start}-${selectedReport?.date_range_end}`}
-                      clientId={client?.id || ''}
-                      dateStart={selectedReport?.date_range_start || ''}
-                      dateEnd={selectedReport?.date_range_end || ''}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white border border-slate-800 rounded-lg hover:bg-slate-900 transition-all text-sm font-medium"
-                      campaigns={selectedReport?.campaigns || []}
-                      totals={getSelectedPeriodTotals()}
-                      client={client}
-                      metaTables={metaTablesData}
-                      viewType={viewType}
-                    />
-                  )}
-              </div>
-              </div>
-
-          {/* Period Selector Row - Only for Monthly/Weekly */}
-          {(viewType === 'monthly' || viewType === 'weekly') && (
-            <div className="flex justify-center items-center gap-3 mb-4">
-                <button
-                  onClick={() => {
-                        if (selectedPeriod) {
-                          const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                          if (currentIndex < availablePeriods.length - 1) {
-                            const nextPeriod = availablePeriods[currentIndex + 1];
-                            if (nextPeriod) {
-                              setSelectedPeriod(nextPeriod);
-                              if (!reports[nextPeriod]) {
-                                loadPeriodData(nextPeriod);
-                              }
-                            }
-                          }
-                        }
-                      }}
-                      disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') >= availablePeriods.length - 1 || loadingPeriod !== null}
-                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Poprzedni okres"
-                    >
-                <ChevronLeft className="w-5 h-5 text-slate-700" />
-                </button>
-
-              <div className="relative min-w-[280px]">
-                      <select
-                        value={selectedPeriod || ''}
-                        onChange={handlePeriodChange}
-                        disabled={loadingPeriod !== null}
-                  className="w-full h-12 border-2 border-slate-200 rounded-lg px-4 text-lg font-bold text-center text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 disabled:opacity-50 cursor-pointer appearance-none bg-white"
-                        aria-label="Wybierz okres"
-                      >
-                        {availablePeriods.map((periodId) => {
-                          if (viewType === 'monthly') {
-                            const [year, month] = periodId.split('-').map(Number);
-                            if (year && month) {
-                              const date = new Date(year, month - 1, 1);
-                              const displayText = formatDate(date.toISOString());
-                              return (
-                          <option key={periodId} value={periodId}>
-                                  {displayText}
-                                </option>
-                              );
-                            }
-                          } else {
-                            const [year, weekStr] = periodId.split('-W');
-                            const week = parseInt(weekStr || '1');
-                            const displayText = getWeekDateRange(parseInt(year || new Date().getFullYear().toString()), week);
-                            return (
-                        <option key={periodId} value={periodId}>
-                                {displayText}
-                              </option>
-                            );
-                          }
-                          return null;
-                        })}
-                      </select>
-                      
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <ChevronDown className="w-5 h-5 text-slate-700" />
-            </div>
-
-                      {loadingPeriod && (
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-900 border-t-transparent"></div>
-              </div>
-            )}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        if (selectedPeriod) {
-                          const currentIndex = availablePeriods.indexOf(selectedPeriod);
-                          if (currentIndex > 0) {
-                            const prevPeriod = availablePeriods[currentIndex - 1];
-                            if (prevPeriod) {
-                              setSelectedPeriod(prevPeriod);
-                              if (!reports[prevPeriod]) {
-                                loadPeriodData(prevPeriod);
-                              }
-                            }
-                          }
-                        }
-                      }}
-                      disabled={!selectedPeriod || availablePeriods.indexOf(selectedPeriod || '') <= 0 || loadingPeriod !== null}
-                className="w-10 h-10 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Następny okres"
-                    >
-                <ChevronRight className="w-5 h-5 text-slate-700" />
-                    </button>
-          </div>
-        )}
-
-          {/* Channel Selector - Only show when data is available */}
-                {selectedReport && (() => {
-                  const hasMetaAds = selectedClient?.meta_access_token && selectedClient?.ad_account_id;
-                  const hasGoogleAds = selectedClient?.google_ads_enabled && selectedClient?.google_ads_customer_id;
-            const showToggle = hasMetaAds && hasGoogleAds;
-                  
-            if (showToggle) {
-                    return (
-                <div className="flex justify-center">
-                  <div className="inline-flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-                      <button
-                        onClick={() => setActiveAdsProvider('meta')}
-                      className={`relative flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                          activeAdsProvider === 'meta'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                          <BarChart3 className="w-4 h-4" />
-                          <span>Meta Ads</span>
-                      </button>
-
-                      <button
-                        onClick={() => setActiveAdsProvider('google')}
-                      className={`relative flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                          activeAdsProvider === 'google'
-                          ? 'bg-white text-slate-900 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                          <Target className="w-4 h-4" />
-                          <span>Google Ads</span>
-                      </button>
-                    </div>
-              </div>
-                      );
-                    }
-                    return null;
-                })()}
-          </div>
-
-        {/* Live Data Status Strip - Only visible in development mode */}
-        {process.env.NODE_ENV === 'development' && (() => {
-          if (viewType === 'monthly' && selectedPeriod) {
-                const [year, month] = selectedPeriod.split('-').map(Number);
-                const currentDate = new Date();
-                const isCurrentMonth = year === currentDate.getFullYear() && month === (currentDate.getMonth() + 1);
-                
-            if (isCurrentMonth) {
-                  return (
-                <div className="flex justify-center mb-6">
-                  <div className="flex items-center space-x-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-medium text-green-800">Dane na żywo</span>
-                    <span className="text-xs text-green-600">• Ostatnia aktualizacja: {new Date().toLocaleString('pl-PL')}</span>
-                  </div>
-                    </div>
-                  );
-                }
-              }
-              return null;
-            })()}
-
-        {/* Dev Panel - Hidden by default, accessible via keyboard shortcut */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="fixed top-4 right-4 z-50">
-            <button
-              onClick={generateDevReport}
-              disabled={loadingPeriod !== null || apiCallInProgress}
-              className="w-8 h-8 bg-orange-600 text-white rounded-full hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center shadow-lg"
-              title="DEV: Fresh Report + PDF (Ctrl+Shift+D)"
-            >
-              <Code className={`w-4 h-4 ${isGeneratingDevReport ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        )}
 
         {/* All Time Warning */}
         {viewType === 'all-time' && (
@@ -4124,12 +4052,6 @@ function ReportsPageContent() {
             </p>
           </div>
         )}
-
-        {/* 🔧 DATA SOURCE INDICATOR: Show which data source is being used */}
-        <DataSourceIndicator 
-          validation={dataSourceInfo.validation} 
-          debug={dataSourceInfo.debug} 
-        />
         
         {(() => {
           const totals = getSelectedPeriodTotals();
@@ -4179,53 +4101,29 @@ function ReportsPageContent() {
               />
             ) : (
               <>
-                {/* 🔧 FIX: Only render GoogleAdsTables when preloaded data is available
-                    This prevents the component from making duplicate API calls */}
-                {(selectedReport as any)?.googleAdsTables ? (
-                  <GoogleAdsTables
-                    key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
-                    dateStart={selectedReport.date_range_start}
-                    dateEnd={selectedReport.date_range_end}
-                    clientId={client?.id || ''}
-                    preloadedTablesData={(selectedReport as any).googleAdsTables}
-                    onDataLoaded={(data) => {
-                      console.log('Google Ads tables data loaded:', data);
-                    }}
-                  />
-                ) : (
-                  <div className="bg-white rounded-lg p-6 border border-gray-200">
-                    <div className="flex items-center gap-3">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                      <span className="text-gray-600">Ładowanie szczegółowych danych Google Ads...</span>
-                    </div>
-                  </div>
-                )}
-                
-                {/* RMF R.20, R.30, R.40: Campaign Hierarchy with Ad Groups and Ads */}
-                {selectedReport && selectedReport.campaigns && selectedReport.campaigns.length > 0 && (
-                  <div className="mt-8">
-                    <GoogleAdsExpandableCampaignTable
-                      campaigns={selectedReport.campaigns
-                        .filter((campaign: any) => (campaign.spend || 0) > 0) // 🔧 FIX: Only pass campaigns with spend
-                        .map((campaign: any, idx: number) => ({
-                        campaignId: campaign.campaign_id || campaign.campaignId || String(idx),
-                        campaignName: campaign.campaign_name || campaign.campaignName || campaign.name || 'Unknown Campaign',
-                        status: campaign.status || 'ACTIVE',
-                        spend: campaign.spend || 0,
-                        impressions: campaign.impressions || 0,
-                        clicks: campaign.clicks || 0,
-                        ctr: campaign.ctr || 0,
-                        cpc: campaign.cpc || 0,
-                        conversions: campaign.conversions || campaign.reservations || 0,
-                        reservation_value: campaign.reservation_value || 0
-                      }))}
-                      clientId={client?.id || ''}
-                      dateStart={selectedReport.date_range_start}
-                      dateEnd={selectedReport.date_range_end}
-                      currency="PLN"
-                    />
-                  </div>
-                )}
+                {/* Render GoogleAdsTables unconditionally so demographics,
+                    devices-with-conversions, and the Poland regions map are
+                    always visible under "Szczegóły Kampanii".
+
+                    Previously this was gated behind preloaded data to avoid a
+                    duplicate API call, but that left users stuck on a spinner
+                    when the smart-cache payload didn't include the tables blob
+                    (e.g. on first load or after cache invalidation). The
+                    component already self-protects against duplicate fetches
+                    via its internal `isRequestInProgress` guard and `useEffect`
+                    dependency keying, and skips its fetch entirely when
+                    preloadedTablesData is present. */}
+                <GoogleAdsTables
+                  key={`google-ads-${client?.id}-${selectedReport.date_range_start}-${selectedReport.date_range_end}`}
+                  dateStart={selectedReport.date_range_start}
+                  dateEnd={selectedReport.date_range_end}
+                  clientId={client?.id || ''}
+                  preloadedTablesData={(selectedReport as any)?.googleAdsTables || null}
+                  campaignTotals={getGoogleMapCampaignTotals(selectedReport)}
+                  onDataLoaded={(data) => {
+                    console.log('Google Ads tables data loaded:', data);
+                  }}
+                />
               </>
             )}
           </div>
@@ -4237,6 +4135,7 @@ function ReportsPageContent() {
 
 
       </div>
+    </div>
     </div>
   );
 }

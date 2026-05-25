@@ -144,14 +144,6 @@ export default function GoogleAdsAccountOverview({ accountData, currency = 'PLN'
           </div>
         ))}
       </div>
-
-      {/* RMF Compliance Note */}
-      <div className="mt-4 pt-4 border-t border-slate-100">
-        <p className="text-xs text-slate-500">
-          <strong>RMF R.10 Required Metrics:</strong> ✅ clicks, ✅ cost_micros (spend), 
-          ✅ impressions, ✅ conversions, ✅ conversions_value
-        </p>
-      </div>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { BarChart3, Eye, MousePointer, Target, DollarSign, Calendar, PhoneCall, Mail, TrendingUp, Users, Zap, Award, Search, Activity } from 'lucide-react';
+import { BarChart3, Eye, MousePointer, Target, DollarSign, Calendar, PhoneCall, Mail, Users, Zap, Award, Search, Activity } from 'lucide-react';
 import ConversionFunnel from './ConversionFunnel';
+import { cpcFromStats, ctrPercentFromStats } from '../lib/ctr-from-stats';
 
 interface PlatformData {
   enabled: boolean;
@@ -139,33 +140,30 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             />
             <MetricCard
               title="Współczynnik kliknięć z linku"
-              value={`${(metaData.stats.averageCtr !== undefined && metaData.stats.averageCtr !== null
-                ? metaData.stats.averageCtr
-                : (metaData.stats.totalImpressions > 0 ? (metaData.stats.totalClicks / metaData.stats.totalImpressions) * 100 : 0)).toFixed(2)}%`}
+              value={`${ctrPercentFromStats(
+                metaData.stats.averageCtr,
+                metaData.stats.totalClicks,
+                metaData.stats.totalImpressions
+              ).toFixed(2)}%`}
               subtitle="Meta Ads (z API)"
               icon={<Target className="w-5 h-5 text-blue-600" />}
               color="bg-blue-50"
             />
             <MetricCard
               title="Koszt kliknięcia linku"
-              value={formatCurrency(metaData.stats.averageCpc !== undefined && metaData.stats.averageCpc !== null
-                ? metaData.stats.averageCpc
-                : (metaData.stats.totalClicks > 0 ? metaData.stats.totalSpend / metaData.stats.totalClicks : 0))}
+              value={formatCurrency(cpcFromStats(
+                metaData.stats.averageCpc,
+                metaData.stats.totalSpend,
+                metaData.stats.totalClicks
+              ))}
               subtitle="Meta Ads (z API)"
               icon={<DollarSign className="w-5 h-5 text-blue-600" />}
               color="bg-blue-50"
             />
           </div>
 
-          {/* Meta Additional Core Metrics - Row 2 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <MetricCard
-              title="Konwersje"
-              value={formatNumber(metaData.stats.totalConversions)}
-              subtitle="Meta Ads"
-              icon={<TrendingUp className="w-5 h-5 text-blue-600" />}
-              color="bg-blue-50"
-            />
+          {/* Meta: reach (conversions card removed from podstawowe — funnel below) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <MetricCard
               title="Zasięg"
               value={formatNumber(metaData.stats.reach || 0)}
@@ -279,34 +277,24 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
             />
             <MetricCard
               title="CTR"
-              value={`${(googleData.stats.totalImpressions > 0 ? (googleData.stats.totalClicks / googleData.stats.totalImpressions) * 100 : 0).toFixed(2)}%`}
+              value={`${ctrPercentFromStats(
+                googleData.stats.averageCtr,
+                googleData.stats.totalClicks,
+                googleData.stats.totalImpressions
+              ).toFixed(2)}%`}
               subtitle="Google Ads"
               icon={<Target className="w-5 h-5 text-green-600" />}
               color="bg-green-50"
             />
             <MetricCard
               title="CPC"
-              value={formatCurrency(googleData.stats.totalClicks > 0 ? googleData.stats.totalSpend / googleData.stats.totalClicks : 0)}
+              value={formatCurrency(cpcFromStats(
+                googleData.stats.averageCpc,
+                googleData.stats.totalSpend,
+                googleData.stats.totalClicks
+              ))}
               subtitle="Google Ads"
               icon={<DollarSign className="w-5 h-5 text-green-600" />}
-              color="bg-green-50"
-            />
-          </div>
-
-          {/* Google Additional Core Metrics - Row 2 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <MetricCard
-              title="Konwersje"
-              value={formatNumber(googleData.stats.totalConversions)}
-              subtitle="Google Ads"
-              icon={<TrendingUp className="w-5 h-5 text-green-600" />}
-              color="bg-green-50"
-            />
-            <MetricCard
-              title="Konwersje wyświetleniowe"
-              value={formatNumber(googleData.stats.viewThroughConversions || 0)}
-              subtitle="Google Ads"
-              icon={<Eye className="w-5 h-5 text-green-600" />}
               color="bg-green-50"
             />
           </div>
@@ -409,14 +397,22 @@ const PlatformSeparatedMetrics: React.FC<PlatformSeparatedMetricsProps> = ({
           />
           <MetricCard
             title="CTR"
-            value={`${(combinedData.stats.totalImpressions > 0 ? (combinedData.stats.totalClicks / combinedData.stats.totalImpressions) * 100 : 0).toFixed(2)}%`}
+            value={`${ctrPercentFromStats(
+              combinedData.stats.averageCtr,
+              combinedData.stats.totalClicks,
+              combinedData.stats.totalImpressions
+            ).toFixed(2)}%`}
             subtitle="Wszystkie platformy"
             icon={<Target className="w-5 h-5 text-slate-600" />}
             color="bg-slate-50"
           />
           <MetricCard
             title="CPC"
-            value={formatCurrency(combinedData.stats.totalClicks > 0 ? combinedData.stats.totalSpend / combinedData.stats.totalClicks : 0)}
+            value={formatCurrency(cpcFromStats(
+              combinedData.stats.averageCpc,
+              combinedData.stats.totalSpend,
+              combinedData.stats.totalClicks
+            ))}
             subtitle="Wszystkie platformy"
             icon={<DollarSign className="w-5 h-5 text-slate-600" />}
             color="bg-slate-50"

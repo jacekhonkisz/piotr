@@ -9,6 +9,10 @@ import {
   selectMetaAPIMethod, 
   validateDateRange
 } from '../../../lib/date-range-utils';
+import {
+  extractMetaDynamicActionRows,
+  metaCampaignsToDynamicMetricMap
+} from '../../../lib/dynamic-conversion-discovery';
 import { getCurrentWeekInfo } from '../../../lib/week-utils';
 import { StandardizedDataFetcher } from '../../../lib/standardized-data-fetcher';
 import { getMondayOfWeek, formatDateISO, validateIsMonday } from '../../../lib/week-helpers';
@@ -870,13 +874,34 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
           
           logger.info(`✅ Fetched ${freshCampaigns.length} fresh campaigns with real booking steps`);
           
-          // Calculate totals from fresh data
+          // Canonical metric contract v1: total_clicks = inline_link_clicks (fallback to clicks).
           const totalSpend = freshCampaigns.reduce((sum, campaign) => sum + (campaign.spend || 0), 0);
           const totalImpressions = freshCampaigns.reduce((sum, campaign) => sum + (campaign.impressions || 0), 0);
-          const totalClicks = freshCampaigns.reduce((sum, campaign) => sum + (campaign.clicks || 0), 0);
-          const totalConversions = freshCampaigns.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
-          const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-          const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+          const totalClicks = freshCampaigns.reduce(
+            (sum, campaign) => sum + (Number(campaign.inline_link_clicks ?? campaign.clicks) || 0),
+            0
+          );
+          const rawApiConversionsHist = freshCampaigns.reduce((sum, campaign) => sum + (campaign.conversions || 0), 0);
+
+          let weightedCtrSum = 0;
+          let weightedCpcSum = 0;
+          let totalLinkClickWeight = 0;
+          for (const c of freshCampaigns as any[]) {
+            const linkClicks = Number(c.inline_link_clicks ?? c.clicks) || 0;
+            const ctrApi = Number(c.inline_link_click_ctr ?? c.ctr) || 0;
+            const cpcApi = Number(c.cost_per_inline_link_click ?? c.cpc) || 0;
+            if (linkClicks > 0 && ctrApi > 0 && cpcApi > 0) {
+              weightedCtrSum += ctrApi * linkClicks;
+              weightedCpcSum += cpcApi * linkClicks;
+              totalLinkClickWeight += linkClicks;
+            }
+          }
+          const averageCtr = totalLinkClickWeight > 0
+            ? weightedCtrSum / totalLinkClickWeight
+            : (totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0);
+          const averageCpc = totalLinkClickWeight > 0
+            ? weightedCpcSum / totalLinkClickWeight
+            : (totalClicks > 0 ? totalSpend / totalClicks : 0);
           
           // Calculate conversion metrics from fresh data
           const freshConversionMetrics = {
@@ -888,15 +913,20 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
             reservations: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0),
             reservation_value: freshCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0),
             roas: totalSpend > 0 ? freshCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0) / totalSpend : 0,
-            cost_per_reservation: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) > 0 ? 
+            cost_per_reservation: freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) > 0 ?
               totalSpend / freshCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0) : 0
           };
+
+          // Canonical: stats.totalConversions = parsed reservations.
+          const totalConversions = freshConversionMetrics.reservations;
           
           logger.info('📊 Fresh conversion metrics with real booking steps:', freshConversionMetrics);
           
           const freshData = {
             client: { id: clientId, currency: 'PLN' },
             campaigns: freshCampaigns,
+            dynamicMetricValues: metaCampaignsToDynamicMetricMap(freshCampaigns),
+            dynamicMetricRows: extractMetaDynamicActionRows(freshCampaigns),
             stats: {
               totalSpend,
               totalImpressions,
@@ -1627,15 +1657,41 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       });
     }
 
-    // Calculate summary stats
-    // 🔧 CRITICAL FIX: Parse all values as numbers (Meta API returns strings)
+    // Canonical metric contract v1: total_clicks = inline_link_clicks (fallback to clicks).
+    // Matches Meta Business Suite "Link clicks" and the smart-cache pipeline.
     const totalSpend = campaignInsights.reduce((sum, campaign) => sum + (parseFloat(campaign.spend) || 0), 0);
     const totalImpressions = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.impressions) || 0), 0);
-    const totalClicks = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.clicks) || 0), 0);
-    // 🔧 FIX NaN BUG: parseInt(undefined) returns NaN, so wrap with || 0
-    const totalConversions = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.conversions) || 0), 0);
-    const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-    const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    const totalClicks = campaignInsights.reduce(
+      (sum, campaign) => sum + (parseInt(campaign.inline_link_clicks ?? campaign.clicks) || 0),
+      0
+    );
+    // Canonical metric contract v1: total_conversions = parsed reservations.
+    // The Meta API `conversions` field is attribution-dependent and unreliable.
+    // Stored summaries already use parsed reservations as total_conversions; align live to match.
+    const rawApiConversions = campaignInsights.reduce((sum, campaign) => sum + (parseInt(campaign.conversions) || 0), 0);
+
+    // Canonical CTR/CPC: weighted average of API-provided per-campaign values
+    // (inline_link_click_ctr / cost_per_inline_link_click), weighted by canonical clicks.
+    // Falls back to computed value from totals when API values are unavailable.
+    let weightedCtrSum = 0;
+    let weightedCpcSum = 0;
+    let totalLinkClickWeight = 0;
+    for (const c of campaignInsights) {
+      const linkClicks = parseInt(c.inline_link_clicks ?? c.clicks) || 0;
+      const ctrApi = parseFloat(c.inline_link_click_ctr ?? c.ctr) || 0;
+      const cpcApi = parseFloat(c.cost_per_inline_link_click ?? c.cpc) || 0;
+      if (linkClicks > 0 && ctrApi > 0 && cpcApi > 0) {
+        weightedCtrSum += ctrApi * linkClicks;
+        weightedCpcSum += cpcApi * linkClicks;
+        totalLinkClickWeight += linkClicks;
+      }
+    }
+    const averageCtr = totalLinkClickWeight > 0
+      ? weightedCtrSum / totalLinkClickWeight
+      : (totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0);
+    const averageCpc = totalLinkClickWeight > 0
+      ? weightedCpcSum / totalLinkClickWeight
+      : (totalClicks > 0 ? totalSpend / totalClicks : 0);
 
     // Calculate conversion tracking totals
     // 🔧 CRITICAL FIX: Aggregate parsed conversion metrics
@@ -1649,6 +1705,11 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     const totalBookingStep3 = aggregatedConversions.booking_step_3;
     const totalReservations = aggregatedConversions.reservations;
     const totalReservationValue = aggregatedConversions.reservation_value;
+
+    // Canonical: stats.totalConversions surfaces business conversions (= parsed reservations),
+    // matching how stored campaign_summaries persist total_conversions. The raw Meta API
+    // conversions field is preserved separately for diagnostic use.
+    const totalConversions = totalReservations;
 
     // Calculate overall ROAS and cost per reservation
     const overallRoas = totalSpend > 0 && totalReservationValue > 0 ? totalReservationValue / totalSpend : 0;
@@ -1682,6 +1743,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         currency: accountInfo?.currency || 'USD'
       },
       campaigns: campaignInsights,
+      dynamicMetricValues: metaCampaignsToDynamicMetricMap(campaignInsights),
+      dynamicMetricRows: extractMetaDynamicActionRows(campaignInsights),
       stats: {
         totalSpend,
         totalImpressions,

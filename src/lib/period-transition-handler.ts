@@ -210,7 +210,13 @@ export class PeriodTransitionHandler {
       active_campaigns: cacheData?.campaigns?.filter((c: any) => c.status === 'ACTIVE').length || 0,
       total_campaigns: cacheData?.campaigns?.length || 0,
       campaign_data: cacheData?.campaigns || [],
-      meta_tables: cacheData?.metaTables || null,
+      ...(cache.platform === 'google' ? {
+        google_ads_tables: cacheData?.googleAdsTables || null,
+        google_dynamic_metric_values: cacheData?.dynamicMetricValues || {},
+        google_dynamic_metric_rows: cacheData?.dynamicMetricRows || [],
+      } : {
+        meta_tables: cacheData?.metaTables || null,
+      }),
       // Conversion metrics
       click_to_call: cacheData?.conversionMetrics?.click_to_call || 0,
       email_contacts: cacheData?.conversionMetrics?.email_contacts || 0,
@@ -292,7 +298,13 @@ export class PeriodTransitionHandler {
       active_campaigns: campaigns.filter((c: any) => c.status === 'ACTIVE').length,
       total_campaigns: campaigns.length,
       campaign_data: campaigns,
-      meta_tables: cacheData?.metaTables || null,
+      ...(cache.platform === 'google' ? {
+        google_ads_tables: cacheData?.googleAdsTables || null,
+        google_dynamic_metric_values: cacheData?.dynamicMetricValues || {},
+        google_dynamic_metric_rows: cacheData?.dynamicMetricRows || [],
+      } : {
+        meta_tables: cacheData?.metaTables || null,
+      }),
       // Conversion metrics
       click_to_call: conversionTotals.click_to_call,
       email_contacts: conversionTotals.email_contacts,

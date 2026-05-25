@@ -3,25 +3,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getCurrentMonthLabel } from '../lib/date-utils';
 
+interface ChartMetric {
+  current: number;
+  previous: number;
+  change: number;
+}
+
 interface AnimatedMetricsChartsProps {
-  leads: {
-    current: number;
-    previous: number;
-    change: number;
-  };
-  reservations: {
-    current: number;
-    previous: number;
-    change: number;
-  };
-  reservationValue: {
-    current: number;
-    previous: number;
-    change: number;
-  };
+  leads: ChartMetric;
+  reservations: ChartMetric;
+  reservationValue: ChartMetric;
   isLoading?: boolean;
-  clientId?: string;
-  platform?: 'meta' | 'google';
+  labels?: {
+    leads?: string;
+    reservations?: string;
+    reservationValue?: string;
+  };
+  visibleCharts?: {
+    leads?: boolean;
+    reservations?: boolean;
+    reservationValue?: boolean;
+  };
 }
 
 export default function AnimatedMetricsCharts({
@@ -29,9 +31,16 @@ export default function AnimatedMetricsCharts({
   reservations,
   reservationValue,
   isLoading = false,
-  clientId,
-  platform = 'meta'
+  labels,
+  visibleCharts,
 }: AnimatedMetricsChartsProps) {
+  const leadsLabel = labels?.leads ?? 'Pozyskane leady';
+  const reservationsLabel = labels?.reservations ?? 'Rezerwacje';
+  const reservationValueLabel = labels?.reservationValue ?? 'Wartość rezerwacji';
+
+  const showLeads = visibleCharts?.leads !== false;
+  const showReservations = visibleCharts?.reservations !== false;
+  const showReservationValue = visibleCharts?.reservationValue !== false;
   const [animatedValues, setAnimatedValues] = useState({
     leads: 0,
     reservations: 0,
@@ -40,58 +49,6 @@ export default function AnimatedMetricsCharts({
 
   const [hairlineVisible, setHairlineVisible] = useState(false);
   const [ticksVisible, setTicksVisible] = useState(false);
-
-  // Self-fetched previous month data (bypasses parent state issues)
-  const [selfFetchedPrev, setSelfFetchedPrev] = useState<{
-    booking_step_1: number;
-    reservations: number;
-    reservation_value: number;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!clientId) return;
-    let cancelled = false;
-
-    fetch(`/api/previous-month-metrics?clientId=${clientId}&platform=${platform}`)
-      .then(res => res.json())
-      .then(data => {
-        if (!cancelled && data) {
-          setSelfFetchedPrev({
-            booking_step_1: data.booking_step_1 || 0,
-            reservations: data.reservations || 0,
-            reservation_value: data.reservation_value || 0
-          });
-        }
-      })
-      .catch(() => {});
-
-    return () => { cancelled = true; };
-  }, [clientId, platform]);
-
-  // Use self-fetched data if parent passed zeros but we have real data
-  const resolvedLeads = useMemo(() => {
-    if (selfFetchedPrev && leads.previous === 0 && selfFetchedPrev.booking_step_1 > 0) {
-      const prev = selfFetchedPrev.booking_step_1;
-      return { current: leads.current, previous: prev, change: prev > 0 ? ((leads.current - prev) / prev) * 100 : 0 };
-    }
-    return leads;
-  }, [leads, selfFetchedPrev]);
-
-  const resolvedReservations = useMemo(() => {
-    if (selfFetchedPrev && reservations.previous === 0 && selfFetchedPrev.reservations > 0) {
-      const prev = selfFetchedPrev.reservations;
-      return { current: reservations.current, previous: prev, change: prev > 0 ? ((reservations.current - prev) / prev) * 100 : 0 };
-    }
-    return reservations;
-  }, [reservations, selfFetchedPrev]);
-
-  const resolvedReservationValue = useMemo(() => {
-    if (selfFetchedPrev && reservationValue.previous === 0 && selfFetchedPrev.reservation_value > 0) {
-      const prev = selfFetchedPrev.reservation_value;
-      return { current: reservationValue.current, previous: prev, change: prev > 0 ? ((reservationValue.current - prev) / prev) * 100 : 0 };
-    }
-    return reservationValue;
-  }, [reservationValue, selfFetchedPrev]);
 
   // Get current month label dynamically (e.g., "listopad '25")
   const currentMonthLabel = useMemo(() => getCurrentMonthLabel(), []);
@@ -130,9 +87,9 @@ export default function AnimatedMetricsCharts({
       };
 
       const intervals = [
-        animateValue(0, resolvedLeads.current, (value) => setAnimatedValues(prev => ({ ...prev, leads: value }))),
-        animateValue(0, resolvedReservations.current, (value) => setAnimatedValues(prev => ({ ...prev, reservations: value }))),
-        animateValue(0, resolvedReservationValue.current, (value) => setAnimatedValues(prev => ({ ...prev, reservationValue: value })))
+        animateValue(0, leads.current, (value) => setAnimatedValues(prev => ({ ...prev, leads: value }))),
+        animateValue(0, reservations.current, (value) => setAnimatedValues(prev => ({ ...prev, reservations: value }))),
+        animateValue(0, reservationValue.current, (value) => setAnimatedValues(prev => ({ ...prev, reservationValue: value })))
       ];
 
       // Ticks animation after numbers
@@ -144,7 +101,7 @@ export default function AnimatedMetricsCharts({
     return () => {
       if (cleanup) cleanup();
     };
-  }, [resolvedLeads.current, resolvedReservations.current, resolvedReservationValue.current, isLoading]);
+  }, [leads.current, reservations.current, reservationValue.current, isLoading]);
 
   const formatNumber = (num: number) => {
     return num.toLocaleString('pl-PL');
@@ -208,13 +165,22 @@ export default function AnimatedMetricsCharts({
     return 'text-navy';
   };
 
+  const visibleCount = [showLeads, showReservations, showReservationValue].filter(Boolean).length;
+  const gridClass = visibleCount === 1
+    ? 'grid-cols-1 max-w-md'
+    : visibleCount === 2
+    ? 'grid-cols-1 sm:grid-cols-2 max-w-3xl'
+    : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3';
+
+  if (visibleCount === 0) return null;
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-      {/* Pozyskane leady */}
+    <div className={`grid ${gridClass} gap-4 sm:gap-6`}>
+      {showLeads && (
       <div className="bg-bg rounded-2xl p-4 sm:p-6 md:p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default w-full">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted">
-            Pozyskane leady
+            {leadsLabel}
           </h3>
           <span className="text-xs text-muted opacity-60">{currentMonthLabel}</span>
         </div>
@@ -236,21 +202,22 @@ export default function AnimatedMetricsCharts({
               formatNumber(animatedValues.leads)
             )}
           </div>
-          <div className={`text-sm ${getChangeColor(resolvedLeads.change)} flex items-center space-x-1`}>
-            <span>vs {formatNumber(resolvedLeads.previous)} poprzedni miesiąc</span>
-            <span className="text-xs">{resolvedLeads.change > 0 ? '+' : resolvedLeads.change < 0 ? '-' : ''}{getChangeIcon(resolvedLeads.change)}</span>
+          <div className={`text-sm ${getChangeColor(leads.change)} flex items-center space-x-1`}>
+            <span>vs {formatNumber(leads.previous)} poprzedni miesiąc</span>
+            <span className="text-xs">{leads.change > 0 ? '+' : leads.change < 0 ? '-' : ''}{getChangeIcon(leads.change)}</span>
           </div>
         </div>
 
         {/* Tick-rail */}
-        {createTickRail(resolvedLeads.current, resolvedLeads.previous, 'bg-navy')}
+        {createTickRail(leads.current, leads.previous, 'bg-navy')}
       </div>
+      )}
 
-      {/* Rezerwacje */}
+      {showReservations && (
       <div className="bg-bg rounded-2xl p-4 sm:p-6 md:p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default w-full">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted">
-            Rezerwacje
+            {reservationsLabel}
           </h3>
           <span className="text-xs text-muted opacity-60">{currentMonthLabel}</span>
         </div>
@@ -272,21 +239,22 @@ export default function AnimatedMetricsCharts({
               formatNumber(animatedValues.reservations)
             )}
           </div>
-          <div className={`text-sm ${getChangeColor(resolvedReservations.change)} flex items-center space-x-1`}>
-            <span>vs {formatNumber(resolvedReservations.previous)} poprzedni miesiąc</span>
-            <span className="text-xs">{resolvedReservations.change > 0 ? '+' : resolvedReservations.change < 0 ? '-' : ''}{getChangeIcon(resolvedReservations.change)}</span>
+          <div className={`text-sm ${getChangeColor(reservations.change)} flex items-center space-x-1`}>
+            <span>vs {formatNumber(reservations.previous)} poprzedni miesiąc</span>
+            <span className="text-xs">{reservations.change > 0 ? '+' : reservations.change < 0 ? '-' : ''}{getChangeIcon(reservations.change)}</span>
           </div>
         </div>
 
         {/* Tick-rail */}
-        {createTickRail(resolvedReservations.current, resolvedReservations.previous, 'bg-navy')}
+        {createTickRail(reservations.current, reservations.previous, 'bg-navy')}
       </div>
+      )}
 
-      {/* Wartość rezerwacji */}
+      {showReservationValue && (
       <div className="bg-bg rounded-2xl p-4 sm:p-6 md:p-7 shadow-sm border border-stroke hover:shadow-md transition-all duration-200 cursor-default w-full">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-muted">
-            Wartość rezerwacji
+            {reservationValueLabel}
           </h3>
           <span className="text-xs text-muted opacity-60">{currentMonthLabel}</span>
         </div>
@@ -308,15 +276,16 @@ export default function AnimatedMetricsCharts({
               formatCurrency(animatedValues.reservationValue)
             )}
           </div>
-          <div className={`text-sm ${getChangeColor(resolvedReservationValue.change)} flex items-center space-x-1`}>
-            <span>vs {formatCurrency(resolvedReservationValue.previous)} poprzedni miesiąc</span>
-            <span className="text-xs">{resolvedReservationValue.change > 0 ? '+' : resolvedReservationValue.change < 0 ? '-' : ''}{getChangeIcon(resolvedReservationValue.change)}</span>
+          <div className={`text-sm ${getChangeColor(reservationValue.change)} flex items-center space-x-1`}>
+            <span>vs {formatCurrency(reservationValue.previous)} poprzedni miesiąc</span>
+            <span className="text-xs">{reservationValue.change > 0 ? '+' : reservationValue.change < 0 ? '-' : ''}{getChangeIcon(reservationValue.change)}</span>
           </div>
         </div>
 
         {/* Tick-rail with orange color for value */}
-        {createTickRail(resolvedReservationValue.current, resolvedReservationValue.previous, 'bg-orange')}
+        {createTickRail(reservationValue.current, reservationValue.previous, 'bg-orange')}
       </div>
+      )}
     </div>
   );
 } 

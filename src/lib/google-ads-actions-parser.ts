@@ -3,6 +3,9 @@
  * 
  * Parses Google Ads conversion data into structured funnel metrics.
  * This is the SINGLE SOURCE OF TRUTH for converting Google Ads API responses into funnel data.
+ *
+ * For aggregating E-mail / Telefon across campaigns or DB rows (including legacy column
+ * names), use `google-ads-contact-metrics.ts`.
  * 
  * Used by:
  * - Smart cache (current month/week data)
@@ -21,6 +24,80 @@ export interface ParsedConversionMetrics {
   reservations: number;
   reservation_value: number;
   total_conversion_value?: number; // ✅ Total conversion value (all_conversions_value) - "Wartość konwersji" from Google Ads
+  /** Σ all_conversions minus form-type actions (for headline conversion counts). */
+  total_non_form_conversions?: number;
+}
+
+/** Lowercase + strip diacritics so PL/EN conversion action names match reliably. */
+function normalizeConversionLabel(name: string): string {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}+/gu, '');
+}
+
+/**
+ * Maps to Google Ads UI „Kontakt” → „Kliknięcie w adres email” (website).
+ * Only that style of action counts as email_contacts (no generic „kontakt” / „contact”).
+ */
+export function isGoogleAdsEmailAddressClickConversion(name: string): boolean {
+  const n = normalizeConversionLabel(name);
+  if (/klikniecie\s+w\s+adres/.test(n) && /(email|e-mail|e_mail)/.test(n)) return true;
+  if (n.includes('click on email address')) return true;
+  if (n.includes('website click') && n.includes('email')) return true;
+  return false;
+}
+
+/**
+ * Sum bucket for phone / calls in Google Ads UI:
+ * - „Kliknięcie w numer telefonu” (website)
+ * - „Click to call” (Google-hosted), when present
+ * - „Calls from ads” / „Połączenie z reklamy” (primary call conversions)
+ */
+export function isGoogleAdsPhoneOrCallConversion(name: string): boolean {
+  const n = normalizeConversionLabel(name);
+  if (n.includes('calls from ads')) return true;
+  if (n.includes('call from ad')) return true;
+  if (n.includes('polaczenie') && n.includes('reklamy')) return true;
+  if (n.includes('click to call') || n.includes('click-to-call') || n.includes('clicks to call') || n.includes('clicks-to-call')) return true;
+  if (/klikniecie\s+w\s+numer/.test(n) && (n.includes('telefon') || n.includes('phone'))) return true;
+  if (n.includes('click on phone number')) return true;
+  if (n.includes('phone number click')) return true;
+  return false;
+}
+
+/**
+ * Form / lead-form conversion actions — excluded from funnel, contact buckets,
+ * reservation totals, and aggregated conversion counts (see product rule: no forms in reports).
+ */
+export function isGoogleAdsFormConversion(name: string): boolean {
+  const n = normalizeConversionLabel(name);
+  if (!n.trim()) return false;
+  if (n.includes('formularz')) return true;
+  if (n.includes('form_submit') || n.includes('form submit') || n.includes('form-submit')) return true;
+  if (n.includes('formsubmit')) return true;
+  if (n.includes('form_completion') || n.includes('form completion')) return true;
+  if (n.includes('form complete')) return true;
+  if (n.includes('lead_form') || n.includes('lead form')) return true;
+  if (n.includes('contact_form') || n.includes('contact form')) return true;
+  if (n.includes('submit_application') || n.includes('submit application')) return true;
+  if (n.includes('instant form')) return true;
+  if (n.includes('zgloszen') || n.includes('zgłosz')) return true;
+  return false;
+}
+
+/** Sum conversion counts from Google action rows, excluding form-type actions. */
+export function sumGoogleConversionsExcludingForms(
+  rows: Array<{ conversion_name?: string; name?: string; conversions?: unknown; value?: unknown }>
+): number {
+  let sum = 0;
+  for (const r of rows || []) {
+    const label = String(r.conversion_name || r.name || '');
+    if (isGoogleAdsFormConversion(label)) continue;
+    const c = parseFloat(String(r.conversions ?? r.value ?? '0')) || 0;
+    if (c > 0) sum += c;
+  }
+  return Math.round(sum);
 }
 
 /**
@@ -61,7 +138,11 @@ export function parseGoogleAdsConversions(
   // Parse conversions array
   conversions.forEach((conversion) => {
     try {
-      const conversionName = String(conversion.conversion_name || conversion.name || '').toLowerCase();
+      const rawLabel = String(conversion.conversion_name || conversion.name || '');
+      const conversionName = rawLabel.toLowerCase();
+      if (isGoogleAdsFormConversion(rawLabel)) {
+        return;
+      }
       const conversions = parseFloat(conversion.conversions || conversion.value || '0');
       const conversionValue = parseFloat(conversion.conversion_value || conversion.all_conversions_value || '0');
       
@@ -71,41 +152,16 @@ export function parseGoogleAdsConversions(
       }
 
       let matched = false;
-      
-      // --- Click to call ---
-      const isPhone = (
-        conversionName.includes('phone') || 
-        conversionName.includes('telefon') ||
-        conversionName.includes('call') ||
-        conversionName.includes('dzwonienie')
-      );
-      if (isPhone) {
+
+      // --- Kontakt (Google Ads UI): strict mapping to dashboard „E-mail” / „Telefon” ---
+      if (isGoogleAdsEmailAddressClickConversion(conversionName)) {
+        metrics.email_contacts += conversions;
+        matched = true;
+      } else if (isGoogleAdsPhoneOrCallConversion(conversionName)) {
         metrics.click_to_call += conversions;
         matched = true;
       }
-      
-      // --- Email / contact / form ---
-      const isEmailContact = (
-        conversionName.includes('email') || 
-        conversionName.includes('e-mail') ||
-        conversionName.includes('contact') ||
-        conversionName.includes('kontakt') ||
-        conversionName.includes('formularz') ||
-        conversionName.includes('inquiry') ||
-        conversionName.includes('request_info') ||
-        conversionName.includes('lead_form') ||
-        conversionName.includes('contact_us') ||
-        conversionName.includes('mailto')
-      );
-      // Avoid matching "mail" inside "belmonte" etc.
-      const isMailExact = (
-        conversionName.includes('mail') && !conversionName.includes('belmonte')
-      );
-      if (isEmailContact || isMailExact) {
-        metrics.email_contacts += conversions;
-        matched = true;
-      }
-      
+
       // --- BOOKING STEP 1 ---
       const isStep1 = (
         conversionName.includes('step 1') || 
@@ -145,8 +201,6 @@ export function parseGoogleAdsConversions(
         conversionName.includes('booking_step_2') ||
         // Client-specific: Belmonte MICE / forms
         conversionName.includes('pobranie oferty') ||
-        conversionName.includes('form_submit') ||
-        conversionName.includes('form submit') ||
         // Generic GA4 funnel mid
         conversionName.includes('add_to_cart') ||
         conversionName.includes('add_payment_info') ||

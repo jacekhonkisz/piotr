@@ -6,6 +6,12 @@ import logger from '../../../lib/logger';
 import { performanceMonitor } from '../../../lib/performance';
 import { validateDateRange } from '../../../lib/date-range-utils';
 import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
+import {
+  getBelmontePotentialOfflineValue,
+  getMicroConversionsForOfflineModel,
+  isBelmonteClient,
+  offlineMicroPartsFromPlatformMetrics
+} from '../../../lib/offline-reservation-estimate';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -226,17 +232,42 @@ export async function POST(request: NextRequest) {
     combinedConversionMetrics.cost_per_reservation = combinedConversionMetrics.reservations > 0 ? 
       combinedStats.totalSpend / combinedConversionMetrics.reservations : 0;
     
-    // Calculate new metrics using same logic as WeeklyReportView
-    const totalEmailContacts = combinedCampaigns.reduce((sum, c) => sum + (c.email_contacts || 0), 0);
-    const totalPhoneContacts = combinedCampaigns.reduce((sum, c) => sum + (c.click_to_call || 0), 0);
-    const potentialOfflineReservations = Math.round((totalEmailContacts + totalPhoneContacts) * 0.2);
+    // Potential offline: Belmonte = Meta-only micro pool; others = Google + Meta (see offline-reservation-estimate.ts)
+    const offlineParts = offlineMicroPartsFromPlatformMetrics(
+      googleData?.conversionMetrics,
+      metaData?.conversionMetrics
+    );
+    const metaCampaignsOnly = (metaData?.campaigns || []) as any[];
+    const offlineMicroTotal = getMicroConversionsForOfflineModel(targetClient.name ?? '', offlineParts, {
+      metaCampaigns: metaCampaignsOnly
+    });
+    const potentialOfflineReservations = Math.round(offlineMicroTotal * 0.2);
     
     const totalReservationValue = combinedCampaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
     const totalReservations = combinedCampaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-    const averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-    const potentialOfflineValue = potentialOfflineReservations * averageReservationValue;
-    const totalPotentialValue = potentialOfflineValue + totalReservationValue;
-    const costPercentage = totalPotentialValue > 0 ? (combinedStats.totalSpend / totalPotentialValue) * 100 : 0;
+    let averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
+    // Belmonte offline value uses 10 × avg online reservation; avg must be Meta-only (same as client’s Meta export)
+    if (isBelmonteClient(targetClient.name ?? '')) {
+      const tr = metaCampaignsOnly.reduce((s, c) => s + (Number(c.reservations) || 0), 0);
+      const tv = metaCampaignsOnly.reduce((s, c) => s + (Number(c.reservation_value) || 0), 0);
+      if (tr > 0) {
+        averageReservationValue = tv / tr;
+      }
+    }
+    const potentialOfflineValue = isBelmonteClient(targetClient.name ?? '')
+      ? getBelmontePotentialOfflineValue(averageReservationValue)
+      : potentialOfflineReservations * averageReservationValue;
+    const metaOnlineReservationValue = metaCampaignsOnly.reduce(
+      (s, c) => s + (Number(c.reservation_value) || 0),
+      0
+    );
+    const totalPotentialValue = isBelmonteClient(targetClient.name ?? '')
+      ? potentialOfflineValue + metaOnlineReservationValue
+      : potentialOfflineValue + totalReservationValue;
+    const spendForCostPct = isBelmonteClient(targetClient.name ?? '')
+      ? metaData?.stats?.totalSpend || 0
+      : combinedStats.totalSpend;
+    const costPercentage = totalPotentialValue > 0 ? (spendForCostPct / totalPotentialValue) * 100 : 0;
     
     // Add new calculated metrics to conversion metrics
     combinedConversionMetrics.potential_offline_reservations = potentialOfflineReservations;

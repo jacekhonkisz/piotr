@@ -7,6 +7,11 @@ import { getMonthBoundaries } from './date-range-utils';
 import { getMondayOfWeek, getSundayOfWeek, formatDateISO, validateIsMonday, getLastNWeeks } from './week-helpers';
 import { enhanceCampaignsWithConversions } from './meta-actions-parser';
 import logger from './logger';
+import { fetchAndStoreGoogleAdsTables } from './google-ads-tables-storage';
+import {
+  fetchGoogleDynamicConversionRowsWithService,
+  googleDynamicRowsToMetricMap,
+} from './google-dynamic-conversion-fetch';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -462,10 +467,12 @@ export class BackgroundDataCollector {
         const activeCampaignCount = campaigns.length;
         logger.info(`📈 Active Google Ads campaigns for ${monthData.year}-${monthData.month}: ${activeCampaignCount}`);
 
-        // Fetch Google Ads tables (network, demographic, quality score)
+        // Fetch and persist Google Ads tables so historical reports/PDFs do not backfill live.
         let googleAdsTables = null;
         try {
-          googleAdsTables = await googleAdsService.getGoogleAdsTables(
+          googleAdsTables = await fetchAndStoreGoogleAdsTables(
+            googleAdsService,
+            client.id,
             monthData.startDate,
             monthData.endDate
           );
@@ -473,6 +480,12 @@ export class BackgroundDataCollector {
         } catch (error) {
           logger.warn(`⚠️ Failed to fetch Google Ads tables for ${client.name} ${monthData.year}-${monthData.month}:`, error);
         }
+
+        const dynamicMetricPayload = await this.fetchGoogleDynamicMetricPayload(
+          googleAdsService,
+          monthData.startDate,
+          monthData.endDate
+        );
 
         // Store the Google Ads summary with platform="google"
         await this.storeGoogleAdsMonthlySummary(client.id, {
@@ -485,6 +498,8 @@ export class BackgroundDataCollector {
             cpc
           },
           googleAdsTables,
+          dynamicMetricValues: dynamicMetricPayload.dynamicMetricValues,
+          dynamicMetricRows: dynamicMetricPayload.dynamicMetricRows,
           activeCampaignCount
         });
 
@@ -555,17 +570,16 @@ export class BackgroundDataCollector {
     const metaToken = client.system_user_token || client.meta_access_token;
     const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
     
-    if (!metaToken || !client.ad_account_id) {
-      logger.warn(`⚠️ Missing token or ad account ID for ${client.name}, skipping`);
-      return;
-    }
-    
+    const hasMetaWeekly = !!(metaToken && client.ad_account_id);
+    if (!hasMetaWeekly) {
+      logger.warn(`⚠️ Missing Meta token or ad account ID for ${client.name}, skipping Meta weekly collection`);
+    } else {
     logger.info(`🔑 Weekly collection: Using ${tokenType} for ${client.name}`);
 
     // At this point, we know both values are defined
     const adAccountId = client.ad_account_id as string;
 
-    const metaService = new MetaAPIServiceOptimized(metaToken);
+    const metaService = new MetaAPIServiceOptimized(metaToken!);
     
     // Validate token
     const tokenValidation = await metaService.validateToken();
@@ -723,153 +737,279 @@ export class BackgroundDataCollector {
       }
     }
 
-    logger.info(`✅ Completed all ${weeksToCollect.length} weeks for ${client.name}`);
+    logger.info(`✅ Completed all ${weeksToCollect.length} Meta weeks for ${client.name}`);
+    }
 
-    // ✨ NEW: Collect Google Ads weekly data if enabled
     if (client.google_ads_customer_id) {
-      logger.info(`🔵 Collecting Google Ads weekly data for ${client.name}...`);
-      
+      await this.collectGoogleAdsWeeklyForClient(client, weeksToCollect);
+    } else {
+      logger.info(`⏭️ Google Ads not configured for ${client.name}, skipping weekly Google collection`);
+    }
+  }
+
+  /**
+   * Build ISO week ranges (Monday start) for weekly collection.
+   */
+  private buildWeeksToCollect(startWeek: number = 0, endWeek: number = 53): Array<{
+    startDate: string;
+    endDate: string;
+    weekNumber: number;
+    isComplete: boolean;
+    isCurrent: boolean;
+  }> {
+    const currentDate = new Date();
+    const weeksToCollect: Array<{
+      startDate: string;
+      endDate: string;
+      weekNumber: number;
+      isComplete: boolean;
+      isCurrent: boolean;
+    }> = [];
+
+    const includeCurrentWeek = startWeek === 0;
+    const totalWeeksNeeded = endWeek - startWeek + 1;
+    const allWeekMondays = getLastNWeeks(totalWeeksNeeded, includeCurrentWeek);
+
+    for (let i = 0; i < allWeekMondays.length; i++) {
+      const weekMonday = allWeekMondays[i];
+      const weekSunday = getSundayOfWeek(weekMonday);
+
       try {
-        // Get Google Ads system settings
-        const { data: settingsData, error: settingsError } = await supabase
-          .from('system_settings')
-          .select('key, value')
-          .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
+        validateIsMonday(weekMonday);
+      } catch (error: any) {
+        logger.error(`❌ Week validation failed: ${error.message}`);
+        continue;
+      }
 
-        if (settingsError) {
-          logger.error(`❌ Failed to get Google Ads system settings for ${client.name}:`, settingsError);
-          return;
-        }
+      const isCurrent = i === 0 && includeCurrentWeek;
+      const isComplete = weekSunday < currentDate;
 
-        const settings = settingsData.reduce((acc: any, setting: any) => {
-          acc[setting.key] = setting.value;
-          return acc;
-        }, {});
+      weeksToCollect.push({
+        startDate: formatDateISO(weekMonday),
+        endDate: formatDateISO(weekSunday),
+        weekNumber: i,
+        isComplete,
+        isCurrent,
+      });
+    }
 
-        // Determine refresh token (manager token takes priority)
-        let refreshToken = null;
-        if (settings.google_ads_manager_refresh_token) {
-          refreshToken = settings.google_ads_manager_refresh_token;
-        } else if (client.google_ads_refresh_token) {
-          refreshToken = client.google_ads_refresh_token;
-        }
+    return weeksToCollect;
+  }
 
-        if (!refreshToken) {
-          logger.warn(`⚠️ No Google Ads refresh token available for ${client.name}, skipping weekly Google Ads collection`);
-          return;
-        }
+  /**
+   * Collect Google Ads weekly summaries (tables + dyn_google_* metrics).
+   */
+  private async collectGoogleAdsWeeklyForClient(
+    client: Client,
+    weeksToCollect: Array<{
+      startDate: string;
+      endDate: string;
+      weekNumber: number;
+      isComplete: boolean;
+      isCurrent: boolean;
+    }>
+  ): Promise<void> {
+    logger.info(`🔵 Collecting Google Ads weekly data for ${client.name}...`);
 
-        const googleAdsCredentials = {
-          refreshToken,
-          clientId: settings.google_ads_client_id,
-          clientSecret: settings.google_ads_client_secret,
-          developmentToken: settings.google_ads_developer_token,
-          customerId: client.google_ads_customer_id!,
-          managerCustomerId: settings.google_ads_manager_customer_id,
-        };
+    try {
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('system_settings')
+        .select('key, value')
+        .in('key', ['google_ads_client_id', 'google_ads_client_secret', 'google_ads_developer_token', 'google_ads_manager_refresh_token', 'google_ads_manager_customer_id']);
 
-        // Initialize Google Ads API service
-        const googleAdsService = new GoogleAdsAPIService(googleAdsCredentials);
+      if (settingsError) {
+        logger.error(`❌ Failed to get Google Ads system settings for ${client.name}:`, settingsError);
+        return;
+      }
 
-        for (const weekData of weeksToCollect) {
+      const settings = settingsData.reduce((acc: any, setting: any) => {
+        acc[setting.key] = setting.value;
+        return acc;
+      }, {});
+
+      let refreshToken = null;
+      if (settings.google_ads_manager_refresh_token) {
+        refreshToken = settings.google_ads_manager_refresh_token;
+      } else if (client.google_ads_refresh_token) {
+        refreshToken = client.google_ads_refresh_token;
+      }
+
+      if (!refreshToken) {
+        logger.warn(`⚠️ No Google Ads refresh token available for ${client.name}, skipping weekly Google Ads collection`);
+        return;
+      }
+
+      const googleAdsService = new GoogleAdsAPIService({
+        refreshToken,
+        clientId: settings.google_ads_client_id,
+        clientSecret: settings.google_ads_client_secret,
+        developmentToken: settings.google_ads_developer_token,
+        customerId: client.google_ads_customer_id!,
+        managerCustomerId: settings.google_ads_manager_customer_id,
+      });
+
+      for (const weekData of weeksToCollect) {
+        try {
+          const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
+          logger.info(`📅 Collecting ${weekType} Google Ads week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate})`);
+
+          const campaigns = await googleAdsService.getCampaignData(
+            weekData.startDate,
+            weekData.endDate
+          );
+
+          if (!campaigns || campaigns.length === 0) {
+            logger.warn(`⚠️ No Google Ads campaigns for week ${weekData.weekNumber}, skipping`);
+            continue;
+          }
+
+          logger.info(`📊 Retrieved ${campaigns.length} Google Ads campaigns for week ${weekData.weekNumber}`);
+
+          const totals: any = campaigns.reduce((acc: any, campaign: any) => ({
+            spend: acc.spend + (campaign.spend || 0),
+            impressions: acc.impressions + (campaign.impressions || 0),
+            clicks: acc.clicks + (campaign.clicks || 0),
+            conversions: acc.conversions + (campaign.conversions || 0),
+            click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
+            email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
+            booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
+            booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
+            booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
+            reservations: acc.reservations + (campaign.reservations || 0),
+            reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
+          }), {
+            spend: 0,
+            impressions: 0,
+            clicks: 0,
+            conversions: 0,
+            click_to_call: 0,
+            email_contacts: 0,
+            booking_step_1: 0,
+            booking_step_2: 0,
+            booking_step_3: 0,
+            reservations: 0,
+            reservation_value: 0,
+          });
+
+          totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+          totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+
+          let googleAdsTables = null;
           try {
-            const weekType = weekData.isCurrent ? 'CURRENT' : weekData.isComplete ? 'COMPLETED' : 'HISTORICAL';
-            logger.info(`📅 Collecting ${weekType} Google Ads week ${weekData.weekNumber} (${weekData.startDate} to ${weekData.endDate})`);
-
-            // Fetch Google Ads weekly campaign data
-            const campaigns = await googleAdsService.getCampaignData(
+            googleAdsTables = await fetchAndStoreGoogleAdsTables(
+              googleAdsService,
+              client.id,
               weekData.startDate,
               weekData.endDate
             );
-
-            if (!campaigns || campaigns.length === 0) {
-              logger.warn(`⚠️ No Google Ads campaigns for week ${weekData.weekNumber}, skipping`);
-              continue;
-            }
-
-            logger.info(`📊 Retrieved ${campaigns.length} Google Ads campaigns for week ${weekData.weekNumber}`);
-
-            // Calculate totals from campaigns
-            const totals: any = campaigns.reduce((acc: any, campaign: any) => ({
-              spend: acc.spend + (campaign.spend || 0),
-              impressions: acc.impressions + (campaign.impressions || 0),
-              clicks: acc.clicks + (campaign.clicks || 0),
-              conversions: acc.conversions + (campaign.conversions || 0),
-              click_to_call: acc.click_to_call + (campaign.click_to_call || 0),
-              email_contacts: acc.email_contacts + (campaign.email_contacts || 0),
-              booking_step_1: acc.booking_step_1 + (campaign.booking_step_1 || 0),
-              booking_step_2: acc.booking_step_2 + (campaign.booking_step_2 || 0),
-              booking_step_3: acc.booking_step_3 + (campaign.booking_step_3 || 0),
-              reservations: acc.reservations + (campaign.reservations || 0),
-              reservation_value: acc.reservation_value + (campaign.reservation_value || 0),
-            }), {
-              spend: 0,
-              impressions: 0,
-              clicks: 0,
-              conversions: 0,
-              click_to_call: 0,
-              email_contacts: 0,
-              booking_step_1: 0,
-              booking_step_2: 0,
-              booking_step_3: 0,
-              reservations: 0,
-              reservation_value: 0,
-            });
-
-            // Calculate derived metrics
-            totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-            totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
-
-            // Fetch Google Ads tables (only for recent 4 weeks to avoid rate limiting)
-            let googleAdsTables = null;
-            if (!weekData.isCurrent && weekData.weekNumber <= 4) {
-              try {
-                googleAdsTables = await googleAdsService.getGoogleAdsTables(
-                  weekData.startDate,
-                  weekData.endDate
-                );
-                logger.info(`📊 Fetched Google Ads tables for week ${weekData.weekNumber}`);
-              } catch (error) {
-                logger.warn(`⚠️ Failed to fetch Google Ads tables for week ${weekData.weekNumber}:`, error);
-              }
-            } else if (!weekData.isCurrent) {
-              logger.info(`⏭️ Skipping Google Ads tables for week ${weekData.weekNumber} (historical) to avoid rate limits`);
-            } else {
-              logger.info(`⏭️ Skipping Google Ads tables for current week to reduce API calls`);
-            }
-
-            // Count active campaigns
-            const activeCampaignCount = campaigns.filter((c: any) => c.status === 'ENABLED').length;
-
-            // Store Google Ads weekly summary
-            await this.storeWeeklySummary(
-              client.id,
-              {
-                summary_date: weekData.startDate,
-                campaigns,
-                totals,
-                googleAdsTables,
-                activeCampaignCount,
-                isCurrentWeek: weekData.isCurrent
-              },
-              'google' // ✅ Specify platform
-            );
-
-            logger.info(`✅ Stored ${weekType} Google Ads weekly summary for ${client.name} week ${weekData.weekNumber}`);
-
-            // ✅ OPTIMIZED: Reduced delays significantly (was 3-5s, now 100-200ms)
-            // Google Ads API limit is generous, no need for such long delays
-            await this.delay(weekData.isCurrent ? 50 : 100);
-
+            logger.info(`📊 Fetched Google Ads tables for week ${weekData.weekNumber}`);
           } catch (error) {
-            logger.error(`❌ Failed to collect Google Ads week ${weekData.weekNumber} for ${client.name}:`, error);
+            logger.warn(`⚠️ Failed to fetch Google Ads tables for week ${weekData.weekNumber}:`, error);
           }
+
+          const dynamicMetricPayload = await this.fetchGoogleDynamicMetricPayload(
+            googleAdsService,
+            weekData.startDate,
+            weekData.endDate
+          );
+
+          const activeCampaignCount = campaigns.filter((c: any) => c.status === 'ENABLED').length;
+
+          await this.storeWeeklySummary(
+            client.id,
+            {
+              summary_date: weekData.startDate,
+              campaigns,
+              totals,
+              googleAdsTables,
+              dynamicMetricValues: dynamicMetricPayload.dynamicMetricValues,
+              dynamicMetricRows: dynamicMetricPayload.dynamicMetricRows,
+              activeCampaignCount,
+              isCurrentWeek: weekData.isCurrent
+            },
+            'google'
+          );
+
+          logger.info(`✅ Stored ${weekType} Google Ads weekly summary for ${client.name} week ${weekData.weekNumber}`);
+          await this.delay(weekData.isCurrent ? 50 : 100);
+        } catch (error) {
+          logger.error(`❌ Failed to collect Google Ads week ${weekData.weekNumber} for ${client.name}:`, error);
         }
-      } catch (error) {
-        logger.error(`❌ Failed to initialize Google Ads weekly collection for ${client.name}:`, error);
       }
-    } else {
-      logger.info(`⏭️ Google Ads not configured for ${client.name}, skipping weekly Google collection`);
+    } catch (error) {
+      logger.error(`❌ Failed to initialize Google Ads weekly collection for ${client.name}:`, error);
+    }
+  }
+
+  /**
+   * Re-collect Google Ads historical summaries with tables + dyn_google_* fields.
+   * Google-only (does not touch Meta).
+   */
+  async recollectGoogleAdsHistorical(options?: {
+    monthsBack?: number;
+    weeksBack?: number;
+    clientId?: string;
+  }): Promise<{ clients: number; months: number; weeks: number }> {
+    const monthsBack = options?.monthsBack ?? 18;
+    const weeksBack = options?.weeksBack ?? 78;
+
+    if (this.isRunning) {
+      throw new Error('Background data collection already running');
+    }
+
+    this.isRunning = true;
+
+    try {
+      const { data: clientsRaw, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('google_ads_enabled', true)
+        .not('google_ads_customer_id', 'is', null);
+
+      if (error) {
+        throw new Error(`Failed to fetch Google Ads clients: ${error.message}`);
+      }
+
+      let clients = (clientsRaw || []) as Client[];
+      if (options?.clientId) {
+        clients = clients.filter((c) => c.id === options.clientId);
+      }
+
+      const currentDate = new Date();
+      const monthsToCollect = [];
+      for (let i = 1; i <= monthsBack; i++) {
+        const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+        const year = date.getFullYear();
+        const month = date.getMonth() + 1;
+        const monthRange = getMonthBoundaries(year, month);
+        monthsToCollect.push({
+          year,
+          month,
+          startDate: monthRange.start,
+          endDate: monthRange.end,
+        });
+      }
+
+      const weeksToCollect = this.buildWeeksToCollect(0, weeksBack);
+
+      logger.info(
+        `🔄 Google historical recollect: ${clients.length} clients, ${monthsToCollect.length} months, ${weeksToCollect.length} weeks`
+      );
+
+      for (const client of clients) {
+        logger.info(`📊 Google historical recollect: ${client.name}`);
+        await this.collectGoogleAdsMonthlySummary(client, monthsToCollect);
+        await this.collectGoogleAdsWeeklyForClient(client, weeksToCollect);
+        await this.delay(500);
+      }
+
+      return {
+        clients: clients.length,
+        months: monthsToCollect.length,
+        weeks: weeksToCollect.length,
+      };
+    } finally {
+      this.isRunning = false;
     }
   }
 
@@ -1023,6 +1163,40 @@ export class BackgroundDataCollector {
   /**
    * Store Google Ads monthly summary in database
    */
+  private async fetchGoogleDynamicMetricPayload(
+    googleAdsService: GoogleAdsAPIService,
+    dateStart: string,
+    dateEnd: string
+  ): Promise<{
+    dynamicMetricValues: Record<string, number>;
+    dynamicMetricRows: Array<{ key: string; id: string; label: string; count: number; value: number }>;
+  }> {
+    try {
+      const dyn = await fetchGoogleDynamicConversionRowsWithService(
+        googleAdsService,
+        dateStart,
+        dateEnd
+      );
+
+      if (!dyn.fetchOk) {
+        logger.warn('⚠️ Google Ads dynamic metrics skipped during collection', {
+          dateStart,
+          dateEnd,
+          reason: dyn.skipReason,
+        });
+        return { dynamicMetricValues: {}, dynamicMetricRows: [] };
+      }
+
+      return {
+        dynamicMetricValues: googleDynamicRowsToMetricMap(dyn.rows),
+        dynamicMetricRows: dyn.rows,
+      };
+    } catch (error) {
+      logger.warn('⚠️ Google Ads dynamic metrics failed during collection:', error);
+      return { dynamicMetricValues: {}, dynamicMetricRows: [] };
+    }
+  }
+
   private async storeGoogleAdsMonthlySummary(clientId: string, data: any): Promise<void> {
     logger.info(`💾 Storing Google Ads monthly summary for client ${clientId} on ${data.summary_date}`);
 
@@ -1055,6 +1229,8 @@ export class BackgroundDataCollector {
       cost_per_reservation: cost_per_reservation,
       campaign_data: campaigns, // Store raw campaign data for detailed analysis
       google_ads_tables: data.googleAdsTables || null, // ✅ FIX: Store Google Ads tables data
+      google_dynamic_metric_values: data.dynamicMetricValues || {},
+      google_dynamic_metric_rows: data.dynamicMetricRows || [],
       active_campaign_count: data.activeCampaignCount || 0,
       data_source: 'google_ads_api', // ✅ FIX: Explicitly set data source
       last_updated: new Date().toISOString()
@@ -1180,6 +1356,10 @@ export class BackgroundDataCollector {
       total_campaigns: data.campaigns.length,
       campaign_data: data.campaigns,
       [tablesField]: tablesData, // ✅ FIX: Use correct field name based on platform
+      ...(platform === 'google' ? {
+        google_dynamic_metric_values: data.dynamicMetricValues || {},
+        google_dynamic_metric_rows: data.dynamicMetricRows || [],
+      } : {}),
       data_source: dataSource, // ✅ Set correct data source
       // Add conversion metrics from Meta API campaigns only (matches monthly behavior)
       click_to_call: Math.round(conversionTotals.click_to_call || 0), // Round to integer
@@ -1256,10 +1436,12 @@ export class BackgroundDataCollector {
    * Calculate totals from campaign insights
    */
   private calculateTotals(campaigns: any[], accountInsights?: any): any {
+    // Canonical metric contract v1 (Meta): total_clicks = inline_link_clicks ?? clicks
+    // Matches Meta Business Suite "Link clicks" — what the client sees in Ads Manager.
     const totals = campaigns.reduce((acc, campaign) => {
       acc.spend += parseFloat(campaign.spend || 0);
       acc.impressions += parseInt(campaign.impressions || 0);
-      acc.clicks += parseInt(campaign.clicks || 0);
+      acc.clicks += parseInt(campaign.inline_link_clicks ?? campaign.clicks ?? 0);
       acc.conversions += parseInt(campaign.conversions || 0);
       return acc;
     }, { spend: 0, impressions: 0, clicks: 0, conversions: 0 });

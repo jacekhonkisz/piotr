@@ -7,13 +7,12 @@ interface GoogleAdsMetrics {
   wydanaKwota: number; // Wydana kwota
   wyswietlenia: number; // Wyświetlenia
   klikniecia: number; // Kliknięcia
-  wyslanieFomularza: number; // Wysłanie formularza
   polaczeniaZReklam: number; // Połączenia z reklam
   kliknieciaWAdresEmail: number; // Kliknięcia w adres e-mail
   kliknieciaWNumerTelefonu: number; // Kliknięcia w numer telefonu
-  bookingEngineKrok1: number; // Booking Engine krok 1
-  bookingEngineKrok2: number; // Booking Engine krok 2
-  bookingEngineKrok3: number; // Booking Engine krok 3
+  bookingEngineKrok1: number; // Booking step 1 (Google funnel)
+  bookingEngineKrok2: number; // Booking step 2
+  bookingEngineKrok3: number; // Booking step 3
   rezerwacje: number; // Rezerwacje
   wartoscRezerwacji: number; // Wartość rezerwacji
   roas: number; // ROAS
@@ -73,7 +72,7 @@ const GoogleAdsMetricsSummary: React.FC<GoogleAdsMetricsSummaryProps> = ({
         </div>
         <div className="animate-pulse">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 15 }).map((_, index) => (
+            {Array.from({ length: 14 }).map((_, index) => (
               <div key={index} className="bg-gray-100 rounded-lg p-4 h-20"></div>
             ))}
           </div>
@@ -132,17 +131,6 @@ const GoogleAdsMetricsSummary: React.FC<GoogleAdsMetricsSummaryProps> = ({
           </div>
         </div>
 
-        {/* Wysłanie formularza */}
-        <div className="bg-gradient-to-r from-pink-50 to-pink-100 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Wysłanie formularza</p>
-              <p className="text-2xl font-bold text-gray-900">{formatNumber(data.wyslanieFomularza)}</p>
-            </div>
-            {getTrendIcon(data.wyslanieFomularza)}
-          </div>
-        </div>
-
         {/* Połączenia z reklam */}
         <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg p-4">
           <div className="flex items-center justify-between">
@@ -176,33 +164,33 @@ const GoogleAdsMetricsSummary: React.FC<GoogleAdsMetricsSummaryProps> = ({
           </div>
         </div>
 
-        {/* Booking Engine krok 1 */}
+        {/* Booking step 1 (Google funnel) */}
         <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Booking Engine krok 1</p>
+              <p className="text-sm font-medium text-gray-600">Booking step 1</p>
               <p className="text-2xl font-bold text-gray-900">{formatNumber(data.bookingEngineKrok1)}</p>
             </div>
             {getTrendIcon(data.bookingEngineKrok1)}
           </div>
         </div>
 
-        {/* Booking Engine krok 2 */}
+        {/* Booking step 2 */}
         <div className="bg-gradient-to-r from-lime-50 to-lime-100 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Booking Engine krok 2</p>
+              <p className="text-sm font-medium text-gray-600">Booking step 2</p>
               <p className="text-2xl font-bold text-gray-900">{formatNumber(data.bookingEngineKrok2)}</p>
             </div>
             {getTrendIcon(data.bookingEngineKrok2)}
           </div>
         </div>
 
-        {/* Booking Engine krok 3 */}
+        {/* Booking step 3 */}
         <div className="bg-gradient-to-r from-amber-50 to-amber-100 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Booking Engine krok 3</p>
+              <p className="text-sm font-medium text-gray-600">Booking step 3</p>
               <p className="text-2xl font-bold text-gray-900">{formatNumber(data.bookingEngineKrok3)}</p>
             </div>
             {getTrendIcon(data.bookingEngineKrok3)}
