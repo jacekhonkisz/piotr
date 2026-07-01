@@ -73,7 +73,7 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
     try {
       const now = new Date();
       const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const previousMonthStr = previousMonth.toISOString().split('T')[0];
+      const previousMonthStr = previousMonth.toISOString().split('T')[0]!;
       
       console.log('📊 GoogleAds: Fetching previous month data for comparison:', previousMonthStr);
       

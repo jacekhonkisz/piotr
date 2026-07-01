@@ -615,31 +615,37 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
     
-    let emailResults = [];
-    for (const email of contactEmails) {
-      try {
-        const emailResult = await emailService.sendClientMonthlyReport(
-          email,
-          clientId,
-          client.name ?? '',
-          monthName ?? '',
-          year,
-          monthlyReportData,
-          pdfBuffer,
-          undefined,
-          internalRecipientOverride ? { reviewRecipientOverride: internalRecipientOverride } : undefined
-        );
-        emailResults.push({ email, success: emailResult.success, error: emailResult.error });
-      } catch (error) {
-        emailResults.push({ 
-          email, 
-          success: false, 
-          error: error instanceof Error ? error.message : 'Nieznany błąd' 
-        });
-      }
+    // Send ONE email to all contact emails.
+    // Primary contact = To, remaining contacts = CC ("DW"). The admin preview
+    // address (kontakt@piotrbajerlein.pl) is added to CC automatically by the
+    // email service so every report is copied to the admin for oversight.
+    const [primaryRecipient, ...ccRecipients] = contactEmails;
+    let emailResults: { email: string; success: boolean; error?: string }[] = [];
+    let routedCc: string[] = [];
+
+    try {
+      const emailResult = await emailService.sendClientMonthlyReport(
+        primaryRecipient!,
+        clientId,
+        client.name ?? '',
+        monthName ?? '',
+        year,
+        monthlyReportData,
+        pdfBuffer,
+        undefined,
+        { reviewRecipientOverride: internalRecipientOverride, cc: ccRecipients }
+      );
+      routedCc = emailResult.cc || [];
+      emailResults.push({ email: primaryRecipient!, success: emailResult.success, error: emailResult.error });
+    } catch (error) {
+      emailResults.push({
+        email: primaryRecipient!,
+        success: false,
+        error: error instanceof Error ? error.message : 'Nieznany błąd'
+      });
     }
-    
-    // Check if at least one email was sent successfully
+
+    // Check if the email was sent successfully
     const successfulEmails = emailResults.filter(result => result.success);
     const failedEmails = emailResults.filter(result => !result.success);
     
@@ -650,20 +656,24 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Log email sending in database for all emails
-    for (const result of emailResults) {
+    // Log email sending in database — one row per recipient (To + CC).
+    const sentSuccessfully = successfulEmails.length > 0;
+    const allLoggedRecipients = sentSuccessfully
+      ? [primaryRecipient!, ...ccRecipients]
+      : [primaryRecipient!];
+    for (const recipientEmail of allLoggedRecipients) {
       const { error: logError } = await supabase
         .from('email_logs')
         .insert({
           client_id: clientId,
           admin_id: user.id,
           email_type: 'monthly_report',
-          recipient_email: result.email,
+          recipient_email: recipientEmail,
           subject: `Podsumowanie miesiąca - ${monthName} ${year} | ${client.name}`,
-          message_id: result.success ? 'sent' : null,
+          message_id: sentSuccessfully ? 'sent' : null,
           sent_at: new Date().toISOString(),
-          status: result.success ? 'sent' : 'failed',
-          error_message: result.error || null
+          status: sentSuccessfully ? 'sent' : 'failed',
+          error_message: failedEmails[0]?.error || null
         });
 
       if (logError) {
@@ -708,12 +718,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const deliveredRecipients = successfulEmails.length > 0
+      ? [primaryRecipient!, ...routedCc]
+      : [];
+
     return NextResponse.json({
       success: true,
-      message: `Report sent successfully to ${successfulEmails.length} recipient(s)${failedEmails.length > 0 ? `, failed to send to ${failedEmails.length} recipient(s)` : ''}`,
+      message: `Report sent successfully to ${deliveredRecipients.length} recipient(s)${failedEmails.length > 0 ? `, failed to send to ${failedEmails.length} recipient(s)` : ''}`,
       pdfSize: pdfBuffer ? pdfBuffer.byteLength : 0,
       details: {
-        successful: successfulEmails.map(e => e.email),
+        to: successfulEmails.length > 0 ? primaryRecipient : null,
+        cc: routedCc,
+        successful: deliveredRecipients,
         failed: failedEmails.map(e => ({ email: e.email, error: e.error }))
       }
     });

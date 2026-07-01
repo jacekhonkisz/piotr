@@ -39,14 +39,14 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   
-  // NOTE: Re-enable these once TypeScript errors are fixed
-  // For now, keeping them enabled to allow build
+  // TypeScript errors now fail the build (all suppressed errors were fixed).
+  // ESLint is still skipped during builds to avoid blocking on lint-only issues.
   eslint: {
     ignoreDuringBuilds: true,
   },
   
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   
   // Security headers

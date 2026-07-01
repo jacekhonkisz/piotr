@@ -171,25 +171,25 @@ export async function POST(request: NextRequest) {
         switch (type) {
           case 'api_request':
             productionMonitor.recordAPIRequest(
-              metricData.endpoint,
-              metricData.responseTime,
-              metricData.success
+              metricData.endpoint || '',
+              metricData.responseTime ?? 0,
+              metricData.success ?? false
             );
             break;
           case 'cache_operation':
-            productionMonitor.recordCacheOperation(metricData.operation, metricData.key);
+            productionMonitor.recordCacheOperation((metricData.operation ?? 'miss') as 'hit' | 'miss' | 'error', metricData.key);
             break;
           case 'database_query':
             productionMonitor.recordDatabaseQuery(
-              metricData.queryTime,
-              metricData.success,
+              metricData.queryTime ?? 0,
+              metricData.success ?? false,
               metricData.query
             );
             break;
           case 'meta_api_call':
             productionMonitor.recordMetaAPICall(
-              metricData.success,
-              metricData.rateLimitHit
+              metricData.success ?? false,
+              metricData.rateLimitHit ?? false
             );
             break;
           default:

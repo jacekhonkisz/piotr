@@ -54,11 +54,11 @@ export interface StandardizedDataResult {
       roas: number;
       cost_per_reservation: number;
       reach: number;
-      frequency: number;
-      inline_link_clicks: number;
-      lead: number;
-      purchase: number;
-      purchase_value: number;
+      frequency?: number;
+      inline_link_clicks?: number;
+      lead?: number;
+      purchase?: number;
+      purchase_value?: number;
     };
     campaigns: any[];
     /** dyn_meta_* counts from campaign actions (server-computed) */
@@ -71,6 +71,7 @@ export interface StandardizedDataResult {
     reason: string;
     dataSourcePriority: string[];
     periodType?: string;
+    periodId?: string;
   };
   validation: {
     actualSource: string;
@@ -91,6 +92,7 @@ export class StandardizedDataFetcher {
     platform?: 'meta' | 'google';
     reason?: string;
     sessionToken?: string;
+    forceFresh?: boolean;
   }): Promise<StandardizedDataResult> {
     
     // ✅ GLOBAL DEDUPLICATION: Prevent duplicate calls across ALL contexts
@@ -265,11 +267,8 @@ export class StandardizedDataFetcher {
       requestMonth: startMonth,
       requestEndMonth: endMonth,
       isExactCurrentMonth,
-      isCurrentWeek,
       isCurrentMonthOnly,
-      includesCurrentDay,
       isCurrentPeriod,
-      needsSmartCache,
       strategy: needsSmartCache ? '🔄 SMART_CACHE (current period)' : '💾 DATABASE_FIRST (past period)',
       note: isCurrentWeek ? '📅 CURRENT WEEK' : isCurrentMonthOnly ? '📅 CURRENT MONTH' : '📚 HISTORICAL PERIOD - USING DATABASE'
     });
@@ -929,8 +928,8 @@ export class StandardizedDataFetcher {
       // 1. Start date matches current week start (Monday), OR
       // 2. Any part of requested range overlaps with current week
       // This handles cases where end date extends to Sunday (2025-11-23) but current week is capped to today (2025-11-21)
-      const requestedStartStr = requestedStart.toISOString().split('T')[0];
-      const requestedEndStr = requestedEnd.toISOString().split('T')[0];
+      const requestedStartStr = requestedStart.toISOString().split('T')[0] ?? '';
+      const requestedEndStr = requestedEnd.toISOString().split('T')[0] ?? '';
       const currentWeekStartStr = currentWeek.startDate;
       const currentWeekEndStr = currentWeek.endDate;
       

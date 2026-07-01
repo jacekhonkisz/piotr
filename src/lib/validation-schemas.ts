@@ -190,7 +190,7 @@ export function safeValidateRequest<T>(
  * @returns Array of error messages
  */
 export function formatValidationErrors(error: z.ZodError): string[] {
-  return error.errors.map((err) => {
+  return error.issues.map((err) => {
     const path = err.path.join('.');
     return `${path}: ${err.message}`;
   });

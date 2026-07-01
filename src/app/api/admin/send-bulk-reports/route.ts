@@ -101,7 +101,8 @@ export async function POST() {
               client.name,
               getPolishMonthName(previousMonth),
               yearForReport,
-              dummyReportData
+              dummyReportData,
+              Buffer.alloc(0)
             );
 
             if (result.success) {

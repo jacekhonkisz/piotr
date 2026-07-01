@@ -3,6 +3,9 @@ import { supabaseAdmin } from '../../../lib/supabase';
 
 export async function GET() {
   try {
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server not configured' }, { status: 500 });
+    }
     // Test query to see what Supabase actually returns
     const { data, error } = await supabaseAdmin
       .from('campaign_summaries')
@@ -23,7 +26,7 @@ export async function GET() {
         campaign_data_type: typeof data.campaign_data,
         is_array: Array.isArray(data.campaign_data),
         length: Array.isArray(data.campaign_data) ? data.campaign_data.length : null,
-        first_campaign: data.campaign_data && data.campaign_data[0] ? data.campaign_data[0] : null,
+        first_campaign: Array.isArray(data.campaign_data) ? data.campaign_data[0] ?? null : null,
         total_spend: data.total_spend,
         total_impressions: data.total_impressions,
         raw_campaign_data_sample: data.campaign_data ? JSON.stringify(data.campaign_data).substring(0, 500) : null

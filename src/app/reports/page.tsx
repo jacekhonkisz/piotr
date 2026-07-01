@@ -684,7 +684,7 @@ function ReportsPageContent() {
         console.log(`🔧 No period selected, generating periods for ${currentViewType} view`);
         const periods = generatePeriodOptions(currentViewType);
         if (periods.length > 0) {
-          const initialPeriod = periods[0];
+          const initialPeriod = periods[0]!;
           setAvailablePeriods(periods);
           setSelectedPeriod(initialPeriod);
           setLoadingPeriod(initialPeriod);
@@ -3287,7 +3287,7 @@ function ReportsPageContent() {
     
     if (useStatsConversions) {
       console.log('🎯 GOOGLE ADS: Using stats.totalConversions instead of summing campaign.conversions:', {
-        statsTotalConversions: selectedReport.stats.totalConversions,
+        statsTotalConversions: selectedReport.stats?.totalConversions,
         summedConversions: selectedReport.campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0)
       });
     }

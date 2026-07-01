@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     // Authenticate the request
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || !authResult.user) {
+    if (!authResult.success || !authResult.user) {
       return createErrorResponse('Unauthorized', 401);
     }
 
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
   try {
     // Authenticate the request
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || !authResult.user) {
+    if (!authResult.success || !authResult.user) {
       return createErrorResponse('Unauthorized', 401);
     }
 

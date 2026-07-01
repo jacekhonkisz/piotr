@@ -560,7 +560,28 @@ export class DataLifecycleManager {
   private async archiveGoogleAdsMonthlyData(cacheEntry: any): Promise<void> {
     const cacheData = cacheEntry.cache_data;
     const summaryDate = `${cacheEntry.period_id}-01`;
-    
+
+    // ✅ FIX: Never let a cache snapshot overwrite an authoritative full-month
+    // row. `end-of-month-collection` fetches the just-closed month directly from
+    // the Google Ads API (data_source 'google_ads_api') and runs before this
+    // archival. If that authoritative row already exists, defer to it — the live
+    // current-month cache is only a partial month-to-date snapshot and must not
+    // clobber verified historical data.
+    const { data: authoritativeRow } = await supabase
+      .from('campaign_summaries')
+      .select('data_source')
+      .eq('client_id', cacheEntry.client_id)
+      .eq('platform', 'google')
+      .eq('summary_type', 'monthly')
+      .eq('summary_date', summaryDate)
+      .maybeSingle();
+
+    const authoritativeSource = authoritativeRow ? String((authoritativeRow as any).data_source || '') : '';
+    if (authoritativeSource.startsWith('google_ads_api')) {
+      logger.info(`⏭️ Skipping Google Ads cache archival for client ${cacheEntry.client_id}, period ${cacheEntry.period_id}: authoritative '${authoritativeSource}' row already exists`);
+      return;
+    }
+
     // 🔍 DATA QUALITY CHECK: Detect if cache has zeros but campaigns exist
     const cacheSpend = cacheData?.stats?.totalSpend || 0;
     const cacheCampaigns = cacheData?.campaigns || [];
@@ -676,7 +697,7 @@ export class DataLifecycleManager {
       // For weekly, calculate week end date (6 days after start)
       const date = new Date(startDate);
       date.setDate(date.getDate() + 6);
-      endDate = date.toISOString().split('T')[0];
+      endDate = date.toISOString().split('T')[0]!;
     }
 
     // Query google_ads_campaigns table for spend/impressions/clicks

@@ -27,7 +27,27 @@ import {
  *   Body: { "targetMonth": "2025-09", "dryRun": false }
  * 
  * Security: Protected with CRON_SECRET authentication
+ *
+ * SCALING (30-40+ clients):
+ * - This endpoint is BATCHED via ?offset & ?limit query params so each cron
+ *   invocation stays under the serverless execution limit. The per-client work
+ *   is heavy (Meta + full Google fetch incl. breakdown tables) and is serialized
+ *   by the in-memory Google API rate limiter (~40-50s/client), so a full run of
+ *   40 clients would far exceed any single-invocation time budget.
+ * - Cron entries in vercel.json fire staggered batches (offset 0,5,10,...) a few
+ *   minutes apart. They are staggered in TIME (not parallel) on purpose: the
+ *   Google rate limiter is per-instance, so parallel batches would multiply the
+ *   real API call rate and risk quota errors.
+ * - Manual/backfill calls with no offset/limit process ALL clients in one go
+ *   (fine for a long-running local script; NOT for a serverless cron).
+ * - The response includes { batch: { hasMore, nextOffset } } so a queue/chained
+ *   trigger can be added later without changing this handler.
  */
+
+// Allow up to 5 min on plans that support it (Vercel Pro/Fluid). Batches are
+// sized so a single invocation processes only a few clients well within this.
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
 
 interface CollectionResult {
   clientId: string;
@@ -68,6 +88,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Database connection error' }, { status: 500 });
     }
 
+    // 🆕 BATCHING: process a slice of clients per invocation so a single
+    // serverless run stays under the execution limit. Defaults to a large
+    // limit so manual/backfill calls still process everyone; cron entries pass
+    // explicit small batches (e.g. ?offset=0&limit=5).
+    const { searchParams } = new URL(request.url);
+    const offset = Math.max(0, parseInt(searchParams.get('offset') || '0', 10) || 0);
+    const limit = Math.max(1, parseInt(searchParams.get('limit') || '1000', 10) || 1000);
+
     // Parse request body
     const body = await request.json().catch(() => ({}));
     const dryRun = body.dryRun || false;
@@ -84,13 +112,32 @@ export async function POST(request: NextRequest) {
     const lastDay = new Date(year, month, 0).getDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
+    // The "just-closed" month (previous month relative to now). For this month
+    // the stored data may still be a partial current-month snapshot, so Google
+    // MUST be re-fetched fresh and overwritten even if campaigns already exist.
+    // Older months are treated as immutable (skip if rich data already exists)
+    // to avoid unnecessary API usage.
+    const justClosed = new Date();
+    justClosed.setMonth(justClosed.getMonth() - 1);
+    const justClosedMonthStr = `${justClosed.getFullYear()}-${String(justClosed.getMonth() + 1).padStart(2, '0')}`;
+    const isJustClosedMonth = targetMonthStr === justClosedMonthStr;
+
     logger.info(`📅 Target month: ${targetMonthStr} (${startDate} to ${endDate})`);
     logger.info(`🔧 Mode: ${dryRun ? 'DRY RUN (no saves)' : 'LIVE (will save)'}`);
+    logger.info(`🗓️ Just-closed month: ${justClosedMonthStr} (force Google re-fetch: ${isJustClosedMonth})`);
 
-    // Get all clients with API tokens (any status)
+    // Total client count (for batch bookkeeping / hasMore).
+    const { count: totalClients } = await supabaseAdmin
+      .from('clients')
+      .select('id', { count: 'exact', head: true });
+
+    // Get clients with API tokens (any status). Deterministic ordering by
+    // created_at keeps offsets stable across staggered batch invocations.
     const { data: clients, error: clientError } = await supabaseAdmin
       .from('clients')
-      .select('id, name, company, email, api_status, meta_access_token, system_user_token, ad_account_id, google_ads_access_token, google_ads_customer_id');
+      .select('id, name, company, email, api_status, meta_access_token, system_user_token, ad_account_id, google_ads_access_token, google_ads_customer_id')
+      .order('created_at', { ascending: true })
+      .range(offset, offset + limit - 1);
 
     if (clientError) {
       logger.error('❌ Error fetching clients:', clientError);
@@ -103,15 +150,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (!clients || clients.length === 0) {
-      logger.info('⚠️ No clients found');
+      logger.info(`⚠️ No clients found in batch (offset=${offset}, limit=${limit})`);
       return NextResponse.json({ 
         success: true, 
-        message: 'No clients to process',
+        message: 'No clients in this batch',
+        batch: { offset, limit, processed: 0, totalClients: totalClients ?? null, hasMore: false, nextOffset: null },
         results: [] 
       });
     }
 
-    logger.info(`👥 Found ${clients.length} clients to process`);
+    logger.info(`👥 Batch offset=${offset} limit=${limit}: processing ${clients.length} of ${totalClients ?? '?'} clients`);
 
     const results: CollectionResult[] = [];
     let successCount = 0;
@@ -143,19 +191,18 @@ export async function POST(request: NextRequest) {
 
           if (existingData) {
             // Check if data is RICH (has campaigns)
-            const hasRichData = existingData.campaign_data && 
-                                Array.isArray(existingData.campaign_data) &&
-                                existingData.campaign_data.length > 0;
+            const existingCampaigns = Array.isArray(existingData.campaign_data) ? existingData.campaign_data : [];
+            const hasRichData = existingCampaigns.length > 0;
             
             if (hasRichData) {
-              logger.info(`⏭️  Rich Meta data already exists (${existingData.campaign_data.length} campaigns), skipping...`);
+              logger.info(`⏭️  Rich Meta data already exists (${existingCampaigns.length} campaigns), skipping...`);
               results.push({
                 clientId: client.id,
                 clientName,
                 month: targetMonthStr,
                 platform: 'meta',
                 status: 'skipped',
-                reason: `Rich data exists (${existingData.campaign_data.length} campaigns, ${existingData.total_spend} PLN)`
+                reason: `Rich data exists (${existingCampaigns.length} campaigns, ${existingData.total_spend} PLN)`
               });
               skippedCount++;
               continue; // Skip to next platform
@@ -172,7 +219,12 @@ export async function POST(request: NextRequest) {
             const metaToken = client.system_user_token || client.meta_access_token;
             const tokenType = client.system_user_token ? 'system_user (permanent)' : 'access_token (60-day)';
             logger.info(`🔑 Using ${tokenType} for ${client.name || client.id}`);
-            
+
+            if (!metaToken) {
+              logger.warn(`⚠️  No Meta token for ${client.name || client.id}, skipping...`);
+              continue;
+            }
+
             const metaService = new MetaAPIService(metaToken);
 
             // Fetch campaign insights
@@ -355,30 +407,39 @@ export async function POST(request: NextRequest) {
             .eq('platform', 'google')
             .single();
 
+          const existingGoogleCampaignData = existingGoogleData?.campaign_data;
+          const existingGoogleCampaigns = Array.isArray(existingGoogleCampaignData) ? existingGoogleCampaignData : [];
+          // ✅ FIX: For the just-closed month, the stored row may be a partial
+          // current-month snapshot (frozen at whatever day the smart cache last
+          // refreshed). "Has campaigns" is NOT proof of completeness, so we must
+          // always re-fetch and overwrite the just-closed month. Only skip when
+          // the target is an OLDER, already-immutable month with rich data.
           if (existingGoogleData) {
-            // Check if data is RICH (has campaigns)
-            const hasRichData = existingGoogleData.campaign_data && 
-                                Array.isArray(existingGoogleData.campaign_data) &&
-                                existingGoogleData.campaign_data.length > 0;
-            
-            if (hasRichData) {
-              logger.info(`⏭️  Rich Google Ads data already exists (${existingGoogleData.campaign_data.length} campaigns), skipping...`);
+            const hasRichData = existingGoogleCampaigns.length > 0;
+
+            if (hasRichData && !isJustClosedMonth) {
+              logger.info(`⏭️  Rich Google Ads data already exists for older month (${existingGoogleCampaigns.length} campaigns), skipping...`);
               results.push({
                 clientId: client.id,
                 clientName,
                 month: targetMonthStr,
                 platform: 'google',
                 status: 'skipped',
-                reason: `Rich data exists (${existingGoogleData.campaign_data.length} campaigns, ${existingGoogleData.total_spend} PLN)`
+                reason: `Rich data exists for immutable month (${existingGoogleCampaigns.length} campaigns, ${existingGoogleData.total_spend} PLN)`
               });
               skippedCount++;
+            } else if (hasRichData && isJustClosedMonth) {
+              logger.info(`🔄 Just-closed month has existing data (${existingGoogleCampaigns.length} campaigns) that may be a partial snapshot — re-fetching authoritative full month...`);
             } else {
               logger.info(`⚠️  Found poor quality Google Ads data (no campaigns), will re-fetch...`);
             }
           }
 
-          // STEP 2: Fetch RICH data from Google Ads API (if not skipped)
-          if (!dryRun && !(existingGoogleData?.campaign_data?.length > 0)) {
+          // STEP 2: Fetch authoritative full-month data from Google Ads API.
+          // Always fetch for the just-closed month; for older months only when
+          // no rich data exists yet.
+          const shouldFetchGoogle = isJustClosedMonth || existingGoogleCampaigns.length === 0;
+          if (!dryRun && shouldFetchGoogle) {
             logger.info(`📡 Fetching Google Ads data from API for ${startDate} to ${endDate}...`);
             
             // Get Google Ads system settings
@@ -424,7 +485,7 @@ export async function POST(request: NextRequest) {
                   clientId: settings.google_ads_client_id,
                   clientSecret: settings.google_ads_client_secret,
                   developmentToken: settings.google_ads_developer_token,
-                  customerId: client.google_ads_customer_id,
+                  customerId: client.google_ads_customer_id || '',
                   managerCustomerId: settings.google_ads_manager_customer_id,
                 };
 
@@ -471,6 +532,28 @@ export async function POST(request: NextRequest) {
                   const averageCpc = googleTotals.clicks > 0 ? googleTotals.spend / googleTotals.clicks : 0;
                   const roas = googleTotals.spend > 0 ? googleTotals.reservation_value / googleTotals.spend : 0;
                   const costPerReservation = googleTotals.reservations > 0 ? googleTotals.spend / googleTotals.reservations : 0;
+
+                  // ✅ P1 COMPLETENESS GUARD: Verify the summed campaign spend
+                  // matches the account-level total for the same range. A large
+                  // shortfall means the fetch is partial/incomplete — we flag the
+                  // row so it can be reviewed/re-collected instead of silently
+                  // publishing wrong historical numbers.
+                  let googleDataSource = 'google_ads_api';
+                  try {
+                    const account = await googleAdsService.getAccountPerformance(startDate, endDate);
+                    const accountSpend = account?.spend || 0;
+                    if (accountSpend > 0) {
+                      const spendRatio = googleTotals.spend / accountSpend;
+                      if (spendRatio < 0.98 || spendRatio > 1.02) {
+                        googleDataSource = 'google_ads_api_incomplete';
+                        logger.warn(`⚠️ COMPLETENESS CHECK FAILED for ${clientName} ${targetMonthStr}: campaign spend ${googleTotals.spend.toFixed(2)} vs account spend ${accountSpend.toFixed(2)} (ratio ${(spendRatio * 100).toFixed(1)}%). Flagging row as incomplete.`);
+                      } else {
+                        logger.info(`✅ Completeness check passed for ${clientName} ${targetMonthStr}: campaign spend within 2% of account spend (${accountSpend.toFixed(2)})`);
+                      }
+                    }
+                  } catch (verifyError) {
+                    logger.warn(`⚠️ Completeness check skipped for ${clientName} (account query failed):`, verifyError);
+                  }
 
                   // Fetch Google Ads tables (network, demographic, quality score)
                   let googleAdsTables = null;
@@ -526,11 +609,11 @@ export async function POST(request: NextRequest) {
                       reservation_value: googleTotals.reservation_value,
                       roas: roas,
                       cost_per_reservation: costPerReservation,
-                      campaign_data: campaigns,
-                      google_ads_tables: googleAdsTables,
-                      google_dynamic_metric_values: dynamicMetricValues,
-                      google_dynamic_metric_rows: dynamicMetricRows,
-                      data_source: 'google_ads_api',
+                      campaign_data: campaigns as any,
+                      google_ads_tables: googleAdsTables as any,
+                      google_dynamic_metric_values: dynamicMetricValues as any,
+                      google_dynamic_metric_rows: dynamicMetricRows as any,
+                      data_source: googleDataSource,
                       last_updated: new Date().toISOString()
                     }, {
                       onConflict: 'client_id,summary_type,summary_date,platform'
@@ -611,12 +694,25 @@ export async function POST(request: NextRequest) {
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
+    // Batch bookkeeping so schedulers/queues can chain the next slice.
+    const processedThrough = offset + clients.length;
+    const hasMore = typeof totalClients === 'number' ? processedThrough < totalClients : clients.length === limit;
+    const nextOffset = hasMore ? processedThrough : null;
+
     const summary = {
       success: true,
       mode: dryRun ? 'dry-run' : 'live',
       targetMonth: targetMonthStr,
       dateRange: { start: startDate, end: endDate },
       totalClients: clients.length,
+      batch: {
+        offset,
+        limit,
+        processed: clients.length,
+        totalClients: totalClients ?? null,
+        hasMore,
+        nextOffset
+      },
       summary: {
         successful: successCount,
         failed: failedCount,
@@ -628,7 +724,8 @@ export async function POST(request: NextRequest) {
     };
 
     logger.info('\n' + '='.repeat(60));
-    logger.info('✅ END OF MONTH COLLECTION COMPLETED');
+    logger.info('✅ END OF MONTH COLLECTION BATCH COMPLETED');
+    logger.info(`📦 Batch: offset=${offset} limit=${limit} processed=${clients.length} hasMore=${hasMore}${nextOffset !== null ? ` nextOffset=${nextOffset}` : ''}`);
     logger.info(`📊 Summary: ${successCount} success, ${failedCount} failed, ${skippedCount} skipped`);
     logger.info(`⏱️  Duration: ${duration} seconds`);
     logger.info('='.repeat(60));

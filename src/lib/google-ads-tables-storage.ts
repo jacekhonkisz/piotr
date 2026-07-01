@@ -112,7 +112,7 @@ export async function loadGoogleAdsTablesFromDatabase(
         .eq('date_range_start', dateStart)
         .eq('date_range_end', dateEnd)
         .maybeSingle();
-      data = fallback.data;
+      data = fallback.data as typeof data;
       error = fallback.error;
     }
 

@@ -10,13 +10,30 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+function parseEmailList(value: string | undefined): string[] {
+  return (value || '')
+    .split(/[;,]/)
+    .map(email => email.trim())
+    .filter(Boolean);
+}
+
 const REVIEW_EMAIL = process.env.EMAIL_REVIEW_RECIPIENT || 'kontakt@piotrbajerlein.pl';
+const REVIEW_CC = parseEmailList(process.env.EMAIL_REVIEW_CC);
+const REVIEW_RECIPIENTS = dedupeEmails([REVIEW_EMAIL, ...REVIEW_CC]);
+
+// Admin always receives a copy (DW/CC) of every client report for preview/oversight.
+const ADMIN_PREVIEW_CC = process.env.EMAIL_ADMIN_CC || 'kontakt@piotrbajerlein.pl';
 
 export const EMAIL_CONFIG = {
   MONITORING_MODE: false,
   
   REVIEW_MODE_DEFAULT: true,
   REVIEW_EMAIL,
+  REVIEW_CC,
+  REVIEW_RECIPIENTS,
+
+  // CC (Polish: "DW") recipient added to every outgoing client report.
+  ADMIN_PREVIEW_CC,
   
   MONITORING_EMAILS: [
     'pbajerlein@gmail.com'
@@ -143,7 +160,7 @@ export function getEmailRecipients(originalRecipient: string): string[] {
   }
   const reviewEnabled = _reviewModeCache?.value ?? EMAIL_CONFIG.REVIEW_MODE_DEFAULT;
   if (reviewEnabled) {
-    return [REVIEW_EMAIL];
+    return [...REVIEW_RECIPIENTS];
   }
   return [originalRecipient];
 }
@@ -160,9 +177,98 @@ export async function getEmailRecipientsAsync(
   }
   const reviewEnabled = await isReviewMode();
   if (reviewEnabled) {
-    return { recipients: [reviewRecipientOverride || REVIEW_EMAIL], originalRecipient, isRedirected: true };
+    return {
+      recipients: reviewRecipientOverride ? [reviewRecipientOverride] : [...REVIEW_RECIPIENTS],
+      originalRecipient,
+      isRedirected: true
+    };
   }
   return { recipients: [originalRecipient], originalRecipient, isRedirected: false };
+}
+
+/** Normalize + de-duplicate a list of email addresses (case-insensitive), preserving order. */
+function dedupeEmails(emails: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of emails) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+export interface ResolvedEmailEnvelope {
+  /** Primary recipient (To). */
+  to: string;
+  /** CC ("DW") recipients — additional client contacts + admin preview copy. */
+  cc: string[];
+  /** True when the message was redirected away from real clients (review/monitoring mode). */
+  isRedirected: boolean;
+  /** The originally intended primary recipient (for logging/subject annotation). */
+  originalRecipient: string;
+}
+
+/**
+ * Resolve the full To/CC envelope for a client report.
+ *
+ * Normal mode:
+ *   - To  = primary client contact
+ *   - CC  = remaining client contacts + admin preview address (kontakt@piotrbajerlein.pl)
+ *
+ * Review / monitoring mode:
+ *   - Everything is redirected to internal review recipients and client CC is dropped,
+ *     so no real client ever receives a message while review mode is enabled.
+ */
+export async function resolveEmailEnvelope(
+  primaryRecipient: string,
+  additionalRecipients: string[] = [],
+  options?: { reviewRecipientOverride?: string; skipAdminCc?: boolean }
+): Promise<ResolvedEmailEnvelope> {
+  const originalRecipient = primaryRecipient;
+
+  if (EMAIL_CONFIG.MONITORING_MODE) {
+    return {
+      to: EMAIL_CONFIG.MONITORING_EMAILS[0] ?? ADMIN_PREVIEW_CC,
+      cc: [],
+      isRedirected: true,
+      originalRecipient
+    };
+  }
+
+  const reviewEnabled = await isReviewMode();
+  if (reviewEnabled) {
+    const [reviewTo = REVIEW_EMAIL, ...reviewCc] = options?.reviewRecipientOverride
+      ? [options.reviewRecipientOverride]
+      : REVIEW_RECIPIENTS;
+
+    return {
+      to: reviewTo,
+      cc: reviewCc,
+      isRedirected: true,
+      originalRecipient
+    };
+  }
+
+  // Direct mode: send to all client contacts + always CC the admin preview address.
+  const ccCandidates = [...additionalRecipients];
+  if (!options?.skipAdminCc) {
+    ccCandidates.push(ADMIN_PREVIEW_CC);
+  }
+
+  // Remove anything that duplicates the primary recipient.
+  const primaryKey = primaryRecipient.trim().toLowerCase();
+  const cc = dedupeEmails(ccCandidates).filter(email => email.toLowerCase() !== primaryKey);
+
+  return {
+    to: primaryRecipient,
+    cc,
+    isRedirected: false,
+    originalRecipient
+  };
 }
 
 export function getEmailSubject(originalSubject: string): string {

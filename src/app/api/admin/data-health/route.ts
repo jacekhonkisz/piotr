@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     // -------------------------------------------------------------------------
     // CHECK 1: Today's Collection Completeness
     // -------------------------------------------------------------------------
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0]!;
     
     const { data: todayData, error: todayError } = await supabaseAdmin
       .from('daily_kpi_data')
@@ -207,7 +207,7 @@ export async function GET(request: NextRequest) {
     let cacheFreshnessCheck: HealthCheck;
     
     if (cacheData && cacheData.length > 0) {
-      const oldestUpdate = new Date(cacheData[0].last_updated);
+      const oldestUpdate = new Date(cacheData[0]!.last_updated);
       const hoursOld = (Date.now() - oldestUpdate.getTime()) / (1000 * 60 * 60);
       
       if (hoursOld > 6) {

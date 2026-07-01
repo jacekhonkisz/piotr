@@ -3,6 +3,14 @@ import { DataLifecycleManager } from '../../../../lib/data-lifecycle-manager';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
+// Archival is DB-only (reads caches, writes campaign_summaries) but loops all
+// clients, so give it headroom on plans that support longer functions.
+// NOTE: this cron is scheduled AFTER the end-of-month-collection batches so the
+// authoritative Google monthly rows already exist and are not clobbered here
+// (see DataLifecycleManager.archiveGoogleAdsMonthlyData's authoritative guard).
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   // 🔒 SECURITY: Verify cron authentication
   if (!verifyCronAuth(request)) {

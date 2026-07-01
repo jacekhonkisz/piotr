@@ -19,6 +19,27 @@ export interface ValidationResult {
   errors: string[];
 }
 
+/** A single validation check produced by a full validation run. */
+export interface ValidationCheck {
+  checkType: string;
+  status: 'passed' | 'warning' | 'failed';
+  severity: 'critical' | 'warning' | 'info';
+  clientId?: string;
+  period?: string;
+  message?: string;
+}
+
+/** Aggregate report returned by {@link DataValidator.runFullValidation}. */
+export interface FullValidationReport extends ValidationResult {
+  overallStatus: 'healthy' | 'warning' | 'critical';
+  healthScore: number;
+  totalChecks: number;
+  passedChecks: number;
+  warningChecks: number;
+  criticalIssues: number;
+  checks: ValidationCheck[];
+}
+
 export interface MetricsData {
   spend?: number;
   impressions?: number;
@@ -250,7 +271,7 @@ export class DataValidator {
     const errors = validation.errors.map(error => {
       // Try to extract field name from error message
       const fieldMatch = error.match(/^([^:]+):/);
-      const field = fieldMatch ? fieldMatch[1] : 'unknown';
+      const field = fieldMatch?.[1] ?? 'unknown';
       return {
         field,
         message: error
@@ -267,12 +288,7 @@ export class DataValidator {
   /**
    * Instance method for running full validation (used by monitoring endpoint)
    */
-  async runFullValidation(): Promise<ValidationResult & {
-    overallStatus: 'healthy' | 'warning' | 'critical';
-    healthScore: number;
-    totalChecks: number;
-    criticalIssues: string[];
-  }> {
+  async runFullValidation(): Promise<FullValidationReport> {
     // Basic implementation - can be extended
     return {
       isValid: true,
@@ -282,7 +298,10 @@ export class DataValidator {
       overallStatus: 'healthy',
       healthScore: 100,
       totalChecks: 0,
-      criticalIssues: []
+      passedChecks: 0,
+      warningChecks: 0,
+      criticalIssues: 0,
+      checks: []
     };
   }
 }

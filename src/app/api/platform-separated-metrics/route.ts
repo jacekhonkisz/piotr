@@ -224,10 +224,10 @@ export async function POST(request: NextRequest) {
               const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
               
               const clickToCall = Math.round(
-                sumGooglePhoneContactsFromCampaigns(campaigns as Record<string, unknown>[])
+                sumGooglePhoneContactsFromCampaigns(campaigns as unknown as Record<string, unknown>[])
               );
               const emailContacts = Math.round(
-                sumGoogleEmailContactsFromCampaigns(campaigns as Record<string, unknown>[])
+                sumGoogleEmailContactsFromCampaigns(campaigns as unknown as Record<string, unknown>[])
               );
               
               const conversionMetrics = {

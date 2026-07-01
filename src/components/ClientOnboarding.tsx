@@ -53,9 +53,15 @@ export default function ClientOnboarding({ onSuccess, onCancel }: ClientOnboardi
 
       // Step 2: Create System User via API
       setStatus('Creating System User...');
+      const { data: { session } } = await supabase.auth.getSession();
       const systemUserResponse = await fetch('/api/create-system-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : {})
+        },
         body: JSON.stringify({
           clientId: client.id,
           businessManagerId: formData.businessManagerId,

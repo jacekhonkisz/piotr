@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { authenticateRequest, requireAdmin } from '../../../lib/auth-middleware';
 import logger from '../../../lib/logger';
 
 const supabase = createClient(
@@ -8,6 +9,15 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
+  // 🔒 SECURITY: Admin access required (uses service-role key)
+  const authResult = await authenticateRequest(request);
+  if (!authResult.success || !authResult.user || !requireAdmin(authResult.user)) {
+    return NextResponse.json(
+      { error: 'Admin access required' },
+      { status: authResult.statusCode || 403 }
+    );
+  }
+
   try {
     const { clientId, businessManagerId, adAccountId, clientName } = await request.json();
 

@@ -698,6 +698,7 @@ export class GoogleAdsAPIService {
       const debugLimit = Math.min(3, campaigns.length);
       for (let i = 0; i < debugLimit; i++) {
         const c = campaigns[i];
+        if (!c) continue;
         logger.info(`🔍 DEBUG Campaign #${i+1} "${c.campaignName}":
           - total_conversion_value: ${c.total_conversion_value?.toFixed(2) || 'undefined'} PLN
           - reservation_value: ${c.reservation_value?.toFixed(2) || 'undefined'} PLN

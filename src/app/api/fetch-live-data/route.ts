@@ -53,7 +53,7 @@ function isCurrentMonth(startDate: string, endDate: string): boolean {
   });
   
   // 🔒 STRICT: Must be exact current month AND include today
-  const today: string = now.toISOString().split('T')[0];
+  const today: string = now.toISOString().split('T')[0]!;
   const includesCurrentDay: boolean = endDate >= today;
   
   const result = startYear === currentYear && 
@@ -126,7 +126,7 @@ function isCurrentWeek(startDate: string, endDate: string): boolean {
   // ✅ CRITICAL FIX: More flexible current week detection
   // For current week, accept if start matches and includes today, even if end extends beyond today
   // This handles Mon-Sun requests when we're in the middle of the week (Mon-Today)
-  const today: string = now.toISOString().split('T')[0];
+  const today: string = now.toISOString().split('T')[0]!;
   const includesCurrentDay: boolean = endDate >= today;
   const startMatches = startDate === currentWeekInfo.startDate;
   const endMatches = endDate === currentWeekInfo.endDate;
@@ -181,14 +181,14 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
   // - Current week only → Use smart caching
   
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = now.toISOString().split('T')[0]!;
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth() + 1; // 1-12
   const currentMonthStart = currentYear + '-' + String(currentMonth).padStart(2, '0') + '-01';
   
   // 🔒 STRICT: Only exact current month gets cache (must match year AND month AND end date >= today)
-  const requestYear = parseInt(startDate.split('-')[0]);
-  const requestMonth = parseInt(startDate.split('-')[1]);
+  const requestYear = parseInt(startDate.split('-')[0]!);
+  const requestMonth = parseInt(startDate.split('-')[1]!);
   
   // 🔧 CRITICAL FIX: For current month AND current week, cap endDate to today
   // This prevents requesting future dates that don't have data yet
@@ -732,7 +732,7 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       
       // 🔍 ENHANCED DEBUG: Get detailed current week info
       const currentWeekInfo = getCurrentWeekInfo();
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0]!;
       
       console.log(`📊 CRITICAL DEBUG - ROUTING ANALYSIS:`, {
         startDate,

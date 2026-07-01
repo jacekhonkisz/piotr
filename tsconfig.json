@@ -47,6 +47,13 @@
   "exclude": [
     "node_modules",
     ".next",
-    "out"
+    "out",
+    "scripts",
+    "optimizations",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 } 

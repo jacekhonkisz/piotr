@@ -30,14 +30,14 @@ export function validateAPIMetrics(metrics: APIMetrics, source: string): boolean
   }
 
   // Validate ranges (CTR should be 0-100%, CPC should be positive)
-  if (metrics.averageCtr < 0 || metrics.averageCtr > 100) {
+  if ((metrics.averageCtr ?? 0) < 0 || (metrics.averageCtr ?? 0) > 100) {
     logger.warn(`⚠️ API Metrics Validation: Invalid CTR value from ${source}`, {
       averageCtr: metrics.averageCtr
     });
     return false;
   }
 
-  if (metrics.averageCpc < 0) {
+  if ((metrics.averageCpc ?? 0) < 0) {
     logger.warn(`⚠️ API Metrics Validation: Invalid CPC value from ${source}`, {
       averageCpc: metrics.averageCpc
     });

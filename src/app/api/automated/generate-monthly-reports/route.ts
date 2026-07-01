@@ -204,7 +204,7 @@ export async function POST(request: NextRequest) {
     });
     
     // Reuse the GET logic
-    return await GET();
+    return await GET(request);
     
   } catch (error) {
     logger.error('❌ Manual monthly report generation failed', { error });

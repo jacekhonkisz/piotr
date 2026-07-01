@@ -294,6 +294,10 @@ export async function POST(request: NextRequest) {
 
     logger.info(`🔍 Testing token for client ${clientId}...`);
 
+    if (!supabaseAdmin) {
+      return NextResponse.json({ error: 'Server not configured' }, { status: 500 });
+    }
+
     const { data: client, error: clientError } = await supabaseAdmin
       .from('clients')
       .select('id, name, meta_access_token, ad_account_id, created_at')

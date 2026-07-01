@@ -132,7 +132,7 @@ function mapSmartCacheToStored(
 
   const stats = (cacheData.stats as Record<string, unknown>) || {};
   const conv = (cacheData.conversionMetrics as Record<string, unknown>) || {};
-  const campaigns = (cacheData.campaigns as unknown[]) || [];
+  const campaigns = (cacheData.campaigns as any[]) || [];
 
   const totalSpend = num(stats.totalSpend);
   const totalImpressions = num(stats.totalImpressions);

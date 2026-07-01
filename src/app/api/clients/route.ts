@@ -4,6 +4,10 @@ import { generatePassword } from '../../../lib/user-credentials';
 import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import logger from '../../../lib/logger';
 
+// Give the new-client data initialization room to run before the serverless
+// function is recycled (current period warm + historical backfill kickoff).
+export const maxDuration = 300;
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -389,28 +393,29 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Ad Account: ${accountValidation?.account?.name || requestData.ad_account_id}`);
     console.log(`🔑 Token Status: ${tokenValidation?.convertedToken ? 'Converted to long-lived' : 'Already long-lived'}`);
 
-    // ✨ NEW: Trigger automatic historical data collection for new client
-    logger.info(`🔄 Initializing historical data for new client ${newClient.id}...`);
+    // ✨ Auto-initialize the new client's portal so it's immediately usable:
+    //   1) warm the current period cache (dashboard default view)
+    //   2) collect historical monthly + weekly summaries (for comparisons)
+    // Progress is monitorable via GET /api/clients/[id]/data-status.
+    logger.info(`🔄 Initializing portal data for new client ${newClient.id}...`);
     try {
-      const { BackgroundDataCollector } = await import('@/lib/background-data-collector');
-      const collector = BackgroundDataCollector.getInstance();
-      
-      // Trigger historical collection in background (don't await to avoid timeout)
-      // This will collect last 12 months + 53 weeks for both Meta & Google (if configured)
-      collector.collectMonthlySummariesForSingleClient(newClient.id).catch(error => {
-        logger.error(`Failed to initialize monthly data for ${newClient.id}:`, error);
+      const { initializeCurrentPeriodThenBackfill } = await import('@/lib/client-data-initializer');
+
+      // AWAIT the current-period warm so the new client's default dashboard is
+      // guaranteed populated when this request returns (a bare fire-and-forget
+      // promise is unreliable on serverless — the runtime may freeze it the
+      // instant we respond). Historical backfill is kicked off without blocking;
+      // the weekly collect-*-summaries crons back it up.
+      await initializeCurrentPeriodThenBackfill(newClient.id).catch(error => {
+        logger.error(`Failed to initialize portal data for ${newClient.id}:`, error);
       });
 
-      collector.collectWeeklySummariesForSingleClient(newClient.id).catch(error => {
-        logger.error(`Failed to initialize weekly data for ${newClient.id}:`, error);
-      });
-      
-      logger.info(`✅ Historical data initialization started for ${newClient.name}`);
-      console.log(`📊 Historical data collection started in background (12 months + 53 weeks)`);
+      logger.info(`✅ Portal data initialization started for ${newClient.name}`);
+      console.log(`📊 Portal data initialization started (current period + 12 months + 53 weeks)`);
     } catch (error) {
-      logger.warn(`⚠️ Failed to trigger historical data collection for ${newClient.name}:`, error);
-      // Don't fail client creation if background collection fails
-      console.log(`⚠️ Note: Historical data collection failed to start, will be collected by scheduled jobs`);
+      logger.warn(`⚠️ Failed to trigger portal data initialization for ${newClient.name}:`, error);
+      // Don't fail client creation if background initialization fails
+      console.log(`⚠️ Note: Portal data initialization failed to start, will be collected by scheduled jobs`);
     }
 
     return NextResponse.json({

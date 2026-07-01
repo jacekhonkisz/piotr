@@ -29,7 +29,8 @@ export function isBelmonteClient(clientName: string): boolean {
 
 /** Meta `action_type` strings for Belmonte PBM micro columns (I + K) — see module docstring. */
 export function getBelmonteOfflineMicroActionTypes(): string[] {
-  const raw = (typeof process !== 'undefined' && process.env?.BELMONTE_OFFLINE_MICRO_ACTION_TYPES)?.trim();
+  const rawEnv = typeof process !== 'undefined' ? process.env?.BELMONTE_OFFLINE_MICRO_ACTION_TYPES : undefined;
+  const raw = rawEnv?.trim();
   if (raw) {
     return raw
       .split(',')

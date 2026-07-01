@@ -255,7 +255,7 @@ export default function ClientViewPreview({
         <ShowMoreStrip
           section={section}
           total={allItems.length}
-          open={openSections[section]}
+          open={!!openSections[section]}
           onToggle={() => toggleSection(section)}
         />
       </>
@@ -316,7 +316,7 @@ export default function ClientViewPreview({
                     );
                   })}
                 </div>
-                <ShowMoreStrip section="kpi_cards" total={allKpi.length} open={openSections['kpi_cards']}
+                <ShowMoreStrip section="kpi_cards" total={allKpi.length} open={!!openSections['kpi_cards']}
                   onToggle={() => toggleSection('kpi_cards')} />
               </>
             );
@@ -529,7 +529,7 @@ export default function ClientViewPreview({
                   ))}
                 </div>
                 <ShowMoreStrip section="campaign_table" total={allCampaign.length}
-                  open={openSections['campaign_table']} onToggle={() => toggleSection('campaign_table')} />
+                  open={!!openSections['campaign_table']} onToggle={() => toggleSection('campaign_table')} />
               </>
             );
           })()}

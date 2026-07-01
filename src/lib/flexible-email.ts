@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 import nodemailer from 'nodemailer';
 import logger from './logger';
 import { RateLimiter } from './rate-limiter';
-import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject, getEmailRecipientsAsync, getEmailSubjectAsync } from './email-config';
+import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject, getEmailRecipientsAsync, getEmailSubjectAsync, resolveEmailEnvelope } from './email-config';
 import { createClient } from '@supabase/supabase-js';
 import { formatPlnWhole } from './email-helpers';
 import { getMonthlyOfflineNarrative } from './monthly-report-offline-narrative';
@@ -14,6 +14,8 @@ const supabase = createClient(
 
 export interface EmailData {
   to: string;
+  /** CC ("DW") recipients — visible additional recipients. */
+  cc?: string[];
   from: string;
   subject: string;
   html: string;
@@ -59,7 +61,7 @@ export type EmailProvider = 'resend' | 'gmail' | 'custom_smtp' | 'auto';
 export class FlexibleEmailService {
   private static instance: FlexibleEmailService;
   private resend: Resend;
-  private gmailTransporter: nodemailer.Transporter;
+  private gmailTransporter!: nodemailer.Transporter;
   private customSmtpTransporter: nodemailer.Transporter | null = null;
   private rateLimiter: RateLimiter;
   private defaultProvider: EmailProvider;
@@ -116,8 +118,13 @@ export class FlexibleEmailService {
     return this.customSmtpTransporter !== null;
   }
 
+  /** Current rate-limiter status for the email service. */
+  getRateLimitStatus() {
+    return this.rateLimiter.getStatus();
+  }
+
   private determineProvider(recipient: string): EmailProvider {
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev') {
+    if (process.env.NODE_ENV === 'development' || (process.env.NODE_ENV as string) === 'dev') {
       if (this.customSmtpTransporter) return 'custom_smtp';
       return 'gmail';
     }
@@ -162,29 +169,37 @@ export class FlexibleEmailService {
     emailData: EmailData,
     provider?: EmailProvider,
     options?: { reviewRecipientOverride?: string }
-  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string }> {
+  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
     const selectedProvider = provider || this.determineProvider(emailData.to);
 
-    // Apply review-mode redirect (async, always fresh)
-    const { recipients, originalRecipient, isRedirected } = await getEmailRecipientsAsync(
+    // Resolve the full To/CC ("DW") envelope.
+    // - Normal mode: To = primary contact, CC = remaining contacts + admin preview copy.
+    // - Review mode: client recipients are dropped and mail routes only to internal review recipients.
+    // - Monitoring mode: everything redirects to monitoring recipients.
+    const { to, cc, originalRecipient, isRedirected } = await resolveEmailEnvelope(
       emailData.to,
-      options?.reviewRecipientOverride
+      emailData.cc || [],
+      { reviewRecipientOverride: options?.reviewRecipientOverride }
     );
     const resolvedSubject = await getEmailSubjectAsync(emailData.subject, isRedirected ? originalRecipient : undefined);
 
     const resolvedEmailData: EmailData = {
       ...emailData,
-      to: recipients[0],
+      to,
+      cc,
       subject: resolvedSubject
     };
 
     if (isRedirected) {
-      logger.info(`🔀 Review mode: redirecting email from ${originalRecipient} → ${recipients[0]}`);
+      logger.info(`🔀 Review mode: redirecting email from ${originalRecipient} → ${to} (client CC dropped, internal CC: ${cc.join(', ') || 'none'})`);
+    } else if (cc.length > 0) {
+      logger.info(`📋 DW/CC recipients: ${cc.join(', ')}`);
     }
     
     try {
       logger.info(`📧 Sending email via ${selectedProvider.toUpperCase()}...`, {
         to: resolvedEmailData.to,
+        cc: resolvedEmailData.cc,
         originalRecipient: isRedirected ? originalRecipient : undefined,
         subject: resolvedEmailData.subject,
         provider: selectedProvider
@@ -209,7 +224,8 @@ export class FlexibleEmailService {
       return {
         ...result,
         provider: selectedProvider,
-        ...(isRedirected ? { redirectedTo: recipients[0] } : {})
+        ...(cc.length > 0 ? { cc } : {}),
+        ...(isRedirected ? { redirectedTo: to } : {})
       };
 
     } catch (error) {
@@ -232,6 +248,7 @@ export class FlexibleEmailService {
     const mailOptions = {
       from: `"Meta Ads Reports" <${process.env.GMAIL_USER}>`,
       to: emailData.to,
+      ...(emailData.cc && emailData.cc.length > 0 ? { cc: emailData.cc } : {}),
       subject: emailData.subject,
       html: emailData.html,
       text: emailData.text || '',
@@ -252,6 +269,7 @@ export class FlexibleEmailService {
     const resendData = {
       from: emailData.from,
       to: [emailData.to],
+      ...(emailData.cc && emailData.cc.length > 0 ? { cc: emailData.cc } : {}),
       subject: emailData.subject,
       html: emailData.html,
       text: emailData.text || '',
@@ -287,6 +305,7 @@ export class FlexibleEmailService {
     const mailOptions = {
       from: `"${fromName}" <${fromAddress}>`,
       to: emailData.to,
+      ...(emailData.cc && emailData.cc.length > 0 ? { cc: emailData.cc } : {}),
       subject: emailData.subject,
       html: emailData.html,
       text: emailData.text || '',
@@ -1059,8 +1078,8 @@ This is an automated report generated by your Meta Ads management system.
 
     // Extract date range from reportData.dateRange
     const dateRangeParts = reportData.dateRange.split(' to ');
-    const startDate = dateRangeParts[0];
-    const endDate = dateRangeParts[1];
+    const startDate = dateRangeParts[0] ?? '';
+    const endDate = dateRangeParts[1] ?? '';
     const formattedDateRange = `${formatDate(startDate)} - ${formatDate(endDate)}`;
 
     // Determine if we have both platforms or just one
@@ -1142,8 +1161,8 @@ Piotr Bajerlein`;
     },
     pdfBuffer: Buffer,
     provider?: EmailProvider,
-    options?: { reviewRecipientOverride?: string }
-  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string }> {
+    options?: { reviewRecipientOverride?: string; cc?: string[] }
+  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
     
     // 🔒 MANDATORY VALIDATION: PDF must be provided
     if (!pdfBuffer || pdfBuffer.length === 0) {
@@ -1174,6 +1193,7 @@ Piotr Bajerlein`;
 
     const emailData: EmailData = {
       to: recipient,
+      cc: options?.cc,
       from: this.getFromAddress(provider || this.determineProvider(recipient)),
       subject: template.subject,
       html: template.html,

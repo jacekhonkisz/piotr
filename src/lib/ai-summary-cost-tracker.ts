@@ -45,7 +45,7 @@ class AISummaryCostTracker {
    * @param date - Date of the request (defaults to today)
    */
   recordCost(tokens: number, date?: string): void {
-    const requestDate = date || new Date().toISOString().split('T')[0];
+    const requestDate = date || new Date().toISOString().split('T')[0]!;
     const cost = tokens * this.costPerToken;
     
     const existingEntry = this.costs.get(requestDate);
@@ -76,7 +76,7 @@ class AISummaryCostTracker {
    * @returns Daily cost in USD
    */
   getDailyCost(date?: string): number {
-    const requestDate = date || new Date().toISOString().split('T')[0];
+    const requestDate = date || new Date().toISOString().split('T')[0]!;
     const entry = this.costs.get(requestDate);
     return entry ? entry.cost : 0;
   }
@@ -142,7 +142,7 @@ class AISummaryCostTracker {
     const end = new Date(endDate);
     
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = d.toISOString().split('T')[0]!;
       const entry = this.costs.get(dateStr);
       
       if (entry) {
@@ -219,7 +219,7 @@ class AISummaryCostTracker {
   clearOldData(daysToKeep: number = 90): void {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
-    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+    const cutoffStr = cutoffDate.toISOString().split('T')[0]!;
     
     let removedCount = 0;
     for (const [date, entry] of this.costs.entries()) {

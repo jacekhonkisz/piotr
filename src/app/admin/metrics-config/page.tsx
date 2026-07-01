@@ -109,7 +109,12 @@ export default function MetricsConfigPage() {
     setGoogleMetrics(clientConfig.config.googleMetrics);
     setMetaEnabled(clientConfig.config.metaEnabled);
     setGoogleEnabled(clientConfig.config.googleEnabled);
-    setActivePlatform(getDefaultAdsProvider(clientConfig.client));
+    setActivePlatform(getDefaultAdsProvider({
+      meta_access_token: clientConfig.client.metaConnected ? 'connected' : null,
+      ad_account_id: clientConfig.client.metaConnected ? 'connected' : null,
+      google_ads_enabled: clientConfig.client.googleConnected,
+      google_ads_customer_id: clientConfig.client.googleConnected ? 'connected' : null,
+    }));
     setHasChanges(false);
     setSaveStatus('idle');
   }, []);

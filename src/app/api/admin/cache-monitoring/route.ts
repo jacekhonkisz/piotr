@@ -135,8 +135,8 @@ export async function GET(request: NextRequest) {
           totalEntries,
           freshEntries,
           staleEntries,
-          oldestEntry: entries.length > 0 ? entries[entries.length - 1].last_updated : null,
-          newestEntry: entries.length > 0 ? entries[0].last_updated : null,
+          oldestEntry: entries.length > 0 ? entries[entries.length - 1]?.last_updated ?? null : null,
+          newestEntry: entries.length > 0 ? entries[0]?.last_updated ?? null : null,
           healthStatus,
           clients: clientsWithStatus
         });

@@ -49,8 +49,13 @@ export default function AdminNavbar({ isCondensed = false }: AdminNavbarProps) {
 
   // Get user initials for avatar
   const getUserInitials = () => {
-    if (profile?.first_name && profile?.last_name) {
-      return `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`.toUpperCase();
+    const fullName = profile?.full_name?.trim();
+    if (fullName) {
+      const parts = fullName.split(/\s+/).filter(Boolean);
+      const first = parts[0]?.charAt(0) ?? '';
+      const last = parts.length > 1 ? (parts[parts.length - 1]?.charAt(0) ?? '') : '';
+      const initials = `${first}${last}`.toUpperCase();
+      if (initials) return initials;
     }
     return profile?.email?.charAt(0).toUpperCase() || 'U';
   };

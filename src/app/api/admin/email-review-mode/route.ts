@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     reviewMode: enabled,
     reviewEmail: EMAIL_CONFIG.REVIEW_EMAIL,
+    reviewEmails: EMAIL_CONFIG.REVIEW_RECIPIENTS,
     hasCustomSmtp,
     smtpUser,
     provider: process.env.EMAIL_PROVIDER || 'auto'
@@ -63,8 +64,9 @@ export async function POST(request: NextRequest) {
       success: true,
       reviewMode: enabled,
       reviewEmail: EMAIL_CONFIG.REVIEW_EMAIL,
+      reviewEmails: EMAIL_CONFIG.REVIEW_RECIPIENTS,
       message: enabled
-        ? `Tryb weryfikacji WŁĄCZONY — wszystkie raporty trafiają do ${EMAIL_CONFIG.REVIEW_EMAIL}`
+        ? `Tryb weryfikacji WŁĄCZONY — wszystkie raporty trafiają do ${EMAIL_CONFIG.REVIEW_RECIPIENTS.join(', ')}`
         : 'Tryb weryfikacji WYŁĄCZONY — raporty trafiają bezpośrednio do klientów'
     });
   } catch (err) {

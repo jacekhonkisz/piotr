@@ -41,12 +41,48 @@
       "schedule": "0 4 * * 1"
     },
     {
-      "path": "/api/automated/end-of-month-collection",
+      "path": "/api/automated/end-of-month-collection?offset=0&limit=5",
       "schedule": "0 2 1 * *"
     },
     {
+      "path": "/api/automated/end-of-month-collection?offset=5&limit=5",
+      "schedule": "7 2 1 * *"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection?offset=10&limit=5",
+      "schedule": "14 2 1 * *"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection?offset=15&limit=5",
+      "schedule": "21 2 1 * *"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection?offset=20&limit=5",
+      "schedule": "28 2 1 * *"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection?offset=25&limit=5",
+      "schedule": "35 2 1 * *"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection?offset=30&limit=5",
+      "schedule": "42 2 1 * *"
+    },
+    {
+      "path": "/api/automated/end-of-month-collection?offset=35&limit=5",
+      "schedule": "49 2 1 * *"
+    },
+    {
       "path": "/api/automated/archive-completed-months",
-      "schedule": "30 2 1 * *"
+      "schedule": "20 3 1 * *"
+    },
+    {
+      "path": "/api/automated/verify-google-month-close?offset=0&limit=20&maxHeals=4",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/automated/verify-google-month-close?offset=20&limit=20&maxHeals=4",
+      "schedule": "10 4 * * *"
     },
     {
       "path": "/api/automated/archive-completed-weeks",

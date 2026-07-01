@@ -352,7 +352,7 @@ export class PeriodTransitionHandler {
     const targetWeekStart = new Date(startOfWeek1);
     targetWeekStart.setDate(startOfWeek1.getDate() + (weekNumber - 1) * 7);
     
-    return targetWeekStart.toISOString().split('T')[0];
+    return targetWeekStart.toISOString().split('T')[0]!;
   }
 }
 

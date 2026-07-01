@@ -1,8 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X, Copy, Check, Mail, Eye, EyeOff, RefreshCw, Save } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Copy, Check, Mail, Eye, EyeOff, RefreshCw, Save, Database, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+
+interface DataStatus {
+  status: 'not_started' | 'collecting' | 'ready' | 'failed';
+  message: string;
+  ready: boolean;
+  platforms: { meta: boolean; google: boolean };
+  currentMonth: { meta: boolean; google: boolean };
+  historical: { monthlySummaries: number; weeklySummaries: number };
+}
 
 interface Credentials {
   username: string;
@@ -35,6 +44,9 @@ export default function CredentialsModal({
   const [editingEmail, setEditingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState(clientEmail);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
+  const [retriggering, setRetriggering] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -50,6 +62,99 @@ export default function CredentialsModal({
       fetchCurrentCredentials();
     }
   }, [isOpen, clientEmail]);
+
+  // Poll portal data readiness while the modal is open, until it's ready/failed.
+  useEffect(() => {
+    const clearPoll = () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+
+    if (!isOpen || !clientId) {
+      clearPoll();
+      setDataStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchStatus = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+
+        const response = await fetch(`/api/clients/${clientId}/data-status`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+        if (!response.ok) return;
+
+        const data: DataStatus = await response.json();
+        if (cancelled) return;
+        setDataStatus(data);
+
+        // Stop polling once the portal is ready or the job failed.
+        if (data.status === 'ready' || data.status === 'failed') {
+          clearPoll();
+        }
+      } catch (error) {
+        console.error('Error fetching data status:', error);
+      }
+    };
+
+    fetchStatus();
+    pollRef.current = setInterval(fetchStatus, 4000);
+
+    return () => {
+      cancelled = true;
+      clearPoll();
+    };
+  }, [isOpen, clientId]);
+
+  const retriggerCollection = async () => {
+    setRetriggering(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('No valid session found');
+      }
+
+      const response = await fetch(`/api/clients/${clientId}/data-status`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to start data collection');
+      }
+      const data: DataStatus = await response.json();
+      setDataStatus(data);
+
+      // Resume polling after a manual re-trigger.
+      if (!pollRef.current && data.status !== 'ready') {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        pollRef.current = setInterval(async () => {
+          if (!s?.access_token) return;
+          const r = await fetch(`/api/clients/${clientId}/data-status`, {
+            headers: { 'Authorization': `Bearer ${s.access_token}` },
+          });
+          if (r.ok) {
+            const d: DataStatus = await r.json();
+            setDataStatus(d);
+            if ((d.status === 'ready' || d.status === 'failed') && pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          }
+        }, 4000);
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Nie udało się uruchomić zbierania danych' });
+    } finally {
+      setRetriggering(false);
+    }
+  };
 
   const fetchCurrentCredentials = async () => {
     setIsLoading(true);
@@ -251,6 +356,9 @@ Zespół raportowania`;
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Portal data readiness monitor */}
+              {dataStatus && <DataReadinessPanel status={dataStatus} onRetry={retriggerCollection} retriggering={retriggering} />}
+
               {/* Email/Username */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -409,6 +517,84 @@ Zespół raportowania`;
           >
             Zamknij
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DataReadinessPanel({
+  status,
+  onRetry,
+  retriggering,
+}: {
+  status: DataStatus;
+  onRetry: () => void;
+  retriggering: boolean;
+}) {
+  const styles = {
+    ready: 'border-green-200 bg-green-50 text-green-800',
+    collecting: 'border-blue-200 bg-blue-50 text-blue-800',
+    failed: 'border-red-200 bg-red-50 text-red-800',
+    not_started: 'border-gray-200 bg-gray-50 text-gray-700',
+  }[status.status];
+
+  const Icon =
+    status.status === 'ready'
+      ? CheckCircle2
+      : status.status === 'failed'
+        ? AlertTriangle
+        : status.status === 'collecting'
+          ? Loader2
+          : Database;
+
+  const platformLabels: string[] = [];
+  if (status.platforms.meta) platformLabels.push('Meta Ads');
+  if (status.platforms.google) platformLabels.push('Google Ads');
+
+  return (
+    <div className={`rounded-md border p-3 ${styles}`}>
+      <div className="flex items-start gap-2">
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${status.status === 'collecting' ? 'animate-spin' : ''}`} />
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">
+              {status.status === 'ready'
+                ? 'Portal gotowy'
+                : status.status === 'collecting'
+                  ? 'Przygotowywanie portalu...'
+                  : status.status === 'failed'
+                    ? 'Błąd inicjalizacji danych'
+                    : 'Dane jeszcze nie zebrane'}
+            </p>
+            {(status.status === 'failed' || status.status === 'not_started') && (
+              <button
+                onClick={onRetry}
+                disabled={retriggering}
+                className="inline-flex items-center gap-1 text-xs font-medium underline disabled:opacity-50"
+              >
+                {retriggering ? <RefreshCw className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Zbierz dane
+              </button>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs opacity-90">{status.message}</p>
+
+          {platformLabels.length > 0 && (
+            <div className="mt-2 space-y-1 text-xs">
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {status.platforms.meta && (
+                  <span>Meta – bieżący miesiąc: {status.currentMonth.meta ? '✅' : '⏳'}</span>
+                )}
+                {status.platforms.google && (
+                  <span>Google – bieżący miesiąc: {status.currentMonth.google ? '✅' : '⏳'}</span>
+                )}
+              </div>
+              <div className="opacity-80">
+                Dane historyczne: {status.historical.monthlySummaries} mies. / {status.historical.weeklySummaries} tyg.
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

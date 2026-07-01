@@ -354,6 +354,15 @@ export async function fetchFreshCurrentMonthData(client: any) {
       return fallback;
     };
 
+    // Resolve the reservation value once (parser → daily_kpi fallback). For Meta,
+    // "wartość konwersji" == reservation value ("Zakupy w witrynie"), so the
+    // value cards must mirror it — otherwise the card shows 0 zł while ROAS
+    // (computed from reservation_value) is non-zero.
+    const resolvedReservationValue = pickBest(
+      metaConversionMetrics.reservation_value,
+      realConversionMetrics.reservation_value
+    );
+
     const conversionMetrics = {
       click_to_call: pickBest(metaConversionMetrics.click_to_call, realConversionMetrics.click_to_call),
       email_contacts: pickBest(metaConversionMetrics.email_contacts, realConversionMetrics.email_contacts),
@@ -361,9 +370,9 @@ export async function fetchFreshCurrentMonthData(client: any) {
       booking_step_2: pickBest(metaConversionMetrics.booking_step_2, realConversionMetrics.booking_step_2),
       booking_step_3: pickBest(metaConversionMetrics.booking_step_3, realConversionMetrics.booking_step_3),
       reservations: pickBest(metaConversionMetrics.reservations, realConversionMetrics.reservations, metaTotalConversions),
-      reservation_value: pickBest(metaConversionMetrics.reservation_value, realConversionMetrics.reservation_value),
-      conversion_value: metaConversionMetrics.conversion_value || 0,
-      total_conversion_value: metaConversionMetrics.total_conversion_value || 0,
+      reservation_value: resolvedReservationValue,
+      conversion_value: pickBest(metaConversionMetrics.conversion_value, resolvedReservationValue),
+      total_conversion_value: pickBest(metaConversionMetrics.total_conversion_value, resolvedReservationValue),
       roas: 0,
       cost_per_reservation: 0
     };

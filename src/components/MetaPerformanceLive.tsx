@@ -134,14 +134,6 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         setDataSource(dataSource);
         setCacheAge(cacheAge);
         
-        // Try to fetch ONLY real daily data
-        fetchDailyDataPoints().then((hasRealData) => {
-          if (!hasRealData) {
-            console.log('ℹ️ No real daily data available from global cache - showing empty chart');
-            // Old setBars removed
-          }
-        });
-        
         setLoading(false);
         return;
       }
@@ -158,14 +150,6 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
         setLastUpdated(lastUpdated);
         setDataSource(dataSource);
         setCacheAge(cacheAge);
-        
-        // Try to fetch ONLY real daily data
-        fetchDailyDataPoints().then((hasRealData) => {
-          if (!hasRealData) {
-            console.log('ℹ️ No real daily data available from global request - showing empty chart');
-            // Old setBars removed
-          }
-        });
         
         setLoading(false);
         return;
@@ -354,7 +338,7 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
     try {
       const now = new Date();
       const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const previousMonthStr = previousMonth.toISOString().split('T')[0];
+      const previousMonthStr = previousMonth.toISOString().split('T')[0]!;
       
       console.log('📊 Fetching previous month data for comparison:', previousMonthStr);
       

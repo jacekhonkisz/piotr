@@ -31,6 +31,23 @@ interface CacheEntry {
   size: number; // Track memory usage
 }
 
+interface LongLivedTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+interface TokenInfo {
+  app_id: string;
+  type: string;
+  application: string;
+  data_access_expires_at: number;
+  expires_at: number;
+  is_valid: boolean;
+  scopes: string[];
+  user_id: string;
+}
+
 /**
  * Memory-Managed Cache with automatic cleanup and size limits
  */
@@ -389,26 +406,45 @@ export class MetaAPIServiceOptimized {
   /**
    * Get token info for debugging
    */
-  async getTokenInfo(): Promise<any> {
-    const cacheKey = this.getCacheKey('me', 'token_info');
-    
+  async getTokenInfo(): Promise<{
+    success: boolean;
+    info?: TokenInfo;
+    error?: string;
+    expiresAt?: Date | null;
+    isLongLived: boolean;
+  }> {
+    const cacheKey = this.getCacheKey('debug_token', 'token_info');
+
     const cached = this.getCachedResponse(cacheKey);
     if (cached) {
       return cached;
     }
 
     try {
-      const url = `${this.baseUrl}/me?fields=id,name&access_token=${this.accessToken}`;
-      const response = await this.makeRequest(url);
-      
-      if (response.error) {
-        return { error: response.error.message };
+      const response = await fetch(
+        `${this.baseUrl}/debug_token?input_token=${this.accessToken}&access_token=${this.accessToken}`
+      );
+      const data = await response.json();
+
+      if (data.error) {
+        return { success: false, error: data.error.message, isLongLived: false };
       }
-      
-      this.setCachedResponse(cacheKey, response);
-      return response;
+
+      const tokenInfo: TokenInfo = data.data;
+
+      // expires_at === 0 means the token never expires (long-lived / system user)
+      const isLongLived = tokenInfo.expires_at === 0;
+      const expiresAt = isLongLived ? null : new Date(tokenInfo.expires_at * 1000);
+
+      const result = { success: true, info: tokenInfo, expiresAt, isLongLived };
+      this.setCachedResponse(cacheKey, result);
+      return result;
     } catch (error) {
-      return { error: error instanceof Error ? error.message : 'Unknown error' };
+      return {
+        success: false,
+        error: `Token info error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isLongLived: false
+      };
     }
   }
 
@@ -576,6 +612,21 @@ export class MetaAPIServiceOptimized {
     
     logger.info('Meta API: Fetched account info');
     return response;
+  }
+
+  /**
+   * List ad accounts accessible by the current access token.
+   */
+  async getAdAccounts(): Promise<Array<{ id: string; account_id?: string; name?: string; account_status?: number; currency?: string }>> {
+    const url = `${this.baseUrl}/me/adaccounts?fields=id,account_id,name,account_status,currency&access_token=${this.accessToken}`;
+    const response = await this.makeRequest(url);
+
+    if (response.error) {
+      logger.error('Meta API: Ad accounts fetch failed:', response.error);
+      return [];
+    }
+
+    return response.data || [];
   }
 
   /**
@@ -990,6 +1041,255 @@ export class MetaAPIServiceOptimized {
       
       this.setCachedResponse(cacheKey, result);
       return result;
+    }
+  }
+
+  /**
+   * Convert a short-lived token to a long-lived token.
+   * Requires META_APP_ID and META_APP_SECRET (server-side only).
+   */
+  async convertToLongLivedToken(): Promise<{ success: boolean; token?: string; error?: string }> {
+    try {
+      const appId = process.env.META_APP_ID;
+      const appSecret = process.env.META_APP_SECRET;
+
+      if (!appId || !appSecret) {
+        return {
+          success: false,
+          error: 'Meta App ID and App Secret are required for token conversion. Please check your environment variables.'
+        };
+      }
+
+      const response = await fetch(
+        `${this.baseUrl}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${this.accessToken}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: `Token conversion failed: ${errorData.error?.message || 'Unknown error'}`
+        };
+      }
+
+      const data: LongLivedTokenResponse = await response.json();
+
+      if (!data.access_token) {
+        return { success: false, error: 'No access token received from Meta API' };
+      }
+
+      return { success: true, token: data.access_token };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Token conversion error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Validate the token, verify required ad permissions, and convert short-lived
+   * tokens to long-lived ones when possible.
+   */
+  async validateAndConvertToken(): Promise<{
+    valid: boolean;
+    error?: string;
+    permissions?: string[];
+    convertedToken?: string;
+    isLongLived?: boolean;
+    expiresAt?: Date | null | undefined;
+    tokenInfo?: TokenInfo;
+  }> {
+    try {
+      const tokenInfoResult = await this.getTokenInfo();
+
+      if (!tokenInfoResult.success) {
+        return {
+          valid: false,
+          error: tokenInfoResult.error || 'Failed to get token information',
+          isLongLived: false
+        };
+      }
+
+      const { info: tokenInfo, expiresAt, isLongLived } = tokenInfoResult;
+
+      if (!tokenInfo?.is_valid) {
+        return { valid: false, error: 'Token is invalid or has been revoked', isLongLived: false };
+      }
+
+      const requiredScopes = ['ads_read', 'ads_management'];
+      const hasRequiredScopes = requiredScopes.every(scope => tokenInfo.scopes?.includes(scope));
+
+      if (!hasRequiredScopes) {
+        return {
+          valid: false,
+          error: `Token missing required permissions. Need: ${requiredScopes.join(', ')}. Found: ${tokenInfo.scopes?.join(', ') || 'none'}`,
+          isLongLived,
+          expiresAt: expiresAt || null,
+          tokenInfo
+        };
+      }
+
+      // Verify the token can actually read ad accounts
+      try {
+        const adAccountsResponse = await fetch(
+          `${this.baseUrl}/me/adaccounts?fields=id,name,account_id&access_token=${this.accessToken}`
+        );
+
+        if (adAccountsResponse.status === 403) {
+          return {
+            valid: false,
+            error: 'Access token does not have required permissions. Need: ads_read, ads_management',
+            isLongLived,
+            expiresAt,
+            tokenInfo
+          };
+        }
+
+        const adAccountsData = await adAccountsResponse.json();
+
+        if (adAccountsData.error) {
+          return {
+            valid: false,
+            error: `Ad accounts access error: ${adAccountsData.error.message}`,
+            isLongLived,
+            expiresAt,
+            tokenInfo
+          };
+        }
+
+        if (isLongLived) {
+          return {
+            valid: true,
+            permissions: tokenInfo.scopes,
+            isLongLived: true,
+            expiresAt: expiresAt || null,
+            tokenInfo
+          };
+        }
+
+        // Short-lived token: attempt conversion (server-side only)
+        const conversionResult = await this.convertToLongLivedToken();
+
+        if (conversionResult.success && conversionResult.token) {
+          return {
+            valid: true,
+            permissions: tokenInfo.scopes,
+            convertedToken: conversionResult.token,
+            isLongLived: true,
+            expiresAt: null,
+            tokenInfo
+          };
+        }
+
+        // Conversion not possible (e.g. missing app secret) but token is still valid
+        return {
+          valid: true,
+          permissions: tokenInfo.scopes,
+          isLongLived: false,
+          expiresAt,
+          tokenInfo
+        };
+      } catch (adAccountsError) {
+        return {
+          valid: false,
+          error: 'Cannot access ad accounts. Token may lack required permissions.',
+          isLongLived,
+          expiresAt,
+          tokenInfo
+        };
+      }
+    } catch (error) {
+      return {
+        valid: false,
+        error: `Network error or invalid token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        isLongLived: false
+      };
+    }
+  }
+
+  /**
+   * Validate a specific ad account ID with the current token
+   */
+  async validateAdAccount(adAccountId: string): Promise<{ valid: boolean; error?: string; account?: any }> {
+    try {
+      const cleanAccountId = adAccountId.replace('act_', '');
+
+      const response = await fetch(
+        `${this.baseUrl}/act_${cleanAccountId}?fields=id,name,account_id,account_status,currency,timezone_name&access_token=${this.accessToken}`
+      );
+
+      if (response.status === 403) {
+        return { valid: false, error: 'Access denied to this ad account. Check permissions or account ID.' };
+      }
+
+      if (response.status === 404) {
+        return { valid: false, error: 'Ad account not found. Please check the account ID.' };
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        return { valid: false, error: `Ad account error: ${data.error.message}` };
+      }
+
+      return {
+        valid: true,
+        account: {
+          id: data.id,
+          name: data.name,
+          account_id: data.account_id,
+          account_status: data.account_status,
+          currency: data.currency,
+          timezone_name: data.timezone_name
+        }
+      };
+    } catch (error) {
+      return { valid: false, error: 'Network error or invalid ad account ID' };
+    }
+  }
+
+  /**
+   * Generate a summary report (account totals + campaigns) for a date range.
+   */
+  async generateClientReport(adAccountId: string, dateStart: string, dateEnd: string): Promise<any> {
+    try {
+      // Fetched for side-effect/cache warming; not currently merged into the summary.
+      await this.getAccountInsights(adAccountId, dateStart, dateEnd);
+
+      const campaigns = await this.getCampaignInsights(adAccountId, dateStart, dateEnd);
+      const allCampaigns = await this.getCampaigns(adAccountId);
+
+      const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+      const totalImpressions = campaigns.reduce((sum, c) => sum + (c.impressions || 0), 0);
+      const totalClicks = campaigns.reduce((sum, c) => sum + (c.clicks || 0), 0);
+      const totalConversions = campaigns.reduce((sum, c) => sum + (c.conversions || 0), 0);
+
+      const averageCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+      const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
+      const averageCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
+
+      const activeCampaigns = allCampaigns.filter((c) => c.status === 'ACTIVE').length;
+
+      return {
+        account_summary: {
+          total_spend: totalSpend,
+          total_impressions: totalImpressions,
+          total_clicks: totalClicks,
+          total_conversions: totalConversions,
+          average_ctr: averageCtr,
+          average_cpc: averageCpc,
+          average_cpa: averageCpa,
+          active_campaigns: activeCampaigns,
+          total_campaigns: allCampaigns.length,
+        },
+        campaigns,
+        date_range: { start: dateStart, end: dateEnd },
+        generated_at: new Date().toISOString(),
+      };
+    } catch (error) {
+      logger.error('Error generating client report:', error);
+      throw error;
     }
   }
 }

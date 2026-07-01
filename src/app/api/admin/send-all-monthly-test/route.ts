@@ -161,6 +161,8 @@ export async function POST(request: NextRequest) {
           const mPhoneClicks = Number(metaSummary.click_to_call || 0);
           const mReservations = Number(metaSummary.reservations || 0);
           const mReservationValue = Number(metaSummary.reservation_value || 0);
+          const mCpc = mClicks > 0 ? mSpend / mClicks : 0;
+          const mCtr = mImpressions > 0 ? (mClicks / mImpressions) * 100 : 0;
           const mRoas = mSpend > 0 ? mReservationValue / mSpend : 0;
 
           if (mSpend > 0 || mImpressions > 0) {
@@ -168,6 +170,8 @@ export async function POST(request: NextRequest) {
               spend: mSpend,
               impressions: mImpressions,
               linkClicks: mClicks,
+              cpc: mCpc,
+              ctr: mCtr,
               emailClicks: mEmailClicks,
               phoneClicks: mPhoneClicks,
               reservations: mReservations,

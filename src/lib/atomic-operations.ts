@@ -51,6 +51,7 @@ export async function atomicUpsert<T>(
     
     for (let i = 0; i < operations.length; i++) {
       const op = operations[i];
+      if (!op) continue;
       
       if (op.validate !== false && op.table === 'daily_kpi_data') {
         // Validate using Step 1 validator

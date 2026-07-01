@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
           const diff = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
           weekDate.setDate(weekDate.getDate() + diff);
           
-          const weekStart = weekDate.toISOString().split('T')[0];
+          const weekStart = weekDate.toISOString().split('T')[0]!;
           weeksToCollect.push({
             offset: i,
             startDate: weekStart
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
             // But we need to trigger it for a specific date
             const weekEndDate = new Date(week.startDate);
             weekEndDate.setDate(weekEndDate.getDate() + 6);
-            const weekEnd = weekEndDate.toISOString().split('T')[0];
+            const weekEnd = weekEndDate.toISOString().split('T')[0]!;
 
             console.log(`📊 Collecting week: ${week.startDate} to ${weekEnd}`);
 

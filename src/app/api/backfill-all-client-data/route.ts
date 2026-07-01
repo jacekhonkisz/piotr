@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { MetaAPIService } from '../../../lib/meta-api-optimized';
 import { ProductionDataManager } from '../../../lib/production-data-manager';
+import { authenticateRequest, requireAdmin } from '../../../lib/auth-middleware';
+import { verifyCronAuth } from '../../../lib/cron-auth';
 import logger from '../../../lib/logger';
 
 /**
@@ -44,7 +46,19 @@ interface BackfillResult {
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
-  
+
+  // 🔒 SECURITY: Admin session OR cron secret required (privileged mass operation)
+  const cronAuthorized = verifyCronAuth(request);
+  if (!cronAuthorized) {
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user || !requireAdmin(authResult.user)) {
+      return NextResponse.json(
+        { error: 'Admin access required' },
+        { status: authResult.statusCode || 403 }
+      );
+    }
+  }
+
   try {
     logger.info('🔄 Starting comprehensive data backfill...');
     
@@ -123,7 +137,7 @@ export async function POST(request: NextRequest) {
       for (const monthData of monthsToProcess) {
         const { year, month, monthStr } = monthData;
         const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0]!;
 
         logger.info(`\n📅 Processing ${monthStr} for ${client.name}...`);
 
@@ -139,19 +153,19 @@ export async function POST(request: NextRequest) {
 
           if (existingData && existingData.length > 0) {
             // Check if data is RICH (has campaigns), not just aggregated totals
-            const hasRichData = existingData[0].campaign_data && 
-                                Array.isArray(existingData[0].campaign_data) &&
-                                existingData[0].campaign_data.length > 0;
+            const existingCampaignData = existingData[0]?.campaign_data;
+            const existingCampaigns = Array.isArray(existingCampaignData) ? existingCampaignData : [];
+            const hasRichData = existingCampaigns.length > 0;
             
             if (hasRichData) {
-              logger.info(`⏭️  Rich data already exists for ${monthStr} (${existingData[0].campaign_data.length} campaigns), skipping...`);
+              logger.info(`⏭️  Rich data already exists for ${monthStr} (${existingCampaigns.length} campaigns), skipping...`);
               results.push({
                 clientId: client.id,
                 clientName: client.name,
                 month: monthStr,
                 platform: 'meta',
                 status: 'skipped',
-                reason: `Rich data exists (${existingData[0].campaign_data.length} campaigns)`
+                reason: `Rich data exists (${existingCampaigns.length} campaigns)`
               });
               totalSkipped++;
               continue;
@@ -167,8 +181,7 @@ export async function POST(request: NextRequest) {
             logger.info(`🔵 Fetching Meta Ads data for ${monthStr}...`);
             
             const metaService = new MetaAPIService(
-              client.meta_access_token, 
-              client.system_user_token || undefined
+              client.system_user_token || client.meta_access_token
             );
 
             // Fetch campaign insights

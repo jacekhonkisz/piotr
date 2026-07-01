@@ -271,10 +271,10 @@ export default function GoogleAdsExpandableCampaignTable({
                             <Loader2 className="w-5 h-5 animate-spin text-purple-600 mr-2" />
                             <span className="text-sm text-slate-600">Ładowanie grup reklam...</span>
                           </div>
-                        ) : adGroups[campaign.campaignId] && adGroups[campaign.campaignId].length > 0 ? (
+                        ) : (adGroups[campaign.campaignId]?.length ?? 0) > 0 ? (
                           <table className="w-full">
                             <tbody>
-                              {adGroups[campaign.campaignId].map((adGroup) => (
+                              {adGroups[campaign.campaignId]!.map((adGroup) => (
                                 <React.Fragment key={adGroup.adGroupId}>
                                   {/* Ad Group Row */}
                                   <tr
@@ -315,10 +315,10 @@ export default function GoogleAdsExpandableCampaignTable({
                                               <Loader2 className="w-5 h-5 animate-spin text-green-600 mr-2" />
                                               <span className="text-sm text-slate-600">Ładowanie reklam...</span>
                                             </div>
-                                          ) : ads[adGroup.adGroupId] && ads[adGroup.adGroupId].length > 0 ? (
+                                          ) : (ads[adGroup.adGroupId]?.length ?? 0) > 0 ? (
                                             <table className="w-full">
                                               <tbody>
-                                                {ads[adGroup.adGroupId].map((ad) => (
+                                                {ads[adGroup.adGroupId]!.map((ad) => (
                                                   <tr key={ad.adId} className="hover:bg-green-100">
                                                     <td className="px-6 py-3 pl-20"></td>
                                                     <td className="px-6 py-3">

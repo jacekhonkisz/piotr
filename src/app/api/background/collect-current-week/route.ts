@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     console.log(`📅 Starting manual current week data collection by admin ${jwtUser.email}`);
 
     // Trigger the same logic as GET endpoint
-    return await GET();
+    return await GET(request);
 
   } catch (error) {
     console.error('❌ Error in manual current week collection:', error);

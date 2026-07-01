@@ -551,7 +551,7 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
       'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
       'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
     ];
-    const monthName = monthNames[startDate.getMonth()];
+    const monthName = monthNames[startDate.getMonth()]!;
     const year = startDate.getFullYear();
 
     // campaignsData now contains summary records (already separated by platform)

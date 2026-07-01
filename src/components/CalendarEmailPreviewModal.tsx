@@ -283,10 +283,10 @@ const CalendarEmailPreviewModal = React.memo(function CalendarEmailPreviewModal(
 
       const campaignsData = [metaCampaignData, googleCampaignData].filter(Boolean);
       const totals = {
-        spend: campaignsData.reduce((sum, c) => sum + (c.spend || 0), 0),
-        impressions: campaignsData.reduce((sum, c) => sum + (c.impressions || 0), 0),
-        clicks: campaignsData.reduce((sum, c) => sum + (c.clicks || 0), 0),
-        conversions: campaignsData.reduce((sum, c) => sum + (c.conversions || 0), 0),
+        spend: campaignsData.reduce((sum, c) => sum + (c?.spend || 0), 0),
+        impressions: campaignsData.reduce((sum, c) => sum + (c?.impressions || 0), 0),
+        clicks: campaignsData.reduce((sum, c) => sum + (c?.clicks || 0), 0),
+        conversions: campaignsData.reduce((sum, c) => sum + (c?.conversions || 0), 0),
         ctr: 0,
         cpc: 0,
         cpm: 0

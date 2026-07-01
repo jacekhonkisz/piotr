@@ -126,7 +126,7 @@ export async function processPDFJob(job: PDFJob): Promise<void> {
  */
 async function fetchReportDataForPDF(clientId: string, dateRange: { start: string; end: string }): Promise<any> {
   // Import the existing fetch function
-  const { default: fetchReportData } = await import('@/app/api/generate-pdf/route');
+  const { default: fetchReportData } = await import('@/app/api/generate-pdf/route') as any;
   
   // Create a minimal request object
   const mockRequest = {

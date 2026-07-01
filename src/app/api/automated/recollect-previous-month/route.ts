@@ -224,6 +224,9 @@ async function recollectMeta(
     booking_step_3: Math.round(conv.booking_step_3 || 0),
     reservations: Math.round(conv.reservations || 0),
     reservation_value: Math.round((conv.reservation_value || 0) * 100) / 100,
+    // Meta: "wartość konwersji" == reservation value. Persist so the value card
+    // isn't 0 zł while ROAS (derived from reservation_value) is non-zero.
+    total_conversion_value: Math.round((conv.reservation_value || 0) * 100) / 100,
     roas: Math.round(roas * 100) / 100,
     cost_per_reservation: Math.round(costPerRes * 100) / 100,
     campaign_data: campaigns,
@@ -340,10 +343,10 @@ async function recollectGoogle(
     total_conversion_value: Math.round(totals.total_conversion_value * 100) / 100,
     roas: Math.round(roas * 100) / 100,
     cost_per_reservation: Math.round(costPerRes * 100) / 100,
-    campaign_data: campaigns,
-    google_ads_tables: googleAdsTables,
-    google_dynamic_metric_values: dynamicMetricValues,
-    google_dynamic_metric_rows: dynamicMetricRows,
+    campaign_data: campaigns as any,
+    google_ads_tables: googleAdsTables as any,
+    google_dynamic_metric_values: dynamicMetricValues as any,
+    google_dynamic_metric_rows: dynamicMetricRows as any,
     data_source: 'attribution_recollection',
     last_updated: new Date().toISOString(),
   }, { onConflict: 'client_id,summary_type,summary_date,platform' });

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     // 🔒 SECURITY: Admin authentication required
     const authResult = await authenticateRequest(request);
-    if (!authResult.authenticated || authResult.user?.role !== 'admin') {
+    if (!authResult.success || authResult.user?.role !== 'admin') {
       return createErrorResponse('Admin access required', 403);
     }
     
@@ -86,12 +86,12 @@ export async function POST(request: NextRequest) {
         const diff = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek; // Adjust to Monday
         weekDate.setDate(weekDate.getDate() + diff);
         
-        const weekStart = weekDate.toISOString().split('T')[0];
+        const weekStart = weekDate.toISOString().split('T')[0]!;
         
         // Calculate week end (Sunday)
         const weekEndDate = new Date(weekDate);
         weekEndDate.setDate(weekEndDate.getDate() + 6);
-        const weekEnd = weekEndDate.toISOString().split('T')[0];
+        const weekEnd = weekEndDate.toISOString().split('T')[0]!;
         
         logger.info(`📅 Collecting week ${weekStart} to ${weekEnd}`);
         

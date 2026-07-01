@@ -55,12 +55,13 @@ export async function POST(request: NextRequest) {
       clientId
     });
 
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? (process.env.NEXT_PUBLIC_APP_URL || '') 
+      : 'http://localhost:3000';
+
     // 1. Fetch data using YoY logic (previous year period)
     let yoyData = null;
     try {
-      const baseUrl = process.env.NODE_ENV === 'production' 
-        ? (process.env.NEXT_PUBLIC_APP_URL || '') 
-        : 'http://localhost:3000';
       const yoyResponse = await fetch(`${baseUrl}/api/fetch-live-data`, {
         method: 'POST',
         headers: {

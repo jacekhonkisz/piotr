@@ -186,8 +186,9 @@ export function formatPolishVoivodeshipName(row: {
   regionName?: string | null;
   cityName?: string | null;
 }): string {
-  if (row.regionCode && VOIVODESHIP_BY_CODE[row.regionCode]) {
-    return VOIVODESHIP_BY_CODE[row.regionCode].name;
+  const byCode = row.regionCode ? VOIVODESHIP_BY_CODE[row.regionCode] : undefined;
+  if (byCode) {
+    return byCode.name;
   }
 
   const byRegionName = REGION_NAME_PL[key(row.regionName)];

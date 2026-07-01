@@ -541,13 +541,14 @@ export class BackgroundDataCollector {
     // Process each week Monday
     for (let i = 0; i < allWeekMondays.length; i++) {
       const weekMonday = allWeekMondays[i];
+      if (!weekMonday) continue;
       const weekSunday = getSundayOfWeek(weekMonday);
       
       // ✅ VALIDATE: Ensure week starts on Monday
       try {
         validateIsMonday(weekMonday);
       } catch (error) {
-        logger.error(`❌ Week validation failed: ${error.message}`);
+        logger.error(`❌ Week validation failed: ${error instanceof Error ? error.message : String(error)}`);
         continue;
       }
       
@@ -602,6 +603,7 @@ export class BackgroundDataCollector {
 
     for (let weekIndex = 0; weekIndex < weeksToCollect.length; weekIndex++) {
       const weekData = weeksToCollect[weekIndex];
+      if (!weekData) continue;
       logger.info(`📅 Processing week ${weekIndex + 1}/${weeksToCollect.length}: ${weekData.startDate}`);
 
       try {
@@ -780,6 +782,7 @@ export class BackgroundDataCollector {
 
     for (let i = 0; i < allWeekMondays.length; i++) {
       const weekMonday = allWeekMondays[i];
+      if (!weekMonday) continue;
       const weekSunday = getSundayOfWeek(weekMonday);
 
       try {
@@ -1168,6 +1171,9 @@ export class BackgroundDataCollector {
       booking_step_1: Math.round(enhancedConversionMetrics.booking_step_1 || 0), // Round to integer
       reservations: Math.round(enhancedConversionMetrics.reservations || 0), // Round to integer
       reservation_value: enhancedConversionMetrics.reservation_value, // Keep decimal for currency
+      // For Meta, "wartość konwersji" == reservation value. Persist it so raw
+      // consumers (PDF/email/YoY) don't show 0 zł while ROAS is non-zero.
+      total_conversion_value: enhancedConversionMetrics.reservation_value,
       booking_step_2: Math.round(enhancedConversionMetrics.booking_step_2 || 0), // Round to integer
       booking_step_3: Math.round(enhancedConversionMetrics.booking_step_3 || 0), // Round to integer
       roas: roas,
@@ -1288,8 +1294,9 @@ export class BackgroundDataCollector {
       validateIsMonday(data.summary_date);
       logger.info(`✅ Validated: ${data.summary_date} is a Monday`);
     } catch (error) {
-      logger.error(`❌ VALIDATION FAILED: ${error.message}`);
-      throw new Error(`Cannot store weekly summary: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ VALIDATION FAILED: ${message}`);
+      throw new Error(`Cannot store weekly summary: ${message}`);
     }
 
     // ✅ CRITICAL FIX FOR GOOGLE ADS: Use data.totals if available (already aggregated from API)
@@ -1395,6 +1402,11 @@ export class BackgroundDataCollector {
       booking_step_1: Math.round(conversionTotals.booking_step_1 || 0), // Round to integer
       reservations: Math.round(conversionTotals.reservations || 0), // Round to integer
       reservation_value: conversionTotals.reservation_value, // Keep decimal for currency
+      // Meta: "wartość konwersji" == reservation value (avoid 0 zł vs non-zero ROAS).
+      // Google: keep all-conversions value when campaigns provide it.
+      total_conversion_value: platform === 'meta'
+        ? conversionTotals.reservation_value
+        : ((conversionTotals as any).total_conversion_value || 0),
       booking_step_2: Math.round(conversionTotals.booking_step_2 || 0), // Round to integer
       booking_step_3: Math.round(conversionTotals.booking_step_3 || 0), // Round to integer
       roas: roas,
@@ -1456,7 +1468,7 @@ export class BackgroundDataCollector {
       summary_date: data.summary_date,
       client_id: clientId,
       platform: platform,
-      upsert_returned_rows: upsertResult?.length || 0,
+      upsert_returned_rows: (upsertResult as any[] | null)?.length ?? 0,
       note: upsertResult ? 'Data returned from upsert' : 'No data returned (might be update, not insert)'
     });
 

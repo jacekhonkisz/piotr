@@ -48,67 +48,127 @@ export type Database = {
       }
       campaign_summaries: {
         Row: {
+          active_campaign_count: number | null
           active_campaigns: number
           average_cpa: number
           average_cpc: number
           average_ctr: number
+          booking_step_1: number | null
+          booking_step_2: number | null
+          booking_step_3: number | null
           campaign_data: Json | null
+          click_to_call: number | null
           client_id: string
+          conversion_value: number | null
+          cost_per_reservation: number | null
           created_at: string
           data_source: string | null
+          email_contacts: number | null
+          frequency: number | null
+          google_ads_tables: Json | null
           google_dynamic_metric_rows: Json
           google_dynamic_metric_values: Json
           id: string
+          inline_link_clicks: number | null
           last_updated: string | null
+          lead: number | null
           meta_tables: Json | null
+          platform: string | null
+          purchase: number | null
+          purchase_value: number | null
+          reach: number | null
+          reservation_value: number | null
+          reservations: number | null
+          roas: number | null
           summary_date: string
           summary_type: string
           total_campaigns: number
           total_clicks: number
+          total_conversion_value: number | null
           total_conversions: number
           total_impressions: number
           total_spend: number
         }
         Insert: {
+          active_campaign_count?: number | null
           active_campaigns?: number
           average_cpa?: number
           average_cpc?: number
           average_ctr?: number
+          booking_step_1?: number | null
+          booking_step_2?: number | null
+          booking_step_3?: number | null
           campaign_data?: Json | null
+          click_to_call?: number | null
           client_id: string
+          conversion_value?: number | null
+          cost_per_reservation?: number | null
           created_at?: string
           data_source?: string | null
+          email_contacts?: number | null
+          frequency?: number | null
+          google_ads_tables?: Json | null
           google_dynamic_metric_rows?: Json
           google_dynamic_metric_values?: Json
           id?: string
+          inline_link_clicks?: number | null
           last_updated?: string | null
+          lead?: number | null
           meta_tables?: Json | null
+          platform?: string | null
+          purchase?: number | null
+          purchase_value?: number | null
+          reach?: number | null
+          reservation_value?: number | null
+          reservations?: number | null
+          roas?: number | null
           summary_date: string
           summary_type: string
           total_campaigns?: number
           total_clicks?: number
+          total_conversion_value?: number | null
           total_conversions?: number
           total_impressions?: number
           total_spend?: number
         }
         Update: {
+          active_campaign_count?: number | null
           active_campaigns?: number
           average_cpa?: number
           average_cpc?: number
           average_ctr?: number
+          booking_step_1?: number | null
+          booking_step_2?: number | null
+          booking_step_3?: number | null
           campaign_data?: Json | null
+          click_to_call?: number | null
           client_id?: string
+          conversion_value?: number | null
+          cost_per_reservation?: number | null
           created_at?: string
           data_source?: string | null
+          email_contacts?: number | null
+          frequency?: number | null
+          google_ads_tables?: Json | null
           google_dynamic_metric_rows?: Json
           google_dynamic_metric_values?: Json
           id?: string
+          inline_link_clicks?: number | null
           last_updated?: string | null
+          lead?: number | null
           meta_tables?: Json | null
+          platform?: string | null
+          purchase?: number | null
+          purchase_value?: number | null
+          reach?: number | null
+          reservation_value?: number | null
+          reservations?: number | null
+          roas?: number | null
           summary_date?: string
           summary_type?: string
           total_campaigns?: number
           total_clicks?: number
+          total_conversion_value?: number | null
           total_conversions?: number
           total_impressions?: number
           total_spend?: number

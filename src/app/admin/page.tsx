@@ -883,7 +883,7 @@ export default function AdminPage() {
       if (result.credentials) {
         setCredentialsModal({
           isOpen: true,
-          clientId: result.id || '',
+          clientId: result.client?.id || result.id || '',
           clientName: clientData.name || '',
           clientEmail: clientData.email || ''
         });

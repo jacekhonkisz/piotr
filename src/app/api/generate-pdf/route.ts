@@ -3741,14 +3741,14 @@ function hotelReportPage(
   subtitle: string,
   body: string,
   sectionLabel = '',
+  pageClass = '',
 ): string {
   const clientName = escapeHtml(reportData.clientName || '');
   const period = escapeHtml(formatDateRangeShort(reportData.dateRange));
   const brandLogo = getPdfBrandLogoDataUrl();
   return `
-    <section class="hotel-page" data-page-title="${escapeHtml(title)}">
-      <div class="page-border-outer"></div>
-      <div class="page-border-inner"></div>
+    <section class="hotel-page${pageClass ? ` ${pageClass}` : ''}" data-page-title="${escapeHtml(title)}">
+      <div class="page-border"></div>
       <header class="running-header">
         <div class="running-header-center">${hotelWordmark(reportData)}</div>
       </header>
@@ -4124,18 +4124,20 @@ function comparisonBarRows(entries: Array<{ label: string; google: number; meta:
         <span><i class="legend-dot copper"></i>Meta Ads</span>
       </div>
       ${entries.map((entry) => {
-        const max = Math.max(entry.google, entry.meta, 1);
+        const total = entry.google + entry.meta;
+        const googlePct = total > 0 ? (entry.google / total) * 100 : 0;
+        const metaPct = total > 0 ? (entry.meta / total) * 100 : 0;
         return `
           <div class="comparison-row">
             <div class="comparison-label">${escapeHtml(entry.label)}</div>
             <div class="comparison-line">
               <span class="comparison-platform">Google Ads</span>
-              <div class="comparison-track navy"><span style="width:${((entry.google / max) * 100).toFixed(1)}%"></span></div>
+              <div class="comparison-track navy"><span style="width:${googlePct.toFixed(1)}%"></span></div>
               <strong>${entry.formatter(entry.google)}</strong>
             </div>
             <div class="comparison-line">
               <span class="comparison-platform">Meta Ads</span>
-              <div class="comparison-track copper"><span style="width:${((entry.meta / max) * 100).toFixed(1)}%"></span></div>
+              <div class="comparison-track copper"><span style="width:${metaPct.toFixed(1)}%"></span></div>
               <strong>${entry.formatter(entry.meta)}</strong>
             </div>
           </div>
@@ -4145,19 +4147,18 @@ function comparisonBarRows(entries: Array<{ label: string; google: number; meta:
   `;
 }
 
-function barPanel(title: string, entries: Array<[string, number]>, formatter: (v: number) => string = formatNumber, options?: { maxRows?: number; showShare?: boolean }): string {
+function barPanel(title: string, entries: Array<[string, number]>, formatter: (v: number) => string = formatNumber, options?: { maxRows?: number }): string {
   const visible = entries.slice(0, options?.maxRows || 6);
   const total = visible.reduce((s, [, v]) => s + v, 0);
-  const max = Math.max(...visible.map(([, v]) => v), 0);
   return `
     <div class="bar-panel">
       <h3>${escapeHtml(title)}</h3>
       ${visible.length > 0 ? visible.map(([label, value]) => {
         const pct = safeDivide(value, total);
-        const width = max > 0 ? (value / max) * 100 : 0;
+        const width = pct !== null ? pct * 100 : 0;
         return `
           <div class="bar-row">
-            <div class="bar-row-head"><span>${escapeHtml(label)}</span><strong>${formatter(value)}</strong>${options?.showShare !== false && pct !== null ? `<em>${formatPercentValue(pct)}</em>` : ''}</div>
+            <div class="bar-row-head"><span>${escapeHtml(label)}</span><strong>${formatter(value)}</strong></div>
             <div class="bar-track"><div style="width:${width.toFixed(1)}%"></div></div>
           </div>
         `;
@@ -4654,18 +4655,24 @@ function yoyBlock(reportData: ReportData, platform: ReportPlatform, data: any | 
 
 function generateHotelSummaryPages(reportData: ReportData, startPageNumber: number): string[] {
   const blocks = summaryTextBlocks(reportData);
-  const chunks = chunkSummaryBlocks(blocks, 1100);
   const pages: string[] = [];
-  chunks.forEach((chunk, idx) => {
+  let remaining = blocks;
+  while (remaining.length > 0) {
+    const isFirst = pages.length === 0;
+    const maxChars = isFirst ? 620 : 950;
+    const chunks = chunkSummaryBlocks(remaining, maxChars);
+    const chunk = chunks[0] || remaining;
     pages.push(hotelReportPage(
       reportData,
       startPageNumber + pages.length,
-      idx === 0 ? 'Raport kampanii reklamowej' : 'Podsumowanie kampanii',
-      idx === 0 ? 'Podsumowanie wyników' : 'Ciąg dalszy podsumowania',
+      isFirst ? 'Raport kampanii reklamowej' : 'Podsumowanie kampanii',
+      isFirst ? 'Podsumowanie wyników' : 'Ciąg dalszy podsumowania',
       `<div class="summary-text-only">${renderSummaryTextBlocks(chunk)}</div>`,
       'PODSUMOWANIE',
+      'summary-page',
     ));
-  });
+    remaining = remaining.slice(chunk.length);
+  }
   return pages;
 }
 
@@ -5288,11 +5295,11 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
         <style>
           @page { size: ${REPORT_LAYOUT.PAGE_WIDTH_MM}mm ${REPORT_LAYOUT.PAGE_HEIGHT_MM}mm; margin: 0; }
           :root {
-            --ivory: #FAF7F0;
-            --paper: #FFFDF8;
-            --paper-soft: #FBF6EF;
+            --ivory: #FFFFFF;
+            --paper: #FFFFFF;
+            --paper-soft: #FFFFFF;
             --navy: #0E2742;
-            --footer-navy: #082744;
+            --footer-navy: #225497;
             --muted: #65707A;
             --terracotta: #D85F36;
             --terracotta-muted: #C96545;
@@ -5308,7 +5315,7 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
             --page-h: 192mm;
             --pad-x: 7mm;
             --content-y: 24mm;
-            --content-h: 149mm;
+            --content-h: calc(var(--page-h) - var(--content-y) - var(--footer-h) - 3mm);
             --footer-h: 13mm;
           }
           * { box-sizing: border-box; }
@@ -5321,14 +5328,10 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
             break-after: page;
             page-break-after: always;
             overflow: hidden;
-            background:
-              radial-gradient(circle at 50% 7%, rgba(216,95,54,0.055), transparent 34%),
-              linear-gradient(180deg, #FCF8F1 0%, var(--ivory) 100%);
+            background: #FFFFFF;
           }
           .hotel-page:last-of-type { break-after: auto; page-break-after: auto; }
-          .page-border-outer, .page-border-inner { position: absolute; pointer-events: none; z-index: 0; }
-          .page-border-outer { top: 2.2mm; left: 2.2mm; right: 2.2mm; bottom: 2.2mm; border: 0.28mm solid var(--line); }
-          .page-border-inner { top: 3.3mm; left: 3.3mm; right: 3.3mm; bottom: 3.3mm; border: 0.12mm solid rgba(201,101,69,0.22); }
+          .page-border { position: absolute; pointer-events: none; z-index: 1; top: 2.2mm; left: 2.2mm; right: 2.2mm; bottom: var(--footer-h); border: 0.28mm solid var(--line); }
           .running-header { position: absolute; top: 6mm; left: var(--pad-x); right: var(--pad-x); height: 17mm; display: flex; align-items: center; justify-content: center; z-index: 2; }
           .hotel-logo { max-height: 13mm; max-width: 54mm; object-fit: contain; }
           .hotel-wordmark { text-align: center; }
@@ -5336,9 +5339,14 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .hotel-wordmark-rule { display: flex; align-items: center; justify-content: center; gap: 4mm; margin-top: 1.7mm; color: var(--navy); }
           .hotel-wordmark-rule span { width: 18mm; height: 0.15mm; background: var(--line); }
           .hotel-wordmark-rule small { font-size: 5.8pt; letter-spacing: 0.35em; }
-          .page-main { position: absolute; left: var(--pad-x); right: var(--pad-x); top: var(--content-y); height: var(--content-h); overflow: visible; z-index: 1; max-width: calc(var(--page-w) - (2 * var(--pad-x))); box-sizing: border-box; }
+          .page-main { position: absolute; left: var(--pad-x); right: var(--pad-x); top: var(--content-y); height: var(--content-h); overflow: hidden; z-index: 2; max-width: calc(var(--page-w) - (2 * var(--pad-x))); box-sizing: border-box; }
           .page-main > *, .flow-block, .framed-section, .two-stack, .metric-strip, .channel-grid, .yoy-grid, .highlight-grid, .row-card-grid, .regions-card, .regions-layout { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
-          .page-title-block { text-align: center; margin: 0 0 5mm; }
+          .page-title-block { text-align: center; margin: 0 0 3mm; }
+          .hotel-page.summary-page .page-title-block { margin: 0 0 2mm; }
+          .hotel-page.summary-page .page-title-block h1 { font-size: 26pt; line-height: 1.05; }
+          .hotel-page.summary-page .page-subtitle { font-size: 12pt; margin-top: 1mm; }
+          .hotel-page.summary-page .period-pill { margin-top: 2mm; }
+          .hotel-page.summary-page .section-kicker { margin-top: 2mm; }
           .page-title-block h1 { font-family: var(--serif); font-weight: 400; font-size: 32pt; line-height: 0.96; margin: 0; letter-spacing: -0.025em; color: var(--navy); }
           .page-subtitle { font-family: var(--serif); color: var(--terracotta-muted); font-size: 14pt; line-height: 1.12; margin-top: 1.6mm; }
           .period-pill { display: inline-flex; align-items: center; justify-content: center; margin-top: 3mm; padding: 1.1mm 4mm; border: 0.16mm solid var(--line-soft); border-radius: 999px; background: rgba(255,255,255,0.42); font-size: 6.2pt; font-weight: 700; letter-spacing: 0.11em; }
@@ -5346,13 +5354,13 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .section-kicker span, .framed-title span { height: 0.16mm; background: var(--line); flex: 1; max-width: 25mm; }
           .flow-block + .flow-block { margin-top: 5mm; }
           .summary-text-only { max-width: 84mm; margin: 0 auto; }
-          .summary-copy { font-size: 9pt; line-height: 1.62; color: var(--navy); }
-          .summary-copy p { margin: 0 0 4mm; }
-          .summary-block { border-top: 0.14mm solid var(--line-soft); padding-top: 3mm; margin-top: 3mm; }
+          .summary-copy { font-size: 9pt; line-height: 1.55; color: var(--navy); }
+          .summary-copy p { margin: 0 0 3mm; }
+          .summary-block { border-top: 0.14mm solid var(--line-soft); padding-top: 2.5mm; margin-top: 2.5mm; }
           .summary-block:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
-          .summary-block h3 { font-family: var(--serif); font-size: 13pt; font-weight: 400; margin: 0 0 1.6mm; color: var(--navy); }
+          .summary-block h3 { font-family: var(--serif); font-size: 11.5pt; font-weight: 400; margin: 0 0 1.2mm; color: var(--navy); }
           .summary-block p { margin: 0; }
-          .hotel-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--footer-h); z-index: 4; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0 7mm; background: var(--footer-navy); color: #fffdf8; }
+          .hotel-footer { position: absolute; left: 0; right: 0; bottom: 0; height: var(--footer-h); z-index: 3; display: grid; grid-template-columns: 1fr auto; align-items: center; padding: 0 7mm; background: var(--footer-navy); color: #fffdf8; }
           .agency-mark { display: flex; align-items: center; gap: 2.2mm; font-size: 5.8pt; letter-spacing: 0.12em; line-height: 1.05; }
           .agency-mark img { height: 8mm; width: auto; display: block; }
           .agency-fallback { font-weight: 800; font-size: 11pt; line-height: 0.72; }
@@ -5439,10 +5447,9 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .highlight-card { padding: 3mm; }
           .highlight-card h3 { min-height: auto; font-size: 8.5pt; line-height: 1.18; overflow-wrap: anywhere; }
           .bar-row { margin: 2.1mm 0; }
-          .bar-row-head { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 2mm; align-items: baseline; font-size: 7.2pt; line-height: 1.25; }
+          .bar-row-head { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 2mm; align-items: baseline; font-size: 7.2pt; line-height: 1.25; }
           .bar-row-head span { min-width: 0; overflow-wrap: anywhere; }
           .bar-row-head strong { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
-          .bar-row-head em { color: var(--muted); font-size: 6pt; font-style: normal; white-space: nowrap; overflow-wrap: normal; }
           .bar-track { height: 2.6mm; background: var(--soft); border-radius: 999px; overflow: hidden; margin-top: 1mm; }
           .bar-track div { height: 100%; background: linear-gradient(90deg, var(--terracotta), var(--pale-terracotta)); }
           .donut-wrap { display: flex; gap: 5mm; align-items: center; justify-content: center; min-height: 35mm; }
@@ -5575,6 +5582,49 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           // are captured by the route's page.on('console') handler.
           (function(){
             try {
+              function contentBottom(main) {
+                const mainRect = main.getBoundingClientRect();
+                let lastBottom = mainRect.top;
+                main.querySelectorAll(':scope > *').forEach((el) => {
+                  const r = el.getBoundingClientRect();
+                  if (r.bottom > lastBottom) lastBottom = r.bottom;
+                });
+                return lastBottom;
+              }
+
+              function fitsAboveFooter(main, footer, gapPx) {
+                return contentBottom(main) <= footer.getBoundingClientRect().top - gapPx;
+              }
+
+              // Shrink summary text on summary pages until it clears the footer.
+              document.querySelectorAll('.hotel-page.summary-page').forEach((page) => {
+                const main = page.querySelector('.page-main');
+                const footer = page.querySelector('.hotel-footer');
+                const copy = page.querySelector('.summary-copy');
+                if (!main || !footer || !copy) return;
+
+                let bodyPt = 9;
+                let headingPt = 11.5;
+                const minBodyPt = 6.5;
+                const minHeadingPt = 9;
+                const gapPx = 10;
+
+                copy.style.fontSize = bodyPt + 'pt';
+                page.querySelectorAll('.summary-block h3').forEach((h3) => {
+                  h3.style.fontSize = headingPt + 'pt';
+                });
+
+                while (!fitsAboveFooter(main, footer, gapPx) && bodyPt > minBodyPt) {
+                  bodyPt -= 0.25;
+                  headingPt = Math.max(minHeadingPt, headingPt - 0.2);
+                  copy.style.fontSize = bodyPt + 'pt';
+                  copy.style.lineHeight = bodyPt <= 7.5 ? '1.45' : '1.55';
+                  page.querySelectorAll('.summary-block h3').forEach((h3) => {
+                    h3.style.fontSize = headingPt + 'pt';
+                  });
+                }
+              });
+
               const pages = document.querySelectorAll('.hotel-page');
               const violations = [];
               pages.forEach((page, idx) => {

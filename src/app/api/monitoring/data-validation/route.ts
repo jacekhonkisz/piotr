@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import DataValidator, { ValidationResult as DataValidationReport } from '../../../../lib/data-validation';
+import DataValidator, { FullValidationReport as DataValidationReport } from '../../../../lib/data-validation';
 import { authenticateRequest, createErrorResponse } from '../../../../lib/auth-middleware';
 import logger from '../../../../lib/logger';
 

@@ -488,43 +488,38 @@ export class EmailScheduler {
       
       logger.info('✅ PDF ready for email attachment');
 
-      // Step 6: Send to all contact emails
+      // Step 6: Send ONE email to all contact emails.
+      // Primary contact = To, remaining contacts = CC ("DW"). The admin preview
+      // address (kontakt@piotrbajerlein.pl) is added to CC automatically by the
+      // email service so every report is copied to the admin for oversight.
       const contactEmails = client.contact_emails?.length ? client.contact_emails : [client.email];
-      logger.info(`5️⃣ Sending to ${contactEmails.length} email(s)...`);
-      const routedRecipients: string[] = [];
-      
-      for (const email of contactEmails) {
-        try {
-          logger.info(`📤 Sending to: ${email}`);
-          
-          const emailResult = await this.emailService.sendClientMonthlyReport(
-            email,
-            client.id,
-            client.name,
-            monthName,
-            year,
-            reportData,
-            pdfBuffer,
-            undefined,
-            options
-          );
+      const [primaryRecipient, ...ccRecipients] = contactEmails;
+      logger.info(`5️⃣ Sending to ${contactEmails.length} contact(s): To=${primaryRecipient}${ccRecipients.length ? `, DW=${ccRecipients.join(', ')}` : ''}`);
 
-          if (!emailResult.success) {
-            throw new Error(emailResult.error || 'Email sending failed');
-          }
+      const emailResult = await this.emailService.sendClientMonthlyReport(
+        primaryRecipient!,
+        client.id,
+        client.name,
+        monthName,
+        year,
+        reportData,
+        pdfBuffer,
+        undefined,
+        { ...options, cc: ccRecipients }
+      );
 
-          logger.info(`✅ Email sent successfully to ${email} - Message ID: ${emailResult.messageId}`);
-          routedRecipients.push(emailResult.redirectedTo || email);
-
-          // Log successful email
-          await this.logSchedulerSuccess(client, period);
-
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          logger.error(`❌ Failed to send email to ${email}:`, errorMsg);
-          throw error;
-        }
+      if (!emailResult.success) {
+        throw new Error(emailResult.error || 'Email sending failed');
       }
+
+      const routedRecipients = [
+        emailResult.redirectedTo || primaryRecipient!,
+        ...(emailResult.cc || [])
+      ];
+      logger.info(`✅ Email sent successfully - Message ID: ${emailResult.messageId} → ${routedRecipients.join(', ')}`);
+
+      // Log successful email
+      await this.logSchedulerSuccess(client, period);
 
       logger.info(`🎉 Professional report sent successfully to ${client.name}`);
       return {
