@@ -51,6 +51,11 @@ interface SystemSettings {
   email_retry_delay_minutes: number;
 }
 
+const parsedScheduledSendConcurrency = Number(process.env.EMAIL_SCHEDULER_CONCURRENCY || 3);
+const SCHEDULED_SEND_CONCURRENCY = Number.isFinite(parsedScheduledSendConcurrency)
+  ? Math.max(1, Math.min(parsedScheduledSendConcurrency, 5))
+  : 3;
+
 export class EmailScheduler {
   private supabase;
   private emailService: FlexibleEmailService;
@@ -61,6 +66,55 @@ export class EmailScheduler {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
     this.emailService = FlexibleEmailService.getInstance();
+  }
+
+  private getAppBaseUrl(): string {
+    const configuredUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+    const isLocalConfiguredUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredUrl);
+
+    if (configuredUrl && !isLocalConfiguredUrl) {
+      return configuredUrl;
+    }
+
+    if (process.env.VERCEL_URL) {
+      return `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`;
+    }
+
+    return configuredUrl || 'http://localhost:3000';
+  }
+
+  private async generatePdfBuffer(clientId: string, period: ReportPeriod): Promise<Buffer> {
+    const appBaseUrl = this.getAppBaseUrl();
+    const pdfUrl = `${appBaseUrl}/api/generate-pdf`;
+
+    logger.info(`📄 Generating scheduled PDF via ${pdfUrl}`);
+
+    const response = await fetch(pdfUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+      },
+      body: JSON.stringify({
+        clientId,
+        dateRange: {
+          start: period.start,
+          end: period.end
+        }
+      })
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      throw new Error(`PDF generation failed: HTTP ${response.status}${details ? ` - ${details.slice(0, 500)}` : ''}`);
+    }
+
+    const pdfBuffer = Buffer.from(await response.arrayBuffer());
+    if (pdfBuffer.length === 0) {
+      throw new Error('PDF generation failed: empty PDF response');
+    }
+
+    return pdfBuffer;
   }
 
   /**
@@ -97,29 +151,33 @@ export class EmailScheduler {
       const clients = await this.getActiveClients();
       logger.info(`📊 Found ${clients.length} active clients`);
 
-      // Process each client
-      for (const client of clients) {
-        try {
-          const clientResult = await this.processClient(client);
+      for (let i = 0; i < clients.length; i += SCHEDULED_SEND_CONCURRENCY) {
+        const batch = clients.slice(i, i + SCHEDULED_SEND_CONCURRENCY);
+        const batchResults = await Promise.all(batch.map(async (client) => {
+          try {
+            return await this.processClient(client);
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            return {
+              clientId: client.id,
+              clientName: client.name,
+              success: false,
+              error: errorMsg
+            };
+          }
+        }));
+
+        for (const clientResult of batchResults) {
           result.details.push(clientResult);
-          
+
           if (clientResult.success) {
             result.sent++;
           } else {
             result.skipped++;
             if (clientResult.error) {
-              result.errors.push(`${client.name}: ${clientResult.error}`);
+              result.errors.push(`${clientResult.clientName}: ${clientResult.error}`);
             }
           }
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          result.errors.push(`${client.name}: ${errorMsg}`);
-          result.details.push({
-            clientId: client.id,
-            clientName: client.name,
-            success: false,
-            error: errorMsg
-          });
         }
       }
 
@@ -436,57 +494,13 @@ export class EmailScheduler {
         finalCostPercentage: reportData.finalCostPercentage.toFixed(2) + '%'
       });
 
-      // Step 5: ENSURE PDF EXISTS (MANDATORY)
-      logger.info('4️⃣ Ensuring PDF is generated...');
-      let pdfBuffer: Buffer | undefined;
+      // Step 5: Generate PDF directly. Do not depend on generated_reports table;
+      // that table is optional/report-history storage, while email delivery only
+      // needs a valid PDF buffer attached to the message.
+      logger.info('4️⃣ Generating PDF attachment...');
+      const pdfBuffer = await this.generatePdfBuffer(client.id, period);
       
-      // First, try to get existing PDF
-      let generatedReport = await this.getGeneratedReport(client.id, period);
-      
-      if (!generatedReport || !generatedReport.pdf_url) {
-        logger.info('⚠️ PDF not found in storage, generating now...');
-        
-        // Generate the PDF using automated-report-generator
-        const { generateReportForPeriod } = await import('./automated-report-generator');
-        try {
-          const newReport = await generateReportForPeriod(
-            client.id,
-            'monthly',
-            period.start,
-            period.end
-          );
-          generatedReport = newReport;
-          logger.info('✅ PDF generated successfully');
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          logger.error('❌ PDF generation failed:', errorMsg);
-          throw new Error(`Cannot send email: PDF generation failed - ${errorMsg}`);
-        }
-      }
-      
-      // Fetch the PDF from storage
-      if (generatedReport?.pdf_url) {
-        try {
-          const pdfResponse = await fetch(generatedReport.pdf_url);
-          if (pdfResponse.ok) {
-            pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-            logger.info(`✅ PDF fetched from storage: ${pdfBuffer.length} bytes`);
-          } else {
-            throw new Error(`Failed to fetch PDF: ${pdfResponse.status}`);
-          }
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          logger.error('❌ Failed to fetch PDF from storage:', errorMsg);
-          throw new Error(`Cannot send email: PDF fetch failed - ${errorMsg}`);
-        }
-      }
-      
-      // MANDATORY VALIDATION: PDF must exist
-      if (!pdfBuffer) {
-        throw new Error('Cannot send email: PDF is mandatory but not available');
-      }
-      
-      logger.info('✅ PDF ready for email attachment');
+      logger.info(`✅ PDF ready for email attachment: ${pdfBuffer.length} bytes`);
 
       // Step 6: Send ONE email to all contact emails.
       // Primary contact = To, remaining contacts = CC ("DW"). The admin preview

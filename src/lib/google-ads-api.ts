@@ -5,6 +5,7 @@ import {
   isGoogleAdsEmailAddressClickConversion,
   isGoogleAdsPhoneOrCallConversion,
   isGoogleAdsFormConversion,
+  isGoogleAdsDedicatedReservationConversion,
   parseGoogleAdsConversions,
   sumGoogleConversionsExcludingForms,
 } from './google-ads-actions-parser';
@@ -673,12 +674,17 @@ export class GoogleAdsAPIService {
           booking_step_1: finalConversions.booking_step_1 || 0,
           reservations: finalConversions.reservations || 0,
           reservation_value: finalConversions.reservation_value || 0,
-          // ✅ FIX: Use total_conversion_value (all_conversions_value) for "łączna wartość rezerwacji"
-          // This is the "Wartość konwersji" from Google Ads console
-          conversion_value: finalConversions.total_conversion_value || 0,
-          total_conversion_value: finalConversions.total_conversion_value || 0,
-          // ROAS calculated using total conversion value (wartość konwersji) for better accuracy
-          roas: spend > 0 ? (finalConversions.total_conversion_value > 0 ? finalConversions.total_conversion_value / spend : 0) : 0,
+          // ✅ RESERVATION-ONLY SEMANTICS (matches Meta convention and client expectation):
+          // "Wartość rezerwacji" = value of the dedicated reservation action only
+          // (PBM - Rezerwacja / Rezerwacja), NOT all_conversions_value, which mixes in
+          // GA4 duplicate purchases and 1-2 zł micro-action values (booking steps,
+          // czas na stronie, local actions). The raw all-conversions value is still
+          // available in all_conversions_value_raw / google_dynamic_metric_rows.
+          conversion_value: finalConversions.reservation_value || 0,
+          total_conversion_value: finalConversions.reservation_value || 0,
+          all_conversions_value_raw: finalConversions.total_conversion_value || 0,
+          // ROAS from reservation value — honest return on ad spend
+          roas: spend > 0 ? (finalConversions.reservation_value > 0 ? finalConversions.reservation_value / spend : 0) : 0,
           cost_per_reservation: (finalConversions.reservations || 0) > 0 ? spend / (finalConversions.reservations || 0) : 0,
           booking_step_2: finalConversions.booking_step_2 || 0,
           booking_step_3: finalConversions.booking_step_3 || 0,
@@ -976,12 +982,20 @@ export class GoogleAdsAPIService {
         });
       });
       
+      // Account-level flag: if ANY campaign has a dedicated reservation action,
+      // generic purchase actions (GA4 "Zakup") are duplicates account-wide.
+      const accountHasDedicatedReservation = Object.values(campaignActionTotals).some((d) =>
+        isGoogleAdsDedicatedReservationConversion(d.conversionName)
+      );
+
       // ✅ NEW: Use the parser for each campaign
       Object.entries(campaignConversionData).forEach(([campaignId, conversions]) => {
         const campaignName = campaignNamesById[campaignId] || campaignId;
         
         // Parse conversions using our new parser
-        const parsed = parseGoogleAdsConversions(conversions, campaignName);
+        const parsed = parseGoogleAdsConversions(conversions, campaignName, {
+          accountHasDedicatedReservation,
+        });
         
         // ✅ total_conversion_value: all_conversions_value minus form actions only
         parsed.total_conversion_value = campaignTotalConversionValue[campaignId] || 0;

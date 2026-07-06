@@ -607,6 +607,10 @@ export async function POST(request: NextRequest) {
                       booking_step_3: Math.round(googleTotals.booking_step_3),
                       reservations: Math.round(googleTotals.reservations),
                       reservation_value: googleTotals.reservation_value,
+                      // ✅ RESERVATION-ONLY: persist value columns so read paths
+                      // never see stale residue from older writes
+                      conversion_value: googleTotals.reservation_value,
+                      total_conversion_value: googleTotals.reservation_value,
                       roas: roas,
                       cost_per_reservation: costPerReservation,
                       campaign_data: campaigns as any,

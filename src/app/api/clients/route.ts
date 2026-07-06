@@ -336,6 +336,9 @@ export async function POST(request: NextRequest) {
       admin_id: user.id,
       api_status: 'valid',
       company: requestData.company || null,
+      // The DB currently has a NOT NULL constraint on ad_account_id.
+      // Google-only clients are valid, so store an empty string when Meta is not configured.
+      ad_account_id: requestData.ad_account_id || '',
       reporting_frequency: reportingFreq,
       send_day: reportingFreq === 'on_demand' ? null : sendDay,
       notes: requestData.notes || null,
@@ -386,7 +389,11 @@ export async function POST(request: NextRequest) {
       console.error('Error creating client record:', clientError);
       // Clean up created user and profile
       await supabase.auth.admin.deleteUser(authData.user.id);
-      return NextResponse.json({ error: 'Failed to create client record' }, { status: 400 });
+      return NextResponse.json({
+        error: clientError.message || 'Failed to create client record',
+        details: clientError.details || null,
+        code: clientError.code || null
+      }, { status: 400 });
     }
 
     logger.info('Success', newClient.id);

@@ -1260,6 +1260,13 @@ export class BackgroundDataCollector {
       booking_step_3: Math.round(totals.booking_step_3 || 0), // Round to integer
       reservations: Math.round(totals.reservations || 0), // Round to integer
       reservation_value: totals.reservation_value || 0, // Keep decimal for currency
+      // ✅ RESERVATION-ONLY SEMANTICS: persist value columns + roas consistently
+      // so read paths never fall back to stale residue from older writes
+      conversion_value: totals.reservation_value || 0,
+      total_conversion_value: totals.reservation_value || 0,
+      roas: (totals.spend || 0) > 0 && (totals.reservation_value || 0) > 0
+        ? totals.reservation_value / totals.spend
+        : 0,
       cost_per_reservation: cost_per_reservation,
       campaign_data: campaigns, // Store raw campaign data for detailed analysis
       google_ads_tables: data.googleAdsTables || null, // ✅ FIX: Store Google Ads tables data
@@ -1402,11 +1409,9 @@ export class BackgroundDataCollector {
       booking_step_1: Math.round(conversionTotals.booking_step_1 || 0), // Round to integer
       reservations: Math.round(conversionTotals.reservations || 0), // Round to integer
       reservation_value: conversionTotals.reservation_value, // Keep decimal for currency
-      // Meta: "wartość konwersji" == reservation value (avoid 0 zł vs non-zero ROAS).
-      // Google: keep all-conversions value when campaigns provide it.
-      total_conversion_value: platform === 'meta'
-        ? conversionTotals.reservation_value
-        : ((conversionTotals as any).total_conversion_value || 0),
+      // ✅ RESERVATION-ONLY SEMANTICS (both platforms): "wartość konwersji" ==
+      // value of the dedicated reservation/purchase action, never all-conversions.
+      total_conversion_value: conversionTotals.reservation_value,
       booking_step_2: Math.round(conversionTotals.booking_step_2 || 0), // Round to integer
       booking_step_3: Math.round(conversionTotals.booking_step_3 || 0), // Round to integer
       roas: roas,

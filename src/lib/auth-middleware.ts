@@ -39,6 +39,38 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
+    // Internal cron/server-to-server calls use the Supabase service role key.
+    // Treat it as an admin only inside trusted backend routes that already hold
+    // this secret; regular browser clients never receive this token.
+    if (token === process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { data: adminProfile, error: adminError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('role', 'admin')
+        .limit(1)
+        .single();
+
+      if (adminError || !adminProfile) {
+        logger.error('Auth middleware - service role accepted but no admin profile found', {
+          error: adminError?.message
+        });
+        return {
+          success: false,
+          error: 'Admin profile not found for service role request',
+          statusCode: 401
+        };
+      }
+
+      return {
+        success: true,
+        user: {
+          id: adminProfile.id,
+          email: adminProfile.email || 'service-role@internal',
+          role: 'admin'
+        }
+      };
+    }
+
     // Create a client with the JWT token
     const jwtClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

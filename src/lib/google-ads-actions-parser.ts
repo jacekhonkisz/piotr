@@ -67,6 +67,36 @@ export function isGoogleAdsPhoneOrCallConversion(name: string): boolean {
 }
 
 /**
+ * Dedicated reservation conversion actions (e.g. "PBM - Rezerwacja", "Rezerwacja").
+ * These are the authoritative source for reservation counts and value.
+ */
+export function isGoogleAdsDedicatedReservationConversion(name: string): boolean {
+  const n = normalizeConversionLabel(name);
+  return n.includes('rezerwacja') || n.includes('reservation');
+}
+
+/**
+ * Generic purchase-style actions (e.g. GA4-imported "Zakup") that track the SAME
+ * bookings as a dedicated reservation action. When a dedicated reservation action
+ * exists on the account, these are duplicates and must be excluded from
+ * reservation counts/value to avoid double counting (client-reported bug:
+ * Lambert June = PBM-Rezerwacja 179k + GA4 "Zakup" 62k shown as 249k).
+ */
+export function isGoogleAdsGenericPurchaseConversion(name: string): boolean {
+  const n = normalizeConversionLabel(name);
+  if (!n.trim()) return false;
+  if (isGoogleAdsDedicatedReservationConversion(name)) return false;
+  return (
+    n.includes('zakup') ||
+    n.includes('purchase') ||
+    n.includes('complete') ||
+    n.includes('sale') ||
+    n.includes('transaction') ||
+    n.includes('order')
+  );
+}
+
+/**
  * Form / lead-form conversion actions — excluded from funnel, contact buckets,
  * reservation totals, and aggregated conversion counts (see product rule: no forms in reports).
  */
@@ -115,7 +145,15 @@ export function sumGoogleConversionsExcludingForms(
  */
 export function parseGoogleAdsConversions(
   conversions: any[] = [],
-  campaignName?: string
+  campaignName?: string,
+  options?: {
+    /**
+     * Set when ANY campaign on the account has a dedicated reservation action.
+     * Needed because campaigns are parsed one-by-one: a campaign carrying only
+     * the GA4 "Zakup" duplicate must still be deduped.
+     */
+    accountHasDedicatedReservation?: boolean;
+  }
 ): ParsedConversionMetrics {
   
   const metrics: ParsedConversionMetrics = {
@@ -134,6 +172,16 @@ export function parseGoogleAdsConversions(
     logger.warn(`parseGoogleAdsConversions: conversions is not an array for campaign "${campaignName || 'unknown'}"`);
     return metrics;
   }
+
+  // Detect a dedicated reservation action ("PBM - Rezerwacja", "Rezerwacja", ...).
+  // If present (in this campaign OR anywhere on the account), generic purchase
+  // actions (GA4 "Zakup" etc.) are duplicates of the same bookings and must NOT
+  // be added on top.
+  const hasDedicatedReservationAction =
+    options?.accountHasDedicatedReservation ||
+    conversions.some((c) =>
+      isGoogleAdsDedicatedReservationConversion(String(c.conversion_name || c.name || ''))
+    );
 
   // Parse conversions array
   conversions.forEach((conversion) => {
@@ -238,18 +286,18 @@ export function parseGoogleAdsConversions(
       }
       
       // --- RESERVATIONS (Final Purchase) ---
-      const isReservation = (
-        conversionName.includes('rezerwacja') ||
-        conversionName.includes('reservation') ||
-        conversionName.includes('zakup') ||
-        conversionName.includes('purchase') ||
-        conversionName.includes('complete') ||
-        conversionName.includes('sale') ||
-        conversionName.includes('transaction') ||
-        conversionName.includes('order') ||
-        conversionName.includes('booking_complete') ||
-        conversionName.includes('reservation_complete')
-      );
+      // Dedicated reservation actions always count. Generic purchase actions
+      // (GA4 "Zakup", "purchase", ...) count ONLY when the account has no
+      // dedicated reservation action — otherwise they duplicate the same bookings.
+      const isDedicatedReservation = isGoogleAdsDedicatedReservationConversion(rawLabel);
+      const isGenericPurchase = isGoogleAdsGenericPurchaseConversion(rawLabel) ||
+        conversionName.includes('booking_complete');
+      const isReservation =
+        isDedicatedReservation || (isGenericPurchase && !hasDedicatedReservationAction);
+
+      if (isGenericPurchase && hasDedicatedReservationAction && conversions > 0) {
+        logger.info(`parseGoogleAdsConversions: Skipping duplicate purchase action "${rawLabel}" (${conversions} conv) — dedicated reservation action exists for campaign "${campaignName || 'unknown'}"`);
+      }
       
       const isBookingStep = (
         conversionName.includes('krok') ||

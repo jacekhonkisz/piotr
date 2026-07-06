@@ -33,6 +33,10 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/automated/monitor-scheduled-reports",
+      "schedule": "30 10 * * *"
+    },
+    {
       "path": "/api/automated/generate-monthly-reports",
       "schedule": "0 5 1 * *"
     },
@@ -71,6 +75,22 @@
     {
       "path": "/api/automated/end-of-month-collection?offset=35&limit=5",
       "schedule": "49 2 1 * *"
+    },
+    {
+      "path": "/api/automated/recollect-previous-month?offset=0&limit=7",
+      "schedule": "0 3 5,8,11,15,28 * *"
+    },
+    {
+      "path": "/api/automated/recollect-previous-month?offset=7&limit=7",
+      "schedule": "10 3 5,8,11,15,28 * *"
+    },
+    {
+      "path": "/api/automated/recollect-previous-month?monthOffset=2&offset=0&limit=7",
+      "schedule": "20 3 28 * *"
+    },
+    {
+      "path": "/api/automated/recollect-previous-month?monthOffset=2&offset=7&limit=7",
+      "schedule": "30 3 28 * *"
     },
     {
       "path": "/api/automated/archive-completed-months",

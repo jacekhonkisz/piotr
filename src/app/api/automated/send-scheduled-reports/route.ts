@@ -3,6 +3,9 @@ import { EmailScheduler } from '../../../../lib/email-scheduler';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   // 🔒 SECURITY: Verify cron authentication
   if (!verifyCronAuth(request)) {

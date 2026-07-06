@@ -694,25 +694,16 @@ export class GoogleAdsStandardizedDataFetcher {
       total_conversion_value: 0
     });
     
-    // ✅ FIX: Also aggregate total_conversion_value from campaigns if available
-    // This ensures we get "Wartość konwersji" (all_conversions_value) from Google Ads
-    if (allCampaigns.length > 0) {
-      const campaignsTotalConversionValue = allCampaigns.reduce((sum, campaign: any) => {
-        return sum + (campaign.total_conversion_value || 0);
-      }, 0);
-      
-      // Use campaigns' total_conversion_value if it's greater than summary value
-      // (campaigns have the most accurate data from API)
-      if (campaignsTotalConversionValue > aggregated.total_conversion_value) {
-        aggregated.total_conversion_value = campaignsTotalConversionValue;
-      }
-    }
-
     const averageCtr = aggregated.totalImpressions > 0 ? (aggregated.totalClicks / aggregated.totalImpressions) * 100 : 0;
     const averageCpc = aggregated.totalClicks > 0 ? aggregated.totalSpend / aggregated.totalClicks : 0;
-    // ✅ FIX: Use total_conversion_value (wartość konwersji) for ROAS calculation
-    const totalValueForROAS = aggregated.total_conversion_value || aggregated.reservation_value;
-    const roas = aggregated.totalSpend > 0 ? (totalValueForROAS / aggregated.totalSpend) : 0;
+    // ✅ RESERVATION-ONLY SEMANTICS: value & ROAS come from the dedicated
+    // reservation action (reservation_value), matching the Meta convention,
+    // the live-data DB branch, and client expectation. Never the stored
+    // total_conversion_value column (historically inconsistent: all-conversions
+    // on some rows, stale residue on others — source of refresh flip-flops).
+    const roas = aggregated.totalSpend > 0 && aggregated.reservation_value > 0
+      ? (aggregated.reservation_value / aggregated.totalSpend)
+      : 0;
     const cost_per_reservation = aggregated.reservations > 0 ? aggregated.totalSpend / aggregated.reservations : 0;
 
     return {
@@ -734,10 +725,9 @@ export class GoogleAdsStandardizedDataFetcher {
           booking_step_3: aggregated.booking_step_3,
           reservations: aggregated.reservations,
           reservation_value: aggregated.reservation_value,
-          // ✅ FIX: Use total_conversion_value from campaigns (all_conversions_value from Google Ads)
-          // This is "Wartość konwersji" from Google Ads console - used for "łączna wartość rezerwacji"
-          conversion_value: aggregated.total_conversion_value || aggregated.reservation_value,
-          total_conversion_value: aggregated.total_conversion_value || aggregated.reservation_value, // This is what UI displays as "łączna wartość rezerwacji"
+          // ✅ RESERVATION-ONLY: the UI value card shows the reservation value
+          conversion_value: aggregated.reservation_value,
+          total_conversion_value: aggregated.reservation_value,
           roas,
           cost_per_reservation,
           reach: 0 // Database summaries don't track reach
@@ -763,8 +753,16 @@ export class GoogleAdsStandardizedDataFetcher {
       console.log('🚀 Using live Google Ads API as fallback...');
       
       const isServer = typeof window === 'undefined';
+      const configuredUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+      const isLocalConfiguredUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredUrl);
       const baseUrl = isServer
-        ? (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')
+        ? (
+            configuredUrl && !isLocalConfiguredUrl
+              ? configuredUrl
+              : process.env.VERCEL_URL
+                ? `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`
+                : configuredUrl || 'http://localhost:3000'
+          )
         : '';
       const fullUrl = `${baseUrl}/api/fetch-google-ads-live-data`;
       
@@ -782,6 +780,8 @@ export class GoogleAdsStandardizedDataFetcher {
       
       if (sessionToken) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
+      } else if (isServer && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        headers['Authorization'] = `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`;
       } else if (!isServer) {
         const { createClient } = await import('@supabase/supabase-js');
         const clientSupabase = createClient(

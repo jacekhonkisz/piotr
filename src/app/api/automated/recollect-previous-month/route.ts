@@ -21,17 +21,21 @@ import {
  *   Google Ads: default 30-day click attribution → data stabilizes ~30 days out
  *   Meta Ads:   7-day click attribution (2026)   → data stabilizes ~10 days out
  *
- * Schedule (all times UTC, targeting the month that just ended):
- *   5th  at 3:00 AM  — catches early Meta attribution lag
- *   8th  at 3:15 AM  — Meta data nearly final
- *   11th at 3:30 AM  — Meta final, early Google attribution
- *   15th at 3:45 AM  — ~50% of Google 30-day window
- *   28th at 4:00 AM  — Google data nearly final (also re-collects month-2)
+ * Schedule (vercel.json, all times UTC, targeting the month that just ended):
+ *   5th, 8th, 11th, 15th, 28th at 3:00/3:10 AM (two client batches) — previous month
+ *   28th at 3:20/3:30 AM — monthOffset=2, the month whose 30-day Google
+ *   attribution window has fully closed (final authoritative numbers)
  *
  * Query param ?monthOffset=N overrides target (1 = previous month, 2 = two months ago).
- * Default is 1 (previous month). The 28th cron passes monthOffset=2 so it
+ * Default is 1 (previous month). The 28th also runs monthOffset=2 so it
  * covers the month whose 30-day Google attribution window has fully closed.
+ *
+ * Query params ?offset=N&limit=M batch clients (like daily-kpi-collection-batched)
+ * so each invocation stays within the serverless duration limit.
  */
+
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
 
 interface CollectionResult {
   clientId: string;
@@ -62,6 +66,8 @@ async function runRecollection(request: NextRequest) {
     }
 
     const monthOffset = parseInt(request.nextUrl.searchParams.get('monthOffset') || '1', 10);
+    const clientOffset = parseInt(request.nextUrl.searchParams.get('offset') || '0', 10);
+    const clientLimit = parseInt(request.nextUrl.searchParams.get('limit') || '100', 10);
 
     const target = new Date();
     target.setMonth(target.getMonth() - monthOffset);
@@ -74,16 +80,18 @@ async function runRecollection(request: NextRequest) {
 
     logger.info(`🔄 ATTRIBUTION RE-COLLECTION: ${monthLabel} (offset=${monthOffset}, ${startDate}→${endDate})`);
 
-    const { data: clients, error: clientError } = await supabaseAdmin
+    const { data: allClients, error: clientError } = await supabaseAdmin
       .from('clients')
-      .select('id, name, company, email, api_status, meta_access_token, system_user_token, ad_account_id, google_ads_customer_id');
+      .select('id, name, company, email, api_status, meta_access_token, system_user_token, ad_account_id, google_ads_customer_id')
+      .order('id');
 
-    if (clientError || !clients?.length) {
+    if (clientError || !allClients?.length) {
       logger.error('❌ Failed to fetch clients:', clientError);
       return NextResponse.json({ success: false, error: 'No clients found' }, { status: 500 });
     }
 
-    logger.info(`👥 Processing ${clients.length} clients for ${monthLabel}`);
+    const clients = allClients.slice(clientOffset, clientOffset + clientLimit);
+    logger.info(`👥 Processing ${clients.length}/${allClients.length} clients (offset=${clientOffset}, limit=${clientLimit}) for ${monthLabel}`);
 
     const results: CollectionResult[] = [];
     let successCount = 0;

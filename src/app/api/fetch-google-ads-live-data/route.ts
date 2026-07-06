@@ -270,19 +270,21 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       
       // ✅ CRITICAL FIX: Round all conversion counts to integers for consistency with live API
       const reservationValue = Math.round((storedSummary.reservation_value || 0) * 100) / 100;
+      const storedSpend = storedSummary.total_spend || 0;
       conversionMetrics = {
         click_to_call: Math.round(googlePhoneContactsFromRow(storedSummary as Record<string, unknown>)),
         email_contacts: Math.round(googleEmailContactsFromRow(storedSummary as Record<string, unknown>)),
         booking_step_1: Math.round(storedSummary.booking_step_1 || 0),
         reservations: Math.round(storedSummary.reservations || 0),
         reservation_value: reservationValue,
-        // ✅ FIX: Add conversion_value and total_conversion_value (both = reservation_value for Google Ads)
-        // reservation_value contains "Wartość konwersji" which includes all conversion values
+        // ✅ RESERVATION-ONLY SEMANTICS (both = reservation_value for Google Ads)
         conversion_value: reservationValue,
         total_conversion_value: reservationValue, // This is what UI displays as "łączna wartość rezerwacji"
         booking_step_2: Math.round(storedSummary.booking_step_2 || 0),
         booking_step_3: Math.round(storedSummary.booking_step_3 || 0),
-        roas: Math.round((storedSummary.roas || 0) * 100) / 100,
+        // Recompute ROAS from reservation value — the stored roas column on legacy
+        // rows was derived from all-conversions value and would contradict the card
+        roas: storedSpend > 0 && reservationValue > 0 ? Math.round((reservationValue / storedSpend) * 100) / 100 : 0,
         cost_per_reservation: Math.round((storedSummary.cost_per_reservation || 0) * 100) / 100
       };
       
@@ -294,21 +296,19 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       const totalReservations = Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
       
       const reservationValue = Math.round(totalReservationValue * 100) / 100;
-      const conversionValue = Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0) * 100) / 100;
-      const totalConversionValueRaw = campaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
-      const totalConversionValue = totalConversionValueRaw > 0 ? Math.round(totalConversionValueRaw * 100) / 100 : reservationValue;
       conversionMetrics = {
         click_to_call: Math.round(sumGooglePhoneContactsFromCampaigns(campaigns as Record<string, unknown>[])),
         email_contacts: Math.round(sumGoogleEmailContactsFromCampaigns(campaigns as Record<string, unknown>[])),
         booking_step_1: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0)),
         reservations: totalReservations,
         reservation_value: reservationValue, // Round to 2 decimal places
-        // ✅ FIX: Add conversion_value and total_conversion_value from campaigns
-        conversion_value: conversionValue || reservationValue,
-        total_conversion_value: totalConversionValue || reservationValue, // This is what UI displays as "łączna wartość rezerwacji"
+        // ✅ RESERVATION-ONLY SEMANTICS (do NOT sum old campaigns' total_conversion_value —
+        // legacy rows carry all-conversions values incl. GA4 duplicates)
+        conversion_value: reservationValue,
+        total_conversion_value: reservationValue,
         booking_step_2: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0)),
         booking_step_3: Math.round(campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0)),
-        roas: totals.totalSpend > 0 ? Math.round((totalConversionValue || reservationValue) / totals.totalSpend * 100) / 100 : 0,
+        roas: totals.totalSpend > 0 && reservationValue > 0 ? Math.round(reservationValue / totals.totalSpend * 100) / 100 : 0,
         cost_per_reservation: totalReservations > 0 ? Math.round((totals.totalSpend / totalReservations) * 100) / 100 : 0
       };
       
@@ -1143,8 +1143,6 @@ export async function POST(request: NextRequest) {
     // E-mail / Telefon: same source as Google Ads UI — Σ campaigns from getCampaignData →
     // parseGoogleAdsConversions (never daily_kpi overrides; avoids stale or divergent KPI rows).
     const totalReservationValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
-    const conversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0);
-    const totalConversionValue = freshCampaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
     const totalReservations = Math.round(freshCampaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0));
     
     const clickToCall = Math.round(
@@ -1163,9 +1161,12 @@ export async function POST(request: NextRequest) {
       booking_step_3: bookingStep3,
       reservations: totalReservations,
       reservation_value: Math.round(totalReservationValue * 100) / 100,
-      conversion_value: Math.round(conversionValue * 100) / 100, // "Wartość konwersji"
-      total_conversion_value: Math.round(totalConversionValue * 100) / 100, // "Łączna wartość konwersji"
-      roas: totalSpend > 0 ? Math.round((totalConversionValue / totalSpend) * 100) / 100 : 0,
+      // ✅ RESERVATION-ONLY SEMANTICS: value card & ROAS = dedicated reservation
+      // action value. Must match the DB branch (which returns stored
+      // reservation_value) so a refresh never flips the metric's meaning.
+      conversion_value: Math.round(totalReservationValue * 100) / 100,
+      total_conversion_value: Math.round(totalReservationValue * 100) / 100,
+      roas: totalSpend > 0 && totalReservationValue > 0 ? Math.round((totalReservationValue / totalSpend) * 100) / 100 : 0,
       cost_per_reservation: totalReservations > 0 ? Math.round((totalSpend / totalReservations) * 100) / 100 : 0
     };
     
