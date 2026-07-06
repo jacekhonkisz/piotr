@@ -336,7 +336,7 @@ export default function PlatformTokensModal({ isOpen, onClose, onSuccess }: Plat
                   <div className="text-center py-3">
                     <p className="text-blue-800 font-medium">Nie ustawiono</p>
                     <p className="text-xs text-blue-600 mt-1">
-                      Dla trwałego dostępu, opublikuj aplikację OAuth do trybu "Production"
+                      Dla trwałego dostępu, opublikuj aplikację OAuth do trybu &quot;Production&quot;
                     </p>
                   </div>
                 )}
@@ -365,7 +365,7 @@ export default function PlatformTokensModal({ isOpen, onClose, onSuccess }: Plat
                   </button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Powinien zaczynać się od "1//" - jeden token dla wszystkich klientów
+                  Powinien zaczynać się od &quot;1//&quot; - jeden token dla wszystkich klientów
                 </p>
               </div>
 
@@ -377,7 +377,7 @@ export default function PlatformTokensModal({ isOpen, onClose, onSuccess }: Plat
                 </h3>
                 <ol className="text-sm text-orange-800 space-y-2">
                   <li>1. <a href="https://developers.google.com/oauthplayground/" target="_blank" className="underline">OAuth Playground</a></li>
-                  <li>2. ⚙️ → "Use your own OAuth credentials"</li>
+                  <li>2. ⚙️ → &quot;Use your own OAuth credentials&quot;</li>
                   <li>3. Google Ads API v14 → Autoryzuj z Manager (293-100-0497)</li>
                 </ol>
               </div>

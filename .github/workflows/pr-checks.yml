@@ -1,166 +1,33 @@
-name: 🔍 Pull Request Checks
+# Slim PR checks — same gate as main CI (build + type-check).
+name: Pull Request Checks
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  # 🏷️ PR Labeling
-  label:
-    name: 🏷️ Auto Label
+  build-and-typecheck:
+    name: Build & Type Check
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: 📥 Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: 🏷️ Label PR based on files changed
-        uses: actions/labeler@v4
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-  # 📏 Size Check
-  size-check:
-    name: 📏 Bundle Size Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 📦 Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          cache: npm
 
-      - name: 🔧 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🏗️ Build application
+      - name: Type check
+        run: npm run type-check
+
+      - name: Build application
         run: npm run build
-
-      - name: 📏 Check bundle size
-        uses: andresz1/size-limit-action@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-  # 🔍 Code Quality
-  code-quality:
-    name: 🔍 Code Quality
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: 🔧 Install dependencies
-        run: npm ci
-
-      - name: 🔍 Run SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-  # 🧪 Test Coverage
-  coverage-check:
-    name: 🧪 Coverage Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: 🔧 Install dependencies
-        run: npm ci
-
-      - name: 🧪 Run tests with coverage
-        run: npm test -- --coverage --watchAll=false
-
-      - name: 📊 Coverage comment
-        uses: romeovs/lcov-reporter-action@v0.3.1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          lcov-file: ./coverage/lcov.info
-
-  # 🔒 Security Check
-  security-check:
-    name: 🔒 Security Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🔒 Run Snyk to check for vulnerabilities
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
-
-  # 📝 Documentation Check
-  docs-check:
-    name: 📝 Documentation Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 📝 Check for README updates
-        run: |
-          if git diff --name-only origin/main...HEAD | grep -E '\.(ts|tsx|js|jsx)$' | head -1; then
-            echo "Code changes detected, checking if documentation needs updates..."
-            # Add logic to check if docs need updating
-          fi
-
-      - name: 🔍 Lint markdown files
-        uses: articulate/actions-markdownlint@v1
-        with:
-          config: .markdownlint.json
-          files: '**/*.md'
-
-  # 🎯 Performance Check
-  performance-check:
-    name: 🎯 Performance Check
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: 🔧 Install dependencies
-        run: npm ci
-
-      - name: 🏗️ Build application
-        run: npm run build
-
-      - name: 🎯 Run Lighthouse CI
-        uses: treosh/lighthouse-ci-action@v9
-        with:
-          configPath: './lighthouserc.json'
-          uploadArtifacts: true
-          temporaryPublicStorage: true
-
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

@@ -1,0 +1,3 @@
+# One-off / legacy scripts with invalid syntax for Prettier's JS parser
+scripts/collect-october-monthly-belmonte.js
+scripts/test-manager-token-access.js
