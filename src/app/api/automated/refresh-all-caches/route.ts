@@ -4,373 +4,257 @@ import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 import { getSmartCacheData, getSmartWeekCacheData } from '../../../../lib/smart-cache-helper';
 import { getGoogleAdsSmartCacheData, getGoogleAdsSmartWeekCacheData } from '../../../../lib/google-ads-smart-cache-helper';
+import { getCurrentWeekInfo } from '../../../../lib/week-utils';
 
 /**
- * Unified cache refresh endpoint - refreshes all cache types in one job
- * This solves the Vercel Hobby plan limitation of 1 cron job
- * 
- * Schedule: Every 3 hours
- * Replaces: Individual cache refresh cron jobs
- * Security: Protected with CRON_SECRET authentication
- * 
- * ✅ REFACTORED v2: Now uses direct function calls instead of HTTP requests
- * to avoid URL resolution issues in serverless environments.
- * VERSION: 2025-12-22-v2
+ * UNIFIED CACHE REFRESH — STALEST-FIRST, BATCHED (v3)
+ *
+ * Previous versions looped ALL clients × 4 cache types in a single invocation.
+ * With 10+ clients that exceeded the serverless time limit, so the function was
+ * killed mid-loop and clients at the tail of the list were never refreshed
+ * (observed: same clients stale for days while others refreshed every cycle).
+ *
+ * v3 design (scales to 40+ clients):
+ * - Each invocation refreshes at most `?limit` clients (default 10), doing ALL
+ *   4 cache types per client (Meta monthly/weekly, Google monthly/weekly).
+ * - STALEST-FIRST: clients are ordered by their oldest applicable cache age,
+ *   so any client missed by a previous run automatically becomes top priority.
+ *   Unlike fixed offset slices, repeated failures cannot starve the same client.
+ * - Freshness skip (<1.5h) applies to EVERY cache type, so fresh clients cost
+ *   nothing and the budget is spent where it matters.
+ * - Soft time budget: no new client is started after 240s so the invocation
+ *   always exits cleanly instead of being killed mid-write.
+ * - SLA alarm: after the run, any client whose applicable cache is still older
+ *   than 6h is reported via an ALARM log for monitoring.
+ *
+ * Schedule: several identical staggered cron entries per cycle (see vercel.json).
+ * Security: CRON_SECRET protected.
  */
+
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
+const FRESHNESS_SKIP_HOURS = 1.5;
+const SOFT_BUDGET_MS = 240_000;
+const SLA_HOURS = 6;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function getCurrentMonthInfo() {
-  const now = new Date();
-  return {
-    year: now.getFullYear(),
-    month: now.getMonth() + 1,
-    periodId: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  };
+type CacheType = 'metaMonthly' | 'metaWeekly' | 'googleMonthly' | 'googleWeekly';
+
+const CACHE_TABLES: Record<CacheType, string> = {
+  metaMonthly: 'current_month_cache',
+  metaWeekly: 'current_week_cache',
+  googleMonthly: 'google_ads_current_month_cache',
+  googleWeekly: 'google_ads_current_week_cache',
+};
+
+function hoursSince(iso: string | null | undefined): number {
+  if (!iso) return Infinity;
+  return (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60);
+}
+
+/** last_updated per client for one cache table + period. */
+async function getCacheAges(table: string, periodId: string): Promise<Map<string, string>> {
+  const { data } = await supabase
+    .from(table)
+    .select('client_id, last_updated')
+    .eq('period_id', periodId);
+  const map = new Map<string, string>();
+  for (const row of data || []) {
+    map.set((row as any).client_id, (row as any).last_updated);
+  }
+  return map;
 }
 
 export async function GET(request: NextRequest) {
-  // 🔒 SECURITY: Verify cron authentication
-  if (!verifyCronAuth(request)) {
-    return createUnauthorizedResponse();
-  }
-  
+  if (!verifyCronAuth(request)) return createUnauthorizedResponse();
   // For Vercel cron jobs - they only support GET requests
   return await POST(request);
 }
 
 export async function POST(request: NextRequest) {
-  // 🔒 SECURITY: Verify cron authentication
-  if (!verifyCronAuth(request)) {
-    return createUnauthorizedResponse();
-  }
+  if (!verifyCronAuth(request)) return createUnauthorizedResponse();
   const startTime = Date.now();
-  const results: any = {
-    metaMonthly: { status: 'pending' },
-    metaWeekly: { status: 'pending' },
-    googleAdsMonthly: { status: 'pending' },
-    googleAdsWeekly: { status: 'pending' }
-  };
 
   try {
-    logger.info('🔄 Unified cache refresh started (DIRECT CALLS)', { 
-      endpoint: '/api/automated/refresh-all-caches',
-      timestamp: new Date().toISOString()
-    });
+    const { searchParams } = new URL(request.url);
+    const limit = Math.max(1, parseInt(searchParams.get('limit') || '10', 10) || 10);
 
-    const currentMonth = getCurrentMonthInfo();
+    const now = new Date();
+    const monthPeriodId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const weekPeriodId = getCurrentWeekInfo().periodId;
 
-    // Get all active clients
+    logger.info('🔄 Cache refresh v3 (stalest-first) started', { limit, monthPeriodId, weekPeriodId });
+
     const { data: clients, error: clientsError } = await supabase
       .from('clients')
       .select('id, name, meta_access_token, system_user_token, ad_account_id, google_ads_customer_id, google_ads_refresh_token, api_status')
       .eq('api_status', 'valid');
 
-    if (clientsError) {
-      throw new Error(`Failed to get clients: ${clientsError.message}`);
-    }
-
+    if (clientsError) throw new Error(`Failed to get clients: ${clientsError.message}`);
     if (!clients || clients.length === 0) {
-      logger.info('No active clients found');
-      return NextResponse.json({
-        success: true,
-        message: 'No active clients found',
-        summary: { totalCacheTypes: 4, successful: 0, failed: 0 }
+      return NextResponse.json({ success: true, message: 'No active clients found' });
+    }
+
+    const { data: managerTokenSetting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'google_ads_manager_refresh_token')
+      .single();
+    const hasManagerToken = !!managerTokenSetting?.value;
+
+    // Bulk-load cache freshness for all 4 tables.
+    const [metaMonthlyAges, metaWeeklyAges, googleMonthlyAges, googleWeeklyAges] = await Promise.all([
+      getCacheAges(CACHE_TABLES.metaMonthly, monthPeriodId),
+      getCacheAges(CACHE_TABLES.metaWeekly, weekPeriodId),
+      getCacheAges(CACHE_TABLES.googleMonthly, monthPeriodId),
+      getCacheAges(CACHE_TABLES.googleWeekly, weekPeriodId),
+    ]);
+
+    // Build per-client work items: which cache types apply and how stale each is.
+    interface WorkItem {
+      client: (typeof clients)[number];
+      staleTypes: CacheType[];
+      oldestAgeHours: number;
+      ages: Partial<Record<CacheType, number>>;
+    }
+
+    const workItems: WorkItem[] = [];
+    for (const client of clients) {
+      const metaApplicable = !!((client.system_user_token || client.meta_access_token) && client.ad_account_id);
+      const googleApplicable = !!(client.google_ads_customer_id && (hasManagerToken || client.google_ads_refresh_token));
+
+      const ages: Partial<Record<CacheType, number>> = {};
+      if (metaApplicable) {
+        ages.metaMonthly = hoursSince(metaMonthlyAges.get(client.id));
+        ages.metaWeekly = hoursSince(metaWeeklyAges.get(client.id));
+      }
+      if (googleApplicable) {
+        ages.googleMonthly = hoursSince(googleMonthlyAges.get(client.id));
+        ages.googleWeekly = hoursSince(googleWeeklyAges.get(client.id));
+      }
+
+      const staleTypes = (Object.keys(ages) as CacheType[]).filter(
+        (t) => (ages[t] ?? 0) >= FRESHNESS_SKIP_HOURS
+      );
+      if (staleTypes.length === 0) continue;
+
+      workItems.push({
+        client,
+        staleTypes,
+        oldestAgeHours: Math.max(...staleTypes.map((t) => ages[t] ?? 0)),
+        ages,
       });
     }
 
-    logger.info(`📊 Processing ${clients.length} clients for cache refresh`);
+    // STALEST-FIRST: clients with the oldest cache get refreshed first.
+    workItems.sort((a, b) => b.oldestAgeHours - a.oldestAgeHours);
+    const selected = workItems.slice(0, limit);
+    const deferred = workItems.slice(limit);
 
-    // 1. META MONTHLY CACHE
-    try {
-      logger.info('📊 Refreshing Meta monthly cache...');
-      let metaMonthlySuccess = 0, metaMonthlySkipped = 0, metaMonthlyError = 0;
-      
-      for (const client of clients) {
-        const metaToken = client.system_user_token || client.meta_access_token;
-        if (!metaToken || !client.ad_account_id) {
-          metaMonthlySkipped++;
-          continue;
-        }
-        
+    logger.info(`📊 ${clients.length} clients, ${workItems.length} need refresh; processing ${selected.length} (stalest first), deferring ${deferred.length}`);
+
+    const REFRESHERS: Record<CacheType, (clientId: string) => Promise<any>> = {
+      metaMonthly: (id) => getSmartCacheData(id, true, 'meta'),
+      metaWeekly: (id) => getSmartWeekCacheData(id, true),
+      googleMonthly: (id) => getGoogleAdsSmartCacheData(id, true),
+      googleWeekly: (id) => getGoogleAdsSmartWeekCacheData(id, true),
+    };
+
+    const results: Array<Record<string, unknown>> = [];
+    let refreshedTypes = 0;
+    let errorTypes = 0;
+    let budgetStopped = false;
+
+    for (const item of selected) {
+      if (Date.now() - startTime > SOFT_BUDGET_MS) {
+        budgetStopped = true;
+        results.push({ client: item.client.name, status: 'deferred_budget', oldestAgeHours: item.oldestAgeHours.toFixed(1) });
+        continue;
+      }
+
+      const perType: Record<string, string> = {};
+      for (const type of item.staleTypes) {
         try {
-          // Check cache freshness first
-          const { data: cachedData } = await supabase
-            .from('current_month_cache')
-            .select('last_updated')
-            .eq('client_id', client.id)
-            .eq('period_id', currentMonth.periodId)
-            .single();
-          
-          const now = Date.now();
-          const cacheAge = cachedData ? (now - new Date(cachedData.last_updated).getTime()) / (1000 * 60 * 60) : 999;
-          
-          // 🔧 FIX: Reduced skip threshold from 2.5h to 1.5h to prevent stale cache gaps
-          // With 3-hour cron schedule, this ensures proactive refresh before TTL expires
-          if (cacheAge < 1.5) {
-            metaMonthlySkipped++;
-            continue;
-          }
-          
-          await getSmartCacheData(client.id, true, 'meta');
-          metaMonthlySuccess++;
+          await REFRESHERS[type](item.client.id);
+          perType[type] = 'refreshed';
+          refreshedTypes++;
         } catch (e) {
-          metaMonthlyError++;
-          logger.error(`Meta monthly error for ${client.name}:`, e);
+          perType[type] = `error: ${(e as Error).message}`;
+          errorTypes++;
+          logger.error(`❌ ${type} refresh failed for ${item.client.name}:`, (e as Error).message);
         }
       }
-      
-      results.metaMonthly = { 
-        status: 'success', 
-        summary: { success: metaMonthlySuccess, skipped: metaMonthlySkipped, errors: metaMonthlyError }
-      };
-      logger.info('✅ Meta monthly cache completed', results.metaMonthly.summary);
-    } catch (error) {
-      results.metaMonthly = { status: 'error', error: error instanceof Error ? error.message : 'Unknown' };
-      logger.error('❌ Meta monthly cache failed:', error);
-    }
-
-    // Small delay between cache types
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 2. META WEEKLY CACHE  
-    try {
-      logger.info('📊 Refreshing Meta weekly cache...');
-      let metaWeeklySuccess = 0, metaWeeklySkipped = 0, metaWeeklyError = 0;
-      const weeklyErrors: any[] = [];
-      
-      // 🔧 FIX: Import week utils to log current week info
-      const { getCurrentWeekInfo } = await import('../../../../lib/week-utils');
-      const currentWeekInfo = getCurrentWeekInfo();
-      logger.info('📅 Current week info for refresh:', {
-        periodId: currentWeekInfo.periodId,
-        startDate: currentWeekInfo.startDate,
-        endDate: currentWeekInfo.endDate
+      results.push({
+        client: item.client.name,
+        oldestAgeHours: item.oldestAgeHours === Infinity ? 'never' : item.oldestAgeHours.toFixed(1),
+        ...perType,
       });
-      
-      for (const client of clients) {
-        const metaToken = client.system_user_token || client.meta_access_token;
-        if (!metaToken || !client.ad_account_id) {
-          logger.info(`⏭️ Skipping ${client.name} - no Meta token or ad account`);
-          metaWeeklySkipped++;
-          continue;
-        }
-        
-        try {
-          logger.info(`🔄 Refreshing weekly cache for ${client.name}...`);
-          const result = await getSmartWeekCacheData(client.id, true);
-          
-          if (result.success) {
-            metaWeeklySuccess++;
-            logger.info(`✅ Weekly cache refreshed for ${client.name}`, {
-              source: result.source,
-              hasCampaigns: !!(result.data?.campaigns?.length)
-            });
-          } else {
-            // 🔧 FIX: Log WHY it wasn't successful
-            metaWeeklySkipped++;
-            const reason = (result as any).shouldUseDatabase 
-              ? 'shouldUseDatabase flag set (not current week?)' 
-              : 'Unknown reason';
-            logger.warn(`⚠️ Weekly cache returned success=false for ${client.name}:`, {
-              reason,
-              periodId: (result as any).periodId,
-              shouldUseDatabase: (result as any).shouldUseDatabase
-            });
-            weeklyErrors.push({ client: client.name, reason });
-          }
-        } catch (e) {
-          metaWeeklyError++;
-          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-          logger.error(`❌ Meta weekly error for ${client.name}:`, errorMsg);
-          weeklyErrors.push({ client: client.name, error: errorMsg });
-        }
-      }
-      
-      results.metaWeekly = { 
-        status: metaWeeklyError > 0 || metaWeeklySkipped === clients.length ? 'warning' : 'success', 
-        summary: { success: metaWeeklySuccess, skipped: metaWeeklySkipped, errors: metaWeeklyError },
-        weeklyErrors: weeklyErrors.length > 0 ? weeklyErrors : undefined
-      };
-      logger.info('✅ Meta weekly cache completed', results.metaWeekly.summary);
-      if (weeklyErrors.length > 0) {
-        logger.warn('⚠️ Weekly cache had issues:', weeklyErrors);
-      }
-    } catch (error) {
-      results.metaWeekly = { status: 'error', error: error instanceof Error ? error.message : 'Unknown' };
-      logger.error('❌ Meta weekly cache failed:', error);
     }
 
-    // Small delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 3. GOOGLE ADS MONTHLY CACHE
-    try {
-      logger.info('📊 Refreshing Google Ads monthly cache...');
-      let googleMonthlySuccess = 0, googleMonthlySkipped = 0, googleMonthlyError = 0;
-      const googleMonthlyErrors: any[] = [];
-      
-      // 🔧 FIX: Check if manager refresh token exists in system settings
-      // This allows clients without individual refresh tokens to still use Google Ads
-      const { data: managerTokenSetting } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', 'google_ads_manager_refresh_token')
-        .single();
-      
-      const hasManagerToken = !!(managerTokenSetting?.value);
-      logger.info('📊 Google Ads manager token status:', { hasManagerToken });
-      
-      for (const client of clients) {
-        // 🔧 FIX: Only require customer_id - refresh token can come from manager or client
-        if (!client.google_ads_customer_id) {
-          googleMonthlySkipped++;
-          continue;
-        }
-        
-        // Check if we have ANY valid refresh token (manager OR client)
-        const hasRefreshToken = hasManagerToken || !!client.google_ads_refresh_token;
-        if (!hasRefreshToken) {
-          logger.info(`⏭️ Skipping ${client.name} - no Google Ads refresh token available`);
-          googleMonthlySkipped++;
-          continue;
-        }
-        
-        try {
-          logger.info(`🔄 Refreshing Google Ads monthly cache for ${client.name}...`);
-          const result = await getGoogleAdsSmartCacheData(client.id, true);
-          if (result.success) {
-            googleMonthlySuccess++;
-            logger.info(`✅ Google Ads monthly cache refreshed for ${client.name}`);
-          } else {
-            googleMonthlySkipped++;
-            logger.warn(`⚠️ Google Ads monthly cache returned success=false for ${client.name}`);
-            googleMonthlyErrors.push({ client: client.name, reason: 'success=false' });
-          }
-        } catch (e) {
-          googleMonthlyError++;
-          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-          logger.error(`❌ Google monthly error for ${client.name}:`, errorMsg);
-          googleMonthlyErrors.push({ client: client.name, error: errorMsg });
-        }
+    // SLA WATCHDOG: recheck freshness after the run; anything still beyond the
+    // SLA is a signal that refresh capacity/schedule is insufficient or a
+    // client persistently fails — surfaced as an ALARM log for monitoring.
+    const [mmA, mwA, gmA, gwA] = await Promise.all([
+      getCacheAges(CACHE_TABLES.metaMonthly, monthPeriodId),
+      getCacheAges(CACHE_TABLES.metaWeekly, weekPeriodId),
+      getCacheAges(CACHE_TABLES.googleMonthly, monthPeriodId),
+      getCacheAges(CACHE_TABLES.googleWeekly, weekPeriodId),
+    ]);
+    const alarms: string[] = [];
+    for (const client of clients) {
+      const metaApplicable = !!((client.system_user_token || client.meta_access_token) && client.ad_account_id);
+      const googleApplicable = !!(client.google_ads_customer_id && (hasManagerToken || client.google_ads_refresh_token));
+      const breaches: string[] = [];
+      if (metaApplicable) {
+        if (hoursSince(mmA.get(client.id)) > SLA_HOURS) breaches.push('metaMonthly');
+        if (hoursSince(mwA.get(client.id)) > SLA_HOURS) breaches.push('metaWeekly');
       }
-      
-      results.googleAdsMonthly = { 
-        status: googleMonthlyError > 0 ? 'warning' : 'success', 
-        summary: { success: googleMonthlySuccess, skipped: googleMonthlySkipped, errors: googleMonthlyError },
-        hasManagerToken,
-        errors: googleMonthlyErrors.length > 0 ? googleMonthlyErrors : undefined
-      };
-      logger.info('✅ Google Ads monthly cache completed', results.googleAdsMonthly.summary);
-    } catch (error) {
-      results.googleAdsMonthly = { status: 'error', error: error instanceof Error ? error.message : 'Unknown' };
-      logger.error('❌ Google Ads monthly cache failed:', error);
+      if (googleApplicable) {
+        if (hoursSince(gmA.get(client.id)) > SLA_HOURS) breaches.push('googleMonthly');
+        if (hoursSince(gwA.get(client.id)) > SLA_HOURS) breaches.push('googleWeekly');
+      }
+      if (breaches.length > 0) {
+        alarms.push(`${client.name}: ${breaches.join(', ')} older than ${SLA_HOURS}h`);
+      }
     }
-
-    // Small delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 4. GOOGLE ADS WEEKLY CACHE
-    try {
-      logger.info('📊 Refreshing Google Ads weekly cache...');
-      let googleWeeklySuccess = 0, googleWeeklySkipped = 0, googleWeeklyError = 0;
-      const googleWeeklyErrors: any[] = [];
-      
-      // 🔧 FIX: Re-use the manager token status from monthly refresh (already checked above)
-      // If we don't have it yet (shouldn't happen), check again
-      let hasManagerTokenForWeekly = (results.googleAdsMonthly as any)?.hasManagerToken;
-      if (hasManagerTokenForWeekly === undefined) {
-        const { data: managerTokenSetting } = await supabase
-          .from('system_settings')
-          .select('value')
-          .eq('key', 'google_ads_manager_refresh_token')
-          .single();
-        hasManagerTokenForWeekly = !!(managerTokenSetting?.value);
-      }
-      
-      for (const client of clients) {
-        // 🔧 FIX: Only require customer_id - refresh token can come from manager or client
-        if (!client.google_ads_customer_id) {
-          googleWeeklySkipped++;
-          continue;
-        }
-        
-        // Check if we have ANY valid refresh token (manager OR client)
-        const hasRefreshToken = hasManagerTokenForWeekly || !!client.google_ads_refresh_token;
-        if (!hasRefreshToken) {
-          logger.info(`⏭️ Skipping ${client.name} weekly - no Google Ads refresh token available`);
-          googleWeeklySkipped++;
-          continue;
-        }
-        
-        try {
-          logger.info(`🔄 Refreshing Google Ads weekly cache for ${client.name}...`);
-          const result = await getGoogleAdsSmartWeekCacheData(client.id, true);
-          if (result.success) {
-            googleWeeklySuccess++;
-            logger.info(`✅ Google Ads weekly cache refreshed for ${client.name}`);
-          } else {
-            googleWeeklySkipped++;
-            logger.warn(`⚠️ Google Ads weekly cache returned success=false for ${client.name}`);
-            googleWeeklyErrors.push({ client: client.name, reason: 'success=false' });
-          }
-        } catch (e) {
-          googleWeeklyError++;
-          const errorMsg = e instanceof Error ? e.message : 'Unknown error';
-          logger.error(`❌ Google weekly error for ${client.name}:`, errorMsg);
-          googleWeeklyErrors.push({ client: client.name, error: errorMsg });
-        }
-      }
-      
-      results.googleAdsWeekly = { 
-        status: googleWeeklyError > 0 ? 'warning' : 'success', 
-        summary: { success: googleWeeklySuccess, skipped: googleWeeklySkipped, errors: googleWeeklyError },
-        errors: googleWeeklyErrors.length > 0 ? googleWeeklyErrors : undefined
-      };
-      logger.info('✅ Google Ads weekly cache completed', results.googleAdsWeekly.summary);
-    } catch (error) {
-      results.googleAdsWeekly = { status: 'error', error: error instanceof Error ? error.message : 'Unknown' };
-      logger.error('❌ Google Ads weekly cache failed:', error);
+    if (alarms.length > 0) {
+      logger.error(`🚨 CACHE STALENESS ALARM: ${alarms.length} client(s) beyond ${SLA_HOURS}h SLA:\n - ${alarms.join('\n - ')}`);
     }
 
     const totalTime = Date.now() - startTime;
-    
-    // Calculate summary
-    const summary = {
-      totalCacheTypes: 4,
-      successful: Object.values(results).filter((r: any) => r.status === 'success').length,
-      failed: Object.values(results).filter((r: any) => r.status === 'error').length,
-      totalTime
-    };
-
-    logger.info('✅ Unified cache refresh completed', summary);
+    logger.info('✅ Cache refresh v3 completed', { refreshedTypes, errorTypes, deferred: deferred.length, budgetStopped, alarmCount: alarms.length, totalTime });
 
     return NextResponse.json({
       success: true,
-      message: 'All cache refresh operations completed',
-      version: '2025-12-22-v2-direct-calls',
-      summary,
-      details: results,
-      timestamp: new Date().toISOString()
+      version: 'v3-stalest-first',
+      limit,
+      periods: { month: monthPeriodId, week: weekPeriodId },
+      summary: {
+        clientsTotal: clients.length,
+        clientsNeedingRefresh: workItems.length,
+        clientsProcessed: selected.length,
+        clientsDeferred: deferred.length,
+        cacheTypesRefreshed: refreshedTypes,
+        cacheTypesErrored: errorTypes,
+        budgetStopped,
+      },
+      alarmCount: alarms.length,
+      alarms,
+      results,
+      totalTime,
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
     const totalTime = Date.now() - startTime;
-    
-    logger.error('❌ Unified cache refresh failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      totalTime
-    });
-
-    return NextResponse.json({
-      success: false,
-      error: 'Unified cache refresh failed',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      results,
-      totalTime
-    }, { status: 500 });
+    logger.error('❌ Cache refresh v3 failed', { error: error instanceof Error ? error.message : 'Unknown error', totalTime });
+    return NextResponse.json(
+      { success: false, error: 'Cache refresh failed', details: error instanceof Error ? error.message : 'Unknown error', totalTime },
+      { status: 500 }
+    );
   }
 }

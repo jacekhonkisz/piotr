@@ -1,8 +1,20 @@
 {
   "crons": [
     {
-      "path": "/api/automated/refresh-all-caches",
+      "path": "/api/automated/refresh-all-caches?limit=10",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/automated/refresh-all-caches?limit=10",
+      "schedule": "10 */2 * * *"
+    },
+    {
+      "path": "/api/automated/refresh-all-caches?limit=10",
+      "schedule": "20 */2 * * *"
+    },
+    {
+      "path": "/api/automated/refresh-all-caches?limit=10",
+      "schedule": "30 */2 * * *"
     },
     {
       "path": "/api/automated/refresh-social-media-cache",
