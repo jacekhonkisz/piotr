@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { generateReportForPeriod } from '../../../../lib/automated-report-generator';
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
+import { getPreviousCalendarMonthBounds } from '../../../../lib/date-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -25,12 +26,9 @@ export async function GET(request: NextRequest) {
   try {
     logger.info('🗓️ Starting automated monthly report generation');
     
-    // Calculate previous month period
-    const now = new Date();
-    const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const periodStart = previousMonth.toISOString().split('T')[0];
-    const periodEnd = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0)
-      .toISOString().split('T')[0];
+    // Calculate previous month period using local calendar components.
+    // (toISOString() shifts local midnight a day back in UTC+ timezones.)
+    const { start: periodStart, end: periodEnd } = getPreviousCalendarMonthBounds();
     
     logger.info('📅 Generating reports for period:', { periodStart, periodEnd });
     

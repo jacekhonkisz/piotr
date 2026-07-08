@@ -80,18 +80,17 @@ function generatePeriodIdFromDateRange(startDate: string, endDate: string): stri
   const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   
   if (daysDiff <= 7) {
-    // Weekly period - calculate ISO week
-    const year = start.getFullYear();
+    // Weekly period - calculate ISO week number and ISO week-year.
+    // The ISO week-year is the year of the week's Thursday, which differs from
+    // the calendar year around New Year (e.g. Mon 2025-12-29 → 2026-W01).
+    const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const isoYear = d.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+    const weekNumber = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
     
-    // Calculate ISO week number using same logic as frontend
-    const jan4 = new Date(year, 0, 4);
-    const startOfYear = new Date(jan4);
-    startOfYear.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-    
-    const weeksDiff = Math.floor((start.getTime() - startOfYear.getTime()) / (7 * 24 * 60 * 60 * 1000));
-    const weekNumber = weeksDiff + 1;
-    
-    return `${year}-W${String(weekNumber).padStart(2, '0')}`;
+    return `${isoYear}-W${String(weekNumber).padStart(2, '0')}`;
   } else if (daysDiff >= 28 && daysDiff <= 31) {
     // Monthly period
     const year = start.getFullYear();
@@ -581,7 +580,15 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       adAccountId: clientData.ad_account_id
     });
     
-    // Access control handled by authentication middleware
+    // Access control: clients may only fetch their own data; admins can fetch any
+    if (!canAccessClient(user, clientData.email)) {
+      logger.warn('🚫 Access denied - user cannot access this client', {
+        userId: user.id,
+        userRole: user.role,
+        clientId
+      });
+      return createErrorResponse('Access denied - you cannot access this client', 403);
+    }
     
     const client = clientData;
 

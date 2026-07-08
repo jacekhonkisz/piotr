@@ -12,6 +12,7 @@
 import { DataLifecycleManager } from './data-lifecycle-manager';
 import { supabase } from './supabase';
 import logger from './logger';
+import { getCurrentWeekInfo, parseWeekPeriodId } from './week-utils';
 
 export class PeriodTransitionHandler {
   
@@ -174,18 +175,10 @@ export class PeriodTransitionHandler {
    * Get current ISO week period ID (e.g., "2025-W40")
    */
   private static getCurrentWeekPeriodId(): string {
-    const now = new Date();
-    const currentWeekStart = new Date(now);
-    currentWeekStart.setDate(now.getDate() - now.getDay() + 1); // Monday of current week
-    
-    // Calculate ISO week number
-    const date = new Date(currentWeekStart);
-    date.setHours(0, 0, 0, 0);
-    date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-    const week1 = new Date(date.getFullYear(), 0, 4);
-    const weekNumber = 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-    
-    return `${date.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+    // Delegate to the shared ISO week implementation. The previous inline
+    // algorithm returned NEXT week's Monday on Sundays and used the calendar
+    // year instead of the ISO week-year at year boundaries.
+    return getCurrentWeekInfo().periodId;
   }
   
   /**
@@ -336,23 +329,10 @@ export class PeriodTransitionHandler {
    * Get week start date from ISO week format (e.g., "2025-W33" -> "2025-08-10")
    */
   private static getWeekStartDate(periodId: string): string {
-    const [year, weekStr] = periodId.split('-W');
-    if (!year || !weekStr) {
-      throw new Error(`Invalid period ID format: ${periodId}`);
-    }
-    
-    const weekNumber = parseInt(weekStr, 10);
-    const yearNum = parseInt(year, 10);
-    
-    // Use proper ISO week calculation
-    const jan4 = new Date(yearNum, 0, 4);
-    const startOfWeek1 = new Date(jan4);
-    startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-    
-    const targetWeekStart = new Date(startOfWeek1);
-    targetWeekStart.setDate(startOfWeek1.getDate() + (weekNumber - 1) * 7);
-    
-    return targetWeekStart.toISOString().split('T')[0]!;
+    // Delegate to the shared ISO week parser, which formats dates using local
+    // calendar components. The previous implementation serialized a local
+    // midnight via toISOString(), shifting the date one day back in CET/CEST.
+    return parseWeekPeriodId(periodId).startDate;
   }
 }
 

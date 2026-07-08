@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { RefreshCw, Clock, Database, Target } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getPreviousCalendarMonthBounds } from '../lib/date-utils';
 
 interface GoogleAdsPerformanceLiveProps {
   clientId: string;
@@ -71,9 +72,9 @@ export default function GoogleAdsPerformanceLive({ clientId, currency = 'PLN', s
   // Fetch previous month data for comparison
   const fetchPreviousMonthComparison = useCallback(async () => {
     try {
-      const now = new Date();
-      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const previousMonthStr = previousMonth.toISOString().split('T')[0]!;
+      // Build the date key from local calendar components; toISOString() would
+      // shift local midnight a day back in UTC+ timezones (e.g. Poland).
+      const previousMonthStr = getPreviousCalendarMonthBounds().start;
       
       console.log('📊 GoogleAds: Fetching previous month data for comparison:', previousMonthStr);
       

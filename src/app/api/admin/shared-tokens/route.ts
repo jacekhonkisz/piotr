@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,10 @@ function maskToken(token: string | null | undefined): string {
 }
 
 export async function GET(request: NextRequest) {
+  // Full token values are returned below, so this endpoint MUST be admin-only.
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     // Fetch Meta shared token from settings
     const { data: metaRow } = await supabase

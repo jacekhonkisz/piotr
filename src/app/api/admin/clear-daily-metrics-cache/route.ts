@@ -6,8 +6,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { DailyMetricsCache } from '../../../../lib/daily-metrics-cache';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     console.log('🗑️ Admin: Clearing daily metrics cache');
     

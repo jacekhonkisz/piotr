@@ -2,17 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import FlexibleEmailService from '../../../lib/flexible-email';
 import logger from '../../../lib/logger';
-import {
-  getBelmontePotentialOfflineValue,
-  getMicroConversionsForOfflineModel,
-  isBelmonteClient,
-  offlineMicroPartsFromCampaigns,
-  offlineMicroPartsFromPlatformMetrics
-} from '@/lib/offline-reservation-estimate';
+import { buildMonthlyReportData, builtPlatformToSummaryShape } from '@/lib/monthly-report-data-builder';
 import { adaptCampaignSummary } from '@/lib/report-adapters';
 import { evaluatePreSend } from '@/lib/report-presend-guard';
-import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from '@/lib/google-ads-contact-metrics';
-import { cpcFromStats, ctrPercentFromStats } from '@/lib/ctr-from-stats';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,207 +81,43 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate real report data using same logic as reports
-    let realReportData;
-    
     // Define date range for monthly reports: previous full month (1st to last day)
     const now = new Date();
     const prevMonthEnd = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 0)); // last day of previous month
     const prevMonthStart = new Date(Date.UTC(prevMonthEnd.getUTCFullYear(), prevMonthEnd.getUTCMonth(), 1)); // 1st of previous month
     const startDate = prevMonthStart;
     const endDate = prevMonthEnd;
-    
-    if (reportData && reportData.report_data) {
-      // Use stored report data if available
-      const storedData = reportData.report_data;
-      const campaigns = storedData.campaigns || [];
-      const stats = storedData.account_summary || {};
-      const conversionMetrics = storedData.conversionMetrics || {};
-      
-      const platformData = (storedData as any).platformData;
-      const offlineParts = platformData?.meta || platformData?.google
-        ? offlineMicroPartsFromPlatformMetrics(
-            platformData?.google?.conversionMetrics,
-            platformData?.meta?.conversionMetrics
-          )
-        : offlineMicroPartsFromCampaigns(campaigns);
-      const metaCampaigns = campaigns.filter(
-        (c: any) => !c.platform || c.platform === 'meta'
-      );
-      const cn = client.name ?? '';
-      const offlineMicroTotal = getMicroConversionsForOfflineModel(cn, offlineParts, {
-        metaCampaigns
-      });
-      const potentialOfflineReservations = Math.round(offlineMicroTotal * 0.2);
 
-      const totalReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
-      const totalReservations = campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0);
-      const metaOnlineReservationValue = metaCampaigns.reduce(
-        (s: number, c: any) => s + (Number(c.reservation_value) || 0),
-        0
-      );
-      const metaReservationsCount = metaCampaigns.reduce(
-        (s: number, c: any) => s + (Number(c.reservations) || 0),
-        0
-      );
-      let averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-      if (isBelmonteClient(cn) && metaReservationsCount > 0) {
-        averageReservationValue = metaOnlineReservationValue / metaReservationsCount;
-      }
-      const potentialOfflineValue = isBelmonteClient(cn)
-        ? getBelmontePotentialOfflineValue(averageReservationValue)
-        : potentialOfflineReservations * averageReservationValue;
-      const totalPotentialValue = isBelmonteClient(cn)
-        ? potentialOfflineValue + metaOnlineReservationValue
-        : potentialOfflineValue + totalReservationValue;
-      const metaSpend = metaCampaigns.reduce((s: number, c: any) => s + (Number(c.spend) || 0), 0);
-      const spendForCost = isBelmonteClient(cn) ? metaSpend || stats.totalSpend || 0 : stats.totalSpend || 0;
-      const costPercentage = totalPotentialValue > 0 ? (spendForCost / totalPotentialValue) * 100 : 0;
-      
-      realReportData = {
-        dateRange: `${reportData.date_range_start} to ${reportData.date_range_end}`,
-        totalSpend: stats.totalSpend || 0,
-        totalImpressions: stats.totalImpressions || 0,
-        totalClicks: stats.totalClicks || 0,
-        ctr: ctrPercentFromStats(
-          stats.averageCtr ?? stats.average_ctr,
-          stats.totalClicks ?? 0,
-          stats.totalImpressions ?? 0
-        ),
-        cpc: cpcFromStats(
-          stats.averageCpc ?? stats.average_cpc,
-          stats.totalSpend ?? 0,
-          stats.totalClicks ?? 0
-        ),
-        // New metrics
-        potentialOfflineReservations,
-        totalPotentialValue,
-        costPercentage,
-        // Conversion metrics
-        reservations: conversionMetrics.reservations || 0,
-        reservationValue: conversionMetrics.reservation_value || 0
-      } as any;
-    } else {
-      // Fallback: fetch fresh data using same system as reports
-      try {
-        const { StandardizedDataFetcher } = await import('../../../lib/standardized-data-fetcher');
-        const dateRange = {
-          start: startDate.toISOString().split('T')[0]!,
-          end: endDate.toISOString().split('T')[0]!
-        };
+    const emailDateRange = {
+      start: startDate.toISOString().split('T')[0]!,
+      end: endDate.toISOString().split('T')[0]!
+    };
 
-        const fetchResult = await StandardizedDataFetcher.fetchData({
-          clientId: client.id,
-          dateRange,
-          platform: 'meta',
-          reason: 'email-report-generation'
-        });
+    // SINGLE fetch for the whole send cycle. Builds the exact email payload via
+    // the shared builder (StandardizedDataFetcher + prepareClientMonthlyReportData),
+    // identical to the scheduler, so manual and scheduled sends never diverge on
+    // data source, ROAS, konwersje or the offline model. For a completed month
+    // the fetcher reads stored summaries, so this is not a live-API hit.
+    const built = await buildMonthlyReportData({
+      client: {
+        id: client.id,
+        name: client.name ?? '',
+        google_ads_enabled: client.google_ads_enabled,
+        meta_access_token: client.meta_access_token
+      },
+      period: emailDateRange,
+      sessionToken: token,
+      reasonPrefix: 'send-report'
+    });
 
-        let googleMetrics: any = undefined;
-        if (client.google_ads_enabled) {
-          try {
-            const { GoogleAdsStandardizedDataFetcher } = await import(
-              '../../../lib/google-ads-standardized-data-fetcher'
-            );
-            const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
-              clientId: client.id,
-              dateRange,
-              reason: 'send-report-offline-google',
-              sessionToken: token
-            });
-            if (googleResult.success && googleResult.data) {
-              googleMetrics = googleResult.data.conversionMetrics;
-            }
-          } catch (e) {
-            logger.warn('send-report: Google fetch for offline micro skipped', e);
-          }
-        }
-
-        if (fetchResult.success && fetchResult.data) {
-          const data = fetchResult.data;
-          const campaigns = data.campaigns || [];
-          const stats = data.stats || {};
-          const conversionMetrics = data.conversionMetrics || {};
-
-          const offlineParts = offlineMicroPartsFromPlatformMetrics(googleMetrics, conversionMetrics);
-          const metaCampaigns = campaigns.filter(
-            (c: any) => !c.platform || c.platform === 'meta'
-          );
-          const cn = client.name ?? '';
-          const offlineMicroTotal = getMicroConversionsForOfflineModel(cn, offlineParts, {
-            metaCampaigns
-          });
-          const potentialOfflineReservations = Math.round(offlineMicroTotal * 0.2);
-
-          const totalReservationValue = campaigns.reduce((sum, c) => sum + (c.reservation_value || 0), 0);
-          const totalReservations = campaigns.reduce((sum, c) => sum + (c.reservations || 0), 0);
-          const metaOnlineReservationValue = metaCampaigns.reduce(
-            (s, c: any) => s + (Number(c.reservation_value) || 0),
-            0
-          );
-          const metaReservationsCount = metaCampaigns.reduce(
-            (s, c: any) => s + (Number(c.reservations) || 0),
-            0
-          );
-          let averageReservationValue = totalReservations > 0 ? totalReservationValue / totalReservations : 0;
-          if (isBelmonteClient(cn) && metaReservationsCount > 0) {
-            averageReservationValue = metaOnlineReservationValue / metaReservationsCount;
-          }
-          const potentialOfflineValue = isBelmonteClient(cn)
-            ? getBelmontePotentialOfflineValue(averageReservationValue)
-            : potentialOfflineReservations * averageReservationValue;
-          const totalPotentialValue = isBelmonteClient(cn)
-            ? potentialOfflineValue + metaOnlineReservationValue
-            : potentialOfflineValue + totalReservationValue;
-          const metaSpend = metaCampaigns.reduce((s, c: any) => s + (Number(c.spend) || 0), 0);
-          const spendForCost = isBelmonteClient(cn) ? metaSpend || stats.totalSpend || 0 : stats.totalSpend || 0;
-          const costPercentage = totalPotentialValue > 0 ? (spendForCost / totalPotentialValue) * 100 : 0;
-          
-          realReportData = {
-            dateRange: `${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}`,
-            totalSpend: stats.totalSpend || 0,
-            totalImpressions: stats.totalImpressions || 0,
-            totalClicks: stats.totalClicks || 0,
-            totalConversions: stats.totalConversions || 0,
-            ctr: ctrPercentFromStats(
-              stats.averageCtr,
-              stats.totalClicks ?? 0,
-              stats.totalImpressions ?? 0
-            ),
-            cpc: cpcFromStats(
-              stats.averageCpc,
-              stats.totalSpend ?? 0,
-              stats.totalClicks ?? 0
-            ),
-            // New metrics
-            potentialOfflineReservations,
-            totalPotentialValue,
-            costPercentage,
-            // Conversion metrics
-            reservations: conversionMetrics.reservations || 0,
-            reservationValue: conversionMetrics.reservation_value || 0
-          };
-        } else {
-          throw new Error('Failed to fetch fresh data');
-        }
-      } catch (error) {
-        logger.error('Failed to fetch real report data, using minimal fallback:', error);
-        realReportData = {
-          dateRange: 'Last 30 days',
-          totalSpend: 0,
-          totalImpressions: 0,
-          totalClicks: 0,
-          totalConversions: 0,
-          ctr: 0,
-          cpc: 0,
-          potentialOfflineReservations: 0,
-          totalPotentialValue: 0,
-          costPercentage: 0,
-          reservations: 0,
-          reservationValue: 0
-        };
-      }
-    }
+    // Lightweight summary for the sent_reports audit record, derived from the
+    // same fetch (no extra round-trip).
+    const realReportData = {
+      dateRange: `${emailDateRange.start} to ${emailDateRange.end}`,
+      totalSpend: (built.metaAdsData?.spend || 0) + (built.googleAdsData?.spend || 0),
+      totalImpressions: (built.metaAdsData?.impressions || 0) + (built.googleAdsData?.impressions || 0),
+      totalClicks: (built.metaAdsData?.linkClicks || 0) + (built.googleAdsData?.clicks || 0)
+    } as any;
 
     // Generate PDF if requested and fetch AI summary
     let pdfBuffer: Buffer | undefined;
@@ -397,119 +225,23 @@ export async function POST(request: NextRequest) {
     // Send email to all contact emails using NEW MONTHLY TEMPLATE
     const emailService = FlexibleEmailService.getInstance();
     const contactEmails = client.contact_emails?.length ? client.contact_emails : [client.email];
-    
-    // Extract month and year for the monthly template (previous month)
-    const reportStartDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-    const monthNames = [
-      'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec',
-      'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'
-    ];
-    const monthName = monthNames[reportStartDate.getMonth()];
-    const year = reportStartDate.getFullYear();
-    
-    // Fetch real per-platform data from campaign_summaries for previous month
-    const prevMonthDate = new Date(reportStartDate.getFullYear(), reportStartDate.getMonth(), 1);
-    const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
 
-    const { data: metaSummary } = await supabase
-      .from('campaign_summaries')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('summary_type', 'monthly')
-      .eq('platform', 'meta')
-      .eq('summary_date', prevMonthStr)
-      .maybeSingle();
-
-    const { data: googleSummary } = await supabase
-      .from('campaign_summaries')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('summary_type', 'monthly')
-      .eq('platform', 'google')
-      .eq('summary_date', prevMonthStr)
-      .maybeSingle();
-
-    const { data: googleAdsSummary } = await supabase
-      .from('google_ads_campaign_summaries')
-      .select('*')
-      .eq('client_id', clientId)
-      .eq('period_type', 'monthly')
-      .eq('period_start', prevMonthStr)
-      .maybeSingle();
-
-    const gData = googleAdsSummary || googleSummary;
-    let googleAdsSection: any = undefined;
-    if (gData) {
-      const gSpend = Number(gData.total_spend || 0);
-      const gImpressions = Number(gData.total_impressions || 0);
-      const gClicks = Number(gData.total_clicks || 0);
-      if (gSpend > 0 || gImpressions > 0) {
-        googleAdsSection = {
-          spend: gSpend, impressions: gImpressions, clicks: gClicks,
-          cpc: cpcFromStats(
-            (gData as { average_cpc?: number }).average_cpc,
-            gSpend,
-            gClicks
-          ),
-          ctr: ctrPercentFromStats(
-            (gData as { average_ctr?: number }).average_ctr,
-            gClicks,
-            gImpressions
-          ),
-          emailClicks: googleEmailContactsFromRow(gData as Record<string, unknown>),
-          phoneClicks: googlePhoneContactsFromRow(gData as Record<string, unknown>),
-          bookingStep1: Number(gData.total_booking_step_1 || gData.booking_step_1 || 0),
-          bookingStep2: Number(gData.total_booking_step_2 || gData.booking_step_2 || 0),
-          bookingStep3: Number(gData.total_booking_step_3 || gData.booking_step_3 || 0),
-          reservations: Number(gData.total_reservations || gData.reservations || 0),
-          reservationValue: Number(gData.total_reservation_value || gData.reservation_value || 0),
-          roas: gSpend > 0 ? Number(gData.total_reservation_value || gData.reservation_value || 0) / gSpend : 0
-        };
-      }
-    }
-
-    let metaAdsSection: any = undefined;
-    if (metaSummary) {
-      const mSpend = Number(metaSummary.total_spend || 0);
-      const mImpressions = Number(metaSummary.total_impressions || 0);
-      const mClicks = Number(metaSummary.total_clicks || 0);
-      if (mSpend > 0 || mImpressions > 0) {
-        metaAdsSection = {
-          spend: mSpend, impressions: mImpressions, linkClicks: mClicks,
-          cpc: cpcFromStats(
-            (metaSummary as { average_cpc?: number }).average_cpc,
-            mSpend,
-            mClicks
-          ),
-          ctr: ctrPercentFromStats(
-            (metaSummary as { average_ctr?: number }).average_ctr,
-            mClicks,
-            mImpressions
-          ),
-          emailClicks: Number(metaSummary.email_contacts || 0),
-          phoneClicks: Number(metaSummary.click_to_call || 0),
-          reservations: Number(metaSummary.reservations || 0),
-          reservationValue: Number(metaSummary.reservation_value || 0),
-          roas: mSpend > 0 ? Number(metaSummary.reservation_value || 0) / mSpend : 0
-        };
-      }
-    }
+    // Email payload + month/year come from the single shared build above.
+    const monthName = built.monthName;
+    const year = built.year;
+    const monthlyReportData = built.reportData;
 
     // Pre-send consistency check (soft mode: log warnings/blocks but do not abort).
-    // Validates per-platform monthly summary against fresh live API baseline.
+    // Validates per-platform data against a fresh live API baseline.
     try {
-      const dateRange = {
-        start: startDate.toISOString().split('T')[0]!,
-        end: endDate.toISOString().split('T')[0]!
-      };
       const guardChecks: Promise<unknown>[] = [];
-      if (metaSummary) {
+      if (built.metaAdsData) {
         const candidateMeta = adaptCampaignSummary({
           clientId,
           clientName: client.name ?? '',
           platform: 'meta',
-          dateRange,
-          summary: metaSummary
+          dateRange: emailDateRange,
+          summary: builtPlatformToSummaryShape(built.metaAdsData, 'meta')
         });
         guardChecks.push(
           evaluatePreSend(candidateMeta, { sessionToken: token }).then((result) => {
@@ -524,13 +256,13 @@ export async function POST(request: NextRequest) {
           })
         );
       }
-      if (googleSummary) {
+      if (built.googleAdsData) {
         const candidateGoogle = adaptCampaignSummary({
           clientId,
           clientName: client.name ?? '',
           platform: 'google',
-          dateRange,
-          summary: googleSummary
+          dateRange: emailDateRange,
+          summary: builtPlatformToSummaryShape(built.googleAdsData, 'google')
         });
         guardChecks.push(
           evaluatePreSend(candidateGoogle, { sessionToken: token }).then((result) => {
@@ -553,61 +285,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const gRes = googleAdsSection?.reservations || 0;
-    const gVal = googleAdsSection?.reservationValue || 0;
-    const mRes = metaAdsSection?.reservations || 0;
-    const mVal = metaAdsSection?.reservationValue || 0;
-    const totalOnlineReservations = gRes + mRes;
-    const totalOnlineValue = gVal + mVal;
-    const totalAdSpend = (googleAdsSection?.spend || 0) + (metaAdsSection?.spend || 0);
-    const onlineCostPct = totalOnlineValue > 0 ? (totalAdSpend / totalOnlineValue) * 100 : 0;
-    const metaCampaignsForEmail = Array.isArray((metaSummary as any)?.campaign_data)
-      ? (metaSummary as any).campaign_data.filter((c: any) => !c.platform || c.platform === 'meta')
-      : [];
-    const clientNm = client.name ?? '';
-    const totalMicroConversions = getMicroConversionsForOfflineModel(
-      clientNm,
-      {
-        googleFormSubmits: 0,
-        googleEmail: googleAdsSection?.emailClicks || 0,
-        googlePhone: googleAdsSection?.phoneClicks || 0,
-        metaFormSubmits: 0,
-        metaEmail: metaAdsSection?.emailClicks || 0,
-        metaPhone: metaAdsSection?.phoneClicks || 0
-      },
-      { metaCampaigns: metaCampaignsForEmail }
-    );
-    const estimatedOfflineReservations = Math.round(totalMicroConversions * 0.2);
-    let avgResVal = totalOnlineReservations > 0 ? totalOnlineValue / totalOnlineReservations : 0;
-    if (isBelmonteClient(clientNm) && mRes > 0) {
-      avgResVal = mVal / mRes;
-    }
-    const mSpendForPct = metaAdsSection?.spend || 0;
-    const estimatedOfflineValue = isBelmonteClient(clientNm)
-      ? getBelmontePotentialOfflineValue(avgResVal)
-      : estimatedOfflineReservations * avgResVal;
-    const totalValue = isBelmonteClient(clientNm)
-      ? estimatedOfflineValue + mVal
-      : totalOnlineValue + estimatedOfflineValue;
-    const spendForFinalPct = isBelmonteClient(clientNm) ? mSpendForPct || totalAdSpend : totalAdSpend;
-    const finalCostPct = totalValue > 0 ? (spendForFinalPct / totalValue) * 100 : 0;
-
-    const publicAppBase =
-      (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '') || appOrigin;
-    const monthlyReportData = {
-      dashboardUrl: `${publicAppBase}/dashboard`,
-      googleAds: googleAdsSection,
-      metaAds: metaAdsSection,
-      totalOnlineReservations,
-      totalOnlineValue,
-      onlineCostPercentage: onlineCostPct,
-      totalMicroConversions,
-      estimatedOfflineReservations,
-      estimatedOfflineValue,
-      finalCostPercentage: finalCostPct,
-      totalValue
-    };
-
     if (!pdfBuffer || pdfBuffer.length === 0) {
       return NextResponse.json({
         error: 'Failed to generate PDF attachment',
@@ -622,6 +299,7 @@ export async function POST(request: NextRequest) {
     const [primaryRecipient, ...ccRecipients] = contactEmails;
     let emailResults: { email: string; success: boolean; error?: string }[] = [];
     let routedCc: string[] = [];
+    let providerMessageId: string | null = null;
 
     try {
       const emailResult = await emailService.sendClientMonthlyReport(
@@ -636,6 +314,7 @@ export async function POST(request: NextRequest) {
         { reviewRecipientOverride: internalRecipientOverride, cc: ccRecipients }
       );
       routedCc = emailResult.cc || [];
+      providerMessageId = emailResult.messageId || null;
       emailResults.push({ email: primaryRecipient!, success: emailResult.success, error: emailResult.error });
     } catch (error) {
       emailResults.push({
@@ -670,7 +349,7 @@ export async function POST(request: NextRequest) {
           email_type: 'monthly_report',
           recipient_email: recipientEmail,
           subject: `Podsumowanie miesiąca - ${monthName} ${year} | ${client.name}`,
-          message_id: sentSuccessfully ? 'sent' : null,
+          message_id: sentSuccessfully ? (providerMessageId || 'sent') : null,
           sent_at: new Date().toISOString(),
           status: sentSuccessfully ? 'sent' : 'failed',
           error_message: failedEmails[0]?.error || null

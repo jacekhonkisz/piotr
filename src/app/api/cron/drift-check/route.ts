@@ -17,6 +17,7 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { fetchUnifiedReport } from '@/lib/unified-report-fetcher';
 import { compareToBaseline } from '@/lib/report-payload-validator';
+import { verifyCronAuth, createUnauthorizedResponse } from '@/lib/cron-auth';
 import logger from '@/lib/logger';
 import type { Platform } from '@/lib/report-metric-contract';
 
@@ -54,18 +55,10 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
 
   try {
-    if (!process.env.CRON_SECRET) {
-      return Response.json(
-        { success: false, error: 'CRON_SECRET not configured' },
-        { status: 500 }
-      );
-    }
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return Response.json(
-        { success: false, error: 'unauthorized' },
-        { status: 401 }
-      );
+    // Accepts the Vercel-injected `Authorization: Bearer ${CRON_SECRET}` header
+    // as well as manual triggers carrying the same secret.
+    if (!verifyCronAuth(request)) {
+      return createUnauthorizedResponse();
     }
 
     const period = previousMonthRange();

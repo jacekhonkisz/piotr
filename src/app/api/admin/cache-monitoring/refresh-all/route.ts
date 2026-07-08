@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminAuth } from '../../../../../lib/admin-auth';
 
 /**
  * POST /api/admin/cache-monitoring/refresh-all
@@ -7,6 +8,9 @@ import { NextRequest, NextResponse } from 'next/server';
  * Works in both development and production environments
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     console.log('🔄 Manual cache refresh triggered');
     
@@ -41,7 +45,9 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'User-Agent': 'CacheMonitoring/ManualRefresh'
+            'User-Agent': 'CacheMonitoring/ManualRefresh',
+            // Internal server-to-server call authorized via cron secret
+            'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
           }
         });
         

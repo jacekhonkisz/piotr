@@ -35,30 +35,38 @@ import logger from './logger';
  * ```
  */
 export function verifyCronAuth(request: NextRequest): boolean {
-  // METHOD 1: Check for Vercel's automatic cron header (most secure)
-  // Vercel automatically adds 'x-vercel-cron: 1' to all cron job requests
-  const isVercelCron = request.headers.get('x-vercel-cron') === '1';
-  
-  if (isVercelCron) {
-    logger.info('✅ Verified Vercel cron job (x-vercel-cron header)', {
-      path: request.nextUrl.pathname
+  const authHeader = request.headers.get('authorization');
+  const cronSecret = process.env.CRON_SECRET;
+
+  // SECURITY: The `x-vercel-cron` header is spoofable by any caller, so it must
+  // NEVER grant access on its own. Vercel automatically sends
+  // `Authorization: Bearer ${CRON_SECRET}` with cron invocations when the
+  // CRON_SECRET env var is set on the project, so requiring the secret works
+  // for both Vercel cron and manual/internal triggers.
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    logger.info('✅ Verified cron trigger (CRON_SECRET)', {
+      path: request.nextUrl.pathname,
+      viaVercelCron: request.headers.get('x-vercel-cron') === '1'
     });
     return true;
   }
 
-  // METHOD 2: Check for CRON_SECRET (for manual triggers/testing)
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-  
-  // If CRON_SECRET is configured and matches, allow access
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    logger.info('✅ Verified manual cron trigger (CRON_SECRET)', {
+  // Fail closed in production when CRON_SECRET is missing; allow only in
+  // local development so dev workflows keep working.
+  if (!cronSecret) {
+    if (process.env.NODE_ENV !== 'production') {
+      logger.warn('⚠️ CRON_SECRET not set - allowing cron request in development only', {
+        path: request.nextUrl.pathname
+      });
+      return true;
+    }
+    logger.error('🚫 CRON_SECRET not configured in production - denying cron request', {
       path: request.nextUrl.pathname
     });
-    return true;
+    return false;
   }
-  
-  // UNAUTHORIZED: Neither Vercel header nor valid CRON_SECRET
+
+  // UNAUTHORIZED: No valid CRON_SECRET provided
   logger.warn('🚫 Unauthorized cron attempt detected', {
     ip: request.headers.get('x-forwarded-for') || 'unknown',
     userAgent: request.headers.get('user-agent') || 'unknown',

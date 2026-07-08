@@ -172,7 +172,12 @@ function AddClientModal({ isOpen, onClose, onAdd }: AddClientModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     setLoadingTokens(true);
-    fetch('/api/admin/shared-tokens')
+    supabase.auth.getSession()
+      .then(({ data: { session } }) =>
+        fetch('/api/admin/shared-tokens', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+        })
+      )
       .then(res => res.json())
       .then(data => {
         setSharedTokens(data);

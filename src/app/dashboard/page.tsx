@@ -988,6 +988,11 @@ export default function DashboardPage() {
               },
               body: JSON.stringify({
                 clientId: currentClient.id,
+                // 🔧 FIX: Pass the dashboard period explicitly. Without it the API
+                // defaulted to "last 30 days", showing different numbers after a
+                // tab switch than after a fresh load (month-to-date).
+                dateRange,
+                reason: 'standardized-dashboard-tab-switch',
                 forceRefresh: false // ← Always use cache for instant loading
               })
             });

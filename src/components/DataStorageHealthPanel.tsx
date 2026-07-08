@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Package
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface DataStorageHealthReport {
   timestamp: string;
@@ -56,7 +57,10 @@ export default function DataStorageHealthPanel() {
   const fetchHealthData = async () => {
     try {
       setRefreshing(true);
-      const response = await fetch('/api/admin/data-storage-health');
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/data-storage-health', {
+        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+      });
       
       if (response.ok) {
         const healthData = await response.json();

@@ -6944,8 +6944,13 @@ export async function POST(request: NextRequest) {
       logger.info('🚀 CUSTOM DATE RANGE: Using passed live data for PDF generation (bypassing all cache)');
     }
     
-    // Check if this is a preview request (development/design tool)
-    const isPreviewMode = request.headers.get('X-Preview-Mode') === 'true';
+    // Check if this is a preview request (development/design tool).
+    // Preview mode renders MOCK data only, but it still drives an expensive
+    // puppeteer render, so it is disabled in production to avoid an
+    // unauthenticated compute-abuse surface.
+    const isPreviewMode =
+      request.headers.get('X-Preview-Mode') === 'true' &&
+      process.env.NODE_ENV !== 'production';
     // Debug mode is opt-in via the URL (e.g. /pdf-preview?debug=1) and turns
     // on the layout-bounding-box overlay defined in the page CSS.
     const requestUrl = new URL(request.url);

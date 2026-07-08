@@ -7,8 +7,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     console.log('🔄 Starting manual backfill of daily data...');
     
@@ -38,9 +42,14 @@ export async function POST(request: NextRequest) {
         const baseUrl = process.env.NODE_ENV === 'production' 
           ? (process.env.NEXT_PUBLIC_APP_URL || '') 
           : 'http://localhost:3000';
+        const internalAuthHeaders = {
+          'Content-Type': 'application/json',
+          // Internal server-to-server call authorized via cron secret
+          'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+        };
         const metaResponse = await fetch(`${baseUrl}/api/automated/daily-kpi-collection`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: internalAuthHeaders,
           body: JSON.stringify({ date: targetDate })
         });
         
@@ -49,7 +58,7 @@ export async function POST(request: NextRequest) {
         // Call Google Ads collection if needed
         const googleAdsResponse = await fetch(`${baseUrl}/api/automated/google-ads-daily-collection?date=${targetDate}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: internalAuthHeaders
         });
         
         const googleAdsResult = await googleAdsResponse.json();

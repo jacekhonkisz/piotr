@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../../lib/meta-api-optimized';
 import logger from '../../../../lib/logger';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +14,9 @@ const supabase = createClient(
  * Compares cached data with live API data for accuracy verification
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const body = await request.json();
     const { clientId, clientName, forceLive = false } = body;
@@ -359,8 +363,10 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const clientName = searchParams.get('client') || 'belmonte';
   
+  // Forward original headers so the POST guard sees the caller's credentials
   return POST(new NextRequest(request.url, {
     method: 'POST',
+    headers: request.headers,
     body: JSON.stringify({ clientName, forceLive: true })
   }));
 }

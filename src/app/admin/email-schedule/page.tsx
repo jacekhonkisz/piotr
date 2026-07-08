@@ -89,7 +89,6 @@ export default function EmailSchedulePage() {
         .order('name');
 
       if (clientsError) throw clientsError;
-      setClients(clientsData || []);
 
       // Load recent scheduler logs
       const { data: logsData, error: logsError } = await supabase
@@ -100,6 +99,26 @@ export default function EmailSchedulePage() {
 
       if (logsError) throw logsError;
       setSchedulerLogs(logsData || []);
+
+      const enrichedClients = (clientsData || []).map((client) => {
+        const successfulLogs = (logsData || []).filter(
+          (log) => log.client_id === client.id && log.email_sent
+        );
+        const latestSentAt = successfulLogs.reduce<string | null>((latest, log) => {
+          const sentAt = log.email_sent_at || log.created_at;
+          if (!sentAt) return latest;
+          if (!latest || new Date(sentAt) > new Date(latest)) return sentAt;
+          return latest;
+        }, client.last_report_sent_at);
+
+        return {
+          ...client,
+          last_report_sent_at: latestSentAt,
+          email_send_count: Math.max(client.email_send_count || 0, successfulLogs.length),
+        };
+      });
+
+      setClients(enrichedClients);
 
     } catch (error) {
       console.error('Error loading email schedule data:', error);
@@ -136,40 +155,103 @@ export default function EmailSchedulePage() {
     }
   };
 
-  const getNextScheduledDate = (client: Client): string => {
+  const getNextScheduledDateObject = (client: Client): Date | null => {
     if (client.reporting_frequency === 'on_demand') {
-      return 'On Demand';
+      return null;
     }
 
     if (client.next_report_scheduled_at) {
-      return new Date(client.next_report_scheduled_at).toLocaleDateString();
+      return new Date(client.next_report_scheduled_at);
     }
 
-    // Calculate next scheduled date
     const today = new Date();
     const currentDay = today.getDate();
-    const currentWeekday = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const currentWeekday = today.getDay();
 
     if (client.reporting_frequency === 'monthly') {
       if (currentDay >= client.send_day) {
-        // This month's send day has passed, schedule for next month
-        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, client.send_day);
-        return nextMonth.toLocaleDateString();
-      } else {
-        // This month's send day hasn't passed yet
-        const thisMonth = new Date(today.getFullYear(), today.getMonth(), client.send_day);
-        return thisMonth.toLocaleDateString();
+        return new Date(today.getFullYear(), today.getMonth() + 1, client.send_day);
       }
-    } else if (client.reporting_frequency === 'weekly') {
-      // Convert to Monday=1, Sunday=7 format
+      return new Date(today.getFullYear(), today.getMonth(), client.send_day);
+    }
+
+    if (client.reporting_frequency === 'weekly') {
       const weekday = currentWeekday === 0 ? 7 : currentWeekday;
       const daysUntilNext = client.send_day - weekday;
       const nextDate = new Date(today);
       nextDate.setDate(today.getDate() + (daysUntilNext <= 0 ? daysUntilNext + 7 : daysUntilNext));
-      return nextDate.toLocaleDateString();
+      return nextDate;
     }
 
-    return 'Unknown';
+    return null;
+  };
+
+  const formatScheduleDate = (date: Date): string =>
+    date.toLocaleDateString('pl-PL');
+
+  const getNextScheduledDate = (client: Client): string => {
+    const nextDate = getNextScheduledDateObject(client);
+    if (!nextDate) {
+      return client.reporting_frequency === 'on_demand' ? 'On Demand' : 'Unknown';
+    }
+    return formatScheduleDate(nextDate);
+  };
+
+  const toLocalDateKey = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getCurrentDuePeriod = (client: Client): { start: string; end: string } | null => {
+    const today = new Date();
+
+    if (client.reporting_frequency === 'monthly') {
+      if (today.getDate() < client.send_day) return null;
+
+      const previousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      return {
+        start: toLocalDateKey(previousMonth),
+        end: toLocalDateKey(lastDayOfMonth),
+      };
+    }
+
+    if (client.reporting_frequency === 'weekly') {
+      const weekday = today.getDay() === 0 ? 7 : today.getDay();
+      if (weekday < client.send_day) return null;
+
+      const daysBackToMonday = today.getDay() === 0 ? 6 : today.getDay() - 1;
+      const lastMonday = new Date(today);
+      lastMonday.setDate(today.getDate() - daysBackToMonday - 7);
+      const lastSunday = new Date(lastMonday);
+      lastSunday.setDate(lastMonday.getDate() + 6);
+
+      return {
+        start: toLocalDateKey(lastMonday),
+        end: toLocalDateKey(lastSunday),
+      };
+    }
+
+    return null;
+  };
+
+  const periodsMatch = (
+    logStart: string,
+    logEnd: string,
+    dueStart: string,
+    dueEnd: string
+  ): boolean => {
+    if (logStart === dueStart && logEnd === dueEnd) return true;
+
+    const startDiff = Math.abs(
+      new Date(`${logStart}T12:00:00`).getTime() - new Date(`${dueStart}T12:00:00`).getTime()
+    );
+    const endDiff = Math.abs(
+      new Date(`${logEnd}T12:00:00`).getTime() - new Date(`${dueEnd}T12:00:00`).getTime()
+    );
+    return startDiff <= 24 * 60 * 60 * 1000 && endDiff <= 24 * 60 * 60 * 1000;
   };
 
   const getFrequencyLabel = (frequency: string, sendDay: number): string => {
@@ -194,13 +276,23 @@ export default function EmailSchedulePage() {
 
   const isOverdue = (client: Client): boolean => {
     if (client.reporting_frequency === 'on_demand') return false;
-    
-    const nextDate = getNextScheduledDate(client);
-    if (nextDate === 'On Demand' || nextDate === 'Unknown') return false;
-    
-    const nextScheduled = new Date(nextDate);
-    const today = new Date();
-    return nextScheduled < today;
+
+    const duePeriod = getCurrentDuePeriod(client);
+    if (!duePeriod) return false;
+
+    const sentForPeriod = schedulerLogs.some(
+      (log) =>
+        log.client_id === client.id &&
+        log.email_sent &&
+        periodsMatch(
+          log.report_period_start,
+          log.report_period_end,
+          duePeriod.start,
+          duePeriod.end
+        )
+    );
+
+    return !sentForPeriod;
   };
 
   if (authLoading || loading) {

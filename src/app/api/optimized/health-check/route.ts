@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import logger from '../../../../lib/logger';
+import { verifyCronAuth } from '../../../../lib/cron-auth';
+import { authenticateRequest, requireAdmin } from '../../../../lib/auth-middleware';
 
 /**
  * OPTIMIZED HEALTH CHECK
@@ -18,7 +20,19 @@ export async function GET() {
   });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  // Reads DB + provider settings via the service role, so require cron secret
+  // or an authenticated admin.
+  if (!verifyCronAuth(request)) {
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user || !requireAdmin(authResult.user)) {
+      return NextResponse.json(
+        { error: 'Admin access required' },
+        { status: authResult.statusCode || 403 }
+      );
+    }
+  }
+
   const startTime = Date.now();
   
   try {

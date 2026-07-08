@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,15 +53,10 @@ interface MonitoringData {
  * - Health metrics and recommendations
  */
 export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
-    // Admin authentication check
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
 
     // Get monitoring data for all cache tables
     const cacheStats: CacheStats[] = [];
@@ -183,6 +179,9 @@ export async function GET(request: NextRequest) {
  * Clears stale cache entries for a specific table or all tables
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const { table, action } = await request.json();
 

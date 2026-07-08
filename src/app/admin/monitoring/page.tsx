@@ -173,7 +173,10 @@ export default function AdminMonitoringPage() {
   const loadLiveTokenHealth = async () => {
     try {
       setLoadingLiveHealth(true);
-      const response = await fetch('/api/admin/live-token-health');
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/live-token-health', {
+        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+      });
 
       if (response.ok) {
         const result = await response.json();
@@ -191,7 +194,10 @@ export default function AdminMonitoringPage() {
   const loadCacheStats = async () => {
     try {
       setLoadingCacheStats(true);
-      const response = await fetch('/api/admin/daily-metrics-cache-stats');
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/daily-metrics-cache-stats', {
+        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+      });
       if (response.ok) {
         const stats = await response.json();
         setCacheStats(stats);
@@ -210,7 +216,11 @@ export default function AdminMonitoringPage() {
         ? `/api/admin/clear-daily-metrics-cache?clientId=${clientId}`
         : '/api/admin/clear-daily-metrics-cache';
       
-      const response = await fetch(url, { method: 'POST' });
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+      });
       if (response.ok) {
         await loadCacheStats();
         alert(clientId ? `Cache cleared for client ${clientId}` : 'All daily metrics cache cleared');

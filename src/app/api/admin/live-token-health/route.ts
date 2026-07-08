@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { MetaAPIServiceOptimized } from '../../../../lib/meta-api-optimized';
 import logger from '../../../../lib/logger';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 /**
  * 🔍 Live Token Health Check API - META PLATFORM ONLY
@@ -103,6 +104,9 @@ function calculateTokenAge(createdAt: string): number {
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     logger.info('🏥 Starting LIVE META token health check (with actual API validation)...');
     
@@ -284,6 +288,9 @@ export async function GET(request: NextRequest) {
  * Test a specific client's token
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const body = await request.json();
     const { clientId } = body;

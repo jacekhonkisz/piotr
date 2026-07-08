@@ -27,6 +27,8 @@ const REQUIRED_ALWAYS = [
 const REQUIRED_PRODUCTION = [
   'NEXT_PUBLIC_APP_URL',
   'RESEND_API_KEY',
+  // Security-critical: cron endpoints fail closed without it
+  'CRON_SECRET',
 ];
 
 /**

@@ -8,6 +8,8 @@ const nextConfig = {
   
   // Enable experimental features for better error handling
   experimental: {
+    // Required on Next 14 so src/instrumentation.ts (Sentry init) is loaded.
+    instrumentationHook: true,
     serverComponentsExternalPackages: [
       '@supabase/supabase-js',
       'google-ads-api',
@@ -89,4 +91,17 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig; 
+const { withSentryConfig } = require('@sentry/nextjs');
+
+// Wrap with Sentry. Source-map upload only runs when SENTRY_AUTH_TOKEN (+ org/
+// project) are set; otherwise it is skipped and the build still succeeds.
+module.exports = withSentryConfig(nextConfig, {
+  silent: true,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // We initialize Sentry ourselves via sentry.*.config.ts, so let the plugin
+  // wire the client config but keep its footprint minimal.
+  disableLogger: true,
+  widenClientFileUpload: false,
+}); 

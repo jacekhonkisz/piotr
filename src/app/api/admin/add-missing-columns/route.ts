@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import logger from '../../../../lib/logger';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 /**
  * ADD MISSING COLUMNS TO daily_kpi_data
@@ -10,6 +11,9 @@ import logger from '../../../../lib/logger';
  */
 
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     logger.info('🔧 Adding missing columns to daily_kpi_data table...');
     
@@ -129,7 +133,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   // Check current schema status
   try {
     if (!supabaseAdmin) {

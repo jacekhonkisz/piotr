@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const { clientId, scheduledDate, reportType, recurring } = await request.json();
 
@@ -167,6 +171,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start');
@@ -255,6 +262,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const scheduleId = searchParams.get('id');
@@ -355,6 +365,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const scheduleId = searchParams.get('id');

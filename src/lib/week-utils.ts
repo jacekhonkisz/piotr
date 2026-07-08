@@ -3,18 +3,20 @@
 // Helper function to get current week info with ISO week format
 export function getCurrentWeekInfo() {
   const now = new Date();
-  const year = now.getFullYear();
   
   // 🔧 FIX: Use the same ISO week calculation as parseWeekPeriodId for consistency
   // First, find which ISO week today belongs to
   const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  // ISO week-year: the year of the week's Thursday, NOT the calendar year.
+  // Around New Year these differ (e.g. Mon 2025-12-29 belongs to 2026-W01).
+  const isoYear = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
   const weekNumber = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   
   // Now use parseWeekPeriodId to get the correct boundaries for this week
-  const periodId = `${year}-W${String(weekNumber).padStart(2, '0')}`;
+  const periodId = `${isoYear}-W${String(weekNumber).padStart(2, '0')}`;
   const weekInfo = parseWeekPeriodId(periodId);
   
   // 🔧 FIX: For current week, cap end date to today to avoid future date validation errors

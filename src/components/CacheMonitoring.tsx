@@ -15,6 +15,7 @@ import {
   Eye,
   Trash2
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface CacheEntry {
   clientId: string;
@@ -64,9 +65,10 @@ export default function CacheMonitoring() {
   const fetchMonitoringData = async () => {
     try {
       setRefreshing(true);
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/cache-monitoring', {
         headers: {
-          'Authorization': 'Bearer admin' // Replace with actual auth token
+          'Authorization': `Bearer ${session?.access_token || ''}`
         }
       });
 
@@ -91,10 +93,12 @@ export default function CacheMonitoring() {
       
       console.log('🔄 Triggering manual cache refresh for all systems...');
       
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/cache-monitoring/refresh-all', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`
         }
       });
 

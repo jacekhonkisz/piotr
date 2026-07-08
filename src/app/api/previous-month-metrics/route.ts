@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getPreviousCalendarMonthBounds } from '../../../lib/date-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,9 +17,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'clientId is required' }, { status: 400 });
     }
 
-    const now = new Date();
-    const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const previousMonthStr = previousMonth.toISOString().split('T')[0];
+    // Local calendar key; toISOString() would shift the date in UTC+ timezones
+    const previousMonthStr = getPreviousCalendarMonthBounds().start;
 
     const { data, error } = await supabase
       .from('campaign_summaries')

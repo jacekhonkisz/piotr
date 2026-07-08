@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +14,9 @@ const supabase = createClient(
  * Returns detailed information about cache state and period calculations
  */
 export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     // Get current week/month info
     const { getCurrentWeekInfo, parseWeekPeriodId, isCurrentWeekPeriod } = await import('../../../../lib/week-utils');

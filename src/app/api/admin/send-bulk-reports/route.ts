@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import FlexibleEmailService from '../../../../lib/flexible-email';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     // Create Supabase client
     const supabase = createClient(

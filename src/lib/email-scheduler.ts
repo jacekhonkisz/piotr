@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import FlexibleEmailService from './flexible-email';
-import { getPolishMonthName, prepareClientMonthlyReportData } from './email-helpers';
-import { GoogleAdsStandardizedDataFetcher } from './google-ads-standardized-data-fetcher';
-import { StandardizedDataFetcher } from './standardized-data-fetcher';
+import { buildMonthlyReportData, builtPlatformToSummaryShape } from './monthly-report-data-builder';
+import { adaptCampaignSummary } from './report-adapters';
+import { evaluatePreSend } from './report-presend-guard';
+import { getPolishMonthName } from './email-helpers';
 import logger from './logger';
 
 interface Client {
@@ -40,6 +41,8 @@ interface SchedulerResult {
 
 interface SendOverrideOptions {
   reviewRecipientOverride?: string;
+  /** Allow re-sending a report for a period that was already sent (manual sends only). */
+  allowDuplicate?: boolean;
 }
 
 interface SystemSettings {
@@ -50,6 +53,8 @@ interface SystemSettings {
   email_retry_attempts: number;
   email_retry_delay_minutes: number;
 }
+
+const SEND_IN_PROGRESS_MARKER = 'SEND_IN_PROGRESS';
 
 const parsedScheduledSendConcurrency = Number(process.env.EMAIL_SCHEDULER_CONCURRENCY || 3);
 const SCHEDULED_SEND_CONCURRENCY = Number.isFinite(parsedScheduledSendConcurrency)
@@ -260,37 +265,66 @@ export class EmailScheduler {
       logger.info(`✅ Pre-flight check passed: PDF exists for ${client.name}`);
     }
 
-    // Send the report using NEW professional monthly template
-    try {
-      await this.sendProfessionalMonthlyReport(client, period);
-      
-      // Update client's last sent date
-      await this.updateClientLastSentDate(client.id);
-      
-      logger.info(`✅ Successfully sent report to ${client.name} for ${period.start} to ${period.end}`);
-      
-      return {
-        clientId: client.id,
-        clientName: client.name,
-        success: true,
-        period
-      };
+    // Claim the send slot so overlapping scheduler runs see this period as
+    // in-progress and skip it.
+    const claimId = await this.claimSendSlot(client, period, 'scheduled');
 
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Nieznany błąd';
-      logger.error(`❌ Failed to send report to ${client.name}:`, errorMsg);
-      
-      // Log the error
-      await this.logSchedulerError(client, period, errorMsg);
-      
-      return {
-        clientId: client.id,
-        clientName: client.name,
-        success: false,
-        error: errorMsg,
-        period
-      };
+    // Send the report using NEW professional monthly template, retrying on
+    // transient failures. Retries happen in-process with a short delay
+    // (serverless functions cannot honor multi-minute retry windows).
+    const settings = await this.getSystemSettings();
+    const maxAttempts = Math.max(1, Math.min(settings.email_retry_attempts || 1, 5));
+    let lastError = '';
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const sendDetails = await this.sendProfessionalMonthlyReport(client, period);
+        
+        // Update client's last sent date
+        await this.updateClientLastSentDate(client.id);
+        
+        await this.recordSendResult(claimId, client, period, 'scheduled', {
+          success: true,
+          messageId: sendDetails.messageId,
+          recipients: sendDetails.routedRecipients,
+          retryCount: attempt - 1
+        });
+        
+        logger.info(`✅ Successfully sent report to ${client.name} for ${period.start} to ${period.end} (attempt ${attempt}/${maxAttempts})`);
+        
+        return {
+          clientId: client.id,
+          clientName: client.name,
+          success: true,
+          period
+        };
+
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : 'Nieznany błąd';
+        logger.error(`❌ Attempt ${attempt}/${maxAttempts} failed for ${client.name}:`, lastError);
+
+        if (attempt < maxAttempts) {
+          const delayMs = Math.min(10_000 * attempt, 30_000);
+          logger.info(`⏳ Retrying ${client.name} in ${delayMs / 1000}s...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
     }
+
+    // All attempts exhausted - record the failure with the retry count
+    await this.recordSendResult(claimId, client, period, 'scheduled', {
+      success: false,
+      error: lastError,
+      retryCount: maxAttempts - 1
+    });
+    
+    return {
+      clientId: client.id,
+      clientName: client.name,
+      success: false,
+      error: lastError,
+      period
+    };
   }
 
   /**
@@ -319,16 +353,14 @@ export class EmailScheduler {
     const today = new Date();
     
     if (client.reporting_frequency === 'monthly') {
-      // Get previous full month
       const previousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 0);
       
       return {
-        start: previousMonth.toISOString().split('T')[0] || '',
-        end: lastDayOfMonth.toISOString().split('T')[0] || ''
+        start: this.toLocalDateKey(previousMonth),
+        end: this.toLocalDateKey(lastDayOfMonth)
       };
     } else if (client.reporting_frequency === 'weekly') {
-      // Get previous full week (Monday to Sunday)
       const todayWeekday = today.getDay();
       const daysBackToMonday = todayWeekday === 0 ? 6 : todayWeekday - 1;
       const lastMonday = new Date(today);
@@ -338,33 +370,74 @@ export class EmailScheduler {
       lastSunday.setDate(lastMonday.getDate() + 6);
       
       return {
-        start: lastMonday.toISOString().split('T')[0] || '',
-        end: lastSunday.toISOString().split('T')[0] || ''
+        start: this.toLocalDateKey(lastMonday),
+        end: this.toLocalDateKey(lastSunday)
       };
     }
 
     return null;
   }
 
+  private toLocalDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   /**
-   * Check if a report was already sent for this period
+   * Check if a report was already sent (or is currently being sent) for this period.
+   * Considers both successful sends and fresh in-progress claims, which narrows
+   * the check-then-act race between overlapping scheduler invocations.
    */
   private async isReportAlreadySent(client: Client, period: ReportPeriod): Promise<boolean> {
+    const claimCutoff = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+
     const { data, error } = await this.supabase
       .from('email_scheduler_logs')
-      .select('id')
+      .select('id, email_sent, error_message, created_at')
       .eq('client_id', client.id)
       .eq('report_period_start', period.start)
       .eq('report_period_end', period.end)
-      .eq('email_sent', true)
-      .single();
+      .or(`email_sent.eq.true,and(error_message.eq.${SEND_IN_PROGRESS_MARKER},created_at.gt.${claimCutoff})`)
+      .limit(1);
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+    if (error) {
       logger.error('Error checking if report already sent:', error);
       return false;
     }
 
-    return !!data;
+    return !!(data && data.length > 0);
+  }
+
+  /**
+   * Claim a send slot for this client + period by inserting an in-progress log
+   * row. The row is updated in place with the final result, so each send cycle
+   * produces exactly one audit record.
+   */
+  private async claimSendSlot(client: Client, period: ReportPeriod, operationType: string, adminId?: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from('email_scheduler_logs')
+      .insert({
+        client_id: client.id,
+        admin_id: adminId || client.admin_id,
+        operation_type: operationType,
+        frequency: client.reporting_frequency,
+        send_day: client.send_day,
+        report_period_start: period.start,
+        report_period_end: period.end,
+        email_sent: false,
+        error_message: SEND_IN_PROGRESS_MARKER
+      })
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      logger.error('Error claiming send slot (continuing without claim):', error);
+      return null;
+    }
+
+    return data.id;
   }
 
   /**
@@ -375,124 +448,35 @@ export class EmailScheduler {
     client: Client,
     period: ReportPeriod,
     options?: SendOverrideOptions
-  ): Promise<{ attemptedRecipients: string[]; routedRecipients: string[]; pdfSize: number }> {
+  ): Promise<{ attemptedRecipients: string[]; routedRecipients: string[]; pdfSize: number; messageId?: string }> {
     logger.info(`📧 NEW TEMPLATE: Preparing professional report for ${client.name}`);
     logger.info(`📅 Period: ${period.start} to ${period.end}`);
 
     try {
-      // Step 1: Fetch Google Ads data
-      logger.info('1️⃣ Fetching Google Ads data...');
-      let googleAdsData = null;
-      
-      if (client.google_ads_enabled) {
-        try {
-          const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
-            clientId: client.id,
-            dateRange: { start: period.start, end: period.end },
-            reason: 'scheduled-email-google-ads'
-          });
+      // Steps 1-4: Fetch Meta + Google via the standardized fetchers and compute
+      // the canonical email payload. Shared with /api/send-report so scheduled
+      // and manual sends can never diverge on data source or metric definitions.
+      logger.info('1️⃣2️⃣3️⃣ Building report data (shared builder)...');
+      const built = await buildMonthlyReportData({
+        client,
+        period: { start: period.start, end: period.end },
+        reasonPrefix: 'scheduled-email'
+      });
+      const { reportData, monthName, year } = built;
 
-          if (googleResult.success && googleResult.data) {
-            const stats = googleResult.data.stats;
-            const conversions = googleResult.data.conversionMetrics as Record<string, number> | undefined;
-            const emailClicks = conversions?.email_contacts ?? (conversions as any)?.email_clicks ?? 0;
-            const phoneClicks = conversions?.click_to_call ?? (conversions as any)?.phone_calls ?? 0;
-
-            googleAdsData = {
-              spend: stats.totalSpend || 0,
-              impressions: stats.totalImpressions || 0,
-              clicks: stats.totalClicks || 0,
-              averageCtr: stats.averageCtr,
-              averageCpc: stats.averageCpc,
-              emailClicks,
-              phoneClicks,
-              bookingStep1: conversions?.booking_step_1 || 0,
-              bookingStep2: conversions?.booking_step_2 || 0,
-              bookingStep3: conversions?.booking_step_3 || 0,
-              reservations: conversions?.reservations || 0,
-              reservationValue: conversions?.reservation_value || 0
-            };
-
-            logger.info(`✅ Google Ads data fetched: ${googleAdsData.spend.toFixed(2)} zł, ${googleAdsData.reservations} reservations`);
-          }
-        } catch (error) {
-          logger.warn('⚠️ Could not fetch Google Ads data:', error);
-        }
-      } else {
-        logger.info('⏭️ Google Ads not enabled for this client');
-      }
-
-      // Step 2: Fetch Meta Ads data
-      logger.info('2️⃣ Fetching Meta Ads data...');
-      let metaAdsData = null;
-      let metaCampaignRows: any[] | undefined;
-
-      if (client.meta_access_token) {
-        try {
-          const metaResult = await StandardizedDataFetcher.fetchData({
-            clientId: client.id,
-            dateRange: { start: period.start, end: period.end },
-            platform: 'meta',
-            reason: 'scheduled-email-meta-ads'
-          });
-
-          if (metaResult.success && metaResult.data) {
-            metaCampaignRows = (metaResult.data.campaigns || []).filter(
-              (c: any) => !c.platform || c.platform === 'meta'
-            );
-            const stats = metaResult.data.stats;
-            const conversions = metaResult.data.conversionMetrics as Record<string, number> | undefined;
-            const emailClicks = conversions?.email_contacts ?? (conversions as any)?.email_clicks ?? 0;
-            const phoneClicks = conversions?.click_to_call ?? (conversions as any)?.phone_calls ?? 0;
-
-            metaAdsData = {
-              spend: stats.totalSpend || 0,
-              impressions: stats.totalImpressions || 0,
-              linkClicks: stats.totalClicks || 0,
-              averageCtr: stats.averageCtr,
-              averageCpc: stats.averageCpc,
-              emailClicks,
-              phoneClicks,
-              reservations: conversions?.reservations || 0,
-              reservationValue: conversions?.reservation_value || 0
-            };
-
-            logger.info(`✅ Meta Ads data fetched: ${metaAdsData.spend.toFixed(2)} zł, ${metaAdsData.reservations} reservations`);
-          }
-        } catch (error) {
-          logger.warn('⚠️ Could not fetch Meta Ads data:', error);
-        }
-      } else {
-        logger.info('⏭️ Meta Ads not configured for this client');
-      }
-
-      // Step 3: Get Polish month name and year
-      const startDate = new Date(period.start);
-      const monthNumber = startDate.getMonth() + 1; // 1-12
-      const year = startDate.getFullYear();
-      const monthName = getPolishMonthName(monthNumber);
-      
       logger.info(`📅 Report for: ${monthName} ${year}`);
-
-      // Step 4: Prepare report data with all calculations
-      logger.info('3️⃣ Calculating metrics...');
-      const reportData = prepareClientMonthlyReportData(
-        client.id,
-        client.name,
-        monthNumber,
-        year,
-        googleAdsData || undefined,
-        metaAdsData || undefined,
-        undefined,
-        metaCampaignRows
-      );
-
       logger.info('✅ Metrics calculated:', {
         totalOnlineReservations: reportData.totalOnlineReservations,
         totalOnlineValue: reportData.totalOnlineValue.toFixed(2),
         microConversions: reportData.totalMicroConversions,
         finalCostPercentage: reportData.finalCostPercentage.toFixed(2) + '%'
       });
+
+      // Pre-send consistency guard: compare the payload we are about to send
+      // against a fresh live baseline. Soft by default (logs a warning/block
+      // decision); set EMAIL_PRESEND_HARD_BLOCK=true to abort sends the guard
+      // rejects.
+      await this.runPreSendGuard(client, { start: period.start, end: period.end }, built);
 
       // Step 5: Generate PDF directly. Do not depend on generated_reports table;
       // that table is optional/report-history storage, while email delivery only
@@ -532,20 +516,70 @@ export class EmailScheduler {
       ];
       logger.info(`✅ Email sent successfully - Message ID: ${emailResult.messageId} → ${routedRecipients.join(', ')}`);
 
-      // Log successful email
-      await this.logSchedulerSuccess(client, period);
-
       logger.info(`🎉 Professional report sent successfully to ${client.name}`);
       return {
         attemptedRecipients: contactEmails,
         routedRecipients,
-        pdfSize: pdfBuffer.length
+        pdfSize: pdfBuffer.length,
+        messageId: emailResult.messageId
       };
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error(`❌ Failed to send professional report:`, errorMsg);
       throw error;
+    }
+  }
+
+  /**
+   * Validate the outgoing payload against a fresh live baseline before sending.
+   * Soft mode logs the decision; hard mode (EMAIL_PRESEND_HARD_BLOCK=true) throws
+   * on a 'block' decision so the retry/failure path records it.
+   */
+  private async runPreSendGuard(
+    client: Client,
+    dateRange: ReportPeriod,
+    built: Awaited<ReturnType<typeof buildMonthlyReportData>>
+  ): Promise<void> {
+    const hardBlock = process.env.EMAIL_PRESEND_HARD_BLOCK === 'true';
+    const platforms: Array<{ platform: 'meta' | 'google'; data?: Record<string, number> }> = [
+      { platform: 'meta', data: built.metaAdsData },
+      { platform: 'google', data: built.googleAdsData }
+    ];
+
+    for (const { platform, data } of platforms) {
+      if (!data) continue;
+      try {
+        const candidate = adaptCampaignSummary({
+          clientId: client.id,
+          clientName: client.name ?? '',
+          platform,
+          dateRange,
+          summary: builtPlatformToSummaryShape(data, platform)
+        });
+        const result = await evaluatePreSend(candidate);
+        logger.info(`scheduler pre-send guard (${platform})`, {
+          clientId: client.id,
+          decision: result.decision,
+          score: result.score,
+          reason: result.reason
+        });
+        if (hardBlock && result.decision === 'block') {
+          throw new Error(
+            `Pre-send guard blocked ${platform} report (score ${result.score}, ${result.reason})`
+          );
+        }
+      } catch (err) {
+        // A guard wiring/baseline failure must not silently drop a send in soft
+        // mode; only rethrow when it is the intentional hard-block error.
+        if (hardBlock && err instanceof Error && err.message.startsWith('Pre-send guard blocked')) {
+          throw err;
+        }
+        logger.warn(`scheduler pre-send guard (${platform}) failed`, {
+          clientId: client.id,
+          error: err instanceof Error ? err.message : 'unknown'
+        });
+      }
     }
   }
 
@@ -618,48 +652,115 @@ export class EmailScheduler {
   }
 
   /**
-   * Log successful email sending
+   * Record the final result of a send cycle. Updates the claim row in place
+   * when one exists so each cycle produces exactly one audit record; falls
+   * back to inserting a new row otherwise.
    */
-  private async logSchedulerSuccess(client: Client, period: ReportPeriod): Promise<void> {
-    const { error } = await this.supabase
-      .from('email_scheduler_logs')
-      .insert({
-        client_id: client.id,
-        admin_id: client.admin_id,
-        operation_type: 'scheduled',
-        frequency: client.reporting_frequency,
-        send_day: client.send_day,
-        report_period_start: period.start,
-        report_period_end: period.end,
-        email_sent: true,
-        email_sent_at: new Date().toISOString()
-      });
+  private async recordSendResult(
+    claimId: string | null,
+    client: Client,
+    period: ReportPeriod,
+    operationType: string,
+    result: {
+      success: boolean;
+      messageId?: string;
+      recipients?: string[];
+      error?: string;
+      retryCount?: number;
+    },
+    adminId?: string
+  ): Promise<void> {
+    const fields = {
+      email_sent: result.success,
+      email_sent_at: result.success ? new Date().toISOString() : null,
+      error_message: result.success ? null : (result.error || 'Unknown error'),
+      message_id: result.messageId || null,
+      recipients: result.recipients || null,
+      retry_count: result.retryCount ?? 0
+    };
+
+    const { error } = claimId
+      ? await this.supabase
+          .from('email_scheduler_logs')
+          .update(fields)
+          .eq('id', claimId)
+      : await this.supabase
+          .from('email_scheduler_logs')
+          .insert({
+            client_id: client.id,
+            admin_id: adminId || client.admin_id,
+            operation_type: operationType,
+            frequency: client.reporting_frequency,
+            send_day: client.send_day,
+            report_period_start: period.start,
+            report_period_end: period.end,
+            ...fields
+          });
 
     if (error) {
-      logger.error('Error logging scheduler success:', error);
+      // 23505 = unique violation: another run already recorded a successful
+      // send for this period (should be prevented by the claim, but log it).
+      if ((error as any).code === '23505') {
+        logger.warn('⚠️ Duplicate send record blocked by unique index', {
+          clientId: client.id,
+          period
+        });
+      } else {
+        logger.error('Error recording send result:', error);
+      }
     }
+
+    // Parity: also mirror into email_logs so the unified admin Email Logs view
+    // (and the Resend webhook status updates) cover scheduled sends, not just
+    // manual /api/send-report sends.
+    await this.mirrorToEmailLogs(client, period, operationType, result, adminId);
   }
 
   /**
-   * Log scheduler error
+   * Write one email_logs row per recipient for a completed send cycle, using the
+   * same column shape as the manual send path. Best-effort: never throws.
    */
-  private async logSchedulerError(client: Client, period: ReportPeriod, errorMessage: string): Promise<void> {
-    const { error } = await this.supabase
-      .from('email_scheduler_logs')
-      .insert({
-        client_id: client.id,
-        admin_id: client.admin_id,
-        operation_type: 'scheduled',
-        frequency: client.reporting_frequency,
-        send_day: client.send_day,
-        report_period_start: period.start,
-        report_period_end: period.end,
-        email_sent: false,
-        error_message: errorMessage
-      });
+  private async mirrorToEmailLogs(
+    client: Client,
+    period: ReportPeriod,
+    operationType: string,
+    result: { success: boolean; messageId?: string; recipients?: string[]; error?: string },
+    adminId?: string
+  ): Promise<void> {
+    try {
+      const startDate = new Date(period.start);
+      const monthName = getPolishMonthName(startDate.getUTCMonth() + 1);
+      const year = startDate.getUTCFullYear();
+      const subject = `Podsumowanie miesiąca - ${monthName} ${year} | ${client.name}`;
 
-    if (error) {
-      logger.error('Error logging scheduler error:', error);
+      const recipients = result.recipients?.length
+        ? result.recipients
+        : (client.contact_emails?.length ? client.contact_emails : [client.email]);
+
+      const rows = recipients.map((recipient) => ({
+        client_id: client.id,
+        admin_id: adminId || client.admin_id,
+        email_type: operationType === 'scheduled' ? 'monthly_report' : operationType,
+        recipient_email: recipient,
+        subject,
+        message_id: result.success ? (result.messageId || 'sent') : null,
+        sent_at: new Date().toISOString(),
+        status: result.success ? 'sent' : 'failed',
+        error_message: result.success ? null : (result.error || null)
+      }));
+
+      const { error } = await this.supabase.from('email_logs').insert(rows);
+      if (error) {
+        logger.warn('Could not mirror scheduled send into email_logs', {
+          clientId: client.id,
+          error: error.message
+        });
+      }
+    } catch (err) {
+      logger.warn('email_logs parity write failed', {
+        clientId: client.id,
+        error: err instanceof Error ? err.message : 'unknown'
+      });
     }
   }
 
@@ -793,31 +894,45 @@ export class EmailScheduler {
         return { success: false, error: 'Could not determine report period' };
       }
 
-      // Send the report using NEW professional monthly template
-      const sendDetails = await this.sendProfessionalMonthlyReport(client, reportPeriod, options);
+      // Deduplication: block accidental double-sends for a period that was
+      // already delivered, unless the admin explicitly allows a resend.
+      if (!options?.allowDuplicate && await this.isReportAlreadySent(client, reportPeriod)) {
+        return {
+          success: false,
+          error: `Report already sent for ${reportPeriod.start} - ${reportPeriod.end}. Use allowDuplicate to resend.`,
+          period: reportPeriod
+        };
+      }
 
-      // Log manual send
-      await this.supabase
-        .from('email_scheduler_logs')
-        .insert({
-          client_id: clientId,
-          admin_id: adminId,
-          operation_type: 'manual',
-          frequency: client.reporting_frequency,
-          send_day: client.send_day,
-          report_period_start: reportPeriod.start,
-          report_period_end: reportPeriod.end,
-          email_sent: true,
-          email_sent_at: new Date().toISOString()
-        });
+      const claimId = await this.claimSendSlot(client, reportPeriod, 'manual', adminId);
 
-      return {
-        success: true,
-        period: reportPeriod,
-        attemptedRecipients: sendDetails.attemptedRecipients,
-        routedRecipients: sendDetails.routedRecipients,
-        pdfSize: sendDetails.pdfSize
-      };
+      try {
+        // Send the report using NEW professional monthly template
+        const sendDetails = await this.sendProfessionalMonthlyReport(client, reportPeriod, options);
+
+        await this.updateClientLastSentDate(clientId);
+
+        await this.recordSendResult(claimId, client, reportPeriod, 'manual', {
+          success: true,
+          messageId: sendDetails.messageId,
+          recipients: sendDetails.routedRecipients
+        }, adminId);
+
+        return {
+          success: true,
+          period: reportPeriod,
+          attemptedRecipients: sendDetails.attemptedRecipients,
+          routedRecipients: sendDetails.routedRecipients,
+          pdfSize: sendDetails.pdfSize
+        };
+      } catch (sendError) {
+        const sendErrorMsg = sendError instanceof Error ? sendError.message : 'Unknown error';
+        await this.recordSendResult(claimId, client, reportPeriod, 'manual', {
+          success: false,
+          error: sendErrorMsg
+        }, adminId);
+        return { success: false, error: sendErrorMsg, period: reportPeriod };
+      }
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';

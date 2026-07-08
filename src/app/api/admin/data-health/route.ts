@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import logger from '../../../../lib/logger';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 /**
  * 🏥 Data Health Check API
@@ -44,6 +45,9 @@ interface HealthCheck {
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     logger.info('🏥 Starting data health check...');
     

@@ -931,7 +931,13 @@ async function refreshCacheInBackground(clientId: string, periodId: string, plat
 // Global request cache to prevent duplicate API calls
 const globalRequestCache = new Map<string, Promise<any>>();
 
-// Smart cache function for specific date ranges
+// Smart cache function for specific date ranges.
+//
+// IMPORTANT: the smart cache only holds data for the CURRENT month/week. This
+// function therefore only serves a request whose range maps to the current
+// period; for any historical period it throws so the caller falls back to the
+// stored-data path instead of silently receiving current-period numbers
+// mislabeled as the requested period.
 export async function getSmartCacheDataForPeriod(
   clientId: string, 
   dateRange: { start: string; end: string }, 
@@ -944,21 +950,47 @@ export async function getSmartCacheDataForPeriod(
   
   // Determine if this is a weekly or monthly request
   const isWeekly = daysDiff <= 8;
-  const periodId = isWeekly ? 
-    getCurrentWeekInfo().periodId : // For now, use current week logic
-    `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
-  
+
+  // Derive the requested period id from the range's start date rather than
+  // assuming "current".
+  let requestedPeriodId: string;
+  let isCurrentPeriod: boolean;
+
+  if (isWeekly) {
+    // ISO week-year of the start date's week (the year of that week's Thursday).
+    const d = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const isoYear = d.getUTCFullYear();
+    const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+    const weekNumber = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    requestedPeriodId = `${isoYear}-W${String(weekNumber).padStart(2, '0')}`;
+    isCurrentPeriod = isCurrentWeekPeriod(requestedPeriodId);
+  } else {
+    requestedPeriodId = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+    isCurrentPeriod = requestedPeriodId === getCurrentMonthInfo().periodId;
+  }
+
   logger.info('📅 Smart cache request for specific period:', {
     clientId,
     platform,
     dateRange,
     isWeekly,
-    periodId,
+    requestedPeriodId,
+    isCurrentPeriod,
     forceRefresh
   });
-  
-  // For now, delegate to the existing function
-  // TODO: Implement proper period-specific caching
+
+  if (!isCurrentPeriod) {
+    // Fail loudly: the smart cache cannot serve historical periods. Callers
+    // should read stored summaries (campaign_summaries / daily_kpi_data) for
+    // past periods instead.
+    throw new Error(
+      `Smart cache only serves the current period; requested ${requestedPeriodId} is historical. Use the stored-data path for past periods.`
+    );
+  }
+
+  // Current period → serve from the current-period smart cache.
   return await getSmartCacheData(clientId, forceRefresh, platform);
 }
 

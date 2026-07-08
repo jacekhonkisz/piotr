@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { getPreviousCalendarMonthBounds } from '../lib/date-utils';
 import { RefreshCw, Clock, Database } from 'lucide-react';
 
 interface MetaPerformanceLiveProps {
@@ -336,9 +337,9 @@ export default function MetaPerformanceLive({ clientId, currency = 'PLN', shared
   // Fetch previous month data for comparison
   const fetchPreviousMonthComparison = async () => {
     try {
-      const now = new Date();
-      const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const previousMonthStr = previousMonth.toISOString().split('T')[0]!;
+      // Build the date key from local calendar components; toISOString() would
+      // shift local midnight a day back in UTC+ timezones (e.g. Poland).
+      const previousMonthStr = getPreviousCalendarMonthBounds().start;
       
       console.log('📊 Fetching previous month data for comparison:', previousMonthStr);
       

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import DataFreshnessIndicator from '../../../components/DataFreshnessIndicator';
 import { AdminLoading } from '../../../components/LoadingSpinner';
+import { supabase } from '../../../lib/supabase';
 
 interface ClientStatus {
   id: string;
@@ -73,9 +74,10 @@ export default function ClientStatusDashboard() {
   const loadClientStatuses = async () => {
     setLoading(true);
     try {
-      // This would typically call your API to get all client statuses
-      // For now, we'll simulate with some sample data
-      const response = await fetch('/api/admin/client-statuses');
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/client-statuses', {
+        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+      });
       if (response.ok) {
         const data = await response.json();
         setClients(data.clients || []);
@@ -90,10 +92,12 @@ export default function ClientStatusDashboard() {
   const verifyClientData = async (clientId: string, clientName: string) => {
     setVerifyingClient(clientId);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/verify-client-data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
         },
         body: JSON.stringify({
           clientId,

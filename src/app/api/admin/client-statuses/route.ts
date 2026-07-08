@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../../lib/meta-api-optimized';
 import logger from '../../../../lib/logger';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,113 +22,42 @@ const supabase = createClient(
  * - Data comparison metrics
  */
 export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
-    // Extract the authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // Try to get session from cookies if no auth header
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-      
-      // Verify user is admin
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profileError || profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-      }
-
-      // Get all clients for this admin
-      const { data: clients, error: clientsError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('admin_id', session.user.id)
-        .order('name', { ascending: true });
-
-      if (clientsError) {
-        logger.error('Error fetching clients:', clientsError);
-        return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
-      }
-
-      // Generate status for each client (lightweight version)
-      const clientStatuses = await Promise.all(
-        (clients || []).map(async (client) => {
-          try {
-            const status = await generateClientStatus(client);
-            return status;
-          } catch (error) {
-            logger.error(`Error generating status for client ${client.id}:`, error);
-            return generateErrorStatus(client);
-          }
-        })
-      );
-
-      return NextResponse.json({
-        success: true,
-        clients: clientStatuses,
-        total: clientStatuses.length,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      // Handle Bearer token auth
-      const token = authHeader.substring(7);
-
-      // Verify the JWT token and get user
-      const { data: { user }, error: userAuthError } = await supabase.auth.getUser(token);
-      if (userAuthError || !user) {
-        logger.error('Token verification failed:', userAuthError);
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-
-      // Check if user is admin
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      if (profileError || profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-      }
-
-      // Get all clients for this admin
-      const { data: clients, error: clientsError } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('admin_id', user.id)
-        .order('name', { ascending: true });
-
-      if (clientsError) {
-        logger.error('Error fetching clients:', clientsError);
-        return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
-      }
-
-      // Generate status for each client (lightweight version)
-      const clientStatuses = await Promise.all(
-        (clients || []).map(async (client) => {
-          try {
-            const status = await generateClientStatus(client);
-            return status;
-          } catch (error) {
-            logger.error(`Error generating status for client ${client.id}:`, error);
-            return generateErrorStatus(client);
-          }
-        })
-      );
-
-      return NextResponse.json({
-        success: true,
-        clients: clientStatuses,
-        total: clientStatuses.length,
-        timestamp: new Date().toISOString()
-      });
+    // Scope to the admin's own clients when we have a user id (JWT); cron/service
+    // callers (userId null) see all clients.
+    let clientQuery = supabase.from('clients').select('*').order('name', { ascending: true });
+    if (guard.userId) {
+      clientQuery = clientQuery.eq('admin_id', guard.userId);
     }
+
+    const { data: clients, error: clientsError } = await clientQuery;
+
+    if (clientsError) {
+      logger.error('Error fetching clients:', clientsError);
+      return NextResponse.json({ error: 'Failed to fetch clients' }, { status: 500 });
+    }
+
+    // Generate status for each client (lightweight version)
+    const clientStatuses = await Promise.all(
+      (clients || []).map(async (client) => {
+        try {
+          return await generateClientStatus(client);
+        } catch (error) {
+          logger.error(`Error generating status for client ${client.id}:`, error);
+          return generateErrorStatus(client);
+        }
+      })
+    );
+
+    return NextResponse.json({
+      success: true,
+      clients: clientStatuses,
+      total: clientStatuses.length,
+      timestamp: new Date().toISOString()
+    });
 
   } catch (error) {
     logger.error('Error in client-statuses GET API:', error);

@@ -375,10 +375,12 @@ export default function AdminSettingsPage() {
       setTestingEmail(true);
       setEmailTestStatus('testing');
       
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/test-email', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
         },
         body: JSON.stringify(emailConfig),
       });
@@ -440,10 +442,12 @@ export default function AdminSettingsPage() {
     try {
       setSendingBulkReports(true);
       
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch('/api/admin/send-bulk-reports', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
         },
       });
       

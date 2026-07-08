@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BackgroundDataCollector } from '@/lib/background-data-collector';
 import logger from '@/lib/logger';
+import { requireAdminAuth } from '@/lib/admin-auth';
 
 /**
  * Admin endpoint to manually trigger monthly data collection for a specific client
  * This is useful for backfilling historical data for past months
  */
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   const startTime = Date.now();
   
   try {

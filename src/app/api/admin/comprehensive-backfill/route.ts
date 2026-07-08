@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import logger from '../../../../lib/logger';
+import { requireAdminAuth } from '../../../../lib/admin-auth';
 
 /**
  * COMPREHENSIVE SYSTEM-WIDE BACKFILL
@@ -10,6 +11,9 @@ import logger from '../../../../lib/logger';
  */
 
 export async function POST(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   try {
     logger.info('🚀 Starting comprehensive system-wide backfill...');
     
@@ -93,7 +97,11 @@ export async function POST(request: NextRequest) {
           : 'http://localhost:3000';
         const backfillResponse = await fetch(`${baseUrl}/api/admin/backfill-daily-data`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            // Internal server-to-server call authorized via cron secret
+            'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+          },
           body: JSON.stringify({
             days: range.days,
             endDate: range.endDate // Backfill from this end date backwards
@@ -158,7 +166,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const guard = await requireAdminAuth(request);
+  if (!guard.authorized) return guard.response;
+
   // Return backfill status/info
   try {
     if (!supabaseAdmin) {
