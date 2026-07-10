@@ -422,16 +422,22 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     if (!kpiError && dailyKpiData && dailyKpiData.length > 0) {
       console.log(`✅ Found ${dailyKpiData.length} daily KPI records, using as PRIORITY 1 (matching smart cache)`);
       
+      const dailyReservationValue = dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservation_value || 0), 0);
       // Aggregate conversion metrics from daily_kpi_data
       conversionMetrics = {
         click_to_call: dailyKpiData.reduce((sum: number, r: any) => sum + (r.click_to_call || 0), 0),
         email_contacts: dailyKpiData.reduce((sum: number, r: any) => sum + (r.email_contacts || 0), 0),
         booking_step_1: dailyKpiData.reduce((sum: number, r: any) => sum + (r.booking_step_1 || 0), 0),
         reservations: dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservations || 0), 0),
-        reservation_value: dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservation_value || 0), 0),
+        reservation_value: dailyReservationValue,
+        // ✅ FIX: Funnel card "Łączna wartość konwersji" reads total_conversion_value.
+        // For Meta both equal reservation_value (same convention as smart cache /
+        // StandardizedDataFetcher); omitting them rendered 0,00 zł for past months.
+        conversion_value: dailyReservationValue,
+        total_conversion_value: dailyReservationValue,
         booking_step_2: dailyKpiData.reduce((sum: number, r: any) => sum + (r.booking_step_2 || 0), 0),
         booking_step_3: dailyKpiData.reduce((sum: number, r: any) => sum + (r.booking_step_3 || 0), 0),
-        roas: totals.totalSpend > 0 ? dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservation_value || 0), 0) / totals.totalSpend : 0,
+        roas: totals.totalSpend > 0 ? dailyReservationValue / totals.totalSpend : 0,
         cost_per_reservation: dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservations || 0), 0) > 0 ?
           totals.totalSpend / dailyKpiData.reduce((sum: number, r: any) => sum + (r.reservations || 0), 0) : 0,
         // Add performance metrics from meta_tables
@@ -450,15 +456,20 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
     if (campaigns && campaigns.length > 0) {
       console.log(`📊 No daily_kpi_data, using campaign_data as PRIORITY 2 (matching smart cache)`);
       
+      const campaignReservationValue = campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0);
+      const campaignTotalConversionValue = campaigns.reduce((sum: number, c: any) => sum + (c.total_conversion_value || 0), 0);
       conversionMetrics = {
         click_to_call: campaigns.reduce((sum: number, c: any) => sum + (c.click_to_call || 0), 0),
         email_contacts: campaigns.reduce((sum: number, c: any) => sum + (c.email_contacts || 0), 0),
         booking_step_1: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_1 || 0), 0),
         reservations: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0),
-        reservation_value: campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0),
+        reservation_value: campaignReservationValue,
+        // ✅ FIX: expose total_conversion_value for the funnel card (Meta: = reservation_value)
+        conversion_value: campaigns.reduce((sum: number, c: any) => sum + (c.conversion_value || 0), 0) || campaignReservationValue,
+        total_conversion_value: campaignTotalConversionValue || campaignReservationValue,
         booking_step_2: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_2 || 0), 0),
         booking_step_3: campaigns.reduce((sum: number, c: any) => sum + (c.booking_step_3 || 0), 0),
-        roas: totals.totalSpend > 0 ? campaigns.reduce((sum: number, c: any) => sum + (c.reservation_value || 0), 0) / totals.totalSpend : 0,
+        roas: totals.totalSpend > 0 ? campaignReservationValue / totals.totalSpend : 0,
         cost_per_reservation: campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) > 0 ? 
           totals.totalSpend / campaigns.reduce((sum: number, c: any) => sum + (c.reservations || 0), 0) : 0,
         // Add performance metrics from meta_tables
@@ -478,6 +489,9 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         booking_step_1: storedSummary.booking_step_1 || 0,
         reservations: storedSummary.reservations || 0,
         reservation_value: storedSummary.reservation_value || 0,
+        // ✅ FIX: expose total_conversion_value for the funnel card (Meta: = reservation_value)
+        conversion_value: storedSummary.reservation_value || 0,
+        total_conversion_value: storedSummary.reservation_value || 0,
         booking_step_2: storedSummary.booking_step_2 || 0,
         booking_step_3: storedSummary.booking_step_3 || 0,
         roas: storedSummary.roas || 0,
@@ -497,6 +511,8 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
         booking_step_1: 0,
         reservations: 0,
         reservation_value: 0,
+        conversion_value: 0,
+        total_conversion_value: 0,
         booking_step_2: 0,
         booking_step_3: 0,
         roas: 0,

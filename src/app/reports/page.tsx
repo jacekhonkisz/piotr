@@ -419,6 +419,9 @@ interface Campaign {
   reservation_value?: number;
   booking_step_2?: number;
   booking_step_3?: number;
+  // Conversion value fields (funnel "Łączna wartość konwersji" fallback sums these)
+  conversion_value?: number;
+  total_conversion_value?: number;
 }
 
 interface MonthlyReport {
@@ -1356,6 +1359,9 @@ function ReportsPageContent() {
         const booking_step_1 = campaign.booking_step_1 || 0;
         const booking_step_2 = campaign.booking_step_2 || 0;
         const booking_step_3 = campaign.booking_step_3 || 0;
+        // ✅ FIX: preserve conversion value fields (Meta: default to reservation_value)
+        const conversion_value = campaign.conversion_value ?? reservation_value;
+        const total_conversion_value = campaign.total_conversion_value ?? reservation_value;
 
         return {
           id: campaign.campaign_id || `campaign-${index}`,
@@ -1381,7 +1387,9 @@ function ReportsPageContent() {
           reservation_value,
           booking_step_1,
           booking_step_2,
-          booking_step_3
+          booking_step_3,
+          conversion_value,
+          total_conversion_value
         };
       });
       
@@ -2115,6 +2123,11 @@ function ReportsPageContent() {
         const booking_step_1 = campaign.booking_step_1 || 0;
         const booking_step_2 = campaign.booking_step_2 || 0;
         const booking_step_3 = campaign.booking_step_3 || 0;
+        // ✅ FIX: preserve conversion value fields — the funnel's fallback sums
+        // campaigns[].total_conversion_value, so dropping them rendered 0,00 zł
+        // for historical periods (Meta: default to reservation_value)
+        const conversion_value = campaign.conversion_value ?? reservation_value;
+        const total_conversion_value = campaign.total_conversion_value ?? reservation_value;
 
         return {
           id: campaign.campaign_id || campaign.campaignId || `campaign-${index}`,
@@ -2140,7 +2153,9 @@ function ReportsPageContent() {
           reservation_value,
           booking_step_1,
           booking_step_2,
-          booking_step_3
+          booking_step_3,
+          conversion_value,
+          total_conversion_value
         };
       });
       
@@ -2765,6 +2780,9 @@ function ReportsPageContent() {
             const booking_step_1 = campaign.booking_step_1 || 0;
             const booking_step_2 = campaign.booking_step_2 || 0;
             const booking_step_3 = campaign.booking_step_3 || 0;
+            // ✅ FIX: preserve conversion value fields (Meta: default to reservation_value)
+            const conversion_value = campaign.conversion_value ?? reservation_value;
+            const total_conversion_value = campaign.total_conversion_value ?? reservation_value;
 
             // 🔍 DEBUG: Log campaign name resolution for first 3 campaigns (weekly path)
             if (index < 3) {
@@ -2803,7 +2821,9 @@ function ReportsPageContent() {
               reservation_value,
               booking_step_1,
               booking_step_2,
-              booking_step_3
+              booking_step_3,
+              conversion_value,
+              total_conversion_value
             };
           });
           
