@@ -168,7 +168,7 @@ export class FlexibleEmailService {
   async sendEmail(
     emailData: EmailData,
     provider?: EmailProvider,
-    options?: { reviewRecipientOverride?: string }
+    options?: { reviewRecipientOverride?: string; reviewRecipientsOverride?: string[] }
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
     const selectedProvider = provider || this.determineProvider(emailData.to);
 
@@ -179,7 +179,7 @@ export class FlexibleEmailService {
     const { to, cc, originalRecipient, isRedirected } = await resolveEmailEnvelope(
       emailData.to,
       emailData.cc || [],
-      { reviewRecipientOverride: options?.reviewRecipientOverride }
+      { reviewRecipientOverride: options?.reviewRecipientOverride, reviewRecipientsOverride: options?.reviewRecipientsOverride }
     );
     const resolvedSubject = await getEmailSubjectAsync(emailData.subject, isRedirected ? originalRecipient : undefined);
 
@@ -1161,7 +1161,7 @@ Piotr Bajerlein`;
     },
     pdfBuffer: Buffer,
     provider?: EmailProvider,
-    options?: { reviewRecipientOverride?: string; cc?: string[] }
+    options?: { reviewRecipientOverride?: string; reviewRecipientsOverride?: string[]; cc?: string[] }
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
     
     // 🔒 MANDATORY VALIDATION: PDF must be provided

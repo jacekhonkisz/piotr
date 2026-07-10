@@ -18,13 +18,15 @@ import {
   Shield,
   ShieldCheck,
   TestTube,
-  Loader2
+  Loader2,
+  Plus
 } from 'lucide-react';
 import { useAuth } from '../../../components/AuthProvider';
 import { supabase } from '../../../lib/supabase';
 import { AdminLoading } from '../../../components/LoadingSpinner';
 import CalendarEmailPreviewModal from '../../../components/CalendarEmailPreviewModal';
 import { getMonthBoundaries, getWeekBoundaries } from '../../../lib/date-range-utils';
+import { INTERNAL_TEST_RECIPIENT_PRESETS, isValidEmailAddress } from '../../../lib/email-recipients';
 
 // Types
 interface Client {
@@ -122,8 +124,33 @@ export default function AdminCalendarPage() {
     details?: any;
   } | null>(null);
   const [testClientId, setTestClientId] = useState('');
-  const [testInternalRecipient, setTestInternalRecipient] = useState('jac.honkisz@gmail.com');
+  const [testRecipients, setTestRecipients] = useState<string[]>(['jac.honkisz@gmail.com']);
+  const [customTestRecipientInput, setCustomTestRecipientInput] = useState('');
   const [showTestModal, setShowTestModal] = useState(false);
+
+  const togglePresetTestRecipient = useCallback((email: string) => {
+    setTestRecipients((current) => {
+      const normalized = email.toLowerCase();
+      if (current.some((item) => item.toLowerCase() === normalized)) {
+        return current.filter((item) => item.toLowerCase() !== normalized);
+      }
+      return [...current, email];
+    });
+  }, []);
+
+  const addCustomTestRecipient = useCallback(() => {
+    const email = customTestRecipientInput.trim().toLowerCase();
+    if (!isValidEmailAddress(email)) return;
+    setTestRecipients((current) => {
+      if (current.some((item) => item.toLowerCase() === email)) return current;
+      return [...current, email];
+    });
+    setCustomTestRecipientInput('');
+  }, [customTestRecipientInput]);
+
+  const removeTestRecipient = useCallback((email: string) => {
+    setTestRecipients((current) => current.filter((item) => item.toLowerCase() !== email.toLowerCase()));
+  }, []);
 
   const getAuthToken = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -186,7 +213,7 @@ export default function AdminCalendarPage() {
         body: JSON.stringify({
           clientId: clientId || testClientId || undefined,
           includePdf: true,
-          testRecipient: testInternalRecipient
+          testRecipients
         })
       });
       const data = await res.json();
@@ -205,7 +232,7 @@ export default function AdminCalendarPage() {
     } finally {
       setTestSending(false);
     }
-  }, [getAuthToken, testClientId, testInternalRecipient]);
+  }, [getAuthToken, testClientId, testRecipients]);
 
   // Function to cleanup old errors (older than 3 days)
   const cleanupOldErrors = useCallback(async () => {
@@ -1009,19 +1036,90 @@ export default function AdminCalendarPage() {
                   </div>
 
                   {reviewMode && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Odbiorca testu wewnętrznego
-                      </label>
-                      <select
-                        value={testInternalRecipient}
-                        onChange={(e) => setTestInternalRecipient(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                      >
-                        <option value="jac.honkisz@gmail.com">jac.honkisz@gmail.com</option>
-                        <option value="kontakt@piotrbajerlein.pl">kontakt@piotrbajerlein.pl</option>
-                        <option value="pbajerlein@gmail.com">pbajerlein@gmail.com</option>
-                      </select>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Odbiorcy testu wewnętrznego
+                        </label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Wybierz jeden lub więcej adresów z listy albo dodaj własny e-mail.
+                        </p>
+                        <div className="space-y-2">
+                          {INTERNAL_TEST_RECIPIENT_PRESETS.map((email) => {
+                            const isSelected = testRecipients.some(
+                              (item) => item.toLowerCase() === email.toLowerCase()
+                            );
+                            return (
+                              <label
+                                key={email}
+                                className="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-2.5 cursor-pointer hover:bg-gray-50"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => togglePresetTestRecipient(email)}
+                                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="text-sm text-gray-700">{email}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Własny adres e-mail
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={customTestRecipientInput}
+                            onChange={(e) => setCustomTestRecipientInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addCustomTestRecipient();
+                              }
+                            }}
+                            placeholder="np. twoj@email.com"
+                            className="flex-1 px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          />
+                          <button
+                            type="button"
+                            onClick={addCustomTestRecipient}
+                            disabled={!isValidEmailAddress(customTestRecipientInput.trim())}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-xl hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Dodaj
+                          </button>
+                        </div>
+                      </div>
+
+                      {testRecipients.length > 0 && (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 mb-2">Wybrani odbiorcy</p>
+                          <div className="flex flex-wrap gap-2">
+                            {testRecipients.map((email) => (
+                              <span
+                                key={email}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-3 py-1 text-sm text-purple-800 border border-purple-100"
+                              >
+                                {email}
+                                <button
+                                  type="button"
+                                  onClick={() => removeTestRecipient(email)}
+                                  className="text-purple-500 hover:text-purple-700"
+                                  aria-label={`Usuń ${email}`}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1039,7 +1137,11 @@ export default function AdminCalendarPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Odbiorca:</span>
-                      <span className="font-medium">{reviewMode ? testInternalRecipient : (testClientId ? 'e-mail klienta' : reviewEmail)}</span>
+                      <span className="font-medium text-right max-w-[60%] break-all">
+                        {reviewMode
+                          ? (testRecipients.length > 0 ? testRecipients.join(', ') : 'brak')
+                          : (testClientId ? 'e-mail klienta' : reviewEmail)}
+                      </span>
                     </div>
                   </div>
 
@@ -1078,7 +1180,7 @@ export default function AdminCalendarPage() {
                     </button>
                     <button
                       onClick={() => sendTestEmail()}
-                      disabled={testSending || !testClientId}
+                      disabled={testSending || !testClientId || (reviewMode === true && testRecipients.length === 0)}
                       className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                     >
                       {testSending ? (

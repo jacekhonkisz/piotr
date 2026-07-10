@@ -9,6 +9,13 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { dedupeEmails } from './email-recipients';
+
+export {
+  INTERNAL_TEST_RECIPIENT_PRESETS,
+  isValidEmailAddress,
+  normalizeReviewRecipientsOverride
+} from './email-recipients';
 
 function parseEmailList(value: string | undefined): string[] {
   return (value || '')
@@ -23,6 +30,19 @@ const REVIEW_RECIPIENTS = dedupeEmails([REVIEW_EMAIL, ...REVIEW_CC]);
 
 // Admin always receives a copy (DW/CC) of every client report for preview/oversight.
 const ADMIN_PREVIEW_CC = process.env.EMAIL_ADMIN_CC || 'kontakt@piotrbajerlein.pl';
+
+function resolveReviewRecipientsList(options?: {
+  reviewRecipientOverride?: string;
+  reviewRecipientsOverride?: string[];
+}): string[] {
+  if (options?.reviewRecipientsOverride?.length) {
+    return dedupeEmails(options.reviewRecipientsOverride);
+  }
+  if (options?.reviewRecipientOverride) {
+    return [options.reviewRecipientOverride.trim()];
+  }
+  return [...REVIEW_RECIPIENTS];
+}
 
 export const EMAIL_CONFIG = {
   MONITORING_MODE: false,
@@ -170,7 +190,7 @@ export function getEmailRecipients(originalRecipient: string): string[] {
  */
 export async function getEmailRecipientsAsync(
   originalRecipient: string,
-  reviewRecipientOverride?: string
+  options?: { reviewRecipientOverride?: string; reviewRecipientsOverride?: string[] }
 ): Promise<{ recipients: string[]; originalRecipient: string; isRedirected: boolean }> {
   if (EMAIL_CONFIG.MONITORING_MODE) {
     return { recipients: [...EMAIL_CONFIG.MONITORING_EMAILS], originalRecipient, isRedirected: true };
@@ -178,27 +198,12 @@ export async function getEmailRecipientsAsync(
   const reviewEnabled = await isReviewMode();
   if (reviewEnabled) {
     return {
-      recipients: reviewRecipientOverride ? [reviewRecipientOverride] : [...REVIEW_RECIPIENTS],
+      recipients: resolveReviewRecipientsList(options),
       originalRecipient,
       isRedirected: true
     };
   }
   return { recipients: [originalRecipient], originalRecipient, isRedirected: false };
-}
-
-/** Normalize + de-duplicate a list of email addresses (case-insensitive), preserving order. */
-function dedupeEmails(emails: Array<string | null | undefined>): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const raw of emails) {
-    const trimmed = (raw || '').trim();
-    if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(trimmed);
-  }
-  return result;
 }
 
 export interface ResolvedEmailEnvelope {
@@ -226,7 +231,11 @@ export interface ResolvedEmailEnvelope {
 export async function resolveEmailEnvelope(
   primaryRecipient: string,
   additionalRecipients: string[] = [],
-  options?: { reviewRecipientOverride?: string; skipAdminCc?: boolean }
+  options?: {
+    reviewRecipientOverride?: string;
+    reviewRecipientsOverride?: string[];
+    skipAdminCc?: boolean;
+  }
 ): Promise<ResolvedEmailEnvelope> {
   const originalRecipient = primaryRecipient;
 
@@ -241,9 +250,7 @@ export async function resolveEmailEnvelope(
 
   const reviewEnabled = await isReviewMode();
   if (reviewEnabled) {
-    const [reviewTo = REVIEW_EMAIL, ...reviewCc] = options?.reviewRecipientOverride
-      ? [options.reviewRecipientOverride]
-      : REVIEW_RECIPIENTS;
+    const [reviewTo = REVIEW_EMAIL, ...reviewCc] = resolveReviewRecipientsList(options);
 
     return {
       to: reviewTo,

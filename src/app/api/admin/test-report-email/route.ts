@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { EMAIL_CONFIG, isReviewMode } from '../../../../lib/email-config';
+import { normalizeReviewRecipientsOverride } from '../../../../lib/email-recipients';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,16 +33,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { clientId, includePdf = true, testRecipient } = body;
-    const allowedInternalRecipients = [
-      'jac.honkisz@gmail.com',
-      'kontakt@piotrbajerlein.pl',
-      'pbajerlein@gmail.com'
-    ];
-    const normalizedTestRecipient = typeof testRecipient === 'string' ? testRecipient.trim().toLowerCase() : '';
-    const internalTestRecipient = allowedInternalRecipients.includes(normalizedTestRecipient)
-      ? normalizedTestRecipient
-      : undefined;
+    const { clientId, includePdf = true, testRecipient, testRecipients } = body;
+    const internalTestRecipients = normalizeReviewRecipientsOverride(testRecipients ?? testRecipient);
     if (!clientId) {
       return NextResponse.json({
         success: false,
@@ -83,7 +76,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         clientId,
         includePdf: true,
-        reviewRecipientOverride: internalTestRecipient
+        reviewRecipientsOverride: internalTestRecipients
       })
     });
 
@@ -109,11 +102,13 @@ export async function POST(request: NextRequest) {
       pdfError: sendPayload.pdfError ?? null,
       clientName: client.name,
       clientEmail: client.email,
-      internalTestRecipient: internalTestRecipient || null,
+      internalTestRecipients: internalTestRecipients || null,
       attemptedRecipients: sendPayload.details?.successful || [],
       sentTo: Array.isArray(sendPayload.details?.successful) && sendPayload.details.successful.length > 0
         ? sendPayload.details.successful.join(', ')
-        : (reviewMode ? (internalTestRecipient || EMAIL_CONFIG.REVIEW_EMAIL) : client.email),
+        : (reviewMode
+          ? (internalTestRecipients?.join(', ') || EMAIL_CONFIG.REVIEW_RECIPIENTS.join(', '))
+          : client.email),
       upstream: sendPayload
     }, { status: sendResponse.ok && sendPayload.success ? 200 : sendResponse.status });
 

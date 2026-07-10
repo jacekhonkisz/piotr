@@ -5,6 +5,7 @@ import logger from '../../../lib/logger';
 import { buildMonthlyReportData, builtPlatformToSummaryShape } from '@/lib/monthly-report-data-builder';
 import { adaptCampaignSummary } from '@/lib/report-adapters';
 import { evaluatePreSend } from '@/lib/report-presend-guard';
+import { normalizeReviewRecipientsOverride } from '@/lib/email-recipients';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,10 +43,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse request body
-    const { clientId, reportId, includePdf, reviewRecipientOverride } = await request.json();
-    const allowedInternalRecipients = ['jac.honkisz@gmail.com', 'kontakt@piotrbajerlein.pl', 'pbajerlein@gmail.com'];
-    const normalizedOverride = typeof reviewRecipientOverride === 'string' ? reviewRecipientOverride.trim().toLowerCase() : '';
-    const internalRecipientOverride = allowedInternalRecipients.includes(normalizedOverride) ? normalizedOverride : undefined;
+    const { clientId, reportId, includePdf, reviewRecipientOverride, reviewRecipientsOverride } = await request.json();
+    const internalRecipientsOverride =
+      normalizeReviewRecipientsOverride(reviewRecipientsOverride ?? reviewRecipientOverride);
 
     if (!clientId) {
       return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
         monthlyReportData,
         pdfBuffer,
         undefined,
-        { reviewRecipientOverride: internalRecipientOverride, cc: ccRecipients }
+        { reviewRecipientsOverride: internalRecipientsOverride, cc: ccRecipients }
       );
       routedCc = emailResult.cc || [];
       providerMessageId = emailResult.messageId || null;
