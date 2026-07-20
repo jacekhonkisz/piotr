@@ -579,6 +579,9 @@ const EmailPreviewModal = React.memo(function EmailPreviewModal({
     const metaClicks = metaSummary.clicks || 0;
     const metaEmails = metaSummary.email_contacts || 0;
     const metaPhones = metaSummary.click_to_call || 0;
+    const metaBE1 = metaSummary.booking_step_1 || 0;
+    const metaBE2 = metaSummary.booking_step_2 || 0;
+    const metaBE3 = metaSummary.booking_step_3 || 0;
     const metaReservations = metaSummary.reservations || 0;
     const metaReservationValue = metaSummary.reservation_value || 0;
     const metaROAS = metaSummary.roas || (metaSpend > 0 ? (metaReservationValue / metaSpend) : 0);
@@ -650,7 +653,7 @@ Kliknięcia: ${fmtInt(googleClicks)}
 CPC: ${fmt(googleCPC)} zł
 CTR: ${fmt(googleCTR)}%
 Kliknięcia w adres e-mail: ${fmtInt(googleEmails)}
-Kliknięcia w numer telefonu: ${fmtInt(googlePhones)}
+Kliknięcia w numer telefonu/połączenia z reklam: ${fmtInt(googlePhones)}
 Booking step 1: ${fmtInt(googleBE1)}
 Booking step 2: ${fmtInt(googleBE2)}
 Booking step 3: ${fmtInt(googleBE3)}
@@ -663,7 +666,10 @@ Wydana kwota: ${fmt(metaSpend)} zł
 Wyświetlenia: ${fmtInt(metaImpressions)}
 Kliknięcia linku: ${fmtInt(metaClicks)}
 Kliknięcia w adres e-mail: ${fmtInt(metaEmails)}
-Kliknięcia w numer telefonu: ${fmtInt(metaPhones)}
+Kliknięcia w numer telefonu/połączenia z reklam: ${fmtInt(metaPhones)}
+Wyszukiwania (booking step 1): ${fmtInt(metaBE1)}
+Wyświetlenia zawartości (booking step 2): ${fmtInt(metaBE2)}
+Zainicjowanie finalizacji zakupu (booking step 3): ${fmtInt(metaBE3)}
 Rezerwacje: ${fmtInt(metaReservations)}
 Wartość rezerwacji: ${fmt(metaReservationValue)} zł
 ROAS: ${fmt(metaROAS)} (${fmt(metaROAS * 100)}%)
@@ -779,7 +785,7 @@ Piotr`;
         <div class="metric-line"><span class="metric-label">CPC:</span> <span class="metric-value">${fmt(googleCPC)} zł</span></div>
         <div class="metric-line"><span class="metric-label">CTR:</span> <span class="metric-value">${fmt(googleCTR)}%</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia w adres e-mail:</span> <span class="metric-value">${fmtInt(googleEmails)}</span></div>
-        <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu:</span> <span class="metric-value">${fmtInt(googlePhones)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu/połączenia z reklam:</span> <span class="metric-value">${fmtInt(googlePhones)}</span></div>
         <div class="metric-line"><span class="metric-label">Booking step 1:</span> <span class="metric-value">${fmtInt(googleBE1)}</span></div>
         <div class="metric-line"><span class="metric-label">Booking step 2:</span> <span class="metric-value">${fmtInt(googleBE2)}</span></div>
         <div class="metric-line"><span class="metric-label">Booking step 3:</span> <span class="metric-value">${fmtInt(googleBE3)}</span></div>
@@ -796,7 +802,10 @@ Piotr`;
         <div class="metric-line"><span class="metric-label">Wyświetlenia:</span> <span class="metric-value">${fmtInt(metaImpressions)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia linku:</span> <span class="metric-value">${fmtInt(metaClicks)}</span></div>
         <div class="metric-line"><span class="metric-label">Kliknięcia w adres e-mail:</span> <span class="metric-value">${fmtInt(metaEmails)}</span></div>
-        <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu:</span> <span class="metric-value">${fmtInt(metaPhones)}</span></div>
+        <div class="metric-line"><span class="metric-label">Kliknięcia w numer telefonu/połączenia z reklam:</span> <span class="metric-value">${fmtInt(metaPhones)}</span></div>
+        <div class="metric-line"><span class="metric-label">Wyszukiwania (booking step 1):</span> <span class="metric-value">${fmtInt(metaBE1)}</span></div>
+        <div class="metric-line"><span class="metric-label">Wyświetlenia zawartości (booking step 2):</span> <span class="metric-value">${fmtInt(metaBE2)}</span></div>
+        <div class="metric-line"><span class="metric-label">Zainicjowanie finalizacji zakupu (booking step 3):</span> <span class="metric-value">${fmtInt(metaBE3)}</span></div>
         <div class="metric-line"><span class="metric-label">Rezerwacje:</span> <span class="metric-value">${fmtInt(metaReservations)}</span></div>
         <div class="metric-line"><span class="metric-label">Wartość rezerwacji:</span> <span class="metric-value">${fmt(metaReservationValue)} zł</span></div>
         <div class="metric-line"><span class="metric-label">ROAS:</span> <span class="metric-value">${fmt(metaROAS)} (${fmt(metaROAS * 100)}%)</span></div>

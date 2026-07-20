@@ -60,8 +60,10 @@ export type ReportPayloadSource =
  *              fallback to total_spend / total_clicks.
  *
  * Conversion metrics: parsed via meta-actions-parser only.
- *   - click_to_call: PBM custom event priority, fallback to standard click_to_call_call_confirm.
- *   - email_contacts: PBM custom event priority, fallback to lead/onsite_conversion.lead_grouped.
+ *   - click_to_call: per-client mapping when configured; otherwise PBM custom
+ *     event priority, then one canonical standard subtype (never a subtype sum).
+ *   - email_contacts: per-client mapping when configured; otherwise the legacy
+ *     PBM website-email event. Lead/instant-form events are excluded.
  *   - booking_step_1: omni_search > fb_pixel_search > search.
  *   - booking_step_2: omni_view_content > fb_pixel_view_content.
  *   - booking_step_3: omni_initiated_checkout > fb_pixel_initiate_checkout.

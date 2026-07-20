@@ -157,7 +157,7 @@ const GoogleAdsMetricsSummary: React.FC<GoogleAdsMetricsSummaryProps> = ({
         <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Kliknięcia w numer telefonu</p>
+              <p className="text-sm font-medium text-gray-600">Kliknięcia w numer telefonu/połączenia z reklam</p>
               <p className="text-2xl font-bold text-gray-900">{formatNumber(data.kliknieciaWNumerTelefonu)}</p>
             </div>
             {getTrendIcon(data.kliknieciaWNumerTelefonu)}

@@ -231,10 +231,9 @@ export async function POST(request: NextRequest) {
     const year = built.year;
     const monthlyReportData = built.reportData;
 
-    // Pre-send consistency check (soft mode: log warnings/blocks but do not abort).
-    // Validates per-platform data against a fresh live API baseline.
+    // Validate each platform against a fresh live baseline before sending.
     try {
-      const guardChecks: Promise<unknown>[] = [];
+      const guardChecks: Promise<{ platform: 'meta' | 'google'; result: Awaited<ReturnType<typeof evaluatePreSend>> }>[] = [];
       if (built.metaAdsData) {
         const candidateMeta = adaptCampaignSummary({
           clientId,
@@ -251,8 +250,7 @@ export async function POST(request: NextRequest) {
               score: result.score,
               reason: result.reason
             });
-          }).catch((err) => {
-            logger.warn('send-report pre-send guard (meta) failed', { error: err instanceof Error ? err.message : 'unknown' });
+            return { platform: 'meta' as const, result };
           })
         );
       }
@@ -272,13 +270,21 @@ export async function POST(request: NextRequest) {
               score: result.score,
               reason: result.reason
             });
-          }).catch((err) => {
-            logger.warn('send-report pre-send guard (google) failed', { error: err instanceof Error ? err.message : 'unknown' });
+            return { platform: 'google' as const, result };
           })
         );
       }
-      // Fire-and-forget; do not block email sending in soft rollout.
-      Promise.all(guardChecks).catch(() => undefined);
+      const guardResults = await Promise.all(guardChecks);
+      if (process.env.EMAIL_PRESEND_HARD_BLOCK === 'true') {
+        const blocked = guardResults.find(({ result }) => result.decision === 'block');
+        if (blocked) {
+          return NextResponse.json({
+            error: `Pre-send validation blocked the ${blocked.platform} report`,
+            details: blocked.result.reason,
+            score: blocked.result.score,
+          }, { status: 409 });
+        }
+      }
     } catch (guardError) {
       logger.warn('send-report pre-send guard wiring error', {
         error: guardError instanceof Error ? guardError.message : 'unknown'

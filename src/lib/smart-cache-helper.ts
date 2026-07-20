@@ -127,7 +127,9 @@ export async function fetchFreshCurrentMonthData(client: any) {
       );
       
       // ✅ FIX: Parse actions array IMMEDIATELY after fetching
-      campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+      const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+      const conversionMappings = await loadClientConversionMappings(client.id);
+      campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights, conversionMappings);
       
       logger.info(`✅ Fetched and parsed ${campaignInsights.length} campaigns with conversion data`);
       
@@ -1245,7 +1247,9 @@ export async function fetchFreshCurrentWeekData(client: any, targetWeek?: any) {
     );
     
     // ✅ FIX: Parse actions array IMMEDIATELY after fetching
-    const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+    const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+    const conversionMappings = await loadClientConversionMappings(client.id);
+    const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights, conversionMappings);
     
     logger.info(`✅ Fetched and parsed ${campaignInsights.length} campaigns for weekly caching`);
     

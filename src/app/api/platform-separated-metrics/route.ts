@@ -92,7 +92,9 @@ export async function POST(request: NextRequest) {
           
           // ✅ Parse campaigns with conversion metrics from action_values
           // This extracts "Zakupy w witrynie - wartość konwersji" directly from API
-          const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
+          const { loadClientConversionMappings } = await import('../../../lib/client-conversion-mappings-server');
+          const conversionMappings = await loadClientConversionMappings(clientId);
+          const campaigns = enhanceCampaignsWithConversions(rawCampaigns, conversionMappings);
           
           // Calculate stats
           const totalSpend = campaigns.reduce((sum: number, c: any) => sum + parseFloat(c.spend || 0), 0);

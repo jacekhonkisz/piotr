@@ -14,7 +14,11 @@
 const https = require('https');
 
 const BELMONTE_CLIENT_ID = 'ab0b4c7e-2bf0-46bc-b455-b18ef6942baa';
-const CRON_SECRET = process.env.CRON_SECRET || 'KihtM33QrVCKZjap/d6xcHYSPkt6hq+K+ZJDKwnZ+oLjEcUl9/4PKNLZW076sHK';
+const CRON_SECRET = process.env.CRON_SECRET;
+if (!CRON_SECRET) {
+  console.error('❌ CRON_SECRET environment variable is required');
+  process.exit(1);
+}
 const API_URL = 'https://piotr-gamma.vercel.app';
 
 console.log('🚀 Starting incremental weekly data collection...');

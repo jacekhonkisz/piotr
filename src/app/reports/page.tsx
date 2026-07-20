@@ -28,6 +28,7 @@ import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../lib/database.types';
 import { getMonthBoundaries, getWeekBoundaries, getISOWeekStartDate, getWeeksInYear } from '../../lib/date-range-utils';
+import { selectMetaPhoneClicks } from '../../lib/meta-actions-parser';
 import { isCurrentWeekPeriod, parseWeekPeriodId } from '../../lib/week-utils';
 import { cpcFromStats, ctrPercentFromStats } from '../../lib/ctr-from-stats';
 import { getDefaultAdsProvider } from '../../lib/ads-provider-utils';
@@ -1125,8 +1126,7 @@ function ReportsPageContent() {
           
           // 1. Potencjalne kontakty telefoniczne (PHONE)
           // Priority: Havet PBM custom event > standard click_to_call
-          click_to_call = actionMap.get('offsite_conversion.custom.1470262077092668') ||  // Havet PBM
-                         actionMap.get('click_to_call_call_confirm') || 0;
+          click_to_call = selectMetaPhoneClicks(actionMap);
           
           // 2. Potencjalne kontakty email (EMAIL)
           // Priority: Havet PBM custom event > standard lead

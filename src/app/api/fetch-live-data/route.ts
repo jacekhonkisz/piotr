@@ -1612,8 +1612,10 @@ async function loadFromDatabase(clientId: string, startDate: string, endDate: st
       // 🔧 CRITICAL FIX: Parse conversion actions from Meta API response
       // Import parser dynamically to avoid circular dependencies
       const { enhanceCampaignsWithConversions } = await import('../../../lib/meta-actions-parser');
+      const { loadClientConversionMappings } = await import('../../../lib/client-conversion-mappings-server');
+      const conversionMappings = await loadClientConversionMappings(clientId);
       logger.info('🔍 Parsing conversion actions from Meta API response...');
-      campaignInsights = enhanceCampaignsWithConversions(campaignInsights);
+      campaignInsights = enhanceCampaignsWithConversions(campaignInsights, conversionMappings);
       logger.info('✅ Conversion actions parsed:', {
         count: campaignInsights.length,
         sampleCampaign: campaignInsights[0] ? {

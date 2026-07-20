@@ -8,6 +8,31 @@ import { supabase } from '@/lib/supabase';
 
 type Phase = 'validating' | 'ready' | 'invalid' | 'done';
 
+function stripRecoveryParamsFromUrl(): void {
+  if (typeof window === 'undefined') return;
+
+  const url = new URL(window.location.href);
+  let changed = false;
+
+  for (const key of ['token_hash', 'token', 'type', 'code']) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  }
+
+  if (window.location.hash) {
+    window.history.replaceState({}, '', url.pathname + url.search);
+    changed = true;
+  } else if (changed) {
+    window.history.replaceState({}, '', url.pathname + url.search);
+  }
+}
+
+function decodeAuthError(value: string): string {
+  return decodeURIComponent(value.replace(/\+/g, ' '));
+}
+
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('validating');
@@ -17,62 +42,95 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Establish the recovery session from the email link.
   useEffect(() => {
     let resolved = false;
 
-    // Supabase fires PASSWORD_RECOVERY once it parses the recovery token from the URL.
+    const markReady = () => {
+      if (resolved) return;
+      resolved = true;
+      stripRecoveryParamsFromUrl();
+      setPhase('ready');
+    };
+
+    const markInvalid = (message?: string) => {
+      if (resolved) return;
+      resolved = true;
+      if (message) {
+        setError(message);
+      }
+      setPhase('invalid');
+    };
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
-        resolved = true;
-        setPhase('ready');
+      if (
+        event === 'PASSWORD_RECOVERY' ||
+        (event === 'SIGNED_IN' && session)
+      ) {
+        markReady();
       }
     });
 
     const bootstrap = async () => {
-      // Surface explicit errors passed back in the URL hash (expired/invalid link)
-      if (typeof window !== 'undefined' && window.location.hash.includes('error')) {
+      if (typeof window === 'undefined') return;
+
+      if (window.location.hash.includes('error')) {
         const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
         const desc = params.get('error_description');
-        if (desc) {
-          setError(decodeURIComponent(desc.replace(/\+/g, ' ')));
-          setPhase('invalid');
+        markInvalid(desc ? decodeAuthError(desc) : undefined);
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      const tokenHash = url.searchParams.get('token_hash') || url.searchParams.get('token');
+      const type = url.searchParams.get('type');
+
+      if (tokenHash && type === 'recovery') {
+        const { data, error: verifyError } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token_hash: tokenHash,
+        });
+
+        if (!verifyError && data.session) {
+          markReady();
+          return;
+        }
+
+        if (verifyError) {
+          markInvalid(verifyError.message);
           return;
         }
       }
 
-      // PKCE flow: exchange the ?code= param for a session.
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        const code = url.searchParams.get('code');
-        if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (!exchangeError) {
-            resolved = true;
-            setPhase('ready');
-            return;
-          }
+      const code = url.searchParams.get('code');
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (!exchangeError) {
+          markReady();
+          return;
+        }
+
+        const { data: sessionAfterExchange } = await supabase.auth.getSession();
+        if (!sessionAfterExchange.session) {
+          markInvalid(exchangeError.message);
+          return;
         }
       }
 
-      // Fallback: a session may already be present (hash auto-detected by supabase-js).
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        resolved = true;
-        setPhase('ready');
+        markReady();
       }
     };
 
     bootstrap();
 
-    // If nothing established a session shortly after load, treat the link as invalid.
     const timeout = setTimeout(() => {
       if (!resolved) {
         setPhase((prev) => (prev === 'validating' ? 'invalid' : prev));
       }
-    }, 4000);
+    }, 6000);
 
     return () => {
       subscription.unsubscribe();
@@ -95,12 +153,16 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        throw new Error('Sesja resetowania wygasła. Poproś o nowy link.');
+      }
+
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) {
         throw updateError;
       }
       setPhase('done');
-      // Sign out the temporary recovery session, then send to login.
       await supabase.auth.signOut();
       setTimeout(() => router.replace('/auth/login'), 2500);
     } catch (err: any) {
@@ -109,6 +171,9 @@ export default function ResetPasswordPage() {
         setError('Nowe hasło musi różnić się od poprzedniego.');
       } else if (message.includes('weak') || message.includes('at least')) {
         setError('Hasło jest zbyt słabe. Wybierz mocniejsze hasło.');
+      } else if (message.includes('session') || message.includes('jwt')) {
+        setError('Link wygasł lub sesja resetowania wygasła. Poproś o nowy link.');
+        setPhase('invalid');
       } else {
         setError(err?.message || 'Nie udało się zaktualizować hasła.');
       }

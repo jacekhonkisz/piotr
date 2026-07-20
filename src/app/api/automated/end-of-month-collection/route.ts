@@ -249,7 +249,9 @@ export async function POST(request: NextRequest) {
             }
 
             // Parse actions arrays into structured funnel metrics
-            const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
+            const { loadClientConversionMappings } = await import('../../../../lib/client-conversion-mappings-server');
+            const conversionMappings = await loadClientConversionMappings(client.id);
+            const campaigns = enhanceCampaignsWithConversions(rawCampaigns, conversionMappings);
             const convMetrics = aggregateConversionMetrics(campaigns);
 
             logger.info(`  Found ${campaigns.length} Meta campaigns (parsed with funnel data)`);
@@ -480,6 +482,8 @@ export async function POST(request: NextRequest) {
                 });
                 skippedCount++;
               } else {
+                const { loadClientConversionMappings } = await import('../../../../lib/client-conversion-mappings-server');
+                const conversionMappings = await loadClientConversionMappings(client.id);
                 const googleAdsCredentials = {
                   refreshToken,
                   clientId: settings.google_ads_client_id,
@@ -487,6 +491,7 @@ export async function POST(request: NextRequest) {
                   developmentToken: settings.google_ads_developer_token,
                   customerId: client.google_ads_customer_id || '',
                   managerCustomerId: settings.google_ads_manager_customer_id,
+                  conversionMappings,
                 };
 
                 // Initialize Google Ads API service

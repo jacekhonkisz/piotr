@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
             throw new Error('No Google Ads refresh token available');
           }
 
+          const { loadClientConversionMappings } = await import('../../../../lib/client-conversion-mappings-server');
+          const conversionMappings = await loadClientConversionMappings(client.id);
           const googleAdsCredentials = {
             refreshToken,
             clientId: settings.google_ads_client_id,
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
             developmentToken: settings.google_ads_developer_token,
             customerId: client.google_ads_customer_id,
             managerCustomerId: settings.google_ads_manager_customer_id,
+            conversionMappings,
           };
 
           // Create Google Ads API service

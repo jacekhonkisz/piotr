@@ -18,21 +18,36 @@ export type Database = {
         Row: {
           id: string
           client_id: string
+          conversion_mappings: Json
           metrics_config: Json
+          meta_metrics_config: Json
+          google_metrics_config: Json
+          meta_enabled: boolean
+          google_enabled: boolean
           created_at: string
           updated_at: string
         }
         Insert: {
           id?: string
           client_id: string
+          conversion_mappings?: Json
           metrics_config?: Json
+          meta_metrics_config?: Json
+          google_metrics_config?: Json
+          meta_enabled?: boolean
+          google_enabled?: boolean
           created_at?: string
           updated_at?: string
         }
         Update: {
           id?: string
           client_id?: string
+          conversion_mappings?: Json
           metrics_config?: Json
+          meta_metrics_config?: Json
+          google_metrics_config?: Json
+          meta_enabled?: boolean
+          google_enabled?: boolean
           created_at?: string
           updated_at?: string
         }

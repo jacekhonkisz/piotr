@@ -175,7 +175,9 @@ async function recollectMeta(
   const rawCampaigns = await metaService.getCampaignInsights(adAccountId, startDate, endDate);
   if (!rawCampaigns?.length) return { platform: 'meta', status: 'skipped', reason: 'No campaigns from API' };
 
-  const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
+  const { loadClientConversionMappings } = await import('../../../../lib/client-conversion-mappings-server');
+  const conversionMappings = await loadClientConversionMappings(client.id);
+  const campaigns = enhanceCampaignsWithConversions(rawCampaigns, conversionMappings);
   const conv = aggregateConversionMetrics(campaigns);
 
   const totals = campaigns.reduce((a: any, c: any) => ({
@@ -271,6 +273,8 @@ async function recollectGoogle(
   const refreshToken = settings.google_ads_manager_refresh_token;
   if (!refreshToken) return { platform: 'google', status: 'skipped', reason: 'No Google Ads refresh token' };
 
+  const { loadClientConversionMappings } = await import('../../../../lib/client-conversion-mappings-server');
+  const conversionMappings = await loadClientConversionMappings(client.id);
   const googleAdsService = new GoogleAdsAPIService({
     refreshToken,
     clientId: settings.google_ads_client_id,
@@ -278,6 +282,7 @@ async function recollectGoogle(
     developmentToken: settings.google_ads_developer_token,
     customerId: client.google_ads_customer_id,
     managerCustomerId: settings.google_ads_manager_customer_id,
+    conversionMappings,
   });
 
   const campaignResult = await googleAdsService.getCampaignData(startDate, endDate);

@@ -1142,6 +1142,9 @@ Piotr Bajerlein`;
         cpc: number;
         emailClicks: number;
         phoneClicks: number;
+        bookingStep1: number;
+        bookingStep2: number;
+        bookingStep3: number;
         reservations: number;
         reservationValue: number;
         roas: number;
@@ -1612,7 +1615,7 @@ Piotr Bajerlein`;
                           <tr><td class="metric-label">${metricLabel('googleAds', 'averageCpc', 'CPC')}:</td><td class="metric-value">${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
                           <tr><td class="metric-label">${metricLabel('googleAds', 'averageCtr', 'CTR')}:</td><td class="metric-value">${reportData.googleAds.ctr.toFixed(2)}%</td></tr>
                           <tr><td class="metric-label">${metricLabel('googleAds', 'email_contacts', 'Kliknięcia w adres e-mail')}:</td><td class="metric-value">${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}</td></tr>
-                          <tr><td class="metric-label">${metricLabel('googleAds', 'click_to_call', 'Kliknięcia w numer telefonu')}:</td><td class="metric-value">${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('googleAds', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam')}:</td><td class="metric-value">${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}</td></tr>
                         </table>
                       </td>
                       <td class="metric-column metric-column-right">
@@ -1652,11 +1655,14 @@ Piotr Bajerlein`;
                           <tr><td class="metric-label">${metricLabel('metaAds', 'averageCtr', 'CTR (link)')}:</td><td class="metric-value">${reportData.metaAds.ctr.toFixed(2)}%</td></tr>
                           <tr><td class="metric-label">${metricLabel('metaAds', 'averageCpc', 'CPC (link)')}:</td><td class="metric-value">${reportData.metaAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
                           <tr><td class="metric-label">${metricLabel('metaAds', 'email_contacts', 'Kliknięcia w adres e-mail')}:</td><td class="metric-value">${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}</td></tr>
-                          <tr><td class="metric-label">${metricLabel('metaAds', 'click_to_call', 'Kliknięcia w numer telefonu')}:</td><td class="metric-value">${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam')}:</td><td class="metric-value">${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}</td></tr>
                         </table>
                       </td>
                       <td class="metric-column metric-column-right">
                         <table role="presentation" class="metric-row">
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'booking_step_1', 'Wyszukiwania (booking step 1)')}:</td><td class="metric-value">${reportData.metaAds.bookingStep1.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'booking_step_2', 'Wyświetlenia zawartości (booking step 2)')}:</td><td class="metric-value">${reportData.metaAds.bookingStep2.toLocaleString('pl-PL')}</td></tr>
+                          <tr><td class="metric-label">${metricLabel('metaAds', 'booking_step_3', 'Zainicjowanie finalizacji zakupu (booking step 3)')}:</td><td class="metric-value">${reportData.metaAds.bookingStep3.toLocaleString('pl-PL')}</td></tr>
                           <tr><td class="metric-label">${metricLabel('metaAds', 'reservations', 'Rezerwacje')}:</td><td class="metric-value">${reportData.metaAds.reservations.toLocaleString('pl-PL')}</td></tr>
                           <tr><td class="metric-label">${metricLabel('metaAds', 'reservation_value', 'Wartość rezerwacji')}:</td><td class="metric-value">${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł</td></tr>
                           <tr><td class="metric-label">${metricLabel('metaAds', 'roas', 'ROAS')}:</td><td class="metric-value">${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)</td></tr>
@@ -1725,7 +1731,7 @@ ${metricLabel('googleAds', 'totalClicks', 'Kliknięcia')}: ${reportData.googleAd
 ${metricLabel('googleAds', 'averageCpc', 'CPC')}: ${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 ${metricLabel('googleAds', 'averageCtr', 'CTR')}: ${reportData.googleAds.ctr.toFixed(2)}%
 ${metricLabel('googleAds', 'email_contacts', 'Kliknięcia w adres e-mail')}: ${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}
-${metricLabel('googleAds', 'click_to_call', 'Kliknięcia w numer telefonu')}: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
+${metricLabel('googleAds', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam')}: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
 ${metricLabel('googleAds', 'booking_step_1', 'Booking step 1')}: ${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}
 ${metricLabel('googleAds', 'booking_step_2', 'Booking step 2')}: ${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}
 ${metricLabel('googleAds', 'booking_step_3', 'Booking step 3')}: ${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}
@@ -1743,7 +1749,10 @@ ${metricLabel('metaAds', 'totalClicks', 'Kliknięcia linku')}: ${reportData.meta
 ${metricLabel('metaAds', 'averageCtr', 'CTR (link)')}: ${reportData.metaAds.ctr.toFixed(2)}%
 ${metricLabel('metaAds', 'averageCpc', 'CPC (link)')}: ${reportData.metaAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 ${metricLabel('metaAds', 'email_contacts', 'Kliknięcia w adres e-mail')}: ${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}
-${metricLabel('metaAds', 'click_to_call', 'Kliknięcia w numer telefonu')}: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam')}: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'booking_step_1', 'Wyszukiwania (booking step 1)')}: ${reportData.metaAds.bookingStep1.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'booking_step_2', 'Wyświetlenia zawartości (booking step 2)')}: ${reportData.metaAds.bookingStep2.toLocaleString('pl-PL')}
+${metricLabel('metaAds', 'booking_step_3', 'Zainicjowanie finalizacji zakupu (booking step 3)')}: ${reportData.metaAds.bookingStep3.toLocaleString('pl-PL')}
 ${metricLabel('metaAds', 'reservations', 'Rezerwacje')}: ${reportData.metaAds.reservations.toLocaleString('pl-PL')}
 ${metricLabel('metaAds', 'reservation_value', 'Wartość rezerwacji')}: ${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 ${metricLabel('metaAds', 'roas', 'ROAS')}: ${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)

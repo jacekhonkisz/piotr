@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { BarChart3, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
+import { getPasswordResetUrl } from '@/lib/app-url';
 import { supabase } from '@/lib/supabase';
 
 export default function ForgotPasswordPage() {
@@ -17,14 +18,9 @@ export default function ForgotPasswordPage() {
     setError('');
 
     try {
-      const redirectTo =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/reset-password`
-          : undefined;
-
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
-        redirectTo ? { redirectTo } : undefined
+        { redirectTo: getPasswordResetUrl() }
       );
 
       if (resetError) {

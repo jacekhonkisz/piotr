@@ -14,6 +14,10 @@
  */
 
 import logger from './logger';
+import {
+  getMappedActionTypes,
+  type ClientConversionMappings,
+} from './client-conversion-mappings';
 
 export interface ParsedConversionMetrics {
   click_to_call: number;
@@ -153,6 +157,8 @@ export function parseGoogleAdsConversions(
      * the GA4 "Zakup" duplicate must still be deduped.
      */
     accountHasDedicatedReservation?: boolean;
+    /** Exact, case/diacritic-insensitive conversion-action mappings for this client. */
+    mappings?: ClientConversionMappings;
   }
 ): ParsedConversionMetrics {
   
@@ -182,12 +188,19 @@ export function parseGoogleAdsConversions(
     conversions.some((c) =>
       isGoogleAdsDedicatedReservationConversion(String(c.conversion_name || c.name || ''))
     );
+  const mappedStep1 = getMappedActionTypes(options?.mappings, 'google', 'booking_step_1');
+  const mappedStep2 = getMappedActionTypes(options?.mappings, 'google', 'booking_step_2');
+  const mappedStep3 = getMappedActionTypes(options?.mappings, 'google', 'booking_step_3');
+  const normalizedMappedStep1 = new Set((mappedStep1 || []).map(normalizeConversionLabel));
+  const normalizedMappedStep2 = new Set((mappedStep2 || []).map(normalizeConversionLabel));
+  const normalizedMappedStep3 = new Set((mappedStep3 || []).map(normalizeConversionLabel));
 
   // Parse conversions array
   conversions.forEach((conversion) => {
     try {
       const rawLabel = String(conversion.conversion_name || conversion.name || '');
       const conversionName = rawLabel.toLowerCase();
+      const normalizedConversionName = normalizeConversionLabel(rawLabel);
       if (isGoogleAdsFormConversion(rawLabel)) {
         return;
       }
@@ -211,7 +224,7 @@ export function parseGoogleAdsConversions(
       }
 
       // --- BOOKING STEP 1 ---
-      const isStep1 = (
+      const isStep1 = mappedStep1 ? normalizedMappedStep1.has(normalizedConversionName) : (
         conversionName.includes('step 1') || 
         conversionName.includes('step1') ||
         conversionName.includes('krok 1') ||
@@ -239,7 +252,7 @@ export function parseGoogleAdsConversions(
       }
       
       // --- BOOKING STEP 2 ---
-      const isStep2 = (
+      const isStep2 = mappedStep2 ? normalizedMappedStep2.has(normalizedConversionName) : (
         conversionName.includes('step 2') || 
         conversionName.includes('step2') ||
         conversionName.includes('krok 2') ||
@@ -263,7 +276,7 @@ export function parseGoogleAdsConversions(
       }
       
       // --- BOOKING STEP 3 ---
-      const isStep3 = (
+      const isStep3 = mappedStep3 ? normalizedMappedStep3.has(normalizedConversionName) : (
         conversionName.includes('step 3') || 
         conversionName.includes('step3') ||
         conversionName.includes('krok 3') ||

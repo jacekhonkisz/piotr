@@ -208,6 +208,8 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
     throw new Error('Google Ads refresh token not found. Please configure Google Ads authentication.');
   }
 
+  const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+  const conversionMappings = await loadClientConversionMappings(client.id);
   const googleAdsCredentials = {
     refreshToken,
     clientId: settings.google_ads_client_id,
@@ -215,6 +217,7 @@ export async function fetchFreshGoogleAdsCurrentMonthData(client: any) {
     developmentToken: settings.google_ads_developer_token,
     customerId: client.google_ads_customer_id!,
     managerCustomerId: settings.google_ads_manager_customer_id,
+    conversionMappings,
   };
 
   // Initialize Google Ads API service
@@ -497,6 +500,8 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
     throw new Error('Google Ads refresh token not found. Please configure Google Ads authentication.');
   }
 
+  const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+  const conversionMappings = await loadClientConversionMappings(client.id);
   const googleAdsCredentials = {
     refreshToken,
     clientId: settings.google_ads_client_id,
@@ -504,6 +509,7 @@ export async function fetchFreshGoogleAdsCurrentWeekData(client: any) {
     developmentToken: settings.google_ads_developer_token,
     customerId: client.google_ads_customer_id!,
     managerCustomerId: settings.google_ads_manager_customer_id,
+    conversionMappings,
   };
 
   // Initialize Google Ads API service

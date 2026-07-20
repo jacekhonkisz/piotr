@@ -17,7 +17,7 @@ import {
   emptyPayload
 } from './report-metric-contract';
 import {
-  parseMetaActions,
+  enhanceCampaignsWithConversions,
   aggregateConversionMetrics
 } from './meta-actions-parser';
 
@@ -112,10 +112,7 @@ export function adaptMetaLiveApi(args: {
   );
 
   const convAgg = aggregateConversionMetrics(
-    campaigns.map((c) => ({
-      ...c,
-      ...parseMetaActions(c.actions || [], c.action_values || [], c.campaign_name)
-    }))
+    enhanceCampaignsWithConversions(campaigns)
   );
 
   payload.conversion.click_to_call = num(convAgg.click_to_call);

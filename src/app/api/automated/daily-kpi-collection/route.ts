@@ -110,7 +110,9 @@ export async function POST(request: NextRequest) {
         }
 
         // Parse actions arrays into structured funnel metrics
-        const campaigns = enhanceCampaignsWithConversions(rawCampaigns);
+        const { loadClientConversionMappings } = await import('../../../../lib/client-conversion-mappings-server');
+        const conversionMappings = await loadClientConversionMappings(client.id);
+        const campaigns = enhanceCampaignsWithConversions(rawCampaigns, conversionMappings);
 
         console.log(`📊 Found ${campaigns.length} campaigns for ${client.name}`);
 

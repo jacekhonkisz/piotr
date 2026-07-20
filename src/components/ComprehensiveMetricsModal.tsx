@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, BarChart3, TrendingUp, Users, MousePointer, DollarSign, Target, Mail, Phone, Facebook, Instagram, RefreshCw, Eye, Award, Search, Activity, Zap } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import { enhanceCampaignsWithConversions } from '../lib/meta-actions-parser';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -86,60 +87,18 @@ const ComprehensiveMetricsModal: React.FC<ComprehensiveMetricsModalProps> = ({
     let totalEmailClicks = 0;
     let totalPhoneClicks = 0;
 
-    report.campaigns.forEach((campaign: any) => {
+    const enhancedCampaigns = enhanceCampaignsWithConversions(report.campaigns);
+    enhancedCampaigns.forEach((campaign: any) => {
       totalSpend += parseFloat(campaign.spend || 0);
       totalImpressions += parseInt(campaign.impressions || 0);
       totalClicks += parseInt(campaign.clicks || 0);
-
-      // ✅ CRITICAL FIX: Build action lookup to use omni_* as single source of truth
-      // Meta API returns SAME event under multiple action types - use only omni_* to avoid double counting
-      const actionMap = new Map<string, number>();
-      const actionValueMap = new Map<string, number>();
-      
-      if (campaign.actions) {
-        campaign.actions.forEach((action: any) => {
-          const actionType = (action.action_type || '').toLowerCase();
-          const value = parseInt(action.value || 0);
-          if (!isNaN(value) && value >= 0) {
-            actionMap.set(actionType, (actionMap.get(actionType) || 0) + value);
-          }
-        });
-      }
-      
-      if (campaign.action_values) {
-        campaign.action_values.forEach((av: any) => {
-          const actionType = (av.action_type || '').toLowerCase();
-          const value = parseFloat(av.value || 0);
-          if (!isNaN(value) && value >= 0) {
-            actionValueMap.set(actionType, (actionValueMap.get(actionType) || 0) + value);
-          }
-        });
-      }
-      
-      // Purchases - use ONLY omni_purchase (zakupy w witrynie)
-      totalPurchases += actionMap.get('omni_purchase') || 
-                       actionMap.get('offsite_conversion.fb_pixel_purchase') || 0;
-      
-      // Booking steps - use omni_* variants
-      totalBookingStep1 += actionMap.get('omni_search') || 
-                          actionMap.get('offsite_conversion.fb_pixel_search') || 0;
-      totalBookingStep2 += actionMap.get('omni_view_content') || 
-                          actionMap.get('offsite_conversion.fb_pixel_view_content') || 0;
-      totalBookingStep3 += actionMap.get('omni_initiated_checkout') || 
-                          actionMap.get('offsite_conversion.fb_pixel_initiate_checkout') || 0;
-      
-      // Email clicks - Priority: Havet PBM custom event > standard lead
-      totalEmailClicks += actionMap.get('offsite_conversion.custom.2770488499782793') ||  // Havet PBM
-                         actionMap.get('lead') || 
-                         actionMap.get('onsite_conversion.lead_grouped') || 0;
-      
-      // Phone clicks - Priority: Havet PBM custom event > standard click_to_call
-      totalPhoneClicks += actionMap.get('offsite_conversion.custom.1470262077092668') ||  // Havet PBM
-                         actionMap.get('click_to_call_call_confirm') || 0;
-      
-      // Purchase value - use ONLY omni_purchase
-      totalPurchaseValue += actionValueMap.get('omni_purchase') || 
-                          actionValueMap.get('offsite_conversion.fb_pixel_purchase') || 0;
+      totalPurchases += campaign.reservations || 0;
+      totalBookingStep1 += campaign.booking_step_1 || 0;
+      totalBookingStep2 += campaign.booking_step_2 || 0;
+      totalBookingStep3 += campaign.booking_step_3 || 0;
+      totalEmailClicks += campaign.email_contacts || 0;
+      totalPhoneClicks += campaign.click_to_call || 0;
+      totalPurchaseValue += campaign.reservation_value || 0;
     });
 
     const roas = totalPurchaseValue > 0 ? (totalPurchaseValue / totalSpend) : 0;
@@ -514,7 +473,7 @@ const ComprehensiveMetricsModal: React.FC<ComprehensiveMetricsModalProps> = ({
                   />
                   <MetricCard
                     icon={Phone}
-                    label="Kliknięcia w numer telefonu"
+                    label="Kliknięcia w numer telefonu/połączenia z reklam"
                     value={formatNumber(metricsData.phoneClicks)}
                     color="indigo"
                   />

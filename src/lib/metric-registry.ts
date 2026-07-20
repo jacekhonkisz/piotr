@@ -230,9 +230,9 @@ export const REGISTRY_METRICS: RegistryField[] = [
   {
     key: 'click_to_call',
     kind: 'metric',
-    label: 'Kliknięcia - telefon',
+    label: 'Kliknięcia w numer telefonu/połączenia z reklam',
     format: 'number',
-    description: 'Kliknięcia prowadzące do połączenia telefonicznego',
+    description: 'Kliknięcia w numer telefonu oraz połączenia wykonane bezpośrednio z reklam',
     platforms: ['meta', 'google'],
     sections: ['charts', 'contact', 'demographic_breakdown'],
     sourceFields: { meta: ['click_to_call'], google: ['click_to_call'] },

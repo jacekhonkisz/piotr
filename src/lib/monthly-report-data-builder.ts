@@ -119,6 +119,9 @@ export async function buildMonthlyReportData(params: {
           averageCpc: stats.averageCpc || 0,
           emailClicks,
           phoneClicks,
+          bookingStep1: conversions?.booking_step_1 || 0,
+          bookingStep2: conversions?.booking_step_2 || 0,
+          bookingStep3: conversions?.booking_step_3 || 0,
           reservations: conversions?.reservations || 0,
           reservationValue: conversions?.reservation_value || 0
         };

@@ -1079,7 +1079,9 @@ export class StandardizedDataFetcher {
         if (apiResult && apiResult.length > 0) {
           // Parse actions arrays to extract funnel/conversion metrics from raw API data
           const { enhanceCampaignsWithConversions, aggregateConversionMetrics } = await import('./meta-actions-parser');
-          const enhancedCampaigns = enhanceCampaignsWithConversions(apiResult);
+          const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+          const conversionMappings = await loadClientConversionMappings(clientId);
+          const enhancedCampaigns = enhanceCampaignsWithConversions(apiResult, conversionMappings);
           
           const campaigns = enhancedCampaigns.map((campaign: any) => ({
             campaign_id: campaign.campaign_id || campaign.id,

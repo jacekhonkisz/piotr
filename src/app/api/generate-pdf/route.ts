@@ -769,7 +769,7 @@ const generateMetaMetricsSection = (reportData: ReportData) => {
   if (pdfMetricVisible(reportData, 'meta', 'contact', 'click_to_call')) {
     metaContactCards.push(
       renderMetricCard(
-        pdfMetricLabel(reportData, 'meta', 'contact', 'click_to_call', 'Telefon'),
+      pdfMetricLabel(reportData, 'meta', 'contact', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam'),
         formatNumber(metrics.phoneContacts),
         null
       )
@@ -1219,7 +1219,7 @@ const generateGoogleMetricsSection = (reportData: ReportData) => {
   if (pdfMetricVisible(reportData, 'google', 'contact', 'click_to_call')) {
     googleContactCards.push(
       renderMetricCard(
-        pdfMetricLabel(reportData, 'google', 'contact', 'click_to_call', 'Telefon'),
+      pdfMetricLabel(reportData, 'google', 'contact', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam'),
         formatNumber(metrics.phoneContacts),
         null
       )
@@ -3695,7 +3695,7 @@ function categoryDisplayLabel(rawCategory: unknown): string {
 
 function combinedContactsLabel(reportData: ReportData): string {
   const emailLabel = metricLabel(reportData, 'google', 'contact', 'email_contacts', 'Kontakty e-mail');
-  const phoneLabel = metricLabel(reportData, 'google', 'contact', 'click_to_call', 'Kliknięcia w telefon');
+  const phoneLabel = metricLabel(reportData, 'google', 'contact', 'click_to_call', 'Kliknięcia w numer telefonu/połączenia z reklam');
   return emailLabel === phoneLabel ? emailLabel : 'Kontakty łącznie';
 }
 
@@ -4603,7 +4603,7 @@ function platformOutcomeCards(reportData: ReportData, platform: ReportPlatform):
   ]);
   const contactCards = buildMetricCards(reportData, platform, 'contact', [
     { key: 'email_contacts', fallback: 'Kontakty e-mail', value: formatNumber(metrics.emailContacts) },
-    { key: 'click_to_call', fallback: 'Kliknięcia w telefon', value: formatNumber(metrics.phoneContacts) },
+    { key: 'click_to_call', fallback: 'Kliknięcia w numer telefonu/połączenia z reklam', value: formatNumber(metrics.phoneContacts) },
     { key: 'offline_reservations', fallback: 'Potencjał offline', value: formatNumber(offline.potentialOfflineReservations) },
   ]);
   return metricStrip([...cards, ...contactCards], 2);

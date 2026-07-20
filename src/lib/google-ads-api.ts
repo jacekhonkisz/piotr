@@ -14,6 +14,7 @@ import {
   googleAdsDeviceLabelPl,
   mergeGoogleAdsDevicePerformanceRows,
 } from './google-ads-device-pl';
+import type { ClientConversionMappings } from './client-conversion-mappings';
 
 // Cache duration for API responses
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
@@ -37,6 +38,7 @@ interface GoogleAdsCredentials {
   developmentToken: string;
   customerId: string;
   managerCustomerId?: string;
+  conversionMappings?: ClientConversionMappings;
 }
 
 interface GoogleAdsCampaignData {
@@ -995,6 +997,7 @@ export class GoogleAdsAPIService {
         // Parse conversions using our new parser
         const parsed = parseGoogleAdsConversions(conversions, campaignName, {
           accountHasDedicatedReservation,
+          mappings: this.credentials.conversionMappings,
         });
         
         // ✅ total_conversion_value: all_conversions_value minus form actions only

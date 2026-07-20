@@ -33,6 +33,9 @@ export interface MonthlyReportData {
     cpc: number;
     emailClicks: number;
     phoneClicks: number;
+    bookingStep1: number;
+    bookingStep2: number;
+    bookingStep3: number;
     reservations: number;
     reservationValue: number;
     roas: number;
@@ -92,7 +95,7 @@ Kliknięcia: ${reportData.googleAds.clicks.toLocaleString('pl-PL')}
 CPC: ${reportData.googleAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 CTR: ${reportData.googleAds.ctr.toFixed(2)}%
 Kliknięcia w adres e-mail: ${reportData.googleAds.emailClicks.toLocaleString('pl-PL')}
-Kliknięcia w numer telefonu: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
+Kliknięcia w numer telefonu/połączenia z reklam: ${reportData.googleAds.phoneClicks.toLocaleString('pl-PL')}
 Booking step 1: ${reportData.googleAds.bookingStep1.toLocaleString('pl-PL')}
 Booking step 2: ${reportData.googleAds.bookingStep2.toLocaleString('pl-PL')}
 Booking step 3: ${reportData.googleAds.bookingStep3.toLocaleString('pl-PL')}
@@ -109,7 +112,10 @@ Kliknięcia linku: ${reportData.metaAds.linkClicks.toLocaleString('pl-PL')}
 CTR (link): ${reportData.metaAds.ctr.toFixed(2)}%
 CPC (link): ${reportData.metaAds.cpc.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 Kliknięcia w adres e-mail: ${reportData.metaAds.emailClicks.toLocaleString('pl-PL')}
-Kliknięcia w numer telefonu: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
+Kliknięcia w numer telefonu/połączenia z reklam: ${reportData.metaAds.phoneClicks.toLocaleString('pl-PL')}
+Wyszukiwania (booking step 1): ${reportData.metaAds.bookingStep1.toLocaleString('pl-PL')}
+Wyświetlenia zawartości (booking step 2): ${reportData.metaAds.bookingStep2.toLocaleString('pl-PL')}
+Zainicjowanie finalizacji zakupu (booking step 3): ${reportData.metaAds.bookingStep3.toLocaleString('pl-PL')}
 Rezerwacje: ${reportData.metaAds.reservations.toLocaleString('pl-PL')}
 Wartość rezerwacji: ${reportData.metaAds.reservationValue.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł
 ROAS: ${reportData.metaAds.roas.toFixed(2)} (${(reportData.metaAds.roas * 100).toFixed(0)}%)

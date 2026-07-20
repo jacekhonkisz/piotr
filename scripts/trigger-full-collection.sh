@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 DEPLOYMENT_URL="https://piotr-gamma.vercel.app"
-CRON_SECRET="${CRON_SECRET:-KihtM33QrVCKZjap/d6xcHYSPkt6hq+K+ZJDKwnZ+oLjEcUl9/4PKNLZW076sHK}"
+CRON_SECRET="${CRON_SECRET:?ERROR: CRON_SECRET environment variable not set}"
 BATCH_SIZE=5  # Collect 5 weeks per batch (safe, takes ~60 seconds)
 TOTAL_WEEKS=54  # 53 past weeks + 1 current week
 PLATFORM="meta"  # or "google"

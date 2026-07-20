@@ -6,6 +6,10 @@ import {
   normalizeConfigForPlatform,
   type MetricConfigItem,
 } from '../../../../../lib/default-metrics-config';
+import {
+  normalizeClientConversionMappings,
+  type ClientConversionMappings,
+} from '../../../../../lib/client-conversion-mappings';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -92,6 +96,7 @@ export async function GET(
         googleMetrics,
         metaEnabled: config?.meta_enabled ?? true,
         googleEnabled: config?.google_enabled ?? true,
+        conversionMappings: normalizeClientConversionMappings(config?.conversion_mappings),
         updatedAt: config?.updated_at ?? null,
       },
     });
@@ -130,11 +135,13 @@ export async function PUT(
       googleMetrics,
       metaEnabled,
       googleEnabled,
+      conversionMappings,
     } = body as {
       metaMetrics?: MetricConfigItem[];
       googleMetrics?: MetricConfigItem[];
       metaEnabled?: boolean;
       googleEnabled?: boolean;
+      conversionMappings?: ClientConversionMappings;
     };
 
     const upsertPayload: Record<string, unknown> = {
@@ -146,6 +153,10 @@ export async function PUT(
     if (Array.isArray(googleMetrics)) upsertPayload.google_metrics_config = googleMetrics;
     if (typeof metaEnabled === 'boolean')   upsertPayload.meta_enabled = metaEnabled;
     if (typeof googleEnabled === 'boolean') upsertPayload.google_enabled = googleEnabled;
+    if (conversionMappings !== undefined) {
+      upsertPayload.conversion_mappings =
+        normalizeClientConversionMappings(conversionMappings);
+    }
 
     // Keep legacy metrics_config in sync with meta for backwards compat
     if (Array.isArray(metaMetrics)) upsertPayload.metrics_config = metaMetrics;
@@ -175,6 +186,7 @@ export async function PUT(
         ),
         metaEnabled: data.meta_enabled,
         googleEnabled: data.google_enabled,
+        conversionMappings: normalizeClientConversionMappings(data.conversion_mappings),
         updatedAt: data.updated_at,
       },
     });

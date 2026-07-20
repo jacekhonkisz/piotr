@@ -176,6 +176,9 @@ export function prepareClientMonthlyReportData(
       ),
       emailClicks: metaAdsData.emailClicks || 0,
       phoneClicks: metaAdsData.phoneClicks || 0,
+      bookingStep1: metaAdsData.bookingStep1 || 0,
+      bookingStep2: metaAdsData.bookingStep2 || 0,
+      bookingStep3: metaAdsData.bookingStep3 || 0,
       reservations: metaReservations,
       reservationValue: metaValue,
       roas: metaSpend > 0 ? metaValue / metaSpend : 0

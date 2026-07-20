@@ -292,6 +292,8 @@ export class BackgroundDataCollector {
     const adAccountId = client.ad_account_id as string;
 
     const metaService = new MetaAPIServiceOptimized(metaToken);
+    const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+    const conversionMappings = await loadClientConversionMappings(client.id);
     
     // Validate token
     const tokenValidation = await metaService.validateToken();
@@ -318,7 +320,7 @@ export class BackgroundDataCollector {
         );
 
         // ✅ FIX: Parse actions array to extract conversion metrics
-        const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+        const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights, conversionMappings);
 
         logger.info(`📊 Retrieved and parsed ${campaignInsights.length} campaigns with conversion data`);
 
@@ -418,6 +420,8 @@ export class BackgroundDataCollector {
       return;
     }
 
+    const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+    const conversionMappings = await loadClientConversionMappings(client.id);
     const googleAdsCredentials = {
       refreshToken,
       clientId: settings.google_ads_client_id,
@@ -425,6 +429,7 @@ export class BackgroundDataCollector {
       developmentToken: settings.google_ads_developer_token,
       customerId: client.google_ads_customer_id!,
       managerCustomerId: settings.google_ads_manager_customer_id,
+      conversionMappings,
     };
 
     // Initialize Google Ads API service
@@ -660,7 +665,9 @@ export class BackgroundDataCollector {
         }
 
         // ✅ FIX: Parse actions array to extract conversion metrics
-        const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights);
+        const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+        const conversionMappings = await loadClientConversionMappings(client.id);
+        const campaignInsights = enhanceCampaignsWithConversions(rawCampaignInsights, conversionMappings);
 
         logger.info(`📊 Retrieved and parsed ${campaignInsights.length} campaigns with conversion data`);
 
@@ -850,6 +857,8 @@ export class BackgroundDataCollector {
         return;
       }
 
+      const { loadClientConversionMappings } = await import('./client-conversion-mappings-server');
+      const conversionMappings = await loadClientConversionMappings(client.id);
       const googleAdsService = new GoogleAdsAPIService({
         refreshToken,
         clientId: settings.google_ads_client_id,
@@ -857,6 +866,7 @@ export class BackgroundDataCollector {
         developmentToken: settings.google_ads_developer_token,
         customerId: client.google_ads_customer_id!,
         managerCustomerId: settings.google_ads_manager_customer_id,
+        conversionMappings,
       });
 
       for (const weekData of weeksToCollect) {
