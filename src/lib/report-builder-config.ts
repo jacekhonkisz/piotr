@@ -110,7 +110,7 @@ function inferDefaultSort(metrics: string[]): ReportBuilderConfig['sort'] {
 }
 
 function inferDefaultLimit(section: MetricSection): number | undefined {
-  if (section === 'keyword_table' || section === 'search_terms_table') return 10;
+  if (section === 'keyword_table') return 10;
   if (section === 'placement_table' || section === 'device_table') return 10;
   return undefined;
 }

@@ -483,14 +483,6 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
     [keywordData],
   );
 
-  const topSearchTermsByConversions = useMemo(
-    () =>
-      [...searchTermData]
-        .sort((a, b) => (b.conversions || 0) - (a.conversions || 0))
-        .slice(0, TOP_CONVERTING_KEYWORDS_AND_TERMS),
-    [searchTermData],
-  );
-
   // Show loading if explicitly loading OR if we have no data yet (initial state)
   const hasAnyData =
     deviceData.length > 0 ||
@@ -745,62 +737,8 @@ const GoogleAdsTables: React.FC<GoogleAdsTablesProps> = ({ dateStart, dateEnd, c
         </div>
         )}
 
-        {/* Search terms — top by conversions */}
-        {sectionVisible('search_terms_table') && (
-        <div className="order-6 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div>
-                <h3 className="mb-0.5 text-lg font-semibold text-slate-900">Wyszukiwane hasła (Search Terms)</h3>
-                <p className="text-xs text-slate-500">
-                  Top {TOP_CONVERTING_KEYWORDS_AND_TERMS} zapytań według liczby konwersji — rzeczywiste wyszukiwania, które uruchomiły reklamy
-                </p>
-              </div>
-            </div>
-
-            {searchTermData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      {visible('search_terms_table', 'search_term') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'search_term', 'Wyszukiwane hasło')}</th>}
-                      {visible('search_terms_table', 'match_type') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'match_type', 'Typ dopasowania')}</th>}
-                      {visible('search_terms_table', 'campaign_name') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'campaign_name', 'Kampania')}</th>}
-                      {visible('search_terms_table', 'ad_group_name') && <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'ad_group_name', 'Grupa reklam')}</th>}
-                      {visible('search_terms_table', 'totalSpend') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'totalSpend', 'Wydatki')}</th>}
-                      {visible('search_terms_table', 'totalImpressions') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'totalImpressions', 'Wyświetlenia')}</th>}
-                      {visible('search_terms_table', 'totalClicks') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'totalClicks', 'Kliknięcia')}</th>}
-                      {visible('search_terms_table', 'averageCtr') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'averageCtr', 'CTR')}</th>}
-                      {visible('search_terms_table', 'averageCpc') && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">{label('search_terms_table', 'averageCpc', 'CPC')}</th>}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {topSearchTermsByConversions.map((term, index) => (
-                      <tr key={`${term.search_term}-${term.campaign_name}-${index}`} className={`${index % 2 === 1 ? 'bg-slate-50/30' : ''} hover:bg-slate-50`}>
-                        {visible('search_terms_table', 'search_term') && <td className="px-6 py-4 text-sm font-medium text-slate-900">{term.search_term}</td>}
-                        {visible('search_terms_table', 'match_type') && <td className="px-6 py-4">
-                          <span className="px-2 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded">
-                            {term.match_type}
-                          </span>
-                        </td>}
-                        {visible('search_terms_table', 'campaign_name') && <td className="px-6 py-4 text-sm text-slate-600">{term.campaign_name}</td>}
-                        {visible('search_terms_table', 'ad_group_name') && <td className="px-6 py-4 text-sm text-slate-600">{term.ad_group_name}</td>}
-                        {visible('search_terms_table', 'totalSpend') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.spend)}</td>}
-                        {visible('search_terms_table', 'totalImpressions') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.impressions)}</td>}
-                        {visible('search_terms_table', 'totalClicks') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatNumber(term.clicks)}</td>}
-                        {visible('search_terms_table', 'averageCtr') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatPercentage(term.ctr)}</td>}
-                        {visible('search_terms_table', 'averageCpc') && <td className="px-6 py-4 text-sm text-slate-900 text-right tabular-nums">{formatCurrency(term.cpc)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                Brak danych wyszukiwanych haseł dla wybranego okresu.
-              </div>
-            )}
-        </div>
-        )}
+        {/* Search terms table removed per client request — the data is still
+            fetched/cached but must not be displayed anywhere (panel/email/PDF). */}
     </motion.div>
   );
 };

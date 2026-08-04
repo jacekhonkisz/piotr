@@ -43,14 +43,13 @@ export const REPORT_AREAS: ReportArea[] = [
   {
     id: 'tables',
     label: 'Tables',
-    description: 'Breakdowns for placements, demographics, locations, devices, keywords, and search terms.',
+    description: 'Breakdowns for placements, demographics, locations, devices, and keywords.',
     sections: [
       'placement_table',
       'demographic_breakdown',
       'geographic_map',
       'device_table',
       'keyword_table',
-      'search_terms_table',
     ],
   },
   {
@@ -75,7 +74,6 @@ export const REPORT_AREAS: ReportArea[] = [
       'geographic_map',
       'device_table',
       'keyword_table',
-      'search_terms_table',
     ],
   },
 ];
@@ -108,8 +106,6 @@ export function getSectionTitle(section: MetricSection): string {
       return 'Devices';
     case 'keyword_table':
       return 'Keywords';
-    case 'search_terms_table':
-      return 'Search Terms';
     default:
       return SECTION_LABELS[section];
   }

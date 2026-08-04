@@ -53,7 +53,6 @@ const DEFAULT_VISIBLE: Record<MetricSection, Set<string>> = {
   geographic_map: new Set(['city', 'region', 'totalSpend', 'totalClicks', 'totalConversions', 'conversion_value']),
   device_table: new Set(['device', 'totalSpend', 'totalImpressions', 'totalClicks', 'averageCtr', 'averageCpc', 'totalConversions', 'conversion_value', 'roas']),
   keyword_table: new Set(['keyword', 'totalSpend', 'totalImpressions', 'totalClicks', 'averageCtr', 'averageCpc']),
-  search_terms_table: new Set(['search_term', 'match_type', 'campaign_name', 'ad_group_name', 'totalSpend', 'totalImpressions', 'totalClicks', 'averageCtr', 'averageCpc']),
 };
 
 // Custom names per section where the label should differ from the master default
@@ -112,13 +111,6 @@ const SECTION_NAME_OVERRIDES: Partial<Record<MetricSection, Record<string, strin
     averageCtr: 'CTR',
     averageCpc: 'CPC',
   },
-  search_terms_table: {
-    totalSpend: 'Wydatki',
-    totalImpressions: 'Wyświetlenia',
-    totalClicks: 'Kliknięcia',
-    averageCtr: 'CTR',
-    averageCpc: 'CPC',
-  },
 };
 
 function dimensionDefsForSection(section: MetricSection): MetricDef[] {
@@ -139,7 +131,6 @@ const SECTION_EXTRA: Partial<Record<MetricSection, MetricDef[]>> = {
   geographic_map: dimensionDefsForSection('geographic_map'),
   device_table: dimensionDefsForSection('device_table'),
   keyword_table: dimensionDefsForSection('keyword_table'),
-  search_terms_table: dimensionDefsForSection('search_terms_table'),
 };
 
 const ALL_SECTIONS: MetricSection[] = [
@@ -154,7 +145,6 @@ const ALL_SECTIONS: MetricSection[] = [
   'geographic_map',
   'device_table',
   'keyword_table',
-  'search_terms_table',
 ];
 
 function buildSectionMetrics(section: MetricSection): MetricConfigItem[] {
@@ -198,7 +188,6 @@ export const SECTION_LABELS: Record<MetricSection, string> = {
   geographic_map: 'Mapa i lokalizacje (Google)',
   device_table: 'Urządzenia (Google)',
   keyword_table: 'Słowa kluczowe (Google)',
-  search_terms_table: 'Wyszukiwane hasła (Google)',
 };
 
 export const SECTION_DESCRIPTIONS: Record<MetricSection, string> = {
@@ -213,7 +202,6 @@ export const SECTION_DESCRIPTIONS: Record<MetricSection, string> = {
   geographic_map: 'Metryki dostępne w mapie Polski i tabeli miast Google Ads',
   device_table: 'Kolumny w tabeli urządzeń Google Ads',
   keyword_table: 'Kolumny w tabeli słów kluczowych Google Ads',
-  search_terms_table: 'Kolumny w tabeli wyszukiwanych haseł Google Ads',
 };
 
 export function getDefaultConfigForSection(section: MetricSection): MetricConfigItem[] {

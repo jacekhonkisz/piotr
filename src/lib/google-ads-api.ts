@@ -6,8 +6,10 @@ import {
   isGoogleAdsPhoneOrCallConversion,
   isGoogleAdsFormConversion,
   isGoogleAdsDedicatedReservationConversion,
+  normalizeGoogleAdsConversionLabel,
   parseGoogleAdsConversions,
   sumGoogleConversionsExcludingForms,
+  type GoogleAdsConversionActionMeta,
 } from './google-ads-actions-parser';
 import {
   coerceGoogleAdsDeviceSegment,
@@ -729,16 +731,19 @@ export class GoogleAdsAPIService {
     try {
       logger.info('📊 Fetching Google Ads conversion breakdown');
       
-      // First, get all conversion actions available in the account
+      // First, get all conversion actions available in the account.
+      // No status filter: removed/hidden actions can still carry historical
+      // stats, and their category/primary_for_goal metadata is needed to
+      // classify those rows correctly.
       const conversionActionsQuery = `
         SELECT
           conversion_action.id,
           conversion_action.name,
           conversion_action.category,
           conversion_action.type,
-          conversion_action.status
+          conversion_action.status,
+          conversion_action.primary_for_goal
         FROM conversion_action
-        WHERE conversion_action.status = 'ENABLED'
         ORDER BY conversion_action.name
       `;
       
@@ -753,10 +758,21 @@ export class GoogleAdsAPIService {
         conversionActions = [];
       }
       
+      // Catalog metadata keyed by normalized action name, used by the parser to
+      // apply the primary („Podstawowe”) purchase-category reservation rule.
+      const actionMeta: Record<string, GoogleAdsConversionActionMeta> = {};
+
       if (conversionActions && conversionActions.length > 0) {
         logger.info(`📋 Found ${conversionActions.length} conversion actions in account:`);
         conversionActions.forEach((action: any) => {
-          logger.info(`   - "${action.conversion_action.name}" (Category: ${action.conversion_action.category}, Type: ${action.conversion_action.type})`);
+          const ca = action.conversion_action;
+          if (ca?.name) {
+            actionMeta[normalizeGoogleAdsConversionLabel(String(ca.name))] = {
+              category: ca.category,
+              primaryForGoal: ca.primary_for_goal === true,
+            };
+          }
+          logger.info(`   - "${ca.name}" (Category: ${ca.category}, Type: ${ca.type}, Primary: ${ca.primary_for_goal})`);
         });
       } else {
         logger.warn('⚠️  No conversion actions found in account');
@@ -998,6 +1014,10 @@ export class GoogleAdsAPIService {
         const parsed = parseGoogleAdsConversions(conversions, campaignName, {
           accountHasDedicatedReservation,
           mappings: this.credentials.conversionMappings,
+          actionMeta,
+          // Keep fractional counts here; integers are apportioned account-wide
+          // below so campaign sums match the (rounded) account totals.
+          roundCounts: false,
         });
         
         // ✅ total_conversion_value: all_conversions_value minus form actions only
@@ -1020,7 +1040,40 @@ export class GoogleAdsAPIService {
       });
       
       logger.info(`✅ Processed conversion breakdown for ${Object.keys(breakdown).length} campaigns`);
-      
+
+      // Convert fractional per-campaign counts to integers with largest-remainder
+      // apportionment, so Σ per-campaign values === round(exact account total).
+      // Naive per-campaign rounding inflates totals (e.g. Google UI shows 42
+      // e-mail conversions but 29.5→30 + 2.5→3 + ... summed to 43).
+      const countMetricKeys = [
+        'click_to_call',
+        'email_contacts',
+        'booking_step_1',
+        'booking_step_2',
+        'booking_step_3',
+        'reservations',
+      ] as const;
+      const campaignIds = Object.keys(breakdown);
+      for (const metricKey of countMetricKeys) {
+        const exactValues = campaignIds.map((id) => Number(breakdown[id][metricKey]) || 0);
+        const exactTotal = exactValues.reduce((a, b) => a + b, 0);
+        const targetTotal = Math.round(exactTotal);
+        const floors = exactValues.map((v) => Math.floor(v));
+        let remainder = targetTotal - floors.reduce((a, b) => a + b, 0);
+        const byRemainder = exactValues
+          .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+          .sort((a, b) => b.frac - a.frac);
+        const rounded = [...floors];
+        for (const { i } of byRemainder) {
+          if (remainder <= 0) break;
+          rounded[i] = (rounded[i] || 0) + 1;
+          remainder--;
+        }
+        campaignIds.forEach((id, idx) => {
+          breakdown[id][metricKey] = rounded[idx] || 0;
+        });
+      }
+
       // DEBUG: Log all conversion action names found and return them for debugging
       const allActionNames = new Set();
       const unmappedActions = new Set();

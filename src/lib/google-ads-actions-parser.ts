@@ -33,20 +33,40 @@ export interface ParsedConversionMetrics {
 }
 
 /** Lowercase + strip diacritics so PL/EN conversion action names match reliably. */
-function normalizeConversionLabel(name: string): string {
+export function normalizeGoogleAdsConversionLabel(name: string): string {
   return String(name || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{M}+/gu, '');
 }
 
+const normalizeConversionLabel = normalizeGoogleAdsConversionLabel;
+
 /**
- * Maps to Google Ads UI „Kontakt” → „Kliknięcie w adres email” (website).
- * Only that style of action counts as email_contacts (no generic „kontakt” / „contact”).
+ * Per-action metadata from the account's conversion_action catalog.
+ * `category` is the ConversionActionCategory enum (number from the API lib,
+ * e.g. 4 = PURCHASE) and `primaryForGoal` maps to the Google Ads UI column
+ * „Optymalizacja działań”: true = „Podstawowe”, false = „Dodatkowe”.
+ */
+export interface GoogleAdsConversionActionMeta {
+  category?: number | string;
+  primaryForGoal?: boolean;
+}
+
+/** ConversionActionCategory.PURCHASE — the „Zakup” goal section in the UI. */
+export function isGoogleAdsPurchaseCategory(category: number | string | undefined): boolean {
+  return category === 4 || category === '4' || category === 'PURCHASE';
+}
+
+/**
+ * Maps to Google Ads UI „Kontakt” → „Kliknięcie w adres e-mail” / „Kliknięcie w e-mail”
+ * (website). Only that style of action counts as email_contacts (no generic
+ * „kontakt” / „contact”, and no „kliknięcie e-mail” without „w” — client-specific
+ * apartment duplicates must stay excluded).
  */
 export function isGoogleAdsEmailAddressClickConversion(name: string): boolean {
   const n = normalizeConversionLabel(name);
-  if (/klikniecie\s+w\s+adres/.test(n) && /(email|e-mail|e_mail)/.test(n)) return true;
+  if (/klikniecie\s+w\s+(adres\s+)?e[-_\s]?mail/.test(n)) return true;
   if (n.includes('click on email address')) return true;
   if (n.includes('website click') && n.includes('email')) return true;
   return false;
@@ -159,6 +179,22 @@ export function parseGoogleAdsConversions(
     accountHasDedicatedReservation?: boolean;
     /** Exact, case/diacritic-insensitive conversion-action mappings for this client. */
     mappings?: ClientConversionMappings;
+    /**
+     * Account conversion_action catalog keyed by NORMALIZED action name.
+     * When present and the account has at least one primary („Podstawowe”)
+     * purchase-category action, reservations count ONLY those actions —
+     * matching the Google Ads UI rule the client expects (one authoritative
+     * conversion in the „Zakup” section, secondary duplicates ignored).
+     */
+    actionMeta?: Record<string, GoogleAdsConversionActionMeta>;
+    /**
+     * When false, conversion COUNTS keep Google's fractional attribution values
+     * (rounded to 4 decimals) instead of being rounded per campaign. Used by
+     * getConversionBreakdown, which rounds at the ACCOUNT level and apportions
+     * integers back to campaigns — per-campaign rounding inflates account
+     * totals (e.g. 29.5 + 2.5 + ... = 42 exact but 30 + 3 + ... = 43).
+     */
+    roundCounts?: boolean;
   }
 ): ParsedConversionMetrics {
   
@@ -188,6 +224,15 @@ export function parseGoogleAdsConversions(
     conversions.some((c) =>
       isGoogleAdsDedicatedReservationConversion(String(c.conversion_name || c.name || ''))
     );
+
+  // Primary („Podstawowe”) purchase-category actions from the account catalog.
+  // When any exist, they are the ONLY source of reservation count/value.
+  const primaryPurchaseNames = new Set(
+    Object.entries(options?.actionMeta || {})
+      .filter(([, meta]) => meta.primaryForGoal === true && isGoogleAdsPurchaseCategory(meta.category))
+      .map(([normalizedName]) => normalizedName)
+  );
+  const usePrimaryPurchaseRule = primaryPurchaseNames.size > 0;
   const mappedStep1 = getMappedActionTypes(options?.mappings, 'google', 'booking_step_1');
   const mappedStep2 = getMappedActionTypes(options?.mappings, 'google', 'booking_step_2');
   const mappedStep3 = getMappedActionTypes(options?.mappings, 'google', 'booking_step_3');
@@ -299,19 +344,21 @@ export function parseGoogleAdsConversions(
       }
       
       // --- RESERVATIONS (Final Purchase) ---
-      // Dedicated reservation actions always count. Generic purchase actions
-      // (GA4 "Zakup", "purchase", ...) count ONLY when the account has no
-      // dedicated reservation action — otherwise they duplicate the same bookings.
+      // Preferred rule (client requirement): when the account catalog is known
+      // and has primary („Podstawowe”) purchase-category actions, ONLY those
+      // count as reservations — exactly the authoritative conversion(s) in the
+      // Google Ads UI „Zakup” section. Secondary ("Dodatkowe") duplicates like
+      // GA4 "Zakup" and reservation-named actions in other goal sections
+      // (e.g. "PBM - Rezerwacja - Apartamenty" under begin_checkout) are skipped.
+      //
+      // Fallback (no catalog metadata, e.g. legacy stored rows): dedicated
+      // reservation actions always count; generic purchase actions (GA4
+      // "Zakup", "purchase", ...) count ONLY when the account has no dedicated
+      // reservation action — otherwise they duplicate the same bookings.
       const isDedicatedReservation = isGoogleAdsDedicatedReservationConversion(rawLabel);
       const isGenericPurchase = isGoogleAdsGenericPurchaseConversion(rawLabel) ||
         conversionName.includes('booking_complete');
-      const isReservation =
-        isDedicatedReservation || (isGenericPurchase && !hasDedicatedReservationAction);
 
-      if (isGenericPurchase && hasDedicatedReservationAction && conversions > 0) {
-        logger.info(`parseGoogleAdsConversions: Skipping duplicate purchase action "${rawLabel}" (${conversions} conv) — dedicated reservation action exists for campaign "${campaignName || 'unknown'}"`);
-      }
-      
       const isBookingStep = (
         conversionName.includes('krok') ||
         conversionName.includes('step') ||
@@ -321,8 +368,23 @@ export function parseGoogleAdsConversions(
         conversionName.includes('initiate_checkout') ||
         conversionName.includes('begin_checkout')
       );
-      
-      if (isReservation && !isBookingStep) {
+
+      let isReservation: boolean;
+      if (usePrimaryPurchaseRule) {
+        isReservation = primaryPurchaseNames.has(normalizedConversionName);
+        if (!isReservation && (isDedicatedReservation || isGenericPurchase) && conversions > 0) {
+          logger.info(`parseGoogleAdsConversions: Skipping non-primary purchase/reservation action "${rawLabel}" (${conversions} conv) — primary purchase action(s) exist for campaign "${campaignName || 'unknown'}"`);
+        }
+      } else {
+        isReservation =
+          (isDedicatedReservation || (isGenericPurchase && !hasDedicatedReservationAction)) &&
+          !isBookingStep;
+        if (isGenericPurchase && hasDedicatedReservationAction && conversions > 0) {
+          logger.info(`parseGoogleAdsConversions: Skipping duplicate purchase action "${rawLabel}" (${conversions} conv) — dedicated reservation action exists for campaign "${campaignName || 'unknown'}"`);
+        }
+      }
+
+      if (isReservation) {
         metrics.reservations += conversions;
         if (!isNaN(conversionValue) && conversionValue > 0) {
           metrics.reservation_value += conversionValue;
@@ -343,15 +405,18 @@ export function parseGoogleAdsConversions(
     }
   });
 
-  // ✅ CRITICAL FIX: Round all conversion counts to integers
-  // Google Ads uses attribution models that can assign fractional conversions (e.g., 0.5)
-  // But for display purposes, we round to whole numbers
-  metrics.click_to_call = Math.round(metrics.click_to_call);
-  metrics.email_contacts = Math.round(metrics.email_contacts);
-  metrics.booking_step_1 = Math.round(metrics.booking_step_1);
-  metrics.booking_step_2 = Math.round(metrics.booking_step_2);
-  metrics.booking_step_3 = Math.round(metrics.booking_step_3);
-  metrics.reservations = Math.round(metrics.reservations);
+  // Google Ads attribution assigns fractional conversions (e.g. 0.5). By default
+  // counts are rounded per campaign for display; callers that aggregate across
+  // campaigns should pass roundCounts: false and round AFTER summing.
+  const roundCount = (options?.roundCounts === false)
+    ? (v: number) => Math.round(v * 10000) / 10000
+    : Math.round;
+  metrics.click_to_call = roundCount(metrics.click_to_call);
+  metrics.email_contacts = roundCount(metrics.email_contacts);
+  metrics.booking_step_1 = roundCount(metrics.booking_step_1);
+  metrics.booking_step_2 = roundCount(metrics.booking_step_2);
+  metrics.booking_step_3 = roundCount(metrics.booking_step_3);
+  metrics.reservations = roundCount(metrics.reservations);
   // Note: reservation_value is monetary, keep as-is (with decimals)
   metrics.reservation_value = Math.round(metrics.reservation_value * 100) / 100; // Round to 2 decimal places
 

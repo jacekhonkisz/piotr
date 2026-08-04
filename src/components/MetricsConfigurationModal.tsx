@@ -88,7 +88,6 @@ const SECTION_SHORT_LABELS: Record<string, string> = {
   geographic_map: 'Mapa',
   device_table: 'Urządzenia',
   keyword_table: 'Słowa kluczowe',
-  search_terms_table: 'Search terms',
 };
 
 const SECTION_ORDER: MetricSection[] = [
@@ -103,7 +102,6 @@ const SECTION_ORDER: MetricSection[] = [
   'geographic_map',
   'device_table',
   'keyword_table',
-  'search_terms_table',
 ];
 
 function metricUsedSections(metrics: MetricConfigItem[], key: string): string[] {
