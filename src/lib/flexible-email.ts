@@ -3,6 +3,14 @@ import nodemailer from 'nodemailer';
 import logger from './logger';
 import { RateLimiter } from './rate-limiter';
 import { EMAIL_CONFIG, isMonitoringMode, getEmailRecipients, getEmailSubject, getEmailRecipientsAsync, getEmailSubjectAsync, resolveEmailEnvelope } from './email-config';
+import {
+  sanitizeEnvValue,
+  isResendSandboxSender,
+  getResendFromAddress,
+  getGmailUser,
+  getCustomSmtpUser,
+  describeSandboxSenderProblem
+} from './email-env';
 import { createClient } from '@supabase/supabase-js';
 import { formatPlnWhole } from './email-helpers';
 import { getMonthlyOfflineNarrative } from './monthly-report-offline-narrative';
@@ -16,7 +24,8 @@ export interface EmailData {
   to: string;
   /** CC ("DW") recipients — visible additional recipients. */
   cc?: string[];
-  from: string;
+  /** Omit to let the service derive the sender from the provider it selects. */
+  from?: string;
   subject: string;
   html: string;
   text?: string;
@@ -67,35 +76,36 @@ export class FlexibleEmailService {
   private defaultProvider: EmailProvider;
 
   constructor() {
-    this.resend = new Resend(process.env.RESEND_API_KEY);
-    this.defaultProvider = (process.env.EMAIL_PROVIDER as EmailProvider) || 'auto';
+    this.resend = new Resend(sanitizeEnvValue(process.env.RESEND_API_KEY));
+    this.defaultProvider = (sanitizeEnvValue(process.env.EMAIL_PROVIDER) as EmailProvider) || 'auto';
     
     if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
       this.gmailTransporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_APP_PASSWORD
+          user: getGmailUser(),
+          pass: sanitizeEnvValue(process.env.GMAIL_APP_PASSWORD)
         }
       });
     }
 
     if (process.env.CUSTOM_SMTP_HOST && process.env.CUSTOM_SMTP_USER && process.env.CUSTOM_SMTP_PASSWORD) {
-      const port = parseInt(process.env.CUSTOM_SMTP_PORT || '587', 10);
-      const secure = process.env.CUSTOM_SMTP_SECURE === 'true' || port === 465;
+      const smtpHost = sanitizeEnvValue(process.env.CUSTOM_SMTP_HOST);
+      const port = parseInt(sanitizeEnvValue(process.env.CUSTOM_SMTP_PORT) || '587', 10);
+      const secure = sanitizeEnvValue(process.env.CUSTOM_SMTP_SECURE) === 'true' || port === 465;
       this.customSmtpTransporter = nodemailer.createTransport({
-        host: process.env.CUSTOM_SMTP_HOST,
+        host: smtpHost,
         port,
         secure,
         auth: {
-          user: process.env.CUSTOM_SMTP_USER,
-          pass: process.env.CUSTOM_SMTP_PASSWORD
+          user: getCustomSmtpUser(),
+          pass: sanitizeEnvValue(process.env.CUSTOM_SMTP_PASSWORD)
         },
         tls: {
           rejectUnauthorized: false
         }
       });
-      logger.info(`📧 Custom SMTP configured: ${process.env.CUSTOM_SMTP_USER} via ${process.env.CUSTOM_SMTP_HOST}:${port}`);
+      logger.info(`📧 Custom SMTP configured: ${getCustomSmtpUser()} via ${smtpHost}:${port}`);
     }
     
     this.rateLimiter = new RateLimiter({
@@ -123,7 +133,42 @@ export class FlexibleEmailService {
     return this.rateLimiter.getStatus();
   }
 
+  /**
+   * Whether the provider that would handle a given recipient can actually
+   * deliver, and what is missing if it cannot. Exposed so the admin UI can warn
+   * about a broken deployment config instead of only failing at send time.
+   */
+  getProviderReadiness(recipient = ''): {
+    provider: EmailProvider;
+    ready: boolean;
+    fromAddress: string;
+    blockers: string[];
+  } {
+    const provider = this.determineProvider(recipient);
+    const fromAddress = this.getFromAddress(provider);
+    const blockers: string[] = [];
+
+    if (provider === 'resend') {
+      if (!sanitizeEnvValue(process.env.RESEND_API_KEY)) {
+        blockers.push('Brak RESEND_API_KEY.');
+      }
+      if (isResendSandboxSender(fromAddress)) {
+        blockers.push(describeSandboxSenderProblem(fromAddress));
+      }
+    }
+    if (provider === 'gmail' && !this.gmailTransporter) {
+      blockers.push('Brak GMAIL_USER / GMAIL_APP_PASSWORD.');
+    }
+    if (provider === 'custom_smtp' && !this.customSmtpTransporter) {
+      blockers.push('Brak CUSTOM_SMTP_HOST / CUSTOM_SMTP_USER / CUSTOM_SMTP_PASSWORD.');
+    }
+
+    return { provider, ready: blockers.length === 0, fromAddress, blockers };
+  }
+
   private determineProvider(recipient: string): EmailProvider {
+    recipient = sanitizeEnvValue(recipient);
+
     if (process.env.NODE_ENV === 'development' || (process.env.NODE_ENV as string) === 'dev') {
       if (this.customSmtpTransporter) return 'custom_smtp';
       return 'gmail';
@@ -170,8 +215,6 @@ export class FlexibleEmailService {
     provider?: EmailProvider,
     options?: { reviewRecipientOverride?: string; reviewRecipientsOverride?: string[] }
   ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
-    const selectedProvider = provider || this.determineProvider(emailData.to);
-
     // Resolve the full To/CC ("DW") envelope.
     // - Normal mode: To = primary contact, CC = remaining contacts + admin preview copy.
     // - Review mode: client recipients are dropped and mail routes only to internal review recipients.
@@ -181,12 +224,16 @@ export class FlexibleEmailService {
       emailData.cc || [],
       { reviewRecipientOverride: options?.reviewRecipientOverride, reviewRecipientsOverride: options?.reviewRecipientsOverride }
     );
+    // Provider routing must follow the address that actually receives the mail,
+    // not the pre-redirect client address.
+    const selectedProvider = provider || this.determineProvider(to);
     const resolvedSubject = await getEmailSubjectAsync(emailData.subject, isRedirected ? originalRecipient : undefined);
 
     const resolvedEmailData: EmailData = {
       ...emailData,
       to,
       cc,
+      from: sanitizeEnvValue(emailData.from) || this.getFromAddress(selectedProvider),
       subject: resolvedSubject
     };
 
@@ -246,7 +293,7 @@ export class FlexibleEmailService {
     }
 
     const mailOptions = {
-      from: `"Meta Ads Reports" <${process.env.GMAIL_USER}>`,
+      from: `"Meta Ads Reports" <${getGmailUser()}>`,
       to: emailData.to,
       ...(emailData.cc && emailData.cc.length > 0 ? { cc: emailData.cc } : {}),
       subject: emailData.subject,
@@ -264,10 +311,15 @@ export class FlexibleEmailService {
   }
 
   private async sendViaResend(emailData: EmailData): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!sanitizeEnvValue(process.env.RESEND_API_KEY)) {
+      return { success: false, error: 'Resend nie jest skonfigurowany — brak RESEND_API_KEY.' };
+    }
+
     await this.rateLimiter.waitForNextCall();
 
+    const fromAddress = sanitizeEnvValue(emailData.from) || getResendFromAddress();
     const resendData = {
-      from: emailData.from,
+      from: fromAddress,
       to: [emailData.to],
       ...(emailData.cc && emailData.cc.length > 0 ? { cc: emailData.cc } : {}),
       subject: emailData.subject,
@@ -279,9 +331,14 @@ export class FlexibleEmailService {
     const { data, error } = await this.resend.emails.send(resendData);
     
     if (error) {
+      // Resend's own message names the exact restriction (unverified domain,
+      // sandbox sender, invalid address); keep it verbatim and add the sender
+      // context, otherwise the admin only ever sees "failed to send".
+      const recipients = [emailData.to, ...(emailData.cc || [])].join(', ');
+      const hint = isResendSandboxSender(fromAddress) ? ` ${describeSandboxSenderProblem(fromAddress)}` : '';
       return {
         success: false,
-        error: error.message || 'Unknown Resend error'
+        error: `Resend (${fromAddress} → ${recipients}): ${error.message || 'Unknown Resend error'}${hint}`
       };
     }
 
@@ -299,8 +356,8 @@ export class FlexibleEmailService {
       throw new Error('Custom SMTP not configured. Set CUSTOM_SMTP_HOST, CUSTOM_SMTP_USER, CUSTOM_SMTP_PASSWORD env vars.');
     }
 
-    const fromAddress = process.env.CUSTOM_SMTP_USER || emailData.from;
-    const fromName = process.env.CUSTOM_SMTP_FROM_NAME || 'Piotr Bajerlein - Raporty';
+    const fromAddress = getCustomSmtpUser() || sanitizeEnvValue(emailData.from);
+    const fromName = sanitizeEnvValue(process.env.CUSTOM_SMTP_FROM_NAME) || 'Piotr Bajerlein - Raporty';
 
     const mailOptions = {
       from: `"${fromName}" <${fromAddress}>`,
@@ -515,13 +572,12 @@ export class FlexibleEmailService {
   private getFromAddress(provider: EmailProvider): string {
     switch (provider) {
       case 'gmail':
-        return process.env.GMAIL_USER || 'jac.honkisz@gmail.com';
+        return getGmailUser() || 'jac.honkisz@gmail.com';
       case 'custom_smtp':
-        return process.env.CUSTOM_SMTP_USER || process.env.EMAIL_FROM_ADDRESS || 'kontakt@piotrbajerlein.pl';
+        return getCustomSmtpUser() || sanitizeEnvValue(process.env.EMAIL_FROM_ADDRESS) || 'kontakt@piotrbajerlein.pl';
       case 'resend':
-        return process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
       default:
-        return process.env.EMAIL_FROM_ADDRESS || 'onboarding@resend.dev';
+        return getResendFromAddress();
     }
   }
 
@@ -1194,10 +1250,11 @@ Piotr Bajerlein`;
       reportData
     );
 
+    // `from` is intentionally left to sendEmail(), which knows the final
+    // provider after review-mode redirection.
     const emailData: EmailData = {
       to: recipient,
       cc: options?.cc,
-      from: this.getFromAddress(provider || this.determineProvider(recipient)),
       subject: template.subject,
       html: template.html,
       text: template.text

@@ -9,6 +9,7 @@ import {
   isBelmonteClient
 } from './offline-reservation-estimate';
 import { cpcFromStats, ctrPercentFromStats } from './ctr-from-stats';
+import { getAppUrl } from './app-url';
 
 /**
  * Polish month names
@@ -133,7 +134,7 @@ export function prepareClientMonthlyReportData(
   }
   
   // Generate dashboard URL
-  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reports/monthly/${year}-${String(monthNumber).padStart(2, '0')}?client=${clientId}`;
+  const dashboardUrl = `${getAppUrl()}/reports/monthly/${year}-${String(monthNumber).padStart(2, '0')}?client=${clientId}`;
   
   return {
     dashboardUrl,

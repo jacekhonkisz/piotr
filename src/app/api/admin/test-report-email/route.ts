@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { EMAIL_CONFIG, isReviewMode } from '../../../../lib/email-config';
 import { normalizeReviewRecipientsOverride } from '../../../../lib/email-recipients';
+import FlexibleEmailService from '../../../../lib/flexible-email';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,20 +82,36 @@ export async function POST(request: NextRequest) {
     });
 
     const sendPayload = await sendResponse.json().catch(() => ({}));
+    const sendSucceeded = sendResponse.ok && sendPayload.success === true;
 
-    const upstreamErrorMessage =
-      typeof sendPayload.error === 'string'
-        ? sendPayload.error
-        : !sendResponse.ok && typeof sendPayload.details === 'string'
-          ? sendPayload.details
-          : !sendResponse.ok
-            ? `Send pipeline failed (HTTP ${sendResponse.status})`
-            : null;
+    // The provider-level reason (e.g. Resend rejecting an unverified sender)
+    // lives in `details`; without it the admin only sees a generic failure.
+    const failedRecipients = Array.isArray(sendPayload.details?.failed) ? sendPayload.details.failed : [];
+    const upstreamDetails =
+      typeof sendPayload.details === 'string'
+        ? sendPayload.details
+        : failedRecipients.length > 0
+          ? failedRecipients.map((entry: any) => `${entry.email}: ${entry.error}`).join('; ')
+          : null;
+
+    const upstreamErrorMessage = sendSucceeded
+      ? null
+      : [
+          typeof sendPayload.error === 'string' ? sendPayload.error : `Send pipeline failed (HTTP ${sendResponse.status})`,
+          upstreamDetails
+        ]
+          .filter(Boolean)
+          .join(' — ');
+
+    const readiness = FlexibleEmailService.getInstance().getProviderReadiness(client.email || '');
 
     return NextResponse.json({
-      success: sendResponse.ok && sendPayload.success === true,
+      success: sendSucceeded,
       error: upstreamErrorMessage,
-      provider: 'same-as-production',
+      errorDetails: upstreamDetails,
+      configBlockers: readiness.blockers,
+      provider: readiness.provider,
+      fromAddress: readiness.fromAddress,
       reviewMode,
       redirectedTo: null,
       pdfIncluded: true,
@@ -110,7 +127,7 @@ export async function POST(request: NextRequest) {
           ? (internalTestRecipients?.join(', ') || EMAIL_CONFIG.REVIEW_RECIPIENTS.join(', '))
           : client.email),
       upstream: sendPayload
-    }, { status: sendResponse.ok && sendPayload.success ? 200 : sendResponse.status });
+    }, { status: sendSucceeded ? 200 : sendResponse.status });
 
   } catch (err) {
     console.error('Test report email error:', err);

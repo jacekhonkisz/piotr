@@ -1161,9 +1161,19 @@ export default function AdminCalendarPage() {
                           <p className={`text-sm mt-1 ${testResult.success ? 'text-green-700' : 'text-red-700'}`}>
                             {testResult.message}
                           </p>
+                          {Array.isArray(testResult.details?.configBlockers) && testResult.details.configBlockers.length > 0 && (
+                            <ul className="text-xs text-red-700 mt-2 list-disc pl-4 space-y-1">
+                              {testResult.details.configBlockers.map((blocker: string) => (
+                                <li key={blocker}>{blocker}</li>
+                              ))}
+                            </ul>
+                          )}
                           {testResult.details?.provider && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              Provider: {testResult.details.provider} | ID: {testResult.details.messageId || 'n/a'}
+                            <p className="text-xs text-gray-500 mt-1 break-all">
+                              Provider: {testResult.details.provider}
+                              {testResult.details.fromAddress ? ` | Nadawca: ${testResult.details.fromAddress}` : ''}
+                              {' | ID: '}
+                              {testResult.details.messageId || 'n/a'}
                             </p>
                           )}
                         </div>
