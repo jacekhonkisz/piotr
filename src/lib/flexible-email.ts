@@ -214,7 +214,7 @@ export class FlexibleEmailService {
     emailData: EmailData,
     provider?: EmailProvider,
     options?: { reviewRecipientOverride?: string; reviewRecipientsOverride?: string[] }
-  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
+  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; to?: string; redirectedTo?: string; cc?: string[] }> {
     // Resolve the full To/CC ("DW") envelope.
     // - Normal mode: To = primary contact, CC = remaining contacts + admin preview copy.
     // - Review mode: client recipients are dropped and mail routes only to internal review recipients.
@@ -271,6 +271,7 @@ export class FlexibleEmailService {
       return {
         ...result,
         provider: selectedProvider,
+        to,
         ...(cc.length > 0 ? { cc } : {}),
         ...(isRedirected ? { redirectedTo: to } : {})
       };
@@ -1221,7 +1222,7 @@ Piotr Bajerlein`;
     pdfBuffer: Buffer,
     provider?: EmailProvider,
     options?: { reviewRecipientOverride?: string; reviewRecipientsOverride?: string[]; cc?: string[] }
-  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; redirectedTo?: string; cc?: string[] }> {
+  ): Promise<{ success: boolean; messageId?: string; error?: string; provider: string; to?: string; redirectedTo?: string; cc?: string[] }> {
     
     // 🔒 MANDATORY VALIDATION: PDF must be provided
     if (!pdfBuffer || pdfBuffer.length === 0) {

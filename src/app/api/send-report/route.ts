@@ -304,6 +304,7 @@ export async function POST(request: NextRequest) {
     // email service so every report is copied to the admin for oversight.
     const [primaryRecipient, ...ccRecipients] = contactEmails;
     let emailResults: { email: string; success: boolean; error?: string }[] = [];
+    let routedTo: string | null = null;
     let routedCc: string[] = [];
     let providerMessageId: string | null = null;
 
@@ -319,6 +320,7 @@ export async function POST(request: NextRequest) {
         undefined,
         { reviewRecipientsOverride: internalRecipientsOverride, cc: ccRecipients }
       );
+      routedTo = emailResult.to || null;
       routedCc = emailResult.cc || [];
       providerMessageId = emailResult.messageId || null;
       emailResults.push({ email: primaryRecipient!, success: emailResult.success, error: emailResult.error });
@@ -403,8 +405,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Report the addresses the provider actually accepted. In review mode the
+    // client contact is replaced by the internal reviewers, so echoing the
+    // client address here would wrongly suggest the client was mailed.
+    const deliveredTo = routedTo || primaryRecipient!;
     const deliveredRecipients = successfulEmails.length > 0
-      ? [primaryRecipient!, ...routedCc]
+      ? [deliveredTo, ...routedCc]
       : [];
 
     return NextResponse.json({
@@ -412,7 +418,7 @@ export async function POST(request: NextRequest) {
       message: `Report sent successfully to ${deliveredRecipients.length} recipient(s)${failedEmails.length > 0 ? `, failed to send to ${failedEmails.length} recipient(s)` : ''}`,
       pdfSize: pdfBuffer ? pdfBuffer.byteLength : 0,
       details: {
-        to: successfulEmails.length > 0 ? primaryRecipient : null,
+        to: successfulEmails.length > 0 ? deliveredTo : null,
         cc: routedCc,
         successful: deliveredRecipients,
         failed: failedEmails.map(e => ({ email: e.email, error: e.error }))
