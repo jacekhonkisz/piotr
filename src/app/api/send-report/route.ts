@@ -12,6 +12,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const appOrigin = request.nextUrl.origin;
@@ -119,15 +122,15 @@ export async function POST(request: NextRequest) {
       totalClicks: (built.metaAdsData?.linkClicks || 0) + (built.googleAdsData?.clicks || 0)
     } as any;
 
-    // Generate PDF if requested and fetch AI summary
+    // Generate PDF if requested. The monthly email body is built from stored
+    // report data above; a second generate-pdf round-trip was only used for an
+    // AI summary that this route never attached to the email.
     let pdfBuffer: Buffer | undefined;
-    let aiSummary: string | undefined;
     
     if (includePdf) {
       try {
-        logger.info('📄 Generating PDF with UNIFIED AI summary...');
-        
-        // FIXED APPROACH: Get PDF directly (smaller, reliable) and AI summary separately
+        logger.info('📄 Generating PDF attachment...');
+
         const pdfResponse = await fetch(`${appOrigin}/api/generate-pdf`, {
           method: 'POST',
           headers: {
@@ -144,81 +147,36 @@ export async function POST(request: NextRequest) {
         });
 
         if (pdfResponse.ok) {
-          // Get PDF as direct buffer (reliable, smaller size)
           const pdfArrayBuffer = await pdfResponse.arrayBuffer();
           pdfBuffer = Buffer.from(pdfArrayBuffer);
-          
-          // Get AI summary separately using JSON API
-          const aiSummaryResponse = await fetch(`${appOrigin}/api/generate-pdf`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              clientId,
-              dateRange: {
-                start: startDate.toISOString().split('T')[0],
-                end: endDate.toISOString().split('T')[0]
-              }
-            })
-          });
-
-          if (aiSummaryResponse.ok) {
-            const aiResult = await aiSummaryResponse.json();
-            if (aiResult.success && aiResult.aiSummary) {
-              aiSummary = aiResult.aiSummary;
-            }
-          }
-          
-          logger.info('✅ FIXED PDF and AI summary generated:', {
+          logger.info('✅ PDF generated:', {
             pdfSize: pdfBuffer.byteLength,
-            pdfSizeKB: `${(pdfBuffer.byteLength / 1024).toFixed(1)} KB`,
-            pdfSizeMB: `${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`,
-            hasAiSummary: !!aiSummary,
-            aiSummaryLength: aiSummary?.length || 0,
-            aiSummaryPreview: aiSummary?.substring(0, 50) || 'No AI summary'
+            pdfSizeKB: `${(pdfBuffer.byteLength / 1024).toFixed(1)} KB`
           });
         } else {
-          logger.error('❌ PDF generation request failed:', pdfResponse.status);
+          const pdfErrorPayload = await pdfResponse.json().catch(() => ({}));
+          const pdfError =
+            typeof pdfErrorPayload.error === 'string'
+              ? pdfErrorPayload.error
+              : `PDF generation failed (HTTP ${pdfResponse.status})`;
+          const pdfDetails =
+            typeof pdfErrorPayload.details === 'string' ? pdfErrorPayload.details : null;
+          logger.error('❌ PDF generation request failed:', {
+            status: pdfResponse.status,
+            error: pdfError,
+            details: pdfDetails
+          });
+          return NextResponse.json({
+            error: 'Failed to generate PDF attachment',
+            details: [pdfError, pdfDetails].filter(Boolean).join(' — ')
+          }, { status: pdfResponse.status === 429 ? 429 : 500 });
         }
       } catch (error) {
-        logger.error('❌ Error generating unified PDF and AI summary:', error);
-      }
-    } else {
-      // If no PDF requested, still generate AI summary using JSON API
-      try {
-        logger.info('🤖 Generating AI summary only (no PDF requested)...');
-        
-        const aiSummaryResponse = await fetch(`${appOrigin}/api/generate-pdf`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            clientId,
-            dateRange: {
-              start: startDate.toISOString().split('T')[0],
-              end: endDate.toISOString().split('T')[0]
-            }
-          })
-        });
-
-        if (aiSummaryResponse.ok) {
-          const aiResult = await aiSummaryResponse.json();
-          if (aiResult.success && aiResult.aiSummary) {
-            aiSummary = aiResult.aiSummary;
-            logger.info('✅ AI summary generated (no PDF):', {
-              hasAiSummary: !!aiSummary,
-              aiSummaryLength: aiSummary?.length || 0
-            });
-          }
-        }
-      } catch (error) {
-        logger.error('❌ Error generating AI summary:', error);
+        logger.error('❌ Error generating PDF attachment:', error);
+        return NextResponse.json({
+          error: 'Failed to generate PDF attachment',
+          details: error instanceof Error ? error.message : 'Unknown PDF generation error'
+        }, { status: 500 });
       }
     }
 

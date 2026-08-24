@@ -145,10 +145,11 @@ export const defaultRateLimiters = {
     message: 'Too many authentication attempts. Please try again later.',
   }),
   
-  // PDF generation rate limit (10 requests per hour)
+  // Admin test sends go one client at a time; a full 14-client batch
+  // used to blow a 20/hour cap because each send launched Chromium twice.
   pdf: createRateLimiter({
     windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 20,
+    maxRequests: 80,
     message: 'Too many PDF generation requests. Please try again later.',
   }),
   

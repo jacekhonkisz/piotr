@@ -227,14 +227,19 @@ export default function AdminCalendarPage() {
     }
   }, [reviewMode, getAuthToken]);
 
-  const sendTestEmail = useCallback(async () => {
-    if (testClientIds.length === 0) return;
+  const sendTestEmail = useCallback(async (clientIdsOverride?: string[]) => {
+    const idsToSend = clientIdsOverride ?? testClientIds;
+    if (idsToSend.length === 0) return;
+
+    if (clientIdsOverride) {
+      setTestClientIds(clientIdsOverride);
+    }
 
     setTestSending(true);
     setTestResult(null);
     setTestProgress(null);
 
-    const selectedClients = clients.filter((client) => testClientIds.includes(client.id));
+    const selectedClients = clients.filter((client) => idsToSend.includes(client.id));
     const results: Array<{
       clientId: string;
       clientName: string;
@@ -1384,6 +1389,24 @@ export default function AdminCalendarPage() {
                     >
                       Zamknij
                     </button>
+                    {Array.isArray(testResult?.details?.results) &&
+                      testResult.details.results.some((item: { success: boolean }) => !item.success) &&
+                      !testSending && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const failedIds = testResult.details.results
+                            .filter((item: { success: boolean; clientId: string }) => !item.success)
+                            .map((item: { clientId: string }) => item.clientId);
+                          void sendTestEmail(failedIds);
+                        }}
+                        disabled={reviewMode === true && testRecipients.length === 0}
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-xl hover:bg-purple-100 disabled:opacity-50"
+                      >
+                        <Send className="h-4 w-4" />
+                        Ponów nieudane ({testResult.details.results.filter((item: { success: boolean }) => !item.success).length})
+                      </button>
+                    )}
                     <button
                       onClick={() => sendTestEmail()}
                       disabled={testSending || testClientIds.length === 0 || (reviewMode === true && testRecipients.length === 0)}
