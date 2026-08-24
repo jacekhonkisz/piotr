@@ -1,5 +1,6 @@
 import React from 'react';
 import Image from 'next/image';
+import brandLogo from '@/app/icon.png';
 
 interface BrandLogoProps {
   /** Visual size of the logo mark. */
@@ -30,7 +31,7 @@ export default function BrandLogo({
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       <Image
-        src="/logo.png"
+        src={brandLogo}
         alt="Piotr Bajerlein Marketing"
         width={px}
         height={px}

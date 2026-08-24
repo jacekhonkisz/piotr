@@ -14,10 +14,6 @@ export const metadata: Metadata = {
   keywords: ['meta ads', 'facebook ads', 'google ads', 'reporting', 'piotr bajerlein'],
   authors: [{ name: 'Piotr Bajerlein Marketing' }],
   robots: 'index, follow',
-  icons: {
-    icon: [{ url: '/logo.png', type: 'image/png' }],
-    apple: [{ url: '/logo.png', type: 'image/png' }],
-  },
 };
 
 export const viewport = {
