@@ -123,10 +123,31 @@ export default function AdminCalendarPage() {
     message: string;
     details?: any;
   } | null>(null);
-  const [testClientId, setTestClientId] = useState('');
+  const [testClientIds, setTestClientIds] = useState<string[]>([]);
+  const [testProgress, setTestProgress] = useState<{
+    current: number;
+    total: number;
+    clientName: string;
+  } | null>(null);
   const [testRecipients, setTestRecipients] = useState<string[]>(['jac.honkisz@gmail.com']);
   const [customTestRecipientInput, setCustomTestRecipientInput] = useState('');
   const [showTestModal, setShowTestModal] = useState(false);
+
+  const toggleTestClient = useCallback((clientId: string) => {
+    setTestClientIds((current) =>
+      current.includes(clientId)
+        ? current.filter((id) => id !== clientId)
+        : [...current, clientId]
+    );
+  }, []);
+
+  const selectAllTestClients = useCallback(() => {
+    setTestClientIds(clients.map((client) => client.id));
+  }, [clients]);
+
+  const clearTestClients = useCallback(() => {
+    setTestClientIds([]);
+  }, []);
 
   const togglePresetTestRecipient = useCallback((email: string) => {
     setTestRecipients((current) => {
@@ -151,6 +172,13 @@ export default function AdminCalendarPage() {
   const removeTestRecipient = useCallback((email: string) => {
     setTestRecipients((current) => current.filter((item) => item.toLowerCase() !== email.toLowerCase()));
   }, []);
+
+  const closeTestModal = useCallback(() => {
+    if (testSending) return;
+    setShowTestModal(false);
+    setTestResult(null);
+    setTestProgress(null);
+  }, [testSending]);
 
   const getAuthToken = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -199,31 +227,105 @@ export default function AdminCalendarPage() {
     }
   }, [reviewMode, getAuthToken]);
 
-  const sendTestEmail = useCallback(async (clientId?: string) => {
+  const sendTestEmail = useCallback(async () => {
+    if (testClientIds.length === 0) return;
+
     setTestSending(true);
     setTestResult(null);
+    setTestProgress(null);
+
+    const selectedClients = clients.filter((client) => testClientIds.includes(client.id));
+    const results: Array<{
+      clientId: string;
+      clientName: string;
+      success: boolean;
+      error?: string;
+      sentTo?: string;
+      pdfSize?: number;
+      provider?: string;
+      fromAddress?: string;
+      configBlockers?: string[];
+    }> = [];
+
     try {
       const token = await getAuthToken();
-      const res = await fetch('/api/admin/test-report-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          clientId: clientId || testClientId || undefined,
-          includePdf: true,
-          testRecipients
-        })
-      });
-      const data = await res.json();
-      setTestResult({
-        success: data.success,
-        message: data.success
-          ? `Test wysłany do ${data.sentTo}${data.pdfIncluded ? ` z PDF (${(data.pdfSize / 1024).toFixed(0)} KB)` : ' (bez PDF)'}`
-          : `Błąd: ${data.error}`,
-        details: data
-      });
+
+      for (let index = 0; index < selectedClients.length; index++) {
+        const client = selectedClients[index]!;
+        setTestProgress({
+          current: index + 1,
+          total: selectedClients.length,
+          clientName: client.name
+        });
+
+        try {
+          const res = await fetch('/api/admin/test-report-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              clientId: client.id,
+              includePdf: true,
+              testRecipients
+            })
+          });
+          const data = await res.json();
+          results.push({
+            clientId: client.id,
+            clientName: client.name,
+            success: data.success === true,
+            error: data.success ? undefined : (data.error || `HTTP ${res.status}`),
+            sentTo: data.sentTo,
+            pdfSize: data.pdfSize,
+            provider: data.provider,
+            fromAddress: data.fromAddress,
+            configBlockers: data.configBlockers
+          });
+        } catch (err) {
+          results.push({
+            clientId: client.id,
+            clientName: client.name,
+            success: false,
+            error: err instanceof Error ? err.message : 'Nieznany błąd'
+          });
+        }
+      }
+
+      const succeeded = results.filter((result) => result.success);
+      const failed = results.filter((result) => !result.success);
+      const totalPdfKb = succeeded.reduce((sum, result) => sum + ((result.pdfSize || 0) / 1024), 0);
+
+      if (selectedClients.length === 1) {
+        const only = results[0]!;
+        setTestResult({
+          success: only.success,
+          message: only.success
+            ? `Test wysłany do ${only.sentTo}${only.pdfSize ? ` z PDF (${(only.pdfSize / 1024).toFixed(0)} KB)` : ''}`
+            : `Błąd: ${only.error}`,
+          details: {
+            ...only,
+            results,
+            provider: only.provider,
+            fromAddress: only.fromAddress,
+            configBlockers: only.configBlockers
+          }
+        });
+      } else {
+        setTestResult({
+          success: failed.length === 0,
+          message: failed.length === 0
+            ? `Wysłano ${succeeded.length}/${selectedClients.length} testów${totalPdfKb > 0 ? ` (łącznie ~${totalPdfKb.toFixed(0)} KB PDF)` : ''}`
+            : `Wysłano ${succeeded.length}/${selectedClients.length}. Nieudane: ${failed.map((item) => item.clientName).join(', ')}`,
+          details: {
+            results,
+            provider: succeeded[0]?.provider || failed[0]?.provider,
+            fromAddress: succeeded[0]?.fromAddress || failed[0]?.fromAddress,
+            configBlockers: failed.find((item) => item.configBlockers?.length)?.configBlockers
+          }
+        });
+      }
     } catch (err) {
       setTestResult({
         success: false,
@@ -231,8 +333,9 @@ export default function AdminCalendarPage() {
       });
     } finally {
       setTestSending(false);
+      setTestProgress(null);
     }
-  }, [getAuthToken, testClientId, testRecipients]);
+  }, [getAuthToken, testClientIds, testRecipients, clients]);
 
   // Function to cleanup old errors (older than 3 days)
   const cleanupOldErrors = useCallback(async () => {
@@ -993,15 +1096,15 @@ export default function AdminCalendarPage() {
         {showTestModal && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-              <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => { setShowTestModal(false); setTestResult(null); }}></div>
-              <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={closeTestModal}></div>
+              <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl sm:w-full">
                 <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-6 py-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-white">
                       <TestTube className="h-5 w-5" />
                       <h3 className="text-lg font-semibold">Test wysyłki e-mail z PDF</h3>
                     </div>
-                    <button onClick={() => { setShowTestModal(false); setTestResult(null); }} className="text-white/80 hover:text-white">
+                    <button onClick={closeTestModal} disabled={testSending} className="text-white/80 hover:text-white disabled:opacity-50">
                       <X className="h-5 w-5" />
                     </button>
                   </div>
@@ -1018,21 +1121,60 @@ export default function AdminCalendarPage() {
                       )}
                     </p>
 
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Wybierz klienta (wymagane dla testu 1:1)
-                    </label>
-                    <select
-                      value={testClientId}
-                      onChange={(e) => setTestClientId(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="">Wybierz klienta</option>
-                      {clients.map(client => (
-                        <option key={client.id} value={client.id}>
-                          {client.name} ({client.email})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Klienci do testu ({testClientIds.length}/{clients.length})
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={selectAllTestClients}
+                          disabled={testSending || clients.length === 0}
+                          className="text-xs font-medium text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                        >
+                          Zaznacz wszystkich
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={clearTestClients}
+                          disabled={testSending || testClientIds.length === 0}
+                          className="text-xs font-medium text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                        >
+                          Odznacz
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+                      {clients.length === 0 ? (
+                        <p className="px-3 py-4 text-sm text-gray-500">Brak klientów do wyboru.</p>
+                      ) : (
+                        clients.map((client) => {
+                          const isSelected = testClientIds.includes(client.id);
+                          return (
+                            <label
+                              key={client.id}
+                              className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-purple-50/60' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleTestClient(client.id)}
+                                disabled={testSending}
+                                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-sm font-medium text-gray-800 truncate">{client.name}</span>
+                                <span className="block text-xs text-gray-500 truncate">{client.email}</span>
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Możesz wysłać test dla wybranych klientów albo dla wszystkich naraz. Wysyłka idzie kolejno (ok. 1–2 min na klienta z PDF).
+                    </p>
                   </div>
 
                   {reviewMode && (
@@ -1058,6 +1200,7 @@ export default function AdminCalendarPage() {
                                   type="checkbox"
                                   checked={isSelected}
                                   onChange={() => togglePresetTestRecipient(email)}
+                                  disabled={testSending}
                                   className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                                 />
                                 <span className="text-sm text-gray-700">{email}</span>
@@ -1083,12 +1226,13 @@ export default function AdminCalendarPage() {
                               }
                             }}
                             placeholder="np. twoj@email.com"
-                            className="flex-1 px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            disabled={testSending}
+                            className="flex-1 px-3 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:bg-gray-50"
                           />
                           <button
                             type="button"
                             onClick={addCustomTestRecipient}
-                            disabled={!isValidEmailAddress(customTestRecipientInput.trim())}
+                            disabled={testSending || !isValidEmailAddress(customTestRecipientInput.trim())}
                             className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-xl hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Plus className="h-4 w-4" />
@@ -1110,7 +1254,8 @@ export default function AdminCalendarPage() {
                                 <button
                                   type="button"
                                   onClick={() => removeTestRecipient(email)}
-                                  className="text-purple-500 hover:text-purple-700"
+                                  disabled={testSending}
+                                  className="text-purple-500 hover:text-purple-700 disabled:opacity-50"
                                   aria-label={`Usuń ${email}`}
                                 >
                                   <X className="h-3.5 w-3.5" />
@@ -1136,14 +1281,39 @@ export default function AdminCalendarPage() {
                       </span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-gray-500">Klienci:</span>
+                      <span className="font-medium text-right max-w-[60%]">
+                        {testClientIds.length === 0
+                          ? 'brak'
+                          : testClientIds.length === clients.length
+                            ? `wszyscy (${clients.length})`
+                            : `${testClientIds.length} wybranych`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-gray-500">Odbiorca:</span>
                       <span className="font-medium text-right max-w-[60%] break-all">
                         {reviewMode
                           ? (testRecipients.length > 0 ? testRecipients.join(', ') : 'brak')
-                          : (testClientId ? 'e-mail klienta' : reviewEmail)}
+                          : (testClientIds.length > 0 ? 'e-mail klienta' : reviewEmail)}
                       </span>
                     </div>
                   </div>
+
+                  {testProgress && (
+                    <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
+                      <div className="flex items-center gap-2 text-sm font-medium text-purple-900">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Wysyłanie {testProgress.current}/{testProgress.total}: {testProgress.clientName}
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-purple-100">
+                        <div
+                          className="h-full rounded-full bg-purple-600 transition-all"
+                          style={{ width: `${(testProgress.current / testProgress.total) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Result */}
                   {testResult && (
@@ -1154,13 +1324,38 @@ export default function AdminCalendarPage() {
                         ) : (
                           <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                         )}
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p className={`text-sm font-medium ${testResult.success ? 'text-green-800' : 'text-red-800'}`}>
                             {testResult.success ? 'Test zakończony sukcesem!' : 'Test nieudany'}
                           </p>
                           <p className={`text-sm mt-1 ${testResult.success ? 'text-green-700' : 'text-red-700'}`}>
                             {testResult.message}
                           </p>
+                          {Array.isArray(testResult.details?.results) && testResult.details.results.length > 1 && (
+                            <ul className="mt-3 space-y-1.5 max-h-40 overflow-y-auto">
+                              {testResult.details.results.map((item: {
+                                clientId: string;
+                                clientName: string;
+                                success: boolean;
+                                error?: string;
+                                sentTo?: string;
+                              }) => (
+                                <li
+                                  key={item.clientId}
+                                  className={`text-xs rounded-lg px-2.5 py-1.5 ${
+                                    item.success
+                                      ? 'bg-green-100/70 text-green-800'
+                                      : 'bg-red-100/70 text-red-800'
+                                  }`}
+                                >
+                                  <span className="font-medium">{item.clientName}</span>
+                                  {item.success
+                                    ? ` → ${item.sentTo || 'wysłano'}`
+                                    : ` → ${item.error || 'błąd'}`}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                           {Array.isArray(testResult.details?.configBlockers) && testResult.details.configBlockers.length > 0 && (
                             <ul className="text-xs text-red-700 mt-2 list-disc pl-4 space-y-1">
                               {testResult.details.configBlockers.map((blocker: string) => (
@@ -1183,25 +1378,30 @@ export default function AdminCalendarPage() {
 
                   <div className="flex justify-end gap-3 pt-2">
                     <button
-                      onClick={() => { setShowTestModal(false); setTestResult(null); }}
-                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50"
+                      onClick={closeTestModal}
+                      disabled={testSending}
+                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50"
                     >
                       Zamknij
                     </button>
                     <button
                       onClick={() => sendTestEmail()}
-                      disabled={testSending || !testClientId || (reviewMode === true && testRecipients.length === 0)}
+                      disabled={testSending || testClientIds.length === 0 || (reviewMode === true && testRecipients.length === 0)}
                       className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                     >
                       {testSending ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Wysyłanie...
+                          {testProgress
+                            ? `${testProgress.current}/${testProgress.total}`
+                            : 'Wysyłanie...'}
                         </>
                       ) : (
                         <>
                           <Send className="h-4 w-4" />
-                          Wyślij test
+                          {testClientIds.length > 1
+                            ? `Wyślij test (${testClientIds.length})`
+                            : 'Wyślij test'}
                         </>
                       )}
                     </button>

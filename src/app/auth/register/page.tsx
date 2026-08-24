@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { BarChart3, Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo';
 
 export default function RegisterPage() {
   return (
@@ -8,10 +9,7 @@ export default function RegisterPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Logo and Header */}
         <div className="flex justify-center items-center mb-8">
-          <BarChart3 className="h-8 w-8 text-primary-600" />
-          <h1 className="ml-2 text-xl font-semibold text-gray-900">
-            Meta Ads Raportowanie
-          </h1>
+          <BrandLogo size="lg" priority />
         </div>
         
         <div className="text-center">

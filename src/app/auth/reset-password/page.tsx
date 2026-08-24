@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { BarChart3, Eye, EyeOff, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import BrandLogo from '@/components/BrandLogo';
 
 type Phase = 'validating' | 'ready' | 'invalid' | 'done';
 
@@ -186,10 +187,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen bg-white flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center items-center mb-8">
-          <BarChart3 className="h-8 w-8 text-blue-600" />
-          <h1 className="ml-2 text-xl font-semibold text-gray-900">
-            Meta Ads Raportowanie
-          </h1>
+          <BrandLogo size="lg" priority />
         </div>
 
         <div className="text-center">

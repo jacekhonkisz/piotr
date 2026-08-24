@@ -8,12 +8,16 @@ import { initializeApp } from '../lib/startup-validation';
 // Run startup validation
 initializeApp();
 
-export const metadata = {
-  title: 'Meta Ads Reporting SaaS',
-  description: 'Automated Meta Ads reporting platform for agencies and their clients',
-  keywords: ['meta ads', 'facebook ads', 'reporting', 'saas', 'automation'],
-  authors: [{ name: 'Your Agency Name' }],
-  robots: 'index, follow', // Changed from 'noindex, nofollow'
+export const metadata: Metadata = {
+  title: 'Piotr Bajerlein Marketing — Raporty',
+  description: 'Automatyczne raportowanie Meta Ads i Google Ads dla klientów agencji',
+  keywords: ['meta ads', 'facebook ads', 'google ads', 'reporting', 'piotr bajerlein'],
+  authors: [{ name: 'Piotr Bajerlein Marketing' }],
+  robots: 'index, follow',
+  icons: {
+    icon: [{ url: '/logo.png', type: 'image/png' }],
+    apple: [{ url: '/logo.png', type: 'image/png' }],
+  },
 };
 
 export const viewport = {

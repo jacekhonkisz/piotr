@@ -4,6 +4,9 @@ import { EMAIL_CONFIG, isReviewMode } from '../../../../lib/email-config';
 import { normalizeReviewRecipientsOverride } from '../../../../lib/email-recipients';
 import FlexibleEmailService from '../../../../lib/flexible-email';
 
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!

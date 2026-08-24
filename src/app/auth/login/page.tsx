@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { signIn } from '@/lib/auth';
-import { BarChart3, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { LoginLoading } from '@/components/LoadingSpinner';
+import BrandLogo from '@/components/BrandLogo';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -149,10 +150,7 @@ export default function LoginPage() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Logo and Header */}
         <div className="flex justify-center items-center mb-8">
-          <BarChart3 className="h-8 w-8 text-blue-600" />
-          <h1 className="ml-2 text-xl font-semibold text-gray-900">
-            Meta Ads Raportowanie
-          </h1>
+          <BrandLogo size="lg" priority />
         </div>
         
         <div className="text-center mb-8">
