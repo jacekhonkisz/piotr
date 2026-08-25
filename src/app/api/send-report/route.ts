@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
         id: client.id,
         name: client.name ?? '',
         google_ads_enabled: client.google_ads_enabled,
+        google_ads_customer_id: client.google_ads_customer_id,
         meta_access_token: client.meta_access_token
       },
       period: emailDateRange,

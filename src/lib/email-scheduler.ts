@@ -18,6 +18,7 @@ interface Client {
   api_status: string;
   admin_id: string;
   google_ads_enabled?: boolean;
+  google_ads_customer_id?: string | null;
   meta_access_token?: string;
 }
 
@@ -859,6 +860,7 @@ export class EmailScheduler {
         api_status,
         admin_id,
         google_ads_enabled,
+        google_ads_customer_id,
         meta_access_token
       `)
       .eq('api_status', 'valid')

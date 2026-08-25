@@ -18,6 +18,7 @@ export interface MonthlyReportClient {
   id: string;
   name: string;
   google_ads_enabled?: boolean;
+  google_ads_customer_id?: string | null;
   meta_access_token?: string | null;
 }
 
@@ -96,9 +97,11 @@ export async function buildMonthlyReportData(params: {
       });
     }
 
-    if (!googleAdsData) {
+    // Only treat Google as expected when an account is actually linked —
+    // `google_ads_enabled` alone is set on clients that never had one.
+    if (!googleAdsData && client.google_ads_customer_id) {
       missingPlatforms.push('google');
-      logger.error('❌ buildMonthlyReportData: Google Ads enabled but no data resolved', {
+      logger.error('❌ buildMonthlyReportData: Google Ads account linked but no data resolved', {
         clientId: client.id,
         period
       });
