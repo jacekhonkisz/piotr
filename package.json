@@ -59,7 +59,7 @@
     "dotenv": "^17.2.2",
     "express-rate-limit": "^8.0.1",
     "framer-motion": "^10.16.16",
-    "google-ads-api": "^21.0.1",
+    "google-ads-api": "^24.1.0",
     "lodash": "^4.17.21",
     "lucide-react": "^0.303.0",
     "next": "^14.2.15",

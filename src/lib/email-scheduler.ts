@@ -464,6 +464,18 @@ export class EmailScheduler {
       });
       const { reportData, monthName, year } = built;
 
+      // The email template renders a platform section only when its data object
+      // exists, so a failed fetch would ship a report missing a whole channel
+      // with no visible error. Abort instead.
+      if (built.missingPlatforms.length > 0) {
+        const platformLabels = built.missingPlatforms
+          .map((platform) => (platform === 'google' ? 'Google Ads' : 'Meta Ads'))
+          .join(', ');
+        throw new Error(
+          `Missing ${platformLabels} data for ${period.start} – ${period.end}; refusing to send a report without it`
+        );
+      }
+
       logger.info(`📅 Report for: ${monthName} ${year}`);
       logger.info('✅ Metrics calculated:', {
         totalOnlineReservations: reportData.totalOnlineReservations,

@@ -17,9 +17,19 @@
  * 2. Live Google Ads API call (fallback, can fetch historical)
  */
 
-import { supabase } from './supabase';
+import { supabase, supabaseAdmin } from './supabase';
 import logger from './logger';
 import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from './google-ads-contact-metrics';
+
+/**
+ * Stored summaries are read with the service role on the server (cron jobs,
+ * report/PDF/email routes carry no end-user session, so the anon client is
+ * filtered to nothing by RLS) and with the anon client in the browser, where
+ * the user's own session supplies the row access. Mirrors StandardizedDataFetcher.
+ */
+function getSummariesClient() {
+  return (typeof window === 'undefined' && supabaseAdmin) ? supabaseAdmin : supabase;
+}
 
 export interface GoogleAdsStandardizedDataResult {
   success: boolean;
@@ -512,7 +522,9 @@ export class GoogleAdsStandardizedDataFetcher {
     
     let summaries;
     let error;
-    
+
+    const db = getSummariesClient();
+
     if (isWeeklyRequest) {
       // ✅ FIX: For weekly requests, use exact Monday matching (same as other fetchers)
       const { getMondayOfWeek, formatDateISO } = await import('./week-helpers');
@@ -525,7 +537,7 @@ export class GoogleAdsStandardizedDataFetcher {
         note: 'Weekly data is stored with summary_date = Monday (ISO 8601)'
       });
       
-      const { data: weeklyResults, error: weeklyError } = await supabase
+      const { data: weeklyResults, error: weeklyError } = await db
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
@@ -544,7 +556,7 @@ export class GoogleAdsStandardizedDataFetcher {
       }
     } else {
       // For monthly requests, use date range query
-      const { data: monthlyResults, error: monthlyError } = await supabase
+      const { data: monthlyResults, error: monthlyError } = await db
         .from('campaign_summaries')
         .select('*')
         .eq('client_id', clientId)
@@ -564,7 +576,7 @@ export class GoogleAdsStandardizedDataFetcher {
         // NOTE: cast to any until src/lib/database.types.ts is regenerated to
         // include google_ads_campaign_summaries. Run:
         //   npx supabase gen types typescript --project-id <ref> --schema public > src/lib/database.types.ts
-        const { data: gadsResults, error: gadsError } = await (supabase as any)
+        const { data: gadsResults, error: gadsError } = await (db as any)
           .from('google_ads_campaign_summaries')
           .select('*')
           .eq('client_id', clientId)

@@ -35,6 +35,12 @@ export interface MonthlyReportBuildResult {
   googleAdsData: Record<string, number> | undefined;
   metaAdsData: Record<string, number> | undefined;
   metaCampaignRows: any[] | undefined;
+  /**
+   * Platforms the client has configured but whose fetch returned nothing. The
+   * email template renders a platform section only when its data object exists,
+   * so without this the report would quietly ship missing a whole channel.
+   */
+  missingPlatforms: Array<'google' | 'meta'>;
 }
 
 /**
@@ -48,6 +54,8 @@ export async function buildMonthlyReportData(params: {
   reasonPrefix?: string;
 }): Promise<MonthlyReportBuildResult> {
   const { client, period, sessionToken, reasonPrefix = 'monthly-report' } = params;
+
+  const missingPlatforms: Array<'google' | 'meta'> = [];
 
   // Step 1: Google Ads data (only when enabled for this client)
   let googleAdsData: Record<string, number> | undefined;
@@ -85,6 +93,14 @@ export async function buildMonthlyReportData(params: {
       logger.warn('⚠️ buildMonthlyReportData: Google Ads fetch failed', {
         clientId: client.id,
         error: error instanceof Error ? error.message : 'unknown'
+      });
+    }
+
+    if (!googleAdsData) {
+      missingPlatforms.push('google');
+      logger.error('❌ buildMonthlyReportData: Google Ads enabled but no data resolved', {
+        clientId: client.id,
+        period
       });
     }
   }
@@ -132,6 +148,14 @@ export async function buildMonthlyReportData(params: {
         error: error instanceof Error ? error.message : 'unknown'
       });
     }
+
+    if (!metaAdsData) {
+      missingPlatforms.push('meta');
+      logger.error('❌ buildMonthlyReportData: Meta token configured but no data resolved', {
+        clientId: client.id,
+        period
+      });
+    }
   }
 
   // Step 3: Polish month/year for the template header, derived from period start
@@ -152,7 +176,16 @@ export async function buildMonthlyReportData(params: {
     metaCampaignRows
   );
 
-  return { reportData, monthName, monthNumber, year, googleAdsData, metaAdsData, metaCampaignRows };
+  return {
+    reportData,
+    monthName,
+    monthNumber,
+    year,
+    googleAdsData,
+    metaAdsData,
+    metaCampaignRows,
+    missingPlatforms
+  };
 }
 
 /**

@@ -6506,55 +6506,74 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     }
   }
 
-  // 🔧 FALLBACK: If GoogleAdsStandardizedDataFetcher failed, try smart cache helper directly
+  // 🔧 FALLBACK: If GoogleAdsStandardizedDataFetcher failed, try harder — but only
+  // with sources that actually honour `dateRange`.
   if (!googleData && googleAdsConditionMet) {
-    try {
-      logger.info('🔄 FALLBACK: Trying Google Ads smart cache helper directly...');
+    // The smart cache is keyed to the *current* month and ignores any requested
+    // range, so it is only a valid source when the report period IS the current
+    // month. Using it for a closed month silently prints month-to-date figures
+    // under a past month's heading.
+    const now = new Date();
+    const currentPeriodId = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    const requestedPeriodId = dateRange.start.substring(0, 7);
+    const isCurrentMonthReport = requestedPeriodId === currentPeriodId;
 
-      const { getGoogleAdsSmartCacheData } = await import('@/lib/google-ads-smart-cache-helper');
-      const cacheResult = await getGoogleAdsSmartCacheData(clientId, false);
+    if (isCurrentMonthReport) {
+      try {
+        logger.info('🔄 FALLBACK: Trying Google Ads smart cache helper (current month)...');
 
-      if (cacheResult.success && cacheResult.data) {
-        googleData = cacheResult.data;
-        logger.info('✅ Google Ads data fetched via smart cache fallback:', {
-          totalSpend: googleData?.stats?.totalSpend || 0,
-          campaigns: googleData?.campaigns?.length || 0,
-          source: cacheResult.source || 'smart-cache-fallback'
-        });
-      } else {
-        logger.warn('⚠️ Google Ads smart cache fallback returned no data');
+        const { getGoogleAdsSmartCacheData } = await import('@/lib/google-ads-smart-cache-helper');
+        const cacheResult = await getGoogleAdsSmartCacheData(clientId, false);
 
-        // Last resort: try fetch-google-ads-live-data API with auth
-        try {
-          logger.info('🔄 LAST RESORT: Trying Google Ads via HTTP API...');
-          const googleFallbackResponse = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': authHeader
-            },
-            body: JSON.stringify({
-              clientId,
-              dateRange,
-              platform: 'google',
-              forceFresh: true,
-              reason: 'pdf-generation-google-ads-fallback'
-            })
+        if (cacheResult.success && cacheResult.data) {
+          googleData = cacheResult.data;
+          logger.info('✅ Google Ads data fetched via smart cache fallback:', {
+            totalSpend: googleData?.stats?.totalSpend || 0,
+            campaigns: googleData?.campaigns?.length || 0,
+            source: cacheResult.source || 'smart-cache-fallback'
           });
-
-          if (googleFallbackResponse.ok) {
-            const googleFallbackData = await googleFallbackResponse.json();
-            if (googleFallbackData.success && googleFallbackData.data) {
-              googleData = googleFallbackData.data;
-              logger.info('✅ Google Ads data fetched via HTTP API fallback');
-            }
-          }
-        } catch (httpFallbackError) {
-          logger.error('❌ Google Ads HTTP API fallback failed:', httpFallbackError);
+        } else {
+          logger.warn('⚠️ Google Ads smart cache fallback returned no data');
         }
+      } catch (fallbackError) {
+        logger.error('❌ Google Ads smart cache fallback failed:', fallbackError);
       }
-    } catch (fallbackError) {
-      logger.error('❌ Google Ads smart cache fallback failed:', fallbackError);
+    } else {
+      logger.warn('⚠️ Skipping Google Ads smart cache fallback - report period is not the current month', {
+        requestedPeriodId,
+        currentPeriodId
+      });
+    }
+
+    // Last resort: the live-data route, which does respect the requested range.
+    if (!googleData) {
+      try {
+        logger.info('🔄 LAST RESORT: Trying Google Ads via HTTP API...');
+        const googleFallbackResponse = await fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader
+          },
+          body: JSON.stringify({
+            clientId,
+            dateRange,
+            platform: 'google',
+            forceFresh: true,
+            reason: 'pdf-generation-google-ads-fallback'
+          })
+        });
+
+        if (googleFallbackResponse.ok) {
+          const googleFallbackData = await googleFallbackResponse.json();
+          if (googleFallbackData.success && googleFallbackData.data) {
+            googleData = googleFallbackData.data;
+            logger.info('✅ Google Ads data fetched via HTTP API fallback');
+          }
+        }
+      } catch (httpFallbackError) {
+        logger.error('❌ Google Ads HTTP API fallback failed:', httpFallbackError);
+      }
     }
   }
 

@@ -113,6 +113,28 @@ export async function POST(request: NextRequest) {
       reasonPrefix: 'send-report'
     });
 
+    // A configured platform that resolved to no data would be dropped from the
+    // email body without a trace, so the client receives a report that silently
+    // omits a whole channel. Refuse the send instead.
+    if (built.missingPlatforms.length > 0) {
+      const platformLabels = built.missingPlatforms
+        .map((platform) => (platform === 'google' ? 'Google Ads' : 'Meta Ads'))
+        .join(', ');
+      logger.error('❌ Refusing to send report with missing platform data', {
+        clientId,
+        missingPlatforms: built.missingPlatforms,
+        period: emailDateRange
+      });
+      return NextResponse.json({
+        success: false,
+        error: `Brak danych ${platformLabels} za ${emailDateRange.start} – ${emailDateRange.end}`,
+        details:
+          `${platformLabels} jest włączone dla tego klienta, ale nie udało się pobrać danych. ` +
+          'Raport zostałby wysłany bez tej sekcji, więc wysyłka została wstrzymana.',
+        missingPlatforms: built.missingPlatforms
+      }, { status: 422 });
+    }
+
     // Lightweight summary for the sent_reports audit record, derived from the
     // same fetch (no extra round-trip).
     const realReportData = {
