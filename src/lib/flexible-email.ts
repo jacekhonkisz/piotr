@@ -1283,14 +1283,25 @@ Piotr Bajerlein`;
     reportData: any
   ): { subject: string; html: string; text: string } {
     const subject = `Podsumowanie miesiąca - ${monthName} ${year} | ${clientName}`;
-    // Unique first line per send — reduces Gmail collapsing the body in threaded / similar messages
-    const sentAtLabel = new Date().toLocaleString('pl-PL', {
+    const sentAt = new Date();
+    const sentAtLabel = sentAt.toLocaleString('pl-PL', {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
+    });
+    // Re-sends share a subject, so Gmail threads them and hides the trailing run
+    // of body text that repeats the earlier message. This marker must stay the
+    // last line of the body, or that hidden region swallows the Meta Ads card.
+    const sendStamp = sentAt.toLocaleString('pl-PL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     });
 
     const offlineNarrative = getMonthlyOfflineNarrative(clientName, {
@@ -1550,6 +1561,14 @@ Piotr Bajerlein`;
             line-height: 1.6;
             color: #263445;
           }
+          .send-stamp {
+            margin-top: 20px;
+            padding-top: 12px;
+            border-top: 1px solid #edf1f7;
+            font-size: 11px;
+            line-height: 1.5;
+            color: #8b97a8;
+          }
           @media only screen and (max-width: 600px) {
             .email-shell {
               padding: 0 !important;
@@ -1762,6 +1781,8 @@ Piotr Bajerlein`;
                 <p>W razie pytań proszę o kontakt.</p>
                 <p>Pozdrawiam<br><strong>Piotr</strong></p>
               </div>
+
+              <div class="send-stamp">Raport przygotowany ${sendStamp}.</div>
             </div>
           </div>
         </div>
@@ -1835,7 +1856,9 @@ ${offlineNarrative.totalClosingLine}
 W razie pytań proszę o kontakt.
 
 Pozdrawiam
-Piotr`;
+Piotr
+
+Raport przygotowany ${sendStamp}.`;
 
     return { subject, html, text };
   }

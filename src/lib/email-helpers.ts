@@ -133,8 +133,9 @@ export function prepareClientMonthlyReportData(
     };
   }
   
-  // Generate dashboard URL
-  const dashboardUrl = `${getAppUrl()}/reports/monthly/${year}-${String(monthNumber).padStart(2, '0')}?client=${clientId}`;
+  // `/reports` is the only report page that takes a client in the query string,
+  // and it reads `clientId`. There is no route that deep-links a month.
+  const dashboardUrl = `${getAppUrl()}/reports?clientId=${clientId}`;
   
   return {
     dashboardUrl,

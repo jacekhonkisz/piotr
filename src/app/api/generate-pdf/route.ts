@@ -4541,17 +4541,6 @@ function funnelBlock(reportData: ReportData, platform: ReportPlatform): string {
     { key: 'booking_step_3', fallback: 'Krok 3', value: safeNumber(funnel?.booking_step_3) },
     { key: 'reservations', fallback: 'Rezerwacje', value: safeNumber(funnel?.reservations) },
   ].filter((step) => pdfMetricVisible(reportData, platform, 'funnel', step.key));
-  const firstValue = steps[0]?.value || 0;
-  const lastValue = steps[steps.length - 1]?.value || 0;
-  const firstStepKey = steps[0]?.key;
-  const lastStepKey = steps[steps.length - 1]?.key;
-  const side = reportData.yoyComparison?.[platform];
-  const previousFirstValue = firstStepKey ? yoyMetricValue(side, 'previous', firstStepKey) : null;
-  const previousLastValue = lastStepKey ? yoyMetricValue(side, 'previous', lastStepKey) : null;
-  const funnelRateDelta = percentDelta(
-    safeDivide(lastValue, firstValue),
-    previousFirstValue && previousLastValue ? safeDivide(previousLastValue, previousFirstValue) : null,
-  );
   return `
     <div class="funnel-shell">
       <div class="funnel-segments">
@@ -4568,11 +4557,6 @@ function funnelBlock(reportData: ReportData, platform: ReportPlatform): string {
             </div>
           `;
         }).join('')}
-      </div>
-      <div class="funnel-total-rate">
-        <span>Współczynnik konwersji</span>
-        <strong>${formatPercentValue(safeDivide(lastValue, firstValue), 2)}</strong>
-        ${metricDeltaBadge(funnelRateDelta)}
       </div>
     </div>
   `;
@@ -5404,11 +5388,14 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .channel-card h3, .yoy-card h3, .highlight-card h3, .bar-panel h3 { font-family: var(--serif); font-size: 15pt; font-weight: 400; line-height: 1.05; margin: 0 0 3mm; text-align: center; }
           dl { margin: 0; }
           .channel-card dl div, .highlight-card dl div { display: flex; justify-content: space-between; gap: 2mm; border-top: 0.12mm solid var(--line-soft); padding: 1.5mm 0; min-width: 0; max-width: 100%; }
-          dt { min-width: 0; color: var(--muted); font-size: 6.1pt; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: anywhere; }
-          dd { max-width: 54%; margin: 0; font-size: 7.1pt; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: normal; overflow-wrap: anywhere; }
+          dt { min-width: 0; color: var(--muted); font-size: 6.1pt; line-height: 1.15; text-transform: uppercase; letter-spacing: 0.06em; overflow-wrap: break-word; word-break: normal; }
+          dd { max-width: 54%; margin: 0; font-size: 7.1pt; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; white-space: normal; overflow-wrap: break-word; word-break: normal; }
+          /* Without this the flex row shrinks the label below its longest word and breaks it mid-word. */
+          .channel-card dt { min-width: min-content; }
           .channel-card dd { display: inline-flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 0.7mm; }
-          .channel-card dd span { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-          .channel-card .metric-delta { font-size: 4.5pt; padding: 0.25mm 0.55mm; }
+          .channel-card dd span { max-width: 100%; white-space: nowrap; overflow-wrap: normal; }
+          /* The caption must wrap inside the badge, or the badge claims the width the label needs. */
+          .channel-card .metric-delta { font-size: 4.5pt; padding: 0.25mm 0.55mm; flex-wrap: wrap; justify-content: flex-end; white-space: normal; }
           .comparison-bars { display: grid; gap: 3.2mm; }
           .comparison-legend { display: flex; justify-content: center; gap: 5mm; font-size: 6.3pt; line-height: 1.2; color: var(--muted); font-weight: 700; }
           .comparison-legend span { display: inline-flex; align-items: center; gap: 1.2mm; }
@@ -5438,10 +5425,6 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
           .funnel-delta-row { margin-top: 0.8mm; display: flex; justify-content: center; }
           .funnel-segment .metric-delta { background: rgba(255,253,248,0.9); font-size: 5pt; padding: 0.3mm 0.75mm; }
           .funnel-rate { margin-top: 0.9mm; font-size: 5.8pt; opacity: 0.9; white-space: nowrap; overflow-wrap: normal; }
-          .funnel-total-rate { border: 0.16mm solid var(--line-soft); border-radius: 2mm; padding: 2.6mm; text-align: center; background: rgba(255,253,248,0.72); }
-          .funnel-total-rate span { display: block; color: var(--muted); font-size: 6pt; text-transform: uppercase; letter-spacing: 0.1em; }
-          .funnel-total-rate strong { display: block; margin-top: 0.8mm; color: var(--terracotta-muted); font-size: 14pt; font-weight: 700; }
-          .funnel-total-rate .metric-delta { margin-top: 1mm; }
           .highlight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm; }
           .highlight-label { color: var(--terracotta-muted); font-size: 5.6pt; font-weight: 800; letter-spacing: 0.06em; margin-bottom: 2mm; text-align: center; text-transform: uppercase; }
           .highlight-card { padding: 3mm; }
@@ -6189,7 +6172,9 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         spend: stats.totalSpend || 0,
         impressions: stats.totalImpressions || 0,
         clicks: stats.totalClicks || 0,
-        reservations: cm.reservations || stats.totalConversions || 0,
+        // Reservations only — totalConversions counts every conversion action,
+        // so it is not comparable across periods.
+        reservations: cm.reservations || 0,
         reservationValue: cm.reservation_value || 0,
         booking_step_1: cm.booking_step_1 || campaigns.reduce((s: number, c: any) => s + (c.booking_step_1 || 0), 0),
         booking_step_2: cm.booking_step_2 || campaigns.reduce((s: number, c: any) => s + (c.booking_step_2 || 0), 0),
@@ -6221,7 +6206,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           const cm = metaData.conversionMetrics || {} as any;
           metaCurrent = {
             spend: s.totalSpend || 0, impressions: s.totalImpressions || 0, clicks: s.totalClicks || 0,
-            reservations: cm.reservations || s.totalConversions || 0, reservationValue: cm.reservation_value || 0,
+            reservations: cm.reservations || 0, reservationValue: cm.reservation_value || 0,
             booking_step_1: cm.booking_step_1 || 0, booking_step_2: cm.booking_step_2 || 0, booking_step_3: cm.booking_step_3 || 0,
           };
         }
@@ -6248,7 +6233,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
           const cm = googleData.conversionMetrics || {} as any;
           googleCurrent = {
             spend: s.totalSpend || 0, impressions: s.totalImpressions || 0, clicks: s.totalClicks || 0,
-            reservations: cm.reservations || s.totalConversions || 0, reservationValue: cm.reservation_value || 0,
+            reservations: cm.reservations || 0, reservationValue: cm.reservation_value || 0,
             booking_step_1: cm.booking_step_1 || 0, booking_step_2: cm.booking_step_2 || 0, booking_step_3: cm.booking_step_3 || 0,
           };
         }
