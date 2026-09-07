@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAuth } from '../../../../../lib/admin-auth';
+import { bearerHeader } from '../../../../../lib/shared-secret';
 
 /**
  * POST /api/admin/cache-monitoring/refresh-all
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
             'Content-Type': 'application/json',
             'User-Agent': 'CacheMonitoring/ManualRefresh',
             // Internal server-to-server call authorized via cron secret
-            'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+            'Authorization': bearerHeader('CRON_SECRET') || ''
           }
         });
         

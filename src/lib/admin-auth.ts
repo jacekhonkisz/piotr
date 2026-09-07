@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, requireAdmin } from './auth-middleware';
 import logger from './logger';
+import { matchesBearerSecret } from './shared-secret';
 
 export type AdminGuardResult =
   | { authorized: true; userId: string | null }
@@ -27,8 +28,7 @@ export async function requireAdminAuth(request: NextRequest): Promise<AdminGuard
   const authHeader = request.headers.get('authorization');
 
   // Operator / internal calls with the cron secret are allowed.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+  if (matchesBearerSecret(authHeader, 'CRON_SECRET')) {
     return { authorized: true, userId: null };
   }
 

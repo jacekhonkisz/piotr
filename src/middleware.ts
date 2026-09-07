@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { matchesBearerSecret } from './lib/shared-secret';
 
 /**
  * Edge middleware.
@@ -63,9 +64,7 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   // Escape hatch: an operator with the cron secret can still reach them.
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get('authorization');
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+  if (matchesBearerSecret(request.headers.get('authorization'), 'CRON_SECRET')) {
     return NextResponse.next();
   }
 

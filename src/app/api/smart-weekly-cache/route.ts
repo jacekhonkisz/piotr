@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSmartWeekCacheData } from '../../../lib/smart-cache-helper';
 import { authenticateRequest, createErrorResponse } from '../../../lib/auth-middleware';
+import { matchesBearerSecret } from '../../../lib/shared-secret';
 import logger from '../../../lib/logger';
 
 export async function POST(request: NextRequest) {
@@ -9,8 +10,8 @@ export async function POST(request: NextRequest) {
   try {
     // ✅ FIX: Allow service role token OR CRON_SECRET for automated cron jobs
     const authHeader = request.headers.get('authorization');
-    const isServiceRole = authHeader?.includes(process.env.SUPABASE_SERVICE_ROLE_KEY || '') ||
-                          authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    const isServiceRole = matchesBearerSecret(authHeader, 'SUPABASE_SERVICE_ROLE_KEY') ||
+                          matchesBearerSecret(authHeader, 'CRON_SECRET');
     
     let user = null;
     

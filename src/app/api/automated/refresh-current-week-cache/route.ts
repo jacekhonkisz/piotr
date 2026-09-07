@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import logger from '../../../../lib/logger';
 import { getCurrentWeekInfo } from '../../../../lib/week-utils';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
+import { internalBearerHeader } from '../../../../lib/shared-secret';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
               headers: {
                 'Content-Type': 'application/json',
                 // ✅ FIX: Use CRON_SECRET for internal cron calls
-                'Authorization': `Bearer ${process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY}`
+                'Authorization': internalBearerHeader()
               },
               body: JSON.stringify({ 
                 clientId: client.id,

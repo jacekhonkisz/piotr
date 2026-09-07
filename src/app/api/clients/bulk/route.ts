@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MetaAPIService } from '../../../../lib/meta-api-optimized';
+import { bearerHeader } from '../../../../lib/shared-secret';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -156,7 +157,7 @@ async function handleBulkSendReports(clientIds: string[], results: any) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'Authorization': bearerHeader('SUPABASE_SERVICE_ROLE_KEY') || '',
         },
         body: JSON.stringify({
           clientId: clientId,

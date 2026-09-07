@@ -11,6 +11,7 @@
 import { DataLifecycleManager } from '@/lib/data-lifecycle-manager';
 import { NextRequest } from 'next/server';
 import logger from '@/lib/logger';
+import { matchesBearerSecret, readSecret } from '@/lib/shared-secret';
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -18,9 +19,8 @@ export async function GET(request: NextRequest) {
   try {
     // 🔒 SECURITY: Verify cron secret
     const authHeader = request.headers.get('authorization');
-    const expectedAuth = `Bearer ${process.env.CRON_SECRET}`;
     
-    if (!process.env.CRON_SECRET) {
+    if (!readSecret('CRON_SECRET')) {
       logger.error('❌ CRON_SECRET not configured');
       return Response.json({ 
         success: false,
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
     
-    if (authHeader !== expectedAuth) {
+    if (!matchesBearerSecret(authHeader, 'CRON_SECRET')) {
       logger.warn('🚫 Unauthorized cron attempt', {
         ip: request.headers.get('x-forwarded-for') || 'unknown',
         timestamp: new Date().toISOString()

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import logger from '../../../../lib/logger';
 import { requireAdminAuth } from '../../../../lib/admin-auth';
+import { bearerHeader } from '../../../../lib/shared-secret';
 
 /**
  * COMPREHENSIVE SYSTEM-WIDE BACKFILL
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
           headers: {
             'Content-Type': 'application/json',
             // Internal server-to-server call authorized via cron secret
-            'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+            'Authorization': bearerHeader('CRON_SECRET') || ''
           },
           body: JSON.stringify({
             days: range.days,

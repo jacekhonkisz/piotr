@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import logger from './logger';
+import { matchesSecret } from './shared-secret';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +43,7 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
     // Internal cron/server-to-server calls use the Supabase service role key.
     // Treat it as an admin only inside trusted backend routes that already hold
     // this secret; regular browser clients never receive this token.
-    if (token === process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (matchesSecret(token, 'SUPABASE_SERVICE_ROLE_KEY')) {
       const { data: adminProfile, error: adminError } = await supabase
         .from('profiles')
         .select('id, email')

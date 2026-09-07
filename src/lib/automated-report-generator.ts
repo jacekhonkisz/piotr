@@ -16,6 +16,7 @@ import {
   generatePDFStoragePath
 } from './polish-content-generator';
 import logger from './logger';
+import { bearerHeader } from './shared-secret';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -170,7 +171,7 @@ async function generateReportPDF(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+      'Authorization': bearerHeader('SUPABASE_SERVICE_ROLE_KEY') || ''
     },
     body: JSON.stringify({
       clientId,

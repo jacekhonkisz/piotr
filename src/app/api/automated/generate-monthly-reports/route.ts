@@ -4,6 +4,7 @@ import { generateReportForPeriod } from '../../../../lib/automated-report-genera
 import logger from '../../../../lib/logger';
 import { verifyCronAuth, createUnauthorizedResponse } from '../../../../lib/cron-auth';
 import { getPreviousCalendarMonthBounds } from '../../../../lib/date-utils';
+import { internalBearerHeader } from '../../../../lib/shared-secret';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
           headers: {
             'Content-Type': 'application/json',
             // ✅ FIX: Use CRON_SECRET for internal cron calls
-            'Authorization': `Bearer ${process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY}`
+            'Authorization': internalBearerHeader()
           },
           body: JSON.stringify({
             clientId: client.id,

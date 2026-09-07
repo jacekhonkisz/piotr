@@ -8,6 +8,7 @@ import {
   isBelmonteClient
 } from '@/lib/offline-reservation-estimate';
 import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from '@/lib/google-ads-contact-metrics';
+import { matchesSecret } from '@/lib/shared-secret';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +24,7 @@ async function verifyAdmin(request: NextRequest): Promise<{ userId: string; toke
   const token = authHeader.substring(7);
 
   // Allow service role key for local testing (matches generate-pdf calls)
-  if (token === process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (matchesSecret(token, 'SUPABASE_SERVICE_ROLE_KEY')) {
     const { data: adminProfile } = await supabase
       .from('profiles')
       .select('id')

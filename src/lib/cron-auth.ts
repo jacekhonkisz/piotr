@@ -14,6 +14,7 @@
 
 import { NextRequest } from 'next/server';
 import logger from './logger';
+import { matchesBearerSecret, readSecret } from './shared-secret';
 
 /**
  * Verifies that the request is from an authorized cron job
@@ -36,14 +37,14 @@ import logger from './logger';
  */
 export function verifyCronAuth(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = readSecret('CRON_SECRET');
 
   // SECURITY: The `x-vercel-cron` header is spoofable by any caller, so it must
   // NEVER grant access on its own. Vercel automatically sends
   // `Authorization: Bearer ${CRON_SECRET}` with cron invocations when the
   // CRON_SECRET env var is set on the project, so requiring the secret works
   // for both Vercel cron and manual/internal triggers.
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+  if (matchesBearerSecret(authHeader, 'CRON_SECRET')) {
     logger.info('✅ Verified cron trigger (CRON_SECRET)', {
       path: request.nextUrl.pathname,
       viaVercelCron: request.headers.get('x-vercel-cron') === '1'

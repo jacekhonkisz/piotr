@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { requireAdminAuth } from '../../../../lib/admin-auth';
+import { bearerHeader } from '../../../../lib/shared-secret';
 
 export async function POST(request: NextRequest) {
   const guard = await requireAdminAuth(request);
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
         const internalAuthHeaders = {
           'Content-Type': 'application/json',
           // Internal server-to-server call authorized via cron secret
-          'Authorization': `Bearer ${process.env.CRON_SECRET || ''}`
+          'Authorization': bearerHeader('CRON_SECRET') || ''
         };
         const metaResponse = await fetch(`${baseUrl}/api/automated/daily-kpi-collection`, {
           method: 'POST',

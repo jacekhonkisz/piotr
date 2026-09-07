@@ -20,6 +20,7 @@
 import { supabase, supabaseAdmin } from './supabase';
 import logger from './logger';
 import { googleEmailContactsFromRow, googlePhoneContactsFromRow } from './google-ads-contact-metrics';
+import { bearerHeader } from './shared-secret';
 
 /**
  * Stored summaries are read with the service role on the server (cron jobs,
@@ -792,8 +793,8 @@ export class GoogleAdsStandardizedDataFetcher {
       
       if (sessionToken) {
         headers['Authorization'] = `Bearer ${sessionToken}`;
-      } else if (isServer && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        headers['Authorization'] = `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`;
+      } else if (isServer && bearerHeader('SUPABASE_SERVICE_ROLE_KEY')) {
+        headers['Authorization'] = bearerHeader('SUPABASE_SERVICE_ROLE_KEY')!;
       } else if (!isServer) {
         const { createClient } = await import('@supabase/supabase-js');
         const clientSupabase = createClient(

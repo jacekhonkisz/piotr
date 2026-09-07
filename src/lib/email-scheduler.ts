@@ -4,6 +4,7 @@ import { buildMonthlyReportData, builtPlatformToSummaryShape } from './monthly-r
 import { adaptCampaignSummary } from './report-adapters';
 import { evaluatePreSend } from './report-presend-guard';
 import { getPolishMonthName } from './email-helpers';
+import { bearerHeader } from './shared-secret';
 import logger from './logger';
 
 interface Client {
@@ -75,7 +76,7 @@ export class EmailScheduler {
   }
 
   private getAppBaseUrl(): string {
-    const configuredUrl = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+    const configuredUrl = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/\/$/, '');
     const isLocalConfiguredUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredUrl);
 
     if (configuredUrl && !isLocalConfiguredUrl) {
@@ -83,7 +84,7 @@ export class EmailScheduler {
     }
 
     if (process.env.VERCEL_URL) {
-      return `https://${process.env.VERCEL_URL.replace(/\/$/, '')}`;
+      return `https://${process.env.VERCEL_URL.trim().replace(/\/$/, '')}`;
     }
 
     return configuredUrl || 'http://localhost:3000';
@@ -95,11 +96,16 @@ export class EmailScheduler {
 
     logger.info(`📄 Generating scheduled PDF via ${pdfUrl}`);
 
+    const serviceRoleAuth = bearerHeader('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceRoleAuth) {
+      throw new Error('PDF generation failed: SUPABASE_SERVICE_ROLE_KEY is not configured');
+    }
+
     const response = await fetch(pdfUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`
+        'Authorization': serviceRoleAuth
       },
       body: JSON.stringify({
         clientId,
