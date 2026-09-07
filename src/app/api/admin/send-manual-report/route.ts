@@ -7,6 +7,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// A manual send renders a PDF and talks to SMTP; the default function timeout
+// is far too short for that.
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     // Extract the authorization header
