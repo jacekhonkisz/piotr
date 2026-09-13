@@ -6081,7 +6081,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
         dateRange,
         platform: 'meta',
         reason: 'pdf-generation-meta', // Same pattern as reports page
-        sessionToken: clientData.meta_access_token // Use client's access token
+        sessionToken: clientData.meta_access_token ?? undefined // Use client's access token
       });
       
       if (metaResult.success) {
@@ -6549,6 +6549,9 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
       logger.info('📊 Fetching Meta tables data DIRECTLY via MetaAPIService (no HTTP)...');
       
       const metaToken = clientData.system_user_token || clientData.meta_access_token;
+      if (!metaToken) {
+        throw new Error('Meta token missing after platform visibility check');
+      }
       const { MetaAPIService } = await import('@/lib/meta-api-optimized');
       const metaService = new MetaAPIService(metaToken);
       const adAccountId = clientData.ad_account_id.startsWith('act_') 
