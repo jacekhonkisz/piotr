@@ -46,20 +46,8 @@ export function getDefaultAdsProvider(
   return 'meta';
 }
 
-type DashboardConfigReader = {
-  from: (table: string) => {
-    select: (columns: string) => {
-      eq: (column: string, value: string) => {
-        maybeSingle: () => Promise<{
-          data: { meta_enabled?: boolean | null; google_enabled?: boolean | null } | null;
-        }>;
-      };
-    };
-  };
-};
-
 export async function getClientReportPlatformFlags(
-  supabase: DashboardConfigReader,
+  supabase: { from: (table: string) => any },
   clientId: string
 ): Promise<Required<Pick<ReportPlatformFlags, 'metaEnabled' | 'googleEnabled'>>> {
   const { data } = await supabase
