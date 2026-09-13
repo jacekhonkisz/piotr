@@ -25,6 +25,7 @@ import {
   hasGoogleAds,
   hasMetaAds,
 } from '../../lib/ads-provider-utils';
+import { useMetricsConfig } from '../../lib/useMetricsConfig';
 import ClientSelector from '../../components/ClientSelector';
 import ConfiguredDashboardMetrics from '../../components/dashboard/ConfiguredDashboardMetrics';
 
@@ -209,7 +210,12 @@ export default function DashboardPage() {
     // 🔧 FIX: Use clientData.client if selectedClient is null
     const currentClient = selectedClient || clientData?.client;
     
-    if (provider === activeAdsProvider || !currentClient) {
+    if (
+      provider === activeAdsProvider ||
+      !currentClient ||
+      (provider === 'meta' && !hasMetaAds(currentClient, reportFlags)) ||
+      (provider === 'google' && !hasGoogleAds(currentClient, reportFlags))
+    ) {
       console.log('🔄 TAB SWITCH BLOCKED:', {
         sameProvider: provider === activeAdsProvider,
         noClient: !currentClient,
@@ -332,6 +338,22 @@ export default function DashboardPage() {
   const dashboardPeriod = useMemo(() => getDashboardPeriod(), []);
 
   const metricsClientId = clientData?.client?.id || selectedClient?.id || null;
+  const { metaEnabled, googleEnabled } = useMetricsConfig(metricsClientId);
+  const reportFlags = useMemo(
+    () => ({ metaEnabled, googleEnabled }),
+    [metaEnabled, googleEnabled]
+  );
+  const showMetaTab = hasMetaAds(clientData?.client ?? selectedClient, reportFlags);
+  const showGoogleTab = hasGoogleAds(clientData?.client ?? selectedClient, reportFlags);
+  const showPlatformToggle = showMetaTab && showGoogleTab;
+
+  useEffect(() => {
+    if (activeAdsProvider === 'meta' && !showMetaTab && showGoogleTab) {
+      setActiveAdsProvider('google');
+    } else if (activeAdsProvider === 'google' && !showGoogleTab && showMetaTab) {
+      setActiveAdsProvider('meta');
+    }
+  }, [activeAdsProvider, showMetaTab, showGoogleTab]);
 
   const currentMonthSnapshot = useMemo(() => {
     if (!clientData?.stats || clientData.conversionMetrics == null) return {};
@@ -392,11 +414,11 @@ export default function DashboardPage() {
     }, 20000);
     setLoadingSafetyTimeout(safetyTimeout);
     
-    const defaultProvider = getDefaultAdsProvider(client);
+    const defaultProvider = getDefaultAdsProvider(client, reportFlags);
     console.log('🔍 CLIENT TAB SELECTION:', {
       clientName: client.name,
-      hasMetaAds: hasMetaAds(client),
-      hasGoogleAds: hasGoogleAds(client),
+      hasMetaAds: hasMetaAds(client, reportFlags),
+      hasGoogleAds: hasGoogleAds(client, reportFlags),
       defaultProvider,
     });
     setActiveAdsProvider(defaultProvider);
@@ -662,7 +684,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const defaultProvider = getDefaultAdsProvider(clientData);
+      const defaultProvider = getDefaultAdsProvider(clientData, reportFlags);
       setActiveAdsProvider(defaultProvider);
 
       const mainDashboardData = await loadMainDashboardData(clientData, defaultProvider);
@@ -892,8 +914,8 @@ export default function DashboardPage() {
       // 🔧 REMOVED: Authentication check - not required for this project
       // Dashboard will use StandardizedDataFetcher without authentication
 
-      const clientHasMetaAds = hasMetaAds(currentClient);
-      const clientHasGoogleAds = hasGoogleAds(currentClient);
+      const clientHasMetaAds = hasMetaAds(currentClient, reportFlags);
+      const clientHasGoogleAds = hasGoogleAds(currentClient, reportFlags);
 
       console.log('🔍 DASHBOARD: Client configuration check:', {
         clientId: currentClient.id,
@@ -1387,13 +1409,13 @@ export default function DashboardPage() {
       const { data: { session } } = await supabase.auth.getSession();
       
       // Force live API fetch and database update for both platforms
-      const hasMetaAds = currentClient.meta_access_token && currentClient.ad_account_id;
-      const hasGoogleAds = currentClient.google_ads_enabled && currentClient.google_ads_customer_id;
+      const clientShowsMetaAds = hasMetaAds(currentClient, reportFlags);
+      const clientShowsGoogleAds = hasGoogleAds(currentClient, reportFlags);
       
       const refreshPromises: Promise<any>[] = [];
       
-      // Force refresh Google Ads if configured
-      if (hasGoogleAds) {
+      // Force refresh Google Ads if visible in this client's reports
+      if (clientShowsGoogleAds) {
         console.log('🔄 REFRESH: Calling Google Ads API with:', {
           clientId: currentClient.id,
           dateRange,
@@ -1440,8 +1462,8 @@ export default function DashboardPage() {
         refreshPromises.push(googleRefreshPromise);
       }
       
-      // Force refresh Meta Ads if configured
-      if (hasMetaAds) {
+      // Force refresh Meta Ads if visible in this client's reports
+      if (clientShowsMetaAds) {
         console.log('🔄 REFRESH: Calling Meta Ads API with:', {
           clientId: currentClient.id,
           dateRange,
@@ -1719,36 +1741,40 @@ export default function DashboardPage() {
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="inline-flex rounded-2xl bg-slate-100/80 p-1 ring-1 ring-slate-200/80" role="tablist" aria-label="Wybór platformy reklamowej">
-                  <button
-                    type="button"
-                    onClick={() => handleTabSwitch('meta')}
-                    disabled={!(clientData.client.meta_access_token && clientData.client.ad_account_id)}
-                    className={`rounded-xl px-6 py-3 text-sm font-semibold transition ${
-                      activeAdsProvider === 'meta'
-                        ? 'bg-[#062b6f] text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40'
-                    }`}
-                    role="tab"
-                    aria-selected={activeAdsProvider === 'meta'}
-                  >
-                    Meta Ads
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleTabSwitch('google')}
-                    disabled={!(clientData.client.google_ads_enabled && clientData.client.google_ads_customer_id)}
-                    className={`rounded-xl px-6 py-3 text-sm font-semibold transition ${
-                      activeAdsProvider === 'google'
-                        ? 'bg-[#062b6f] text-white shadow-sm'
-                        : 'text-slate-600 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40'
-                    }`}
-                    role="tab"
-                    aria-selected={activeAdsProvider === 'google'}
-                  >
-                    Google Ads
-                  </button>
-                </div>
+                {showPlatformToggle ? (
+                  <div className="inline-flex rounded-2xl bg-slate-100/80 p-1 ring-1 ring-slate-200/80" role="tablist" aria-label="Wybór platformy reklamowej">
+                    <button
+                      type="button"
+                      onClick={() => handleTabSwitch('meta')}
+                      className={`rounded-xl px-6 py-3 text-sm font-semibold transition ${
+                        activeAdsProvider === 'meta'
+                          ? 'bg-[#062b6f] text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-950'
+                      }`}
+                      role="tab"
+                      aria-selected={activeAdsProvider === 'meta'}
+                    >
+                      Meta Ads
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTabSwitch('google')}
+                      className={`rounded-xl px-6 py-3 text-sm font-semibold transition ${
+                        activeAdsProvider === 'google'
+                          ? 'bg-[#062b6f] text-white shadow-sm'
+                          : 'text-slate-600 hover:text-slate-950'
+                      }`}
+                      role="tab"
+                      aria-selected={activeAdsProvider === 'google'}
+                    >
+                      Google Ads
+                    </button>
+                  </div>
+                ) : (
+                  <div className="inline-flex min-h-[46px] items-center rounded-2xl bg-slate-100/80 px-5 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200/80">
+                    {showGoogleTab ? 'Google Ads' : showMetaTab ? 'Meta Ads' : 'Brak platformy w raporcie'}
+                  </div>
+                )}
                 <div className="inline-flex min-h-[46px] items-center gap-2 rounded-2xl bg-white/80 px-5 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200/80">
                   <CalendarDays className="h-4 w-4 text-slate-500" />
                   {dashboardPeriod.current.monthLabel}

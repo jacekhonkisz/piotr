@@ -31,7 +31,8 @@ import { getMonthBoundaries, getWeekBoundaries, getISOWeekStartDate, getWeeksInY
 import { selectMetaPhoneClicks } from '../../lib/meta-actions-parser';
 import { isCurrentWeekPeriod, parseWeekPeriodId } from '../../lib/week-utils';
 import { cpcFromStats, ctrPercentFromStats } from '../../lib/ctr-from-stats';
-import { getDefaultAdsProvider } from '../../lib/ads-provider-utils';
+import { getDefaultAdsProvider, hasGoogleAds as clientHasGoogleAds, hasMetaAds as clientHasMetaAds } from '../../lib/ads-provider-utils';
+import { useMetricsConfig } from '../../lib/useMetricsConfig';
 import { useReportSectionNav } from '../../hooks/useReportSectionNav';
 
 type Client = Database['public']['Tables']['clients']['Row'];
@@ -574,6 +575,11 @@ function ReportsPageContent() {
     geographicPerformance: any[];
   } | null>(null);
   const [activeAdsProvider, setActiveAdsProvider] = useState<'meta' | 'google'>('google');
+  const { metaEnabled, googleEnabled } = useMetricsConfig(selectedClient?.id ?? client?.id ?? null);
+  const reportFlags = useMemo(
+    () => ({ metaEnabled, googleEnabled }),
+    [metaEnabled, googleEnabled]
+  );
 
   // Loading timeout mechanism to prevent infinite loading states
   useEffect(() => {
@@ -599,9 +605,9 @@ function ReportsPageContent() {
 
   useEffect(() => {
     if (selectedClient) {
-      setActiveAdsProvider(getDefaultAdsProvider(selectedClient));
+      setActiveAdsProvider(getDefaultAdsProvider(selectedClient, reportFlags));
     }
-  }, [selectedClient?.id]);
+  }, [selectedClient?.id, reportFlags]);
 
   // Refresh data when provider changes
   // 🔧 FIX: Store previous provider to detect actual changes
@@ -730,7 +736,7 @@ function ReportsPageContent() {
     // Update client state
     setSelectedClient(newClient);
     setClient(newClient);
-    const defaultProvider = getDefaultAdsProvider(newClient);
+    const defaultProvider = getDefaultAdsProvider(newClient, reportFlags);
     setActiveAdsProvider(defaultProvider);
     
     // Clear existing reports for the new client
@@ -3212,8 +3218,8 @@ function ReportsPageContent() {
     });
   })();
 
-  const hasMetaAds = !!(selectedClient?.meta_access_token && selectedClient?.ad_account_id);
-  const hasGoogleAds = !!(selectedClient?.google_ads_enabled && selectedClient?.google_ads_customer_id);
+  const hasMetaAds = clientHasMetaAds(selectedClient, reportFlags);
+  const hasGoogleAds = clientHasGoogleAds(selectedClient, reportFlags);
   const showPlatformToggle = hasMetaAds && hasGoogleAds;
 
   const reportNavItems = useMemo(
@@ -3497,7 +3503,7 @@ function ReportsPageContent() {
 
         // Get client data
         const clientData = await getClientData(currentUser, profileData);
-        const defaultProvider = getDefaultAdsProvider(clientData);
+        const defaultProvider = getDefaultAdsProvider(clientData, reportFlags);
         setClient(clientData);
         setSelectedClient(clientData);
         setActiveAdsProvider(defaultProvider);
@@ -3963,6 +3969,8 @@ function ReportsPageContent() {
                   client={client}
                   metaTables={metaTablesData}
                   viewType={viewType}
+                  includeMeta={hasMetaAds}
+                  includeGoogle={hasGoogleAds}
                 />
               )}
 

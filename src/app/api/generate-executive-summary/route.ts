@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { ExecutiveSummaryCacheService } from '../../../lib/executive-summary-cache';
 import logger from '../../../lib/logger';
 import { authenticateRequest } from '../../../lib/auth-middleware';
+import { getClientReportPlatformFlags } from '../../../lib/ads-provider-utils';
 import { cpcBlended, cpcFromStats, ctrPercentBlended, ctrPercentFromStats } from '@/lib/ctr-from-stats';
 
 const supabase = createClient(
@@ -114,8 +115,9 @@ export async function POST(request: NextRequest) {
     let kpiData: any[] = [];
     
     // Check if client has both Meta and Google Ads for unified data fetching
-    const hasGoogleAds = client.google_ads_enabled && client.google_ads_customer_id;
-    const hasMetaAds = client.ad_account_id && client.meta_access_token;
+    const reportFlags = await getClientReportPlatformFlags(supabase, clientId);
+    const hasGoogleAds = reportFlags.googleEnabled && client.google_ads_enabled && client.google_ads_customer_id;
+    const hasMetaAds = reportFlags.metaEnabled && client.ad_account_id && client.meta_access_token;
     const shouldFetchUnifiedData = hasGoogleAds && hasMetaAds;
     
     logger.info('🔍 [AI-SUMMARY] Platform detection:', {

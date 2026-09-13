@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import logger from '../../../lib/logger';
 import { getPdfBrandLogoDataUrl } from '@/lib/pdf-brand-logo';
+import { getClientReportPlatformFlags } from '@/lib/ads-provider-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,6 +21,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   if (clientError || !clientData) {
     throw new Error('Client not found');
   }
+
+  const reportFlags = await getClientReportPlatformFlags(supabase, clientId);
   
   const reportData: any = {
     clientId,
@@ -40,7 +43,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   let metaData = null;
   let metaError = null;
   
-  if (clientData.meta_access_token && clientData.ad_account_id) {
+  if (reportFlags.metaEnabled && clientData.meta_access_token && clientData.ad_account_id) {
     try {
       // Use the working fetch-live-data API instead of StandardizedDataFetcher
       const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/fetch-live-data`, {
@@ -76,7 +79,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   let googleData = null;
   let googleError = null;
   
-  if (clientData.google_ads_enabled && clientData.google_ads_customer_id) {
+  if (reportFlags.googleEnabled && clientData.google_ads_enabled && clientData.google_ads_customer_id) {
     try {
       // First try with refresh token if available
       if (clientData.google_ads_refresh_token) {

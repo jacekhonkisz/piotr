@@ -437,9 +437,8 @@ const generateYoYSection = (reportData: ReportData) => {
   };
   const { meta, google } = comparison;
   
-  // ✅ PRODUCTION-READY: Only show if we have meaningful comparison data
-  const hasMetaData = (reportData.mediaEnabled?.meta ?? false) || meta.current.spend > 0 || meta.previous.spend > 0;
-  const hasGoogleData = (reportData.mediaEnabled?.google ?? false) || google.current.spend > 0 || google.previous.spend > 0;
+  const hasMetaData = reportData.mediaEnabled?.meta ?? (meta.current.spend > 0 || meta.previous.spend > 0);
+  const hasGoogleData = reportData.mediaEnabled?.google ?? (google.current.spend > 0 || google.previous.spend > 0);
   
   if (!hasMetaData && !hasGoogleData) {
     logger.info('🔍 COMPARISON SECTION: No meaningful data to compare');
@@ -526,15 +525,16 @@ const generateYoYSection = (reportData: ReportData) => {
           ${metrics.map((metric, metricIndex) => {
             // Calculate positions for each metric section
             const singlePlatformHeight = (barHeight * 2) + barGap;
-            const sectionHeight = (singlePlatformHeight * 2) + platformGap + metricSectionGap;
+            const platformCount = (hasGoogleData ? 1 : 0) + (hasMetaData ? 1 : 0);
+            const sectionHeight = (singlePlatformHeight * Math.max(platformCount, 1)) + (platformCount > 1 ? platformGap : 0) + metricSectionGap;
             const yStart = padding.top + (metricIndex * sectionHeight);
             
-            // Find max value across ALL data for consistent scaling
+            // Find max value across visible platforms only
             const allValues = [
-              metric.metaCurrent, metric.metaPrevious,
-              metric.googleCurrent, metric.googlePrevious
+              ...(hasMetaData ? [metric.metaCurrent, metric.metaPrevious] : []),
+              ...(hasGoogleData ? [metric.googleCurrent, metric.googlePrevious] : []),
             ].filter(v => v > 0);
-            const maxValue = Math.max(...allValues);
+            const maxValue = Math.max(...allValues, 0);
             
             // Calculate bar widths
             const metaCurrentWidth = maxValue > 0 ? (metric.metaCurrent / maxValue) * (chartWidth * 0.85) : 0;
@@ -542,11 +542,12 @@ const generateYoYSection = (reportData: ReportData) => {
             const googleCurrentWidth = maxValue > 0 ? (metric.googleCurrent / maxValue) * (chartWidth * 0.85) : 0;
             const googlePreviousWidth = maxValue > 0 ? (metric.googlePrevious / maxValue) * (chartWidth * 0.85) : 0;
             
-            /* Google Ads first (góra), Meta Ads pod spodem — spójnie z resztą PDF */
+            /* Visible platforms only — Google first when both are on */
             const googleY1 = yStart;
             const googleY2 = googleY1 + barHeight + barGap;
-            const metaY1 = googleY2 + barHeight + platformGap;
+            const metaY1 = hasGoogleData ? googleY2 + barHeight + platformGap : yStart;
             const metaY2 = metaY1 + barHeight + barGap;
+            const axisBottom = hasMetaData ? metaY2 + barHeight + 5 : googleY2 + barHeight + 5;
             
             return `
               <!-- Section: ${metric.label} -->
@@ -555,8 +556,9 @@ const generateYoYSection = (reportData: ReportData) => {
               <text x="${padding.left - 15}" y="${yStart - 8}" text-anchor="end" font-size="14" font-weight="700" fill="#1F2937" font-family="Roboto, Arial, sans-serif">${metric.label}</text>
               
               <!-- Y-axis line -->
-              <line x1="${padding.left - 8}" y1="${googleY1 - 5}" x2="${padding.left - 8}" y2="${metaY2 + barHeight + 5}" stroke="#E5E7EB" stroke-width="2"/>
+              <line x1="${padding.left - 8}" y1="${yStart - 5}" x2="${padding.left - 8}" y2="${axisBottom}" stroke="#E5E7EB" stroke-width="2"/>
               
+              ${hasGoogleData ? `
               <!-- GOOGLE ADS -->
               <text x="${padding.left - 15}" y="${googleY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#F97316" font-family="Roboto, Arial, sans-serif">Google Ads</text>
               
@@ -576,7 +578,9 @@ const generateYoYSection = (reportData: ReportData) => {
                   ${metric.googleChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.googleChange).toFixed(1)}%
                 </text>
               ` : ''}
+              ` : ''}
 
+              ${hasMetaData ? `
               <!-- META ADS -->
               <text x="${padding.left - 15}" y="${metaY1 + 22}" text-anchor="end" font-size="12" font-weight="600" fill="#2563EB" font-family="Roboto, Arial, sans-serif">Meta Ads</text>
 
@@ -595,6 +599,7 @@ const generateYoYSection = (reportData: ReportData) => {
                 <text x="${width - padding.right + 10}" y="${metaY1 + 21}" text-anchor="start" font-size="13" font-weight="700" fill="${metric.metaChange >= 0 ? '#10B981' : '#EF4444'}" font-family="Roboto, Arial, sans-serif">
                   ${metric.metaChange >= 0 ? '↗' : '↘'} ${Math.abs(metric.metaChange).toFixed(1)}%
                 </text>
+              ` : ''}
               ` : ''}
             `;
           }).join('')}
@@ -2630,11 +2635,12 @@ const generateInsightsSection = (reportData: ReportData) => {
 
 // Main PDF HTML generator with new 8-section structure
 function generatePDFHTML(reportData: ReportData): string {
+  const projected = projectReportDataToVisiblePlatforms(reportData);
   // Sanitize data to prevent HTML injection and ensure valid content
   const sanitizedData = {
-    ...reportData,
-    clientName: reportData.clientName?.replace(/[<>]/g, '') || 'Unknown Client',
-    aiSummary: reportData.aiSummary?.replace(/[<>]/g, '') || undefined
+    ...projected,
+    clientName: projected.clientName?.replace(/[<>]/g, '') || 'Unknown Client',
+    aiSummary: projected.aiSummary?.replace(/[<>]/g, '') || undefined
   };
 
   // Helper function to conditionally wrap content with page break
@@ -3908,9 +3914,51 @@ function splitRowsBalanced<T>(rows: T[], maxRowsPerPage: number, minUsefulRows =
   return chunks.filter((chunk) => chunk.length > 0);
 }
 
+function isPdfPlatformEnabled(reportData: ReportData, platform: ReportPlatform): boolean {
+  const flagged = platform === 'google'
+    ? reportData.mediaEnabled?.google
+    : reportData.mediaEnabled?.meta;
+  if (flagged === false) return false;
+  return platform === 'google' ? !!reportData.googleData : !!reportData.metaData;
+}
+
+function pdfShowsBothPlatforms(reportData: ReportData): boolean {
+  return isPdfPlatformEnabled(reportData, 'meta') && isPdfPlatformEnabled(reportData, 'google');
+}
+
+/** Drop hidden-platform data so layout, charts, and copy cannot render empty Meta/Google stubs. */
+function projectReportDataToVisiblePlatforms(reportData: ReportData): ReportData {
+  const showMeta = reportData.mediaEnabled?.meta !== false && !!reportData.metaData;
+  const showGoogle = reportData.mediaEnabled?.google !== false && !!reportData.googleData;
+  const next: ReportData = {
+    ...reportData,
+    mediaEnabled: {
+      meta: showMeta,
+      google: showGoogle,
+    },
+    metaData: showMeta ? reportData.metaData : undefined,
+    googleData: showGoogle ? reportData.googleData : undefined,
+  };
+  if (next.yoyComparison) {
+    next.yoyComparison = {
+      meta: showMeta ? next.yoyComparison.meta : {
+        current: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservationValue: 0 },
+        previous: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservationValue: 0 },
+        changes: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservationValue: 0 },
+      },
+      google: showGoogle ? next.yoyComparison.google : {
+        current: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservationValue: 0 },
+        previous: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservationValue: 0 },
+        changes: { spend: 0, impressions: 0, clicks: 0, reservations: 0, reservationValue: 0 },
+      },
+    };
+  }
+  return next;
+}
+
 function combinedMetrics(reportData: ReportData) {
-  const meta = reportData.metaData?.metrics;
-  const google = reportData.googleData?.metrics;
+  const meta = isPdfPlatformEnabled(reportData, 'meta') ? reportData.metaData?.metrics : undefined;
+  const google = isPdfPlatformEnabled(reportData, 'google') ? reportData.googleData?.metrics : undefined;
   const totalSpend = safeNumber(meta?.totalSpend) + safeNumber(google?.totalSpend);
   const totalReservations = safeNumber(meta?.totalReservations) + safeNumber(google?.totalReservations);
   const totalReservationValue = safeNumber(meta?.totalReservationValue) + safeNumber(google?.totalReservationValue);
@@ -3922,25 +3970,49 @@ function combinedMetrics(reportData: ReportData) {
 }
 
 function summaryTextBlocks(reportData: ReportData): string[] {
-  const meta = reportData.metaData?.metrics;
-  const google = reportData.googleData?.metrics;
+  const showMeta = isPdfPlatformEnabled(reportData, 'meta');
+  const showGoogle = isPdfPlatformEnabled(reportData, 'google');
+  const meta = showMeta ? reportData.metaData?.metrics : undefined;
+  const google = showGoogle ? reportData.googleData?.metrics : undefined;
   const total = combinedMetrics(reportData);
   const summary = reportData.aiSummary?.trim();
-  const text = summary || [
-    `W okresie ${formatDateRangeShort(reportData.dateRange).toLowerCase()} analizowaliśmy skuteczność kampanii reklamowych prowadzonych w Google Ads oraz Meta Ads.`,
-    '',
-    'Google Ads',
-    `Wydaliśmy ${formatCurrency(google?.totalSpend || 0)}. Kampania wygenerowała ${formatNumber(google?.totalImpressions || 0)} wyświetleń i ${formatNumber(google?.totalClicks || 0)} kliknięć, co przełożyło się na ${formatNumber(google?.totalReservations || 0)} rezerwacji.`,
-    '',
-    'Meta Ads',
-    `Wydaliśmy ${formatCurrency(meta?.totalSpend || 0)}. Kampania wygenerowała ${formatNumber(meta?.totalImpressions || 0)} wyświetleń i ${formatNumber(meta?.totalClicks || 0)} kliknięć, co przełożyło się na ${formatNumber(meta?.totalReservations || 0)} rezerwacji.`,
-    '',
-    'Podsumowanie łączne',
-    `Łącznie: ${formatNumber(total.totalReservations)} rezerwacji, wartość ${formatCurrency(total.totalReservationValue)}, ROAS ${formatROASValue(total.roas)}, średni koszt rezerwacji ${formatCurrency(total.costPerReservation)}.`,
+  const channelPhrase = showMeta && showGoogle
+    ? 'w Google Ads oraz Meta Ads'
+    : showGoogle
+      ? 'w Google Ads'
+      : showMeta
+        ? 'w Meta Ads'
+        : 'w kampaniach reklamowych';
+  const fallbackParts = [
+    `W okresie ${formatDateRangeShort(reportData.dateRange).toLowerCase()} analizowaliśmy skuteczność kampanii reklamowych prowadzonych ${channelPhrase}.`,
+  ];
+  if (showGoogle) {
+    fallbackParts.push(
+      '',
+      'Google Ads',
+      `Wydaliśmy ${formatCurrency(google?.totalSpend || 0)}. Kampania wygenerowała ${formatNumber(google?.totalImpressions || 0)} wyświetleń i ${formatNumber(google?.totalClicks || 0)} kliknięć, co przełożyło się na ${formatNumber(google?.totalReservations || 0)} rezerwacji.`,
+    );
+  }
+  if (showMeta) {
+    fallbackParts.push(
+      '',
+      'Meta Ads',
+      `Wydaliśmy ${formatCurrency(meta?.totalSpend || 0)}. Kampania wygenerowała ${formatNumber(meta?.totalImpressions || 0)} wyświetleń i ${formatNumber(meta?.totalClicks || 0)} kliknięć, co przełożyło się na ${formatNumber(meta?.totalReservations || 0)} rezerwacji.`,
+    );
+  }
+  if (showMeta && showGoogle) {
+    fallbackParts.push(
+      '',
+      'Podsumowanie łączne',
+      `Łącznie: ${formatNumber(total.totalReservations)} rezerwacji, wartość ${formatCurrency(total.totalReservationValue)}, ROAS ${formatROASValue(total.roas)}, średni koszt rezerwacji ${formatCurrency(total.costPerReservation)}.`,
+    );
+  }
+  fallbackParts.push(
     '',
     'Kontakty',
-    `${formatNumber(total.emailContacts)} kontaktów e-mail i ${formatNumber(total.phoneContacts)} telefonicznych.`
-  ].join('\n');
+    `${formatNumber(total.emailContacts)} kontaktów e-mail i ${formatNumber(total.phoneContacts)} telefonicznych.`,
+  );
+  const text = summary || fallbackParts.join('\n');
 
   return escapeHtml(text)
     .split(/\n{2,}/)
@@ -4661,6 +4733,7 @@ function generateHotelSummaryPages(reportData: ReportData, startPageNumber: numb
 }
 
 function combinedResultsBlocks(reportData: ReportData): ReportBlock[] {
+  if (!pdfShowsBothPlatforms(reportData)) return [];
   const total = combinedMetrics(reportData);
   const google = reportData.googleData?.metrics;
   const meta = reportData.metaData?.metrics;
@@ -4701,6 +4774,21 @@ function combinedResultsBlocks(reportData: ReportData): ReportBlock[] {
 }
 
 function channelComparisonBlocks(reportData: ReportData): ReportBlock[] {
+  const showMeta = isPdfPlatformEnabled(reportData, 'meta');
+  const showGoogle = isPdfPlatformEnabled(reportData, 'google');
+  if (!showMeta && !showGoogle) return [];
+
+  if (!pdfShowsBothPlatforms(reportData)) {
+    const platform: ReportPlatform = showGoogle ? 'google' : 'meta';
+    return [{
+      title: 'Porównanie rok do roku',
+      subtitle: platformName(platform),
+      platform,
+      heightMm: 72,
+      html: `<div class="yoy-grid yoy-grid-single">${yoyBlock(reportData, platform, reportData.yoyComparison?.[platform])}</div>`,
+    }];
+  }
+
   const google = reportData.googleData?.metrics;
   const meta = reportData.metaData?.metrics;
   return [
@@ -5226,7 +5314,7 @@ function buildHotelReportBlocks(reportData: ReportData): ReportBlock[] {
     ...combinedResultsBlocks(reportData),
     ...channelComparisonBlocks(reportData),
   ];
-  if (reportData.googleData) {
+  if (isPdfPlatformEnabled(reportData, 'google')) {
     blocks.push(
       ...platformOverviewBlocks(reportData, 'google'),
       mediaMetricsBlock(reportData, 'google'),
@@ -5236,7 +5324,7 @@ function buildHotelReportBlocks(reportData: ReportData): ReportBlock[] {
       ...geoBlocks(reportData, 'google'),
     );
   }
-  if (reportData.metaData) {
+  if (isPdfPlatformEnabled(reportData, 'meta')) {
     blocks.push(
       ...platformOverviewBlocks(reportData, 'meta'),
       ...campaignBlocks(reportData, 'meta'),
@@ -5249,10 +5337,17 @@ function buildHotelReportBlocks(reportData: ReportData): ReportBlock[] {
 }
 
 function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolean }): string {
+  const projected = projectReportDataToVisiblePlatforms(reportData);
+  logger.info('📄 Hotel PDF layout platforms', {
+    metaEnabled: projected.mediaEnabled?.meta,
+    googleEnabled: projected.mediaEnabled?.google,
+    hasMetaData: !!projected.metaData,
+    hasGoogleData: !!projected.googleData,
+  });
   const sanitizedData: ReportData = {
-    ...reportData,
-    clientName: reportData.clientName?.replace(/[<>]/g, '') || 'Unknown Client',
-    aiSummary: reportData.aiSummary?.replace(/[<>]/g, '') || undefined,
+    ...projected,
+    clientName: projected.clientName?.replace(/[<>]/g, '') || 'Unknown Client',
+    aiSummary: projected.aiSummary?.replace(/[<>]/g, '') || undefined,
   };
   let pageNumber = 1;
   const pages: string[] = [];
@@ -5260,7 +5355,11 @@ function generateHotelPDFHTML(reportData: ReportData, options?: { debug?: boolea
   const summaryPages = generateHotelSummaryPages(sanitizedData, pageNumber);
   pages.push(...summaryPages);
   pageNumber += summaryPages.length;
-  const flowPages = paginateBlocks(buildHotelReportBlocks(sanitizedData), pageNumber, sanitizedData);
+  const flowBlocks = buildHotelReportBlocks(sanitizedData);
+  logger.info('📄 Hotel PDF blocks', {
+    titles: flowBlocks.map((block) => `${block.platform || 'global'}:${block.title} / ${block.subtitle || ''}`),
+  });
+  const flowPages = paginateBlocks(flowBlocks, pageNumber, sanitizedData);
   pages.push(...flowPages);
   pageNumber += flowPages.length;
 
@@ -5900,13 +5999,17 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
 
   const { data: dashConfigRow } = await serverSupabase
     .from('client_dashboard_config')
-    .select('meta_metrics_config, google_metrics_config')
+    .select('meta_metrics_config, google_metrics_config, meta_enabled, google_enabled')
     .eq('client_id', clientId)
     .maybeSingle();
   const metricsConfigRow = dashConfigRow as {
     meta_metrics_config?: MetricConfigItem[] | null;
     google_metrics_config?: MetricConfigItem[] | null;
+    meta_enabled?: boolean | null;
+    google_enabled?: boolean | null;
   } | null;
+  const metaVisibleInReports = (metricsConfigRow?.meta_enabled ?? true) !== false;
+  const googleVisibleInReports = (metricsConfigRow?.google_enabled ?? true) !== false;
 
   logger.info('✅ Client data loaded:', { 
     id: clientData.id, 
@@ -5925,8 +6028,8 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     dateRange,
     aiSummary: undefined,
     mediaEnabled: {
-      meta: !!(clientData.meta_access_token && clientData.ad_account_id),
-      google: !!(clientData.google_ads_enabled && clientData.google_ads_customer_id)
+      meta: !!(clientData.meta_access_token && clientData.ad_account_id) && metaVisibleInReports,
+      google: !!(clientData.google_ads_enabled && clientData.google_ads_customer_id) && googleVisibleInReports
     },
     yoyComparison: undefined,
     metaData: undefined,
@@ -5954,7 +6057,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   let metaData = null;
   let metaError = null;
   
-  if (clientData.meta_access_token && clientData.ad_account_id) {
+  if (reportData.mediaEnabled?.meta) {
     try {
       logger.info('📊 Fetching Meta data using StandardizedDataFetcher (same as reports)...');
       
@@ -6094,7 +6197,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   // Define base URL for API calls - always use NEXT_PUBLIC_APP_URL to match running server
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
-  const googleAdsConditionMet = clientData.google_ads_enabled && clientData.google_ads_customer_id;
+  const googleAdsConditionMet = !!reportData.mediaEnabled?.google;
   logger.info('🔍 GOOGLE ADS CONDITION CHECK:', {
     google_ads_enabled: clientData.google_ads_enabled,
     google_ads_customer_id: clientData.google_ads_customer_id,
@@ -6198,7 +6301,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
     // Fetch Meta YoY data directly
     let metaCurrent = { ...zeroTotals };
     let metaPrevious = { ...zeroTotals };
-    if (clientData.meta_access_token && clientData.ad_account_id) {
+    if (reportData.mediaEnabled?.meta) {
       try {
         // Use raw fetched metaData (reportData.metaData is not yet assigned at this point)
         if (metaData?.stats) {
@@ -6326,7 +6429,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   });
 
   // 🔧 FALLBACK: If direct fetchers failed, try using the same API endpoint as reports page
-  if (!metaData && clientData.meta_access_token && clientData.ad_account_id) {
+  if (!metaData && reportData.mediaEnabled?.meta && clientData.meta_access_token && clientData.ad_account_id) {
     try {
       logger.info('🔄 FALLBACK: Trying Meta data via API endpoint (same as reports page)...');
       
@@ -6441,7 +6544,7 @@ async function fetchReportData(clientId: string, dateRange: { start: string; end
   }
 
   // 🔧 FETCH META TABLES DATA DIRECTLY (no HTTP call - avoids auth issues in serverless)
-  if (clientData.meta_access_token && clientData.ad_account_id) {
+  if (reportData.mediaEnabled?.meta) {
     try {
       logger.info('📊 Fetching Meta tables data DIRECTLY via MetaAPIService (no HTTP)...');
       
@@ -6986,12 +7089,14 @@ export async function POST(request: NextRequest) {
       logger.info('🚀 CUSTOM DATE RANGE: Building report from passed live data');
       const { data: dashConfigRow } = await serverSupabase
         .from('client_dashboard_config')
-        .select('meta_metrics_config, google_metrics_config')
+        .select('meta_metrics_config, google_metrics_config, meta_enabled, google_enabled')
         .eq('client_id', clientId)
         .maybeSingle();
       const metricsConfigRow = dashConfigRow as {
         meta_metrics_config?: MetricConfigItem[] | null;
         google_metrics_config?: MetricConfigItem[] | null;
+        meta_enabled?: boolean | null;
+        google_enabled?: boolean | null;
       } | null;
       
       // Build report data from passed campaigns - match expected ReportData structure

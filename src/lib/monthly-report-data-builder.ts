@@ -12,6 +12,7 @@
 import { StandardizedDataFetcher } from './standardized-data-fetcher';
 import { GoogleAdsStandardizedDataFetcher } from './google-ads-standardized-data-fetcher';
 import { getPolishMonthName, prepareClientMonthlyReportData } from './email-helpers';
+import { getClientReportPlatformFlags } from './ads-provider-utils';
 import logger from './logger';
 
 export interface MonthlyReportClient {
@@ -57,10 +58,12 @@ export async function buildMonthlyReportData(params: {
   const { client, period, sessionToken, reasonPrefix = 'monthly-report' } = params;
 
   const missingPlatforms: Array<'google' | 'meta'> = [];
+  const { supabaseAdmin } = await import('./supabase-admin');
+  const reportFlags = await getClientReportPlatformFlags(supabaseAdmin, client.id);
 
-  // Step 1: Google Ads data (only when enabled for this client)
+  // Step 1: Google Ads data (only when connected AND visible in reports)
   let googleAdsData: Record<string, number> | undefined;
-  if (client.google_ads_enabled) {
+  if (reportFlags.googleEnabled && client.google_ads_enabled) {
     try {
       const googleResult = await GoogleAdsStandardizedDataFetcher.fetchData({
         clientId: client.id,
@@ -108,10 +111,10 @@ export async function buildMonthlyReportData(params: {
     }
   }
 
-  // Step 2: Meta Ads data (only when a token is configured)
+  // Step 2: Meta Ads data (only when a token is configured AND visible in reports)
   let metaAdsData: Record<string, number> | undefined;
   let metaCampaignRows: any[] | undefined;
-  if (client.meta_access_token) {
+  if (reportFlags.metaEnabled && client.meta_access_token) {
     try {
       const metaResult = await StandardizedDataFetcher.fetchData({
         clientId: client.id,

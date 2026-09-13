@@ -9,6 +9,7 @@ import {
   sumGoogleEmailContactsFromCampaigns,
   sumGooglePhoneContactsFromCampaigns,
 } from '../../../lib/google-ads-contact-metrics';
+import { getClientReportPlatformFlags } from '../../../lib/ads-provider-utils';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { start: startDate, end: endDate } = dateRange;
+    const reportFlags = await getClientReportPlatformFlags(supabase, clientData.id);
     
     // Fetch Meta data directly using MetaAPIService
     let metaData = null;
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
     
     // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
     const metaToken = clientData.system_user_token || clientData.meta_access_token;
-    if (metaToken && clientData.ad_account_id) {
+    if (reportFlags.metaEnabled && metaToken && clientData.ad_account_id) {
       try {
         logger.info('📊 Fetching Meta-only data directly...');
         
@@ -159,7 +161,7 @@ export async function POST(request: NextRequest) {
     let googleData = null;
     let googleError = null;
     
-    if (clientData.google_ads_enabled && clientData.google_ads_customer_id) {
+    if (reportFlags.googleEnabled && clientData.google_ads_enabled && clientData.google_ads_customer_id) {
       try {
         logger.info('📊 Fetching Google Ads-only data directly...');
         
@@ -280,7 +282,7 @@ export async function POST(request: NextRequest) {
         dateRange: { start: startDate, end: endDate },
         platforms: {
           meta: {
-            enabled: !!(clientData.meta_access_token && clientData.ad_account_id),
+            enabled: !!(reportFlags.metaEnabled && clientData.meta_access_token && clientData.ad_account_id),
             data: metaData,
             error: metaError,
             stats: metaData?.stats || {
@@ -305,7 +307,7 @@ export async function POST(request: NextRequest) {
             campaigns: metaData?.campaigns || []
           },
           google: {
-            enabled: !!(clientData.google_ads_enabled && clientData.google_ads_customer_id),
+            enabled: !!(reportFlags.googleEnabled && clientData.google_ads_enabled && clientData.google_ads_customer_id),
             data: googleData,
             error: googleError,
             stats: googleData?.stats || {
@@ -373,8 +375,8 @@ export async function POST(request: NextRequest) {
       },
       responseTime,
       debug: {
-        metaEnabled: !!(clientData.meta_access_token && clientData.ad_account_id),
-        googleEnabled: !!(clientData.google_ads_enabled && clientData.google_ads_customer_id),
+        metaEnabled: !!(reportFlags.metaEnabled && clientData.meta_access_token && clientData.ad_account_id),
+        googleEnabled: !!(reportFlags.googleEnabled && clientData.google_ads_enabled && clientData.google_ads_customer_id),
         metaError,
         googleError
       }

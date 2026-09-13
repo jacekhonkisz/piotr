@@ -6,6 +6,7 @@ import logger from '../../../lib/logger';
 import { performanceMonitor } from '../../../lib/performance';
 import { validateDateRange } from '../../../lib/date-range-utils';
 import { authenticateRequest, canAccessClient, createErrorResponse } from '../../../lib/auth-middleware';
+import { getClientReportPlatformFlags } from '../../../lib/ads-provider-utils';
 import {
   getBelmontePotentialOfflineValue,
   getMicroConversionsForOfflineModel,
@@ -118,7 +119,11 @@ export async function POST(request: NextRequest) {
     
     // Create fetch promises (don't await yet - start both simultaneously)
     // ✅ FIX: Check for EITHER system_user_token OR meta_access_token
-    const hasMetaCredentials = (targetClient.system_user_token || targetClient.meta_access_token) && targetClient.ad_account_id;
+    const reportFlags = await getClientReportPlatformFlags(supabase, targetClient.id);
+    const hasMetaCredentials =
+      reportFlags.metaEnabled &&
+      (targetClient.system_user_token || targetClient.meta_access_token) &&
+      targetClient.ad_account_id;
     const metaPromise = hasMetaCredentials
       ? fetch(`${baseUrl}/api/fetch-live-data`, {
           method: 'POST',
@@ -149,7 +154,7 @@ export async function POST(request: NextRequest) {
         })
       : Promise.resolve({ data: null, error: null });
     
-    const googlePromise = (targetClient.google_ads_enabled && targetClient.google_ads_customer_id)
+    const googlePromise = (reportFlags.googleEnabled && targetClient.google_ads_enabled && targetClient.google_ads_customer_id)
       ? fetch(`${baseUrl}/api/fetch-google-ads-live-data`, {
           method: 'POST',
           headers: {

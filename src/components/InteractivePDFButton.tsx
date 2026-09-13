@@ -19,6 +19,8 @@ interface InteractivePDFButtonProps {
     geographicPerformance?: any[];
   } | null;
   viewType?: 'monthly' | 'weekly' | 'all-time' | 'custom'; // Track if this is a custom date range
+  includeMeta?: boolean;
+  includeGoogle?: boolean;
 }
 
 const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
@@ -30,8 +32,24 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
   totals,
   client,
   metaTables,
-  viewType
+  viewType,
+  includeMeta = true,
+  includeGoogle = true,
 }) => {
+  const pdfLabel = includeMeta && includeGoogle
+    ? 'Pobierz PDF (Meta + Google)'
+    : includeGoogle
+      ? 'Pobierz PDF (Google Ads)'
+      : includeMeta
+        ? 'Pobierz PDF (Meta Ads)'
+        : 'Pobierz PDF';
+  const pdfAriaLabel = includeMeta && includeGoogle
+    ? 'Download PDF report with Meta and Google Ads data'
+    : includeGoogle
+      ? 'Download PDF report with Google Ads data'
+      : includeMeta
+        ? 'Download PDF report with Meta Ads data'
+        : 'Download PDF report';
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,9 +66,10 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
       }
 
       // Fetch Meta tables data first (like GenerateReportModal does)
-      console.log('🔍 InteractivePDFButton: Fetching Meta tables data for PDF generation...');
-      
       let metaTablesData = null;
+      if (!includeMeta) {
+        console.log('🔍 InteractivePDFButton: Skipping Meta tables — platform hidden in reports');
+      } else {
       try {
         const metaTablesResponse = await fetch('/api/fetch-meta-tables', {
           method: 'POST',
@@ -94,6 +113,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         }
       } catch (metaError) {
         console.error('❌ InteractivePDFButton: Error fetching Meta tables data:', metaError);
+      }
       }
 
       // 🔧 CUSTOM DATE RANGE: Pass live data directly to avoid cache
@@ -236,7 +256,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
             : className || 'flex items-center space-x-2 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 hover:shadow-md rounded-lg text-sm font-medium shadow-sm border border-slate-700 opacity-100'
         }
         style={isGenerating ? { backgroundColor: '#1e293b', color: 'white', opacity: 1 } : undefined}
-        aria-label={isGenerating ? "Generating PDF report, please wait" : "Download PDF report with Meta and Google Ads data"}
+        aria-label={isGenerating ? "Generating PDF report, please wait" : pdfAriaLabel}
       >
         {isGenerating ? (
           <>
@@ -246,7 +266,7 @@ const InteractivePDFButton: React.FC<InteractivePDFButtonProps> = ({
         ) : (
           <>
             <FileText className="h-5 w-5" aria-hidden="true" />
-            <span>Pobierz PDF (Meta + Google)</span>
+            <span>{pdfLabel}</span>
           </>
         )}
       </button>
